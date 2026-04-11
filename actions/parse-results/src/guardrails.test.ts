@@ -21,7 +21,7 @@ describe("enforceDatapointPolicy", () => {
         dataPoints: 5,
         failOnZeroDatapoints: true,
         minDatapoints: 3,
-      }),
+      })
     );
   });
 
@@ -33,7 +33,7 @@ describe("enforceDatapointPolicy", () => {
           failOnZeroDatapoints: true,
           minDatapoints: 0,
         }),
-      /fail-on-zero-datapoints=true/,
+      /fail-on-zero-datapoints=true/
     );
   });
 
@@ -45,8 +45,7 @@ describe("enforceDatapointPolicy", () => {
           failOnZeroDatapoints: false,
           minDatapoints: 2,
         }),
-      /below min-datapoints=2/,
+      /below min-datapoints=2/
     );
   });
 });
-

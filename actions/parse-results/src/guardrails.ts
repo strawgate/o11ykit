@@ -14,13 +14,12 @@ export function enforceDatapointPolicy(options: {
   if (options.failOnZeroDatapoints && options.dataPoints === 0) {
     throw new Error(
       "Parsed 0 datapoints and fail-on-zero-datapoints=true. " +
-      "Verify format/source content or disable the guardrail.",
+        "Verify format/source content or disable the guardrail."
     );
   }
   if (options.dataPoints < options.minDatapoints) {
     throw new Error(
-      `Parsed ${options.dataPoints} datapoints, below min-datapoints=${options.minDatapoints}.`,
+      `Parsed ${options.dataPoints} datapoints, below min-datapoints=${options.minDatapoints}.`
     );
   }
 }
-
