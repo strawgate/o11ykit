@@ -11,7 +11,6 @@ import { DEFAULT_PUSH_RETRY_COUNT } from "@octo11y/core";
 
 const GITHUB_API_VERSION = "2022-11-28";
 const DEFAULT_CURSOR_PATH = "data/state/benchkit-ci-run-ingest.cursor.json";
-const LEGACY_CURSOR_PATH = "data/state/ingest-cursor.json";
 
 export interface WorkflowRun {
   readonly id: number;
@@ -27,12 +26,11 @@ export interface WorkflowRun {
 }
 
 export interface CursorFile {
-  readonly latestWorkflowRunCreatedAt?: string;
-  // Legacy field retained for backward compatibility with earlier cursor files.
-  readonly latestCreatedAt?: string;
-  readonly updatedAt?: string;
-  readonly sourceAction?: string;
-  readonly source?: string;
+  readonly cursorKind: "benchkit.ci-run-ingest";
+  readonly cursorVersion: number;
+  readonly latestWorkflowRunCreatedAt: string;
+  readonly updatedAt: string;
+  readonly sourceAction: "benchkit.ingest-ci-runs";
 }
 
 export interface CandidateRun {
@@ -125,8 +123,26 @@ export async function readCursorFile(options: {
   const payload = (await res.json()) as { content?: string; encoding?: string };
   if (!payload.content || payload.encoding !== "base64") return undefined;
   const raw = Buffer.from(payload.content, "base64").toString("utf-8");
-  const parsed = JSON.parse(raw) as CursorFile;
-  return parsed;
+  const parsed = JSON.parse(raw) as Partial<CursorFile>;
+  if (parsed.cursorKind !== "benchkit.ci-run-ingest") {
+    throw new Error(`Invalid cursorKind in cursor file: ${String(parsed.cursorKind)}`);
+  }
+  if (!Number.isInteger(parsed.cursorVersion) || (parsed.cursorVersion ?? 0) < 1) {
+    throw new Error(`Invalid cursorVersion in cursor file: ${String(parsed.cursorVersion)}`);
+  }
+  if (!parsed.latestWorkflowRunCreatedAt || !isValidIso(parsed.latestWorkflowRunCreatedAt)) {
+    throw new Error(
+      `Invalid latestWorkflowRunCreatedAt in cursor file: ${String(parsed.latestWorkflowRunCreatedAt)}`,
+    );
+  }
+  if (!parsed.updatedAt || !isValidIso(parsed.updatedAt)) {
+    throw new Error(`Invalid updatedAt in cursor file: ${String(parsed.updatedAt)}`);
+  }
+  if (parsed.sourceAction !== "benchkit.ingest-ci-runs") {
+    throw new Error(`Invalid sourceAction in cursor file: ${String(parsed.sourceAction)}`);
+  }
+  const parsedTyped = parsed as CursorFile;
+  return parsedTyped;
 }
 
 function workflowPathBasename(run: WorkflowRun): string {
@@ -251,20 +267,6 @@ export async function runIngestDiscovery(): Promise<void> {
   let cursor: CursorFile | undefined;
   try {
     cursor = await readCursorFile({ token, repository, dataBranch, cursorPath });
-    if (!cursor && cursorPath === DEFAULT_CURSOR_PATH) {
-      cursor = await readCursorFile({
-        token,
-        repository,
-        dataBranch,
-        cursorPath: LEGACY_CURSOR_PATH,
-      });
-      if (cursor) {
-        core.info(
-          `Found legacy ingest cursor at ${dataBranch}:${LEGACY_CURSOR_PATH}; ` +
-          `it will be migrated to ${cursorPath}.`,
-        );
-      }
-    }
   } catch (error) {
     core.warning(
       `Could not read ingest cursor at ${dataBranch}:${cursorPath}; using lookback fallback. ` +
@@ -272,7 +274,7 @@ export async function runIngestDiscovery(): Promise<void> {
     );
   }
 
-  const cursorSince = cursor?.latestWorkflowRunCreatedAt ?? cursor?.latestCreatedAt;
+  const cursorSince = cursor?.latestWorkflowRunCreatedAt;
   const since = resolveSince({
     inputSince,
     cursorSince,
@@ -298,8 +300,6 @@ export async function runIngestDiscovery(): Promise<void> {
       cursorKind: "benchkit.ci-run-ingest",
       cursorVersion: 1,
       latestWorkflowRunCreatedAt: latestCreatedAt,
-      // Keep writing the legacy key so older readers continue to work.
-      latestCreatedAt,
       updatedAt: new Date().toISOString(),
       sourceAction: "benchkit.ingest-ci-runs",
     },

@@ -14,8 +14,6 @@ This action does discovery only. Pair it with
 
 - Scans all workflows by default.
 - Uses `data/state/benchkit-ci-run-ingest.cursor.json` on the data branch as a cursor.
-- Automatically reads the legacy cursor path (`data/state/ingest-cursor.json`) if
-  present, then migrates writes to the specific default path.
 - If no cursor (and no explicit `since`) exists, applies a bounded first-run
   lookback window (`lookback-hours`, default `72`).
 - Supports optional workflow/event/conclusion filters.
