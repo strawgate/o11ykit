@@ -14,11 +14,6 @@ jobs:
   benchmark:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Emit benchmark output
         shell: bash
         run: |
@@ -45,9 +40,23 @@ jobs:
           }, 300000);
           EOF
 
+  stash-results:
+    needs:
+      - benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Parse and stash benchmark results
         uses: ./actions/parse-results
         with:
           mode: auto
           format: go
           github-token: ${{ github.token }}
+          source-run-id: ${{ github.run_id }}
+          source-run-attempt: ${{ github.run_attempt }}
+          source-job: benchmark
+          run-id: ${{ github.run_id }}-${{ github.run_attempt }}--benchmark

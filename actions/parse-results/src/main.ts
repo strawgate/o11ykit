@@ -70,6 +70,9 @@ async function run(): Promise<void> {
   const commitResults = core.getBooleanInput("commit-results");
   const includeSummary = core.getBooleanInput("summary");
   const customRunId = core.getInput("run-id");
+  const sourceRunId = core.getInput("source-run-id");
+  const sourceRunAttempt = core.getInput("source-run-attempt");
+  const sourceJob = core.getInput("source-job");
 
   const runId = buildRunId({
     ...(customRunId ? { customRunId } : {}),
@@ -84,8 +87,12 @@ async function run(): Promise<void> {
     if (!token) {
       throw new Error("github-token is required when mode=auto.");
     }
-    sourceName = `run-${process.env.GITHUB_RUN_ID ?? "unknown"}-logs`;
-    sourceContent = await readCurrentRunLogs(token);
+    sourceName = `run-${sourceRunId || process.env.GITHUB_RUN_ID || "unknown"}-logs`;
+    sourceContent = await readCurrentRunLogs(token, {
+      ...(sourceRunId ? { runId: sourceRunId } : {}),
+      ...(sourceRunAttempt ? { runAttempt: sourceRunAttempt } : {}),
+      ...(sourceJob ? { jobName: sourceJob } : {}),
+    });
   } else {
     if (!resultsPattern) {
       throw new Error("results is required when mode=file.");

@@ -106,11 +106,18 @@ async function downloadCurrentJobLogs(options: {
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
-export async function readCurrentRunLogs(token: string): Promise<string> {
+export async function readCurrentRunLogs(
+  token: string,
+  options?: {
+    readonly runId?: string;
+    readonly runAttempt?: string;
+    readonly jobName?: string;
+  }
+): Promise<string> {
   const repository = process.env.GITHUB_REPOSITORY;
-  const runId = process.env.GITHUB_RUN_ID;
-  const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
-  const jobName = process.env.GITHUB_JOB;
+  const runId = options?.runId ?? process.env.GITHUB_RUN_ID;
+  const runAttempt = options?.runAttempt ?? process.env.GITHUB_RUN_ATTEMPT;
+  const jobName = options?.jobName ?? process.env.GITHUB_JOB;
   const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
 
   if (!repository) {

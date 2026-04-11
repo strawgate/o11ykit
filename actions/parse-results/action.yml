@@ -24,6 +24,15 @@ inputs:
   run-id:
     description: "Custom run identifier. Defaults to {GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}--{GITHUB_JOB}."
     required: false
+  source-run-id:
+    description: "Workflow run id to read logs from when mode=auto. Defaults to current run."
+    required: false
+  source-run-attempt:
+    description: "Workflow run attempt to read logs from when mode=auto."
+    required: false
+  source-job:
+    description: "Preferred job name to read logs from when mode=auto run logs are unavailable."
+    required: false
   monitor-results:
     description: "Path to OTLP JSON monitor output. When provided, monitor metrics are merged before writing."
     required: false

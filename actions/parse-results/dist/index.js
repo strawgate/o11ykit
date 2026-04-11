@@ -63711,11 +63711,11 @@ async function downloadCurrentJobLogs(options) {
     }
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
-async function readCurrentRunLogs(token) {
+async function readCurrentRunLogs(token, options) {
     const repository = process.env.GITHUB_REPOSITORY;
-    const runId = process.env.GITHUB_RUN_ID;
-    const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
-    const jobName = process.env.GITHUB_JOB;
+    const runId = options?.runId ?? process.env.GITHUB_RUN_ID;
+    const runAttempt = options?.runAttempt ?? process.env.GITHUB_RUN_ATTEMPT;
+    const jobName = options?.jobName ?? process.env.GITHUB_JOB;
     const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
     if (!repository) {
         throw new Error("GITHUB_REPOSITORY is required for mode=auto");
@@ -64193,6 +64193,9 @@ async function run() {
     const commitResults = core.getBooleanInput("commit-results");
     const includeSummary = core.getBooleanInput("summary");
     const customRunId = core.getInput("run-id");
+    const sourceRunId = core.getInput("source-run-id");
+    const sourceRunAttempt = core.getInput("source-run-attempt");
+    const sourceJob = core.getInput("source-job");
     const runId = buildRunId({
         ...(customRunId ? { customRunId } : {}),
         ...(process.env.GITHUB_RUN_ID ? { githubRunId: process.env.GITHUB_RUN_ID } : {}),
@@ -64205,8 +64208,12 @@ async function run() {
         if (!token) {
             throw new Error("github-token is required when mode=auto.");
         }
-        sourceName = `run-${process.env.GITHUB_RUN_ID ?? "unknown"}-logs`;
-        sourceContent = await readCurrentRunLogs(token);
+        sourceName = `run-${sourceRunId || process.env.GITHUB_RUN_ID || "unknown"}-logs`;
+        sourceContent = await readCurrentRunLogs(token, {
+            ...(sourceRunId ? { runId: sourceRunId } : {}),
+            ...(sourceRunAttempt ? { runAttempt: sourceRunAttempt } : {}),
+            ...(sourceJob ? { jobName: sourceJob } : {}),
+        });
     }
     else {
         if (!resultsPattern) {

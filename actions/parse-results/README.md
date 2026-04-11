@@ -15,6 +15,9 @@ Parses benchmark output into OTLP metrics JSON and stashes it to a data branch.
 - `data-branch`: branch to write run documents to (default `bench-data`)
 - `github-token`: required for `auto` and for `commit-results=true`
 - `run-id`: optional custom run id
+- `source-run-id`: optional workflow run id to read logs from when using `auto`
+- `source-run-attempt`: optional run attempt for `source-run-id`
+- `source-job`: optional job name to target when `auto` run logs are unavailable
 - `monitor-results`: optional OTLP JSON file path to merge into output
 - `commit-results`: whether to push to data branch (default `true`)
 - `summary`: write step summary (default `true`)
@@ -35,4 +38,3 @@ steps:
       format: go
       github-token: ${{ github.token }}
 ```
-
