@@ -1,0 +1,65 @@
+name: "Benchkit Ingest CI Runs"
+description: "Discover completed workflow runs to ingest via parse-results."
+
+inputs:
+  github-token:
+    description: "GitHub token with actions:read and contents:write (when commit-cursor=true)."
+    required: true
+    default: ${{ github.token }}
+  repository:
+    description: "owner/repo to inspect. Defaults to current repository."
+    required: false
+    default: ${{ github.repository }}
+  data-branch:
+    description: "Data branch where ingest cursor is stored."
+    required: false
+    default: "bench-data"
+  cursor-path:
+    description: "Path to cursor JSON on data branch."
+    required: false
+    default: "data/state/ingest-cursor.json"
+  commit-cursor:
+    description: "When true, writes cursor-json to cursor-path on data-branch."
+    required: false
+    default: "true"
+  since:
+    description: "Optional ISO timestamp lower bound for workflow run created_at."
+    required: false
+  lookback-hours:
+    description: "Fallback lookback window when no cursor exists and since is empty."
+    required: false
+    default: "72"
+  max-runs:
+    description: "Maximum number of runs to return."
+    required: false
+    default: "50"
+  workflows:
+    description: "Optional comma-separated workflow filter (name, path basename, workflow id). Empty means all workflows."
+    required: false
+    default: ""
+  events:
+    description: "Comma-separated event filter. Empty means all events."
+    required: false
+    default: "push,pull_request,workflow_dispatch,schedule"
+  conclusions:
+    description: "Comma-separated run conclusion filter. Empty means all conclusions."
+    required: false
+    default: "success"
+
+outputs:
+  run-count:
+    description: "Number of candidate runs discovered."
+  runs-json:
+    description: "JSON array of run objects: id, run_attempt, workflow_name, event, created_at, html_url."
+  run-ids-json:
+    description: "JSON array of run ids (strings)."
+  since:
+    description: "Effective since timestamp used for discovery."
+  latest-created-at:
+    description: "Latest created_at among discovered runs (or since when none found)."
+  cursor-json:
+    description: "Cursor JSON payload to persist on bench-data branch."
+
+runs:
+  using: node24
+  main: dist/index.js

@@ -5,6 +5,9 @@ System and custom metrics collection via the OpenTelemetry Collector
 background process, exposes OTLP receivers for your benchmark code, and then
 stops and flushes telemetry automatically in the action post step.
 
+Use a published dist ref (`@main-dist` or a version tag). Do not use `@main`
+for JS actions, because `@main` does not include compiled action bundles.
+
 ## What it does
 
 - collects host metrics through the collector's `hostmetrics` receiver

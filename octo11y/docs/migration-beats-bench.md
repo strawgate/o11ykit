@@ -34,7 +34,7 @@ The `beats-bench summarize` command should be updated to emit OTLP JSON.
 - **Aggregate**: Replaces the custom index-building logic. It rebuilds `index.json` and time-series files.
 
 ### 3. Replace Custom PR Comparison
-Instead of custom inline arithmetic in the Python runner for PR comments, use `actions/compare@main`. This action:
+Instead of custom inline arithmetic in the Python runner for PR comments, use `actions/compare@main-dist`. This action:
 - Generates a markdown comparison table.
 - Posts a PR comment.
 - Fails the CI if regressions are detected (optional).
