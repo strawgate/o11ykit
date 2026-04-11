@@ -63838,11 +63838,17 @@ function metricNameFromUnit(unit) {
 }
 function parseGo(input) {
     const benchmarks = [];
-    const re = /^(?<name>Benchmark\w[\w/()$%^&*=|,[\]{}"#]*?)(?:-(?<procs>\d+))?\s+(?<iters>\d+)\s+(?<rest>.+)$/;
+    const re = /^(?<fullName>Benchmark\S+)\s+(?<iters>\d+)\s+(?<rest>.+)$/;
     for (const line of input.split(/\r?\n/)) {
         const m = line.match(re);
         if (!m?.groups)
             continue;
+        const fullName = m.groups.fullName;
+        if (!fullName)
+            continue;
+        const procsMatch = fullName.match(/^(?<name>.+?)-(?<procs>\d+)$/);
+        const name = procsMatch?.groups?.name ?? fullName;
+        const procs = procsMatch?.groups?.procs;
         const rest = m.groups.rest ?? "";
         const parts = rest.trim().split(/\s+/);
         const metrics = {};
@@ -63861,10 +63867,7 @@ function parseGo(input) {
         }
         if (Object.keys(metrics).length === 0)
             continue;
-        const tags = m.groups.procs ? { procs: m.groups.procs } : null;
-        const name = m.groups.name;
-        if (!name)
-            continue;
+        const tags = procs ? { procs } : null;
         benchmarks.push({
             name,
             ...(tags ? { tags } : {}),
