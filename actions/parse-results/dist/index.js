@@ -63672,6 +63672,13 @@ async function downloadLogsArchive(url, token) {
     }
     return Buffer.from(await response.arrayBuffer());
 }
+function isZipArchive(buffer) {
+    return (buffer.length >= 4 &&
+        buffer[0] === 0x50 &&
+        buffer[1] === 0x4b &&
+        (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07) &&
+        (buffer[3] === 0x04 || buffer[3] === 0x06 || buffer[3] === 0x08));
+}
 async function listRunJobs(options) {
     const endpoint = new URL(`${options.apiUrl}/repos/${options.repository}/actions/runs/${options.runId}/jobs`);
     endpoint.searchParams.set("per_page", "100");
@@ -63763,6 +63770,9 @@ async function readCurrentRunLogs(token, options) {
         }
     }
     const zipPath = external_node_path_namespaceObject.join(external_node_os_namespaceObject.tmpdir(), `o11ykit-run-logs-${runId}-${runAttempt ?? "1"}-${Date.now()}.zip`);
+    if (!isZipArchive(archive)) {
+        return archive.toString("utf-8");
+    }
     external_node_fs_namespaceObject.writeFileSync(zipPath, archive);
     const extractedDir = await tool_cache.extractZip(zipPath);
     const files = walkFiles(extractedDir).filter(isLogTextFile);

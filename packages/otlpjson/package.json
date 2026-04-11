@@ -33,5 +33,10 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/strawgate/o11ykit.git",
+    "directory": "packages/otlpjson"
   }
 }

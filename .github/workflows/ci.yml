@@ -57,7 +57,7 @@ jobs:
           cache-dependency-path: octo11y/package-lock.json
 
       - name: Install octo11y dependencies
-        run: npm ci --prefix octo11y
+        run: npm run octo11y:install
 
       - name: Validate octo11y workspace
         run: npm run octo11y:check

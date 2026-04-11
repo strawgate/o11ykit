@@ -1,0 +1,55 @@
+name: Publish octo11y Packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "octo11y-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: octo11y/package-lock.json
+          registry-url: https://registry.npmjs.org
+
+      - name: Install octo11y dependencies
+        run: npm run octo11y:install
+
+      - name: Build publishable octo11y packages
+        working-directory: octo11y
+        run: |
+          npm run build --workspace=packages/core
+          npm run build --workspace=packages/format
+          npm run build --workspace=packages/chart
+          npm run build --workspace=packages/adapters
+
+      - name: Publish missing versions
+        working-directory: octo11y
+        run: |
+          set -euo pipefail
+          workspaces=(packages/core packages/format packages/chart packages/adapters)
+          for ws in "${workspaces[@]}"; do
+            name=$(node -p "require('./${ws}/package.json').name")
+            version=$(node -p "require('./${ws}/package.json').version")
+            if npm view "${name}@${version}" version >/dev/null 2>&1; then
+              echo "Skipping ${name}@${version} (already published)"
+              continue
+            fi
+            echo "Publishing ${name}@${version}"
+            npm publish --workspace="${ws}" --provenance --access public
+          done
