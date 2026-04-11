@@ -209,9 +209,10 @@ function App(): JSX.Element {
         </div>
         <h1 data-testid="hero-title">Ten Seconds In The Life Of A Spiky Checkout</h1>
         <p>
-          This synthetic incident follows one bursty launch window. OtlpKit consumes OTLP JSON and
-          projects it into chart-ready views, so each scene maps directly to a real telemetry
-          question an on-call engineer would ask.
+          This synthetic incident follows one bursty launch window. Standard practice is to emit
+          OTLP from your app, expose OTLP JSON, and project it into chart-ready views. Advanced
+          practice is a memagent-style processor pipeline that keeps traces, metrics, and logs in a
+          ring buffer behind a diagnostics API.
         </p>
       </section>
 
@@ -353,7 +354,8 @@ function App(): JSX.Element {
       </section>
 
       <footer className="footer-note">
-        data source: synthetic OTLP metrics document in <code>examples/demo/src/demo-data.ts</code>
+        data source: synthetic OTLP metrics document in <code>examples/demo/src/demo-data.ts</code>{" "}
+        - advanced practice: processor + ring buffer API (memagent-style)
       </footer>
     </main>
   );
