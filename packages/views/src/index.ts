@@ -59,6 +59,16 @@ export interface TimeSeriesFrameOptions {
   readonly unit?: string;
 }
 
+export interface MergeTimeSeriesFramesOptions {
+  /**
+   * When two points share the same series key and timestamp:
+   * - "replace" (default): use incoming point
+   * - "keep-existing": keep existing point
+   */
+  readonly onConflict?: "replace" | "keep-existing";
+}
+
+
 export interface LatestValueRow {
   readonly key: string;
   readonly label: string;
@@ -339,6 +349,103 @@ export function buildTimeSeriesFrame(
     intervalMs,
     series,
   };
+}
+
+function mergeSeriesPoints(
+  existing: readonly TimeSeriesPoint[],
+  incoming: readonly TimeSeriesPoint[],
+  onConflict: "replace" | "keep-existing"
+): TimeSeriesPoint[] {
+  const byTime = new Map<string, TimeSeriesPoint>();
+  for (const point of existing) {
+    byTime.set(point.timeUnixNano, point);
+  }
+  for (const point of incoming) {
+    if (onConflict === "keep-existing" && byTime.has(point.timeUnixNano)) {
+      continue;
+    }
+    byTime.set(point.timeUnixNano, point);
+  }
+  return [...byTime.values()].sort((left, right) => {
+    const leftNanos = toUnixNanos(left.timeUnixNano) ?? 0n;
+    const rightNanos = toUnixNanos(right.timeUnixNano) ?? 0n;
+    return Number(leftNanos > rightNanos) - Number(leftNanos < rightNanos);
+  });
+}
+
+/**
+ * Merge two time-series frames (typically "existing history" + "new slice").
+ * Inputs should be built with compatible frame options (same metric/split/reduce/interval).
+ */
+export function mergeTimeSeriesFrames(
+  existing: TimeSeriesFrame,
+  incoming: TimeSeriesFrame,
+  options: MergeTimeSeriesFramesOptions = {}
+): TimeSeriesFrame {
+  const onConflict = options.onConflict ?? "replace";
+  const mergedByKey = new Map<string, TimeSeriesSeries>();
+
+  for (const series of existing.series) {
+    mergedByKey.set(series.key, {
+      key: series.key,
+      label: series.label,
+      points: [...series.points],
+    });
+  }
+
+  for (const series of incoming.series) {
+    const prior = mergedByKey.get(series.key);
+    if (!prior) {
+      mergedByKey.set(series.key, {
+        key: series.key,
+        label: series.label,
+        points: [...series.points],
+      });
+      continue;
+    }
+    mergedByKey.set(series.key, {
+      key: series.key,
+      label: prior.label,
+      points: mergeSeriesPoints(prior.points, series.points, onConflict),
+    });
+  }
+
+  return {
+    kind: "time-series",
+    signal: existing.signal === null ? incoming.signal : existing.signal,
+    title: existing.title,
+    unit: existing.unit ?? incoming.unit,
+    intervalMs: existing.intervalMs,
+    series: [...mergedByKey.values()].sort((left, right) => left.key.localeCompare(right.key)),
+  };
+}
+
+/**
+ * Build a frame from newly arrived data and merge it into an existing frame.
+ */
+export function appendTimeSeriesFrame(
+  existing: TimeSeriesFrame,
+  incomingInput: unknown,
+  frameOptions: TimeSeriesFrameOptions = {},
+  mergeOptions: MergeTimeSeriesFramesOptions = {}
+): TimeSeriesFrame {
+  const effectiveFrameOptions: TimeSeriesFrameOptions = {
+    ...frameOptions,
+    title: frameOptions.title ?? existing.title,
+    intervalMs: frameOptions.intervalMs ?? existing.intervalMs,
+    ...(frameOptions.signal !== undefined
+      ? { signal: frameOptions.signal }
+      : existing.signal !== null
+        ? { signal: existing.signal }
+        : {}),
+    ...(frameOptions.unit !== undefined
+      ? { unit: frameOptions.unit }
+      : existing.unit !== null
+        ? { unit: existing.unit }
+        : {}),
+  };
+  const incoming = buildTimeSeriesFrame(incomingInput, effectiveFrameOptions);
+  return mergeTimeSeriesFrames(existing, incoming, mergeOptions);
 }
 
 export function buildLatestValuesFrame(
