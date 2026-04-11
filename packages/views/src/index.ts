@@ -44,6 +44,11 @@ export interface TimeSeriesFrame {
   readonly unit: string | null;
   readonly intervalMs: number;
   readonly series: readonly TimeSeriesSeries[];
+  /**
+   * Resolved frame options captured at build time so incremental append flows
+   * can reuse the same metric/split/reduce configuration.
+   */
+  readonly buildOptions?: TimeSeriesFrameOptions;
 }
 
 export interface TimeSeriesFrameOptions {
@@ -333,6 +338,8 @@ export function buildTimeSeriesFrame(
   };
   const filtered = filterRecords(records, filters);
   const intervalMs = options.intervalMs ?? 60_000;
+  const title = options.title ?? options.metricName ?? options.name ?? "Telemetry";
+  const unit = options.unit ?? inferUnit(filtered);
   const series = bucketTimeSeries(filtered, {
     intervalMs,
     reduce: options.reduce ?? "sum",
@@ -344,10 +351,25 @@ export function buildTimeSeriesFrame(
   return {
     kind: "time-series",
     signal,
-    title: options.title ?? options.metricName ?? options.name ?? "Telemetry",
-    unit: options.unit ?? inferUnit(filtered),
+    title,
+    unit,
     intervalMs,
     series,
+    buildOptions: {
+      ...options,
+      title,
+      intervalMs,
+      ...(options.signal !== undefined
+        ? { signal: options.signal }
+        : signal !== null
+          ? { signal }
+          : {}),
+      ...(options.unit !== undefined
+        ? { unit: options.unit }
+        : unit !== null
+          ? { unit }
+          : {}),
+    },
   };
 }
 
@@ -410,6 +432,8 @@ export function mergeTimeSeriesFrames(
     });
   }
 
+  const mergedBuildOptions = existing.buildOptions ?? incoming.buildOptions;
+
   return {
     kind: "time-series",
     signal: existing.signal === null ? incoming.signal : existing.signal,
@@ -417,6 +441,7 @@ export function mergeTimeSeriesFrames(
     unit: existing.unit ?? incoming.unit,
     intervalMs: existing.intervalMs,
     series: [...mergedByKey.values()].sort((left, right) => left.key.localeCompare(right.key)),
+    ...(mergedBuildOptions ? { buildOptions: mergedBuildOptions } : {}),
   };
 }
 
@@ -429,19 +454,25 @@ export function appendTimeSeriesFrame(
   frameOptions: TimeSeriesFrameOptions = {},
   mergeOptions: MergeTimeSeriesFramesOptions = {}
 ): TimeSeriesFrame {
+  const baselineOptions = existing.buildOptions ?? {};
   const effectiveFrameOptions: TimeSeriesFrameOptions = {
+    ...baselineOptions,
     ...frameOptions,
-    title: frameOptions.title ?? existing.title,
-    intervalMs: frameOptions.intervalMs ?? existing.intervalMs,
+    title: frameOptions.title ?? baselineOptions.title ?? existing.title,
+    intervalMs: frameOptions.intervalMs ?? baselineOptions.intervalMs ?? existing.intervalMs,
     ...(frameOptions.signal !== undefined
       ? { signal: frameOptions.signal }
-      : existing.signal !== null
-        ? { signal: existing.signal }
-        : {}),
+      : baselineOptions.signal !== undefined
+        ? { signal: baselineOptions.signal }
+        : existing.signal !== null
+          ? { signal: existing.signal }
+          : {}),
     ...(frameOptions.unit !== undefined
       ? { unit: frameOptions.unit }
-      : existing.unit !== null
-        ? { unit: existing.unit }
+      : baselineOptions.unit !== undefined
+        ? { unit: baselineOptions.unit }
+        : existing.unit !== null
+          ? { unit: existing.unit }
         : {}),
   };
   const incoming = buildTimeSeriesFrame(incomingInput, effectiveFrameOptions);

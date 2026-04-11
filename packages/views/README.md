@@ -80,9 +80,12 @@ const base = buildTimeSeriesFrame(initialDoc, {
 });
 
 // Option 1: append raw incoming OTLP input directly.
-const updated = appendTimeSeriesFrame(base, newDocSlice, {
-  metricName: "http.server.duration",
-  splitBy: "resource.service.name",
+// Reuses the base frame's captured options by default.
+const updated = appendTimeSeriesFrame(base, newDocSlice);
+
+// Optional override for a specific append.
+const updatedWithOverride = appendTimeSeriesFrame(base, newDocSlice, {
+  splitBy: "resource.deployment.environment",
 });
 
 // Option 2: build a delta frame, then merge explicitly.
