@@ -51,7 +51,7 @@
     "release:publish": "changeset publish"
   },
   "devDependencies": {
-    "@types/node": "^24.7.2",
+    "@types/node": "^25.6.0",
     "@vercel/ncc": "^0.38.4",
     "@arethetypeswrong/cli": "^0.18.2",
     "@biomejs/biome": "^2.4.10",
