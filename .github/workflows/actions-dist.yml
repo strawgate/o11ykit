@@ -50,7 +50,7 @@ jobs:
 
           git switch -C "$DIST_BRANCH"
 
-          git add \
+          git add -f \
             actions/parse-results/action.yml \
             actions/parse-results/README.md \
             actions/parse-results/dist \
