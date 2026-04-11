@@ -109,28 +109,27 @@ async function loadCurrentJobLogs(token: string): Promise<string> {
     : "";
   const jobsRunUrl = `${apiBase}/repos/${repo}/actions/runs/${runId}/jobs?per_page=100`;
 
-  let jobsPayload: unknown;
-  try {
-    jobsPayload = jobsAttemptUrl
-      ? await requestJson(jobsAttemptUrl, token)
-      : await requestJson(jobsRunUrl, token);
-  } catch (err) {
-    if (!jobsAttemptUrl) throw err;
-    jobsPayload = await requestJson(jobsRunUrl, token);
-  }
-
-  const jobId = findCurrentJobId(jobsPayload, githubJob);
-  if (!jobId) {
-    throw new Error(`Could not resolve current job id for GITHUB_JOB=${githubJob}`);
-  }
-
-  const jobLogsUrl = `${apiBase}/repos/${repo}/actions/jobs/${jobId}/logs`;
-
-  // Job logs can return 404 briefly while the runner initializes uploads.
-  // Retry with short backoff to make auto mode reliable within the same run.
+  // Current job metadata and logs can both lag briefly after job start.
+  // Retry both resolution and download to make auto mode reliable.
   let lastError: unknown;
-  for (let attempt = 0; attempt < 6; attempt += 1) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
     try {
+      let jobsPayload: unknown;
+      try {
+        jobsPayload = jobsAttemptUrl
+          ? await requestJson(jobsAttemptUrl, token)
+          : await requestJson(jobsRunUrl, token);
+      } catch (err) {
+        if (!jobsAttemptUrl) throw err;
+        jobsPayload = await requestJson(jobsRunUrl, token);
+      }
+
+      const jobId = findCurrentJobId(jobsPayload, githubJob);
+      if (!jobId) {
+        throw new Error(`Could not resolve current job id for GITHUB_JOB=${githubJob}`);
+      }
+
+      const jobLogsUrl = `${apiBase}/repos/${repo}/actions/jobs/${jobId}/logs`;
       return await downloadJobLogs(jobLogsUrl, token);
     } catch (err) {
       lastError = err;
