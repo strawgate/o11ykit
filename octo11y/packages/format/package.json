@@ -1,6 +1,6 @@
 {
   "name": "@benchkit/format",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Benchmark result types and format parsers (Go bench, Rust bench, Hyperfine, pytest-benchmark, benchmark-action, OTLP).",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

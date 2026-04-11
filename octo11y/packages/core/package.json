@@ -1,6 +1,6 @@
 {
   "name": "@octo11y/core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Generic OTLP metric types, parsing, and data structures for metric storage and visualization.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
