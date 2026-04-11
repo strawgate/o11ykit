@@ -38,8 +38,9 @@ jobs:
         id: monitor
         uses: strawgate/octo11y/actions/monitor@main-dist
         with:
+          profile: ci
           scrape-interval: 5s
-          metric-sets: cpu,memory,load,process
+          metric-sets: cpu,memory,load
 
       - name: Run benchmarks
         env:
@@ -80,9 +81,10 @@ emit action against the collector endpoint from the monitor step:
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `collector-version` | no | `0.102.0` | OTel Collector Contrib version to download. See [otelcol-contrib releases](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) for available versions. |
+| `collector-version` | no | `0.149.0` | OTel Collector Contrib version to download. See [otelcol-contrib releases](https://github.com/open-telemetry/opentelemetry-collector-releases/releases) for available versions. |
+| `profile` | no | `default` | Preset tuning. Use `ci` to reduce process-scraper noise in hosted CI logs. |
 | `scrape-interval` | no | `5s` | Host-metrics scrape interval. |
-| `metric-sets` | no | `cpu,memory,load,process` | Comma-separated host metric scrapers to enable. |
+| `metric-sets` | no | `` | Comma-separated host metric scrapers to enable. If empty, profile defaults apply (`default`: `cpu,memory,load,process`; `ci`: `cpu,memory,load`). |
 | `otlp-grpc-port` | no | `4317` | OTLP gRPC receiver port. Set to `0` to disable. |
 | `otlp-http-port` | no | `4318` | OTLP HTTP receiver port. Set to `0` to disable. |
 | `data-branch` | no | `bench-data` | Branch where the telemetry sidecar is pushed. |
@@ -118,7 +120,9 @@ Benchkit also stamps resource attributes such as `benchkit.run_id`,
 2. **Collect**: scrape host metrics and accept user OTLP metrics through the
    enabled OTLP receivers
 3. **Post step**: stop the collector automatically, let it flush pending data,
-   filter process metrics, and push the sidecar to the data branch
+   filter process metrics, and push the sidecar to the data branch. In `ci`
+   profile, expected process-scraper noise is suppressed and counted in the step
+   summary.
 
 ## Platform support
 

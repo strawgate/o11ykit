@@ -16,9 +16,11 @@ import {
   generateCollectorConfig,
   validateMetricSets,
 } from "./otel-config.js";
-import type { OtelState } from "./types.js";
+import type { MonitorProfile, OtelState } from "./types.js";
 
 const STATE_NAME = ".benchkit-otel.state.json";
+const DEFAULT_METRIC_SETS = ["cpu", "memory", "load", "process"];
+const CI_PROFILE_DEFAULT_METRIC_SETS = ["cpu", "memory", "load"];
 
 function runnerTemp(): string {
   return process.env.RUNNER_TEMP || os.tmpdir();
@@ -97,6 +99,22 @@ function sanitizeRunId(raw: string): string {
   return raw.replace(/[/\\:*?"<>|]/g, "_");
 }
 
+export function resolveProfile(raw: string): MonitorProfile {
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === "" || normalized === "default") return "default";
+  if (normalized === "ci") return "ci";
+  throw new Error(`Invalid profile '${raw}'. Expected 'default' or 'ci'.`);
+}
+
+export function resolveMetricSetsInput(raw: string, profile: MonitorProfile): string[] {
+  if (raw.trim() !== "") {
+    return raw.split(",");
+  }
+  return profile === "ci"
+    ? [...CI_PROFILE_DEFAULT_METRIC_SETS]
+    : [...DEFAULT_METRIC_SETS];
+}
+
 export function resolveRunId(): string {
   const explicit = core.getInput("run-id");
   if (explicit) return sanitizeRunId(explicit);
@@ -133,8 +151,9 @@ export async function waitForOtlpHttpReady(
 export async function startOtelCollector(): Promise<void> {
   const version = core.getInput("collector-version") || "0.149.0";
   const scrapeInterval = core.getInput("scrape-interval") || "5s";
+  const profile = resolveProfile(core.getInput("profile") || "default");
   const metricSetsInput = core.getInput("metric-sets");
-  const metricSetsRaw = metricSetsInput === "" ? [] : (metricSetsInput || "cpu,memory,load,process").split(",");
+  const metricSetsRaw = resolveMetricSetsInput(metricSetsInput, profile);
   const otlpGrpcPort = validatePort("otlp-grpc-port", core.getInput("otlp-grpc-port") || "4317");
   const otlpHttpPort = validatePort("otlp-http-port", core.getInput("otlp-http-port") || "4318");
   const dataBranch = core.getInput("data-branch") || DEFAULT_DATA_BRANCH;
@@ -204,6 +223,7 @@ export async function startOtelCollector(): Promise<void> {
     startTime: Date.now(),
     runId,
     dataBranch,
+    profile,
     runnerPpid,
   };
   const statePath = path.join(runnerTemp(), STATE_NAME);
@@ -221,8 +241,9 @@ export async function startOtelCollector(): Promise<void> {
   }
 
   core.info(
-    `OTel Collector started (PID ${child.pid}, scrape interval ${scrapeInterval})`,
+    `OTel Collector started (PID ${child.pid}, scrape interval ${scrapeInterval}, profile ${profile})`,
   );
+  core.info(`Enabled metric sets: ${metricSets.join(", ") || "(none)"}`);
   if (otlpGrpcPort > 0) core.info(`OTLP gRPC endpoint: grpc://localhost:${otlpGrpcPort}`);
   if (otlpHttpPort > 0) core.info(`OTLP HTTP endpoint: http://localhost:${otlpHttpPort}`);
 }

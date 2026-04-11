@@ -40,6 +40,14 @@ inputs:
     description: "When false, parse and output OTLP JSON but do not commit it to the data branch."
     required: false
     default: "true"
+  fail-on-zero-datapoints:
+    description: "When true, fail if parsed OTLP contains zero datapoints."
+    required: false
+    default: "false"
+  min-datapoints:
+    description: "Minimum datapoints required for success. Use 0 to disable."
+    required: false
+    default: "0"
   summary:
     description: "When true, write a parsed benchmark summary to GITHUB_STEP_SUMMARY."
     required: false
@@ -52,6 +60,14 @@ outputs:
     description: "Path to stored JSON on the data branch, or temp output path when commit-results=false."
   source:
     description: "Resolved source mode used by this run (auto or file)."
+  datapoint-count:
+    description: "Total metric datapoint count in the normalized OTLP document."
+  resource-metrics-count:
+    description: "Total resourceMetrics entries in the normalized OTLP document."
+  has-metrics:
+    description: "true when datapoint-count > 0, otherwise false."
+  normalized-otlp-path:
+    description: "Local filesystem path to the normalized OTLP JSON document."
 
 runs:
   using: "node24"

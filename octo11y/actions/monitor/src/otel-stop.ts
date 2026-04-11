@@ -36,6 +36,33 @@ export function safeUnlink(filePath: string): void {
   }
 }
 
+const CI_NOISE_PATTERNS: RegExp[] = [
+  /unknown userid/i,
+  /process.*no such process/i,
+  /process.*does not exist/i,
+  /failed to read process/i,
+  /error scraping.*process/i,
+];
+
+export function suppressExpectedCiNoise(log: string): {
+  filteredLog: string;
+  suppressedLineCount: number;
+} {
+  let suppressedLineCount = 0;
+  const kept: string[] = [];
+  for (const line of log.split("\n")) {
+    if (CI_NOISE_PATTERNS.some((pattern) => pattern.test(line))) {
+      suppressedLineCount += 1;
+      continue;
+    }
+    kept.push(line);
+  }
+  return {
+    filteredLog: kept.join("\n").trim(),
+    suppressedLineCount,
+  };
+}
+
 export async function stopCollector(state: OtelState): Promise<void> {
   if (!isProcessRunning(state.pid)) {
     core.info("Collector process already exited.");
@@ -383,12 +410,26 @@ export async function stopOtelCollector(): Promise<void> {
 
   await stopCollector(state);
 
+  const profile = state.profile ?? "default";
+  let suppressedCollectorLogLines = 0;
+
   // Dump collector logs for diagnostics
   if (state.logPath && fs.existsSync(state.logPath)) {
-    const log = fs.readFileSync(state.logPath, "utf-8").trim();
-    if (log) {
+    const log = fs.readFileSync(state.logPath, "utf-8");
+    let renderedLog = log.trim();
+    if (profile === "ci" && renderedLog) {
+      const suppression = suppressExpectedCiNoise(renderedLog);
+      renderedLog = suppression.filteredLog;
+      suppressedCollectorLogLines = suppression.suppressedLineCount;
+      if (suppressedCollectorLogLines > 0) {
+        core.info(
+          `CI profile suppressed ${suppressedCollectorLogLines} expected collector log line(s).`,
+        );
+      }
+    }
+    if (renderedLog) {
       core.startGroup("OTel Collector logs");
-      core.info(log);
+      core.info(renderedLog);
       core.endGroup();
     }
   }
@@ -417,6 +458,9 @@ export async function stopOtelCollector(): Promise<void> {
     summary.addRaw(`✅ Telemetry collected and pushed\n`);
     summary.addRaw(`Original: ${(raw.length / 1024).toFixed(1)} KB\n`);
     summary.addRaw(`Compressed: ${(compressed.length / 1024).toFixed(1)} KB\n`);
+    if (profile === "ci") {
+      summary.addRaw(`Suppressed collector log lines (CI profile): ${suppressedCollectorLogLines}\n`);
+    }
   }
   await summary.write();
 
