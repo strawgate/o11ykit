@@ -1,0 +1,37 @@
+{
+  "name": "@otlpkit/otlpjson",
+  "version": "0.1.0",
+  "description": "OTLP JSON parsing and iterators for metrics, traces, and logs.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "opentelemetry",
+    "otlp",
+    "otlpjson",
+    "telemetry"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

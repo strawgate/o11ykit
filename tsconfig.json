@@ -1,0 +1,17 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/otlpjson"
+    },
+    {
+      "path": "./packages/query"
+    },
+    {
+      "path": "./packages/views"
+    },
+    {
+      "path": "./packages/adapters"
+    }
+  ]
+}

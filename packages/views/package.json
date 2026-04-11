@@ -1,0 +1,41 @@
+{
+  "name": "@otlpkit/views",
+  "version": "0.1.0",
+  "description": "Reusable telemetry view frames for otlpkit.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "opentelemetry",
+    "otlp",
+    "telemetry",
+    "visualization"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@otlpkit/otlpjson": "^0.1.0",
+    "@otlpkit/query": "^0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

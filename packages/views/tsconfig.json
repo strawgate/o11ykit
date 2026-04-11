@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./.tsbuildinfo",
+    "lib": ["ES2023"]
+  },
+  "references": [
+    {
+      "path": "../otlpjson"
+    },
+    {
+      "path": "../query"
+    }
+  ],
+  "include": ["src/**/*.ts"]
+}

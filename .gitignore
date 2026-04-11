@@ -1,0 +1,15 @@
+node_modules/
+
+coverage/
+dist/
+examples/*/dist/
+packages/*/dist/
+
+*.tsbuildinfo
+packages/*/.tsbuildinfo
+*.tgz
+
+.codex/
+.DS_Store
+playwright-report/
+test-results/

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>otlpkit chart.js example</title>
+    <style>
+      body {
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        margin: 20px;
+      }
+
+      .chart-grid {
+        display: grid;
+        gap: 28px;
+      }
+
+      section {
+        width: 960px;
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        font-size: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="chart-grid">
+      <section>
+        <h2>Time Series</h2>
+        <canvas id="time-series" width="960" height="320"></canvas>
+      </section>
+      <section>
+        <h2>Latest Values</h2>
+        <canvas id="latest-values" width="960" height="320"></canvas>
+      </section>
+      <section>
+        <h2>Histogram</h2>
+        <canvas id="histogram" width="960" height="320"></canvas>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "@otlpkit/example-chartjs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@otlpkit/adapters": "file:../../packages/adapters",
+    "@otlpkit/views": "file:../../packages/views",
+    "chart.js": "^4.5.1"
+  }
+}

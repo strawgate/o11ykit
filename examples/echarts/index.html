@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>otlpkit echarts example</title>
+    <style>
+      body {
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        margin: 20px;
+      }
+
+      .chart-grid {
+        display: grid;
+        gap: 24px;
+      }
+
+      .chart-panel h2 {
+        margin: 0 0 12px;
+        font-size: 16px;
+      }
+
+      .chart {
+        height: 320px;
+        width: 960px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="chart-grid">
+      <section class="chart-panel">
+        <h2>Time Series</h2>
+        <div id="time-series" class="chart"></div>
+      </section>
+      <section class="chart-panel">
+        <h2>Latest Values</h2>
+        <div id="latest-values" class="chart"></div>
+      </section>
+      <section class="chart-panel">
+        <h2>Histogram</h2>
+        <div id="histogram" class="chart"></div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

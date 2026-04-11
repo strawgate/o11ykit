@@ -1,0 +1,56 @@
+{
+  "name": "obskit",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "packageManager": "npm@11.3.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build:packages && npm run build:examples",
+    "build:packages": "tsc -b packages/otlpjson packages/query packages/views packages/adapters --force",
+    "build:examples": "npm run build --workspace @otlpkit/example-chartjs && npm run build --workspace @otlpkit/example-echarts && npm run build --workspace @otlpkit/example-recharts && npm run build --workspace @otlpkit/example-uplot && npm run build --workspace @otlpkit/example-demo",
+    "typecheck": "npm run typecheck:packages && npm run typecheck:examples",
+    "typecheck:packages": "tsc -b packages/otlpjson packages/query packages/views packages/adapters --pretty false --force",
+    "typecheck:examples": "npm run typecheck --workspace @otlpkit/example-chartjs && npm run typecheck --workspace @otlpkit/example-echarts && npm run typecheck --workspace @otlpkit/example-recharts && npm run typecheck --workspace @otlpkit/example-uplot && npm run typecheck --workspace @otlpkit/example-demo",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "dev:types": "tsc -b packages/otlpjson packages/query packages/views packages/adapters --watch --preserveWatchOutput",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "pack:dry-run": "npm pack --workspace @otlpkit/otlpjson --dry-run && npm pack --workspace @otlpkit/query --dry-run && npm pack --workspace @otlpkit/views --dry-run && npm pack --workspace @otlpkit/adapters --dry-run",
+    "publint": "publint run packages/otlpjson --strict && publint run packages/query --strict && publint run packages/views --strict && publint run packages/adapters --strict",
+    "attw": "attw --pack packages/otlpjson --profile esm-only --format table && attw --pack packages/query --profile esm-only --format table && attw --pack packages/views --profile esm-only --format table && attw --pack packages/adapters --profile esm-only --format table",
+    "check:release": "npm run build:packages && npm run pack:dry-run && npm run publint && npm run attw",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "clean": "rm -rf coverage packages/*/dist examples/*/dist packages/*/.tsbuildinfo",
+    "clean:all": "npm run clean && rm -rf node_modules",
+    "dev:chartjs": "npm run dev --workspace @otlpkit/example-chartjs",
+    "dev:demo": "npm run dev --workspace @otlpkit/example-demo",
+    "dev:echarts": "npm run dev --workspace @otlpkit/example-echarts",
+    "dev:recharts": "npm run dev --workspace @otlpkit/example-recharts",
+    "dev:uplot": "npm run dev --workspace @otlpkit/example-uplot",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release:publish": "npm publish --workspace @otlpkit/otlpjson --workspace @otlpkit/query --workspace @otlpkit/views --workspace @otlpkit/adapters --access public"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
+    "@biomejs/biome": "^2.4.10",
+    "@changesets/cli": "^2.30.0",
+    "@playwright/test": "^1.54.2",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.3",
+    "publint": "^0.3.18",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.7",
+    "vitest": "^4.1.3"
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "name": "@otlpkit/adapters",
+  "version": "0.1.0",
+  "description": "Charting-library adapters for otlpkit view frames.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "chartjs",
+    "echarts",
+    "recharts",
+    "uplot",
+    "telemetry"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./chartjs": {
+      "types": "./dist/chartjs.d.ts",
+      "import": "./dist/chartjs.js",
+      "default": "./dist/chartjs.js"
+    },
+    "./echarts": {
+      "types": "./dist/echarts.d.ts",
+      "import": "./dist/echarts.js",
+      "default": "./dist/echarts.js"
+    },
+    "./recharts": {
+      "types": "./dist/recharts.d.ts",
+      "import": "./dist/recharts.js",
+      "default": "./dist/recharts.js"
+    },
+    "./uplot": {
+      "types": "./dist/uplot.d.ts",
+      "import": "./dist/uplot.js",
+      "default": "./dist/uplot.js"
+    },
+    "./waterfall": {
+      "types": "./dist/waterfall.d.ts",
+      "import": "./dist/waterfall.js",
+      "default": "./dist/waterfall.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@otlpkit/views": "^0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
