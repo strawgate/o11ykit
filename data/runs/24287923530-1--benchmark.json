@@ -1,0 +1,63 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "o11ykit.source_format",
+            "value": {
+              "stringValue": "go"
+            }
+          },
+          {
+            "key": "o11ykit.run_id",
+            "value": {
+              "stringValue": "24287923530-1--benchmark"
+            }
+          },
+          {
+            "key": "o11ykit.commit",
+            "value": {
+              "stringValue": "88ce30d1ad76c24ccd5b8ecad8fc97827df22be1"
+            }
+          },
+          {
+            "key": "o11ykit.ref",
+            "value": {
+              "stringValue": "refs/heads/main"
+            }
+          },
+          {
+            "key": "o11ykit.workflow",
+            "value": {
+              "stringValue": "ingest-benchmark-sample-data"
+            }
+          },
+          {
+            "key": "o11ykit.job",
+            "value": {
+              "stringValue": "stash-results"
+            }
+          },
+          {
+            "key": "o11ykit.run_attempt",
+            "value": {
+              "stringValue": "1"
+            }
+          },
+          {
+            "key": "o11ykit.runner",
+            "value": {
+              "stringValue": "Linux/X64"
+            }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "metrics": []
+        }
+      ]
+    }
+  ]
+}
