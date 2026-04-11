@@ -3,11 +3,7 @@ import {
   toEChartsLatestValuesOption,
   toEChartsTimeSeriesOption,
 } from "@otlpkit/adapters/echarts";
-import {
-  buildHistogramFrame,
-  buildLatestValuesFrame,
-  buildTimeSeriesFrame,
-} from "@otlpkit/views";
+import { buildHistogramFrame, buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
 import { BarChart, LineChart } from "echarts/charts";
 import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import { init, use } from "echarts/core";

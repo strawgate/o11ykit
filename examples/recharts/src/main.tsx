@@ -3,11 +3,7 @@ import {
   toRechartsLatestValuesModel,
   toRechartsTimeSeriesModel,
 } from "@otlpkit/adapters/recharts";
-import {
-  buildHistogramFrame,
-  buildLatestValuesFrame,
-  buildTimeSeriesFrame,
-} from "@otlpkit/views";
+import { buildHistogramFrame, buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
 import type { JSX } from "react";
 import { createRoot } from "react-dom/client";
 import {

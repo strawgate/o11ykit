@@ -3,11 +3,7 @@ import {
   toChartJsLatestValuesConfig,
   toChartJsLineConfig,
 } from "@otlpkit/adapters/chartjs";
-import {
-  buildHistogramFrame,
-  buildLatestValuesFrame,
-  buildTimeSeriesFrame,
-} from "@otlpkit/views";
+import { buildHistogramFrame, buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
 import Chart from "chart.js/auto";
 
 import { sampleMetricsDocument } from "../../shared/sample.js";

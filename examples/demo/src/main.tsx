@@ -4,11 +4,7 @@ import {
   toRechartsTimeSeriesModel,
 } from "@otlpkit/adapters/recharts";
 import { toUPlotTimeSeriesModel } from "@otlpkit/adapters/uplot";
-import {
-  buildHistogramFrame,
-  buildLatestValuesFrame,
-  buildTimeSeriesFrame,
-} from "@otlpkit/views";
+import { buildHistogramFrame, buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
 import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
