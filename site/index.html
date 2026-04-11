@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>o11ykit</title>
+    <meta
+      name="description"
+      content="o11ykit combines OtlpKit, Octo11y, and Benchkit into one telemetry toolkit surface."
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">o11ykit</p>
+        <h1>Three telemetry tracks. One launch pad.</h1>
+        <p>
+          Start with generic OTLP tooling, move into GitHub-driven metrics, then extend into
+          benchmark and monitor workflows.
+        </p>
+      </section>
+
+      <section class="solutions" aria-label="o11ykit solutions">
+        <article class="card otlpkit">
+          <h2>OtlpKit</h2>
+          <p>JavaScript libraries for OTLP parsing, query shaping, reusable view frames, and chart adapters.</p>
+          <div class="actions">
+            <a href="./demo/">Open OtlpKit Demo</a>
+            <a href="https://www.npmjs.com/search?q=%40otlpkit" target="_blank" rel="noreferrer">
+              View npm Packages
+            </a>
+          </div>
+        </article>
+
+        <article class="card octo11y">
+          <h2>Octo11y</h2>
+          <p>GitHub-centric metrics actions and dashboards that turn workflow runs into telemetry signals.</p>
+          <div class="actions">
+            <a href="https://strawgate.github.io/octo11y/" target="_blank" rel="noreferrer">
+              Open Octo11y Site
+            </a>
+            <a href="https://github.com/strawgate/octo11y" target="_blank" rel="noreferrer">
+              Open Source Repo
+            </a>
+          </div>
+        </article>
+
+        <article class="card benchkit">
+          <h2>Benchkit</h2>
+          <p>Benchmark and monitor extensions layered on Octo11y for performance-focused pipelines.</p>
+          <div class="actions">
+            <a href="https://strawgate.github.io/octo11y/#benchkit" target="_blank" rel="noreferrer">
+              Open Benchkit View
+            </a>
+            <a
+              href="https://github.com/strawgate/octo11y/tree/main/actions"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Browse Actions
+            </a>
+          </div>
+        </article>
+      </section>
+
+      <footer>
+        <p>
+          Layering rule:
+          <code>@benchkit/* -> @octo11y/* -> @otlpkit/*</code>
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

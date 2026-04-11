@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 NPM ?= npm
-BASE_PATH ?= /o11ykit/
+BASE_PATH ?= /o11ykit/demo/
 
 .PHONY: install lint format typecheck test test-e2e build check check-release clean clean-all
 .PHONY: dev-demo dev-chartjs dev-echarts dev-recharts dev-uplot pages-build
@@ -55,3 +55,8 @@ dev-uplot:
 
 pages-build:
 	BASE_PATH=$(BASE_PATH) $(NPM) run build --workspace @otlpkit/example-demo
+	rm -rf .site
+	mkdir -p .site/demo
+	cp site/index.html .site/index.html
+	cp site/styles.css .site/styles.css
+	cp -R examples/demo/dist/* .site/demo/

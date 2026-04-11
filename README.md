@@ -17,6 +17,13 @@ Planned monorepo layering:
 
 Dependency rule: `benchkit -> octo11y -> otlpkit`.
 
+## Pages Site
+
+GitHub Pages publishes a small portal:
+
+- `/o11ykit/` landing page with links to OtlpKit, Octo11y, and Benchkit
+- `/o11ykit/demo/` OtlpKit incident-story demo
+
 ## Development
 
 - `npm run lint`
@@ -49,3 +56,4 @@ If you prefer `make`, there is a top-level `Makefile` with common targets:
 - `make check-release`
 - `make clean`
 - `make dev-demo`
+- `make pages-build`

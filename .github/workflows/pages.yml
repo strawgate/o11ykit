@@ -1,4 +1,4 @@
-name: Demo Site
+name: o11ykit Site
 
 on:
   push:
@@ -19,7 +19,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      BASE_PATH: /o11ykit/
+      BASE_PATH: /o11ykit/demo/
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,13 +40,21 @@ jobs:
       - name: Build demo workspace
         run: npm run build --workspace @otlpkit/example-demo
 
+      - name: Assemble site artifact
+        run: |
+          rm -rf .site
+          mkdir -p .site/demo
+          cp site/index.html .site/index.html
+          cp site/styles.css .site/styles.css
+          cp -R examples/demo/dist/* .site/demo/
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: examples/demo/dist
+          path: .site
 
   deploy:
     environment:

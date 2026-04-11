@@ -30,4 +30,4 @@ Current state in this repo:
 
 - Generic library packages have been renamed from `@metrickit/*` to `@otlpkit/*`.
 - Demo/examples and build scripts now target the `@otlpkit/*` scope.
-- GitHub Pages demo base path defaults to `/o11ykit/`.
+- GitHub Pages publishes a landing page at `/o11ykit/` and the demo at `/o11ykit/demo/`.
