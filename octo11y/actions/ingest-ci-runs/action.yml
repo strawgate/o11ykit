@@ -17,7 +17,7 @@ inputs:
   cursor-path:
     description: "Path to cursor JSON on data branch."
     required: false
-    default: "data/state/ingest-cursor.json"
+    default: "data/state/benchkit-ci-run-ingest.cursor.json"
   commit-cursor:
     description: "When true, writes cursor-json to cursor-path on data-branch."
     required: false
@@ -58,7 +58,7 @@ outputs:
   latest-created-at:
     description: "Latest created_at among discovered runs (or since when none found)."
   cursor-json:
-    description: "Cursor JSON payload to persist on bench-data branch."
+    description: "CI run ingest cursor JSON payload to persist on bench-data branch."
 
 runs:
   using: node24

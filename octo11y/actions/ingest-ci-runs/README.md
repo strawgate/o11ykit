@@ -13,7 +13,9 @@ This action does discovery only. Pair it with
 ## Behavior
 
 - Scans all workflows by default.
-- Uses `data/state/ingest-cursor.json` on the data branch as a cursor.
+- Uses `data/state/benchkit-ci-run-ingest.cursor.json` on the data branch as a cursor.
+- Automatically reads the legacy cursor path (`data/state/ingest-cursor.json`) if
+  present, then migrates writes to the specific default path.
 - If no cursor (and no explicit `since`) exists, applies a bounded first-run
   lookback window (`lookback-hours`, default `72`).
 - Supports optional workflow/event/conclusion filters.
@@ -25,7 +27,7 @@ This action does discovery only. Pair it with
 | `github-token` | yes | `${{ github.token }}` | Token with `actions:read` and `contents:write` (when `commit-cursor=true`). |
 | `repository` | no | `${{ github.repository }}` | Repository to inspect (`owner/repo`). |
 | `data-branch` | no | `bench-data` | Data branch containing the cursor file. |
-| `cursor-path` | no | `data/state/ingest-cursor.json` | Cursor JSON path on the data branch. |
+| `cursor-path` | no | `data/state/benchkit-ci-run-ingest.cursor.json` | Cursor JSON path on the data branch. |
 | `commit-cursor` | no | `true` | Persist the updated cursor to `data-branch` after discovery. |
 | `since` | no | — | Explicit ISO lower-bound timestamp for `created_at` filtering. |
 | `lookback-hours` | no | `72` | Fallback lookback when no `since`/cursor is available. |

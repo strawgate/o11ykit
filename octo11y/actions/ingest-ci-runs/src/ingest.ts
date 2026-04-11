@@ -10,6 +10,8 @@ import {
 import { DEFAULT_PUSH_RETRY_COUNT } from "@octo11y/core";
 
 const GITHUB_API_VERSION = "2022-11-28";
+const DEFAULT_CURSOR_PATH = "data/state/benchkit-ci-run-ingest.cursor.json";
+const LEGACY_CURSOR_PATH = "data/state/ingest-cursor.json";
 
 export interface WorkflowRun {
   readonly id: number;
@@ -25,8 +27,11 @@ export interface WorkflowRun {
 }
 
 export interface CursorFile {
+  readonly latestWorkflowRunCreatedAt?: string;
+  // Legacy field retained for backward compatibility with earlier cursor files.
   readonly latestCreatedAt?: string;
   readonly updatedAt?: string;
+  readonly sourceAction?: string;
   readonly source?: string;
 }
 
@@ -220,7 +225,7 @@ export async function runIngestDiscovery(): Promise<void> {
 
   const dataBranch = core.getInput("data-branch") || "bench-data";
   const cursorPath = normalizeCursorPath(
-    core.getInput("cursor-path") || "data/state/ingest-cursor.json",
+    core.getInput("cursor-path") || DEFAULT_CURSOR_PATH,
   );
   const commitCursor = core.getBooleanInput("commit-cursor");
 
@@ -246,6 +251,20 @@ export async function runIngestDiscovery(): Promise<void> {
   let cursor: CursorFile | undefined;
   try {
     cursor = await readCursorFile({ token, repository, dataBranch, cursorPath });
+    if (!cursor && cursorPath === DEFAULT_CURSOR_PATH) {
+      cursor = await readCursorFile({
+        token,
+        repository,
+        dataBranch,
+        cursorPath: LEGACY_CURSOR_PATH,
+      });
+      if (cursor) {
+        core.info(
+          `Found legacy ingest cursor at ${dataBranch}:${LEGACY_CURSOR_PATH}; ` +
+          `it will be migrated to ${cursorPath}.`,
+        );
+      }
+    }
   } catch (error) {
     core.warning(
       `Could not read ingest cursor at ${dataBranch}:${cursorPath}; using lookback fallback. ` +
@@ -253,9 +272,10 @@ export async function runIngestDiscovery(): Promise<void> {
     );
   }
 
+  const cursorSince = cursor?.latestWorkflowRunCreatedAt ?? cursor?.latestCreatedAt;
   const since = resolveSince({
     inputSince,
-    cursorSince: cursor?.latestCreatedAt,
+    cursorSince,
     lookbackHours,
   });
 
@@ -275,15 +295,19 @@ export async function runIngestDiscovery(): Promise<void> {
 
   const cursorJson = JSON.stringify(
     {
+      cursorKind: "benchkit.ci-run-ingest",
+      cursorVersion: 1,
+      latestWorkflowRunCreatedAt: latestCreatedAt,
+      // Keep writing the legacy key so older readers continue to work.
       latestCreatedAt,
       updatedAt: new Date().toISOString(),
-      source: "benchkit-ingest-ci-runs",
+      sourceAction: "benchkit.ingest-ci-runs",
     },
     null,
     2,
   );
 
-  if (!cursor?.latestCreatedAt && !inputSince) {
+  if (!cursorSince && !inputSince) {
     core.info(
       `No explicit since/cursor found. Using bounded first-run lookback: ${lookbackHours}h (${since}).`,
     );
@@ -299,7 +323,7 @@ export async function runIngestDiscovery(): Promise<void> {
 
   if (commitCursor) {
     await configureGit(token);
-    const worktree = await checkoutDataBranch(dataBranch, "benchkit-ingest-ci-runs");
+    const worktree = await checkoutDataBranch(dataBranch, "benchkit-ci-run-ingest");
     try {
       const outPath = path.join(worktree, cursorPath);
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
@@ -308,7 +332,7 @@ export async function runIngestDiscovery(): Promise<void> {
       await exec.exec("git", ["-C", worktree, "add", cursorPath]);
       const commitExit = await exec.exec(
         "git",
-        ["-C", worktree, "commit", "-m", `bench: update ingest cursor (${latestCreatedAt})`],
+        ["-C", worktree, "commit", "-m", `bench: update ci-run-ingest cursor (${latestCreatedAt})`],
         { ignoreReturnCode: true },
       );
 
