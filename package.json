@@ -37,7 +37,7 @@
     "octo11y:lint": "cd octo11y && npm run lint",
     "octo11y:test": "cd octo11y && npm run test",
     "octo11y:build": "cd octo11y && npm run build",
-    "octo11y:check": "npm run octo11y:lint && npm run octo11y:test",
+    "octo11y:check": "npm run octo11y:test && npm run octo11y:lint",
     "check:all": "npm run check && npm run octo11y:check",
     "clean": "rm -rf coverage packages/*/dist examples/*/dist packages/*/.tsbuildinfo",
     "clean:all": "npm run clean && rm -rf node_modules",
