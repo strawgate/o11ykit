@@ -2,29 +2,34 @@
 
 This repo uses npm trusted publishing (OIDC) for package releases.
 
-Workflows:
+Primary workflows:
 
-- Root `@otlpkit/*` packages: `.github/workflows/release.yml`
-- `octo11y` / `benchkit` packages: `.github/workflows/publish-octo11y.yml`
+- Lockstep package release (all published packages): `.github/workflows/release.yml`
+- Action dist branch publishing (`main-dist`, `pr/{number}-dist`): `.github/workflows/actions-dist.yml`
 
 ## One-Time Bootstrap for New Package Names
 
-For a brand new package name/scope on npm:
+For a brand new package name/scope on npm (all packages now publish from
+`release.yml`):
 
 1. Publish the first version once (manual bootstrap may be required).
 2. Bind trusted publishing for that package:
 
 ```bash
-npm trust github <package-name> --repo strawgate/o11ykit --file publish-octo11y.yml --yes
+npm trust github <package-name> --repo strawgate/o11ykit --file release.yml --yes
 ```
 
 Examples:
 
 ```bash
-npm trust github @octo11y/core --repo strawgate/o11ykit --file publish-octo11y.yml --yes
-npm trust github @benchkit/format --repo strawgate/o11ykit --file publish-octo11y.yml --yes
-npm trust github @benchkit/chart --repo strawgate/o11ykit --file publish-octo11y.yml --yes
-npm trust github @benchkit/adapters --repo strawgate/o11ykit --file publish-octo11y.yml --yes
+npm trust github @otlpkit/otlpjson --repo strawgate/o11ykit --file release.yml --yes
+npm trust github @otlpkit/query --repo strawgate/o11ykit --file release.yml --yes
+npm trust github @otlpkit/views --repo strawgate/o11ykit --file release.yml --yes
+npm trust github @otlpkit/adapters --repo strawgate/o11ykit --file release.yml --yes
+npm trust github @octo11y/core --repo strawgate/o11ykit --file release.yml --yes
+npm trust github @benchkit/format --repo strawgate/o11ykit --file release.yml --yes
+npm trust github @benchkit/chart --repo strawgate/o11ykit --file release.yml --yes
+npm trust github @benchkit/adapters --repo strawgate/o11ykit --file release.yml --yes
 ```
 
 ## Avoiding One-OTP-Per-Command
@@ -43,6 +48,10 @@ Recommended bulk script:
 set -euo pipefail
 
 pkgs=(
+  @otlpkit/otlpjson
+  @otlpkit/query
+  @otlpkit/views
+  @otlpkit/adapters
   @octo11y/core
   @benchkit/format
   @benchkit/chart
@@ -51,7 +60,7 @@ pkgs=(
 
 for p in "${pkgs[@]}"; do
   echo "Configuring trusted publishing for $p"
-  npm trust github "$p" --repo strawgate/o11ykit --file publish-octo11y.yml --yes
+  npm trust github "$p" --repo strawgate/o11ykit --file release.yml --yes
   sleep 2
 done
 ```
