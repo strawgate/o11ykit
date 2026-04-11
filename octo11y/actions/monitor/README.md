@@ -108,6 +108,10 @@ job. In the post step, benchkit:
 4. copies the telemetry sidecar to `data/telemetry/{run-id}.otlp.jsonl.gz`
 5. commits and pushes that file to the data branch
 
+Telemetry sidecars are immutable by `run-id`. If
+`data/telemetry/{run-id}.otlp.jsonl.gz` already exists, the post step fails
+instead of overwriting it.
+
 Benchkit also stamps resource attributes such as `benchkit.run_id`,
 `benchkit.kind=hybrid`, `benchkit.source_format=otlp`, and, when available,
 `benchkit.ref` and `benchkit.commit`.

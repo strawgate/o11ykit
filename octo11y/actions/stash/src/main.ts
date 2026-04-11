@@ -1,6 +1,7 @@
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as glob from "@actions/glob";
+import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   buildResult,
@@ -102,6 +103,12 @@ async function run(): Promise<void> {
 
     const runsDir = path.join(worktree, "data", "runs");
     const resultPath = path.join(runsDir, `${runId}.json`);
+    if (fs.existsSync(resultPath)) {
+      throw new Error(
+        `Refusing to overwrite existing run document: data/runs/${runId}.json already exists on '${dataBranch}'. `
+        + "run-id values must be unique per write.",
+      );
+    }
     writeResultFile(result, runId, resultPath);
     core.info(`Wrote ${resultPath}`);
 

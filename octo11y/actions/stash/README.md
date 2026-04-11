@@ -68,6 +68,9 @@ Each stash call writes one JSON file to the data branch:
 data/runs/{run-id}.json
 ```
 
+`run-id` paths are immutable. If `data/runs/{run-id}.json` already exists on
+the data branch, stash fails instead of overwriting it.
+
 The file contains OTLP metrics JSON including benchmark names, metric values,
 units, and resource attributes (commit SHA, ref, runner OS, source format).
 When a monitor path is supplied the monitor benchmarks and resource

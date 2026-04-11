@@ -72,3 +72,9 @@ steps:
 | `run-id` | The run identifier used for this result. |
 | `file-path` | Path to stored JSON on the data branch, or temp output path when `commit-results=false`. |
 | `source` | Resolved source mode used by this run (`auto` or `file`). |
+
+## Run ID uniqueness
+
+When `commit-results=true`, parse-results treats `data/runs/{run-id}.json` as
+immutable. If that path already exists on the data branch, the action fails
+instead of overwriting it.
