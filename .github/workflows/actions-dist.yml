@@ -40,14 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           npm run build --workspace @o11ykit/action-parse-results
-          cd octo11y
-          npm run build --workspace=actions/stash
-          npm run build --workspace=actions/aggregate
-          npm run build --workspace=actions/compare
-          npm run build --workspace=actions/monitor
-          npm run build --workspace=actions/emit-metric
-          npm run build --workspace=actions/parse-results
-          npm run build --workspace=actions/repo-stats
+          npm run octo11y:build
 
       - name: Publish dist branch
         run: |
