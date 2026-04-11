@@ -43,10 +43,74 @@ async function downloadLogsArchive(url: string, token: string): Promise<Buffer> 
   return Buffer.from(await response.arrayBuffer());
 }
 
+interface RunJob {
+  readonly id: number;
+  readonly name: string;
+  readonly started_at?: string;
+}
+
+async function listRunJobs(options: {
+  readonly apiUrl: string;
+  readonly repository: string;
+  readonly runId: string;
+  readonly token: string;
+  readonly runAttempt?: string;
+}): Promise<readonly RunJob[]> {
+  const endpoint = new URL(
+    `${options.apiUrl}/repos/${options.repository}/actions/runs/${options.runId}/jobs`
+  );
+  endpoint.searchParams.set("per_page", "100");
+  if (options.runAttempt) endpoint.searchParams.set("attempt_number", options.runAttempt);
+
+  const response = await fetch(endpoint, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${options.token}`,
+      "X-GitHub-Api-Version": GITHUB_API_VERSION,
+    },
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Jobs API request failed (${response.status}): ${body.slice(0, 300)}`);
+  }
+
+  const parsed = (await response.json()) as { jobs?: RunJob[] };
+  return parsed.jobs ?? [];
+}
+
+async function downloadCurrentJobLogs(options: {
+  readonly apiUrl: string;
+  readonly repository: string;
+  readonly runId: string;
+  readonly runAttempt?: string;
+  readonly jobName: string;
+  readonly token: string;
+}): Promise<Buffer> {
+  const jobs = await listRunJobs(options);
+  const matching = jobs
+    .filter((job) => job.name === options.jobName)
+    .sort((a, b) => (Date.parse(b.started_at ?? "") || 0) - (Date.parse(a.started_at ?? "") || 0));
+  if (matching.length === 0) {
+    throw new Error(`Could not find a job named "${options.jobName}" in run ${options.runId}.`);
+  }
+
+  let lastError: unknown;
+  for (const job of matching) {
+    const jobLogsUrl = `${options.apiUrl}/repos/${options.repository}/actions/jobs/${job.id}/logs`;
+    try {
+      return await downloadLogsArchive(jobLogsUrl, options.token);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 export async function readCurrentRunLogs(token: string): Promise<string> {
   const repository = process.env.GITHUB_REPOSITORY;
   const runId = process.env.GITHUB_RUN_ID;
   const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
+  const jobName = process.env.GITHUB_JOB;
   const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
 
   if (!repository) {
@@ -58,17 +122,41 @@ export async function readCurrentRunLogs(token: string): Promise<string> {
 
   const attemptUrl = runAttempt
     ? `${apiUrl}/repos/${repository}/actions/runs/${runId}/attempts/${runAttempt}/logs`
-    : "";
+    : undefined;
   const runUrl = `${apiUrl}/repos/${repository}/actions/runs/${runId}/logs`;
 
-  let archive: Buffer;
-  try {
-    archive = attemptUrl
-      ? await downloadLogsArchive(attemptUrl, token)
-      : await downloadLogsArchive(runUrl, token);
-  } catch (error) {
-    if (!attemptUrl) throw error;
-    archive = await downloadLogsArchive(runUrl, token);
+  let archive: Buffer | undefined;
+  const runLogErrors: string[] = [];
+  for (const url of [attemptUrl, runUrl]) {
+    if (!url) continue;
+    try {
+      archive = await downloadLogsArchive(url, token);
+      break;
+    } catch (error) {
+      runLogErrors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  if (!archive) {
+    if (!jobName) {
+      throw new Error(runLogErrors.join(" | "));
+    }
+    try {
+      archive = await downloadCurrentJobLogs({
+        apiUrl,
+        repository,
+        runId,
+        jobName,
+        token,
+        ...(runAttempt ? { runAttempt } : {}),
+      });
+    } catch (jobError) {
+      const combined = [
+        ...runLogErrors,
+        jobError instanceof Error ? jobError.message : String(jobError),
+      ];
+      throw new Error(combined.join(" | "));
+    }
   }
 
   const zipPath = path.join(

@@ -63672,10 +63672,50 @@ async function downloadLogsArchive(url, token) {
     }
     return Buffer.from(await response.arrayBuffer());
 }
+async function listRunJobs(options) {
+    const endpoint = new URL(`${options.apiUrl}/repos/${options.repository}/actions/runs/${options.runId}/jobs`);
+    endpoint.searchParams.set("per_page", "100");
+    if (options.runAttempt)
+        endpoint.searchParams.set("attempt_number", options.runAttempt);
+    const response = await fetch(endpoint, {
+        headers: {
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${options.token}`,
+            "X-GitHub-Api-Version": GITHUB_API_VERSION,
+        },
+    });
+    if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`Jobs API request failed (${response.status}): ${body.slice(0, 300)}`);
+    }
+    const parsed = (await response.json());
+    return parsed.jobs ?? [];
+}
+async function downloadCurrentJobLogs(options) {
+    const jobs = await listRunJobs(options);
+    const matching = jobs
+        .filter((job) => job.name === options.jobName)
+        .sort((a, b) => (Date.parse(b.started_at ?? "") || 0) - (Date.parse(a.started_at ?? "") || 0));
+    if (matching.length === 0) {
+        throw new Error(`Could not find a job named "${options.jobName}" in run ${options.runId}.`);
+    }
+    let lastError;
+    for (const job of matching) {
+        const jobLogsUrl = `${options.apiUrl}/repos/${options.repository}/actions/jobs/${job.id}/logs`;
+        try {
+            return await downloadLogsArchive(jobLogsUrl, options.token);
+        }
+        catch (error) {
+            lastError = error;
+        }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
 async function readCurrentRunLogs(token) {
     const repository = process.env.GITHUB_REPOSITORY;
     const runId = process.env.GITHUB_RUN_ID;
     const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
+    const jobName = process.env.GITHUB_JOB;
     const apiUrl = process.env.GITHUB_API_URL || "https://api.github.com";
     if (!repository) {
         throw new Error("GITHUB_REPOSITORY is required for mode=auto");
@@ -63685,18 +63725,42 @@ async function readCurrentRunLogs(token) {
     }
     const attemptUrl = runAttempt
         ? `${apiUrl}/repos/${repository}/actions/runs/${runId}/attempts/${runAttempt}/logs`
-        : "";
+        : undefined;
     const runUrl = `${apiUrl}/repos/${repository}/actions/runs/${runId}/logs`;
     let archive;
-    try {
-        archive = attemptUrl
-            ? await downloadLogsArchive(attemptUrl, token)
-            : await downloadLogsArchive(runUrl, token);
+    const runLogErrors = [];
+    for (const url of [attemptUrl, runUrl]) {
+        if (!url)
+            continue;
+        try {
+            archive = await downloadLogsArchive(url, token);
+            break;
+        }
+        catch (error) {
+            runLogErrors.push(error instanceof Error ? error.message : String(error));
+        }
     }
-    catch (error) {
-        if (!attemptUrl)
-            throw error;
-        archive = await downloadLogsArchive(runUrl, token);
+    if (!archive) {
+        if (!jobName) {
+            throw new Error(runLogErrors.join(" | "));
+        }
+        try {
+            archive = await downloadCurrentJobLogs({
+                apiUrl,
+                repository,
+                runId,
+                jobName,
+                token,
+                ...(runAttempt ? { runAttempt } : {}),
+            });
+        }
+        catch (jobError) {
+            const combined = [
+                ...runLogErrors,
+                jobError instanceof Error ? jobError.message : String(jobError),
+            ];
+            throw new Error(combined.join(" | "));
+        }
     }
     const zipPath = external_node_path_namespaceObject.join(external_node_os_namespaceObject.tmpdir(), `o11ykit-run-logs-${runId}-${runAttempt ?? "1"}-${Date.now()}.zip`);
     external_node_fs_namespaceObject.writeFileSync(zipPath, archive);
