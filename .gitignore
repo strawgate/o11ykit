@@ -14,3 +14,7 @@ packages/*/.tsbuildinfo
 .DS_Store
 playwright-report/
 test-results/
+
+actions/*/lib/
+!actions/parse-results/dist/
+!actions/parse-results/dist/**

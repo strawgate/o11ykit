@@ -9,15 +9,18 @@
   },
   "workspaces": [
     "packages/*",
-    "examples/*"
+    "examples/*",
+    "actions/*"
   ],
   "scripts": {
-    "build": "npm run build:packages && npm run build:examples",
+    "build": "npm run build:packages && npm run build:examples && npm run build:actions",
     "build:packages": "tsc -b packages/otlpjson packages/query packages/views packages/adapters --force",
     "build:examples": "npm run build --workspace @otlpkit/example-chartjs && npm run build --workspace @otlpkit/example-echarts && npm run build --workspace @otlpkit/example-recharts && npm run build --workspace @otlpkit/example-uplot && npm run build --workspace @otlpkit/example-demo",
-    "typecheck": "npm run typecheck:packages && npm run typecheck:examples",
+    "typecheck": "npm run typecheck:packages && npm run typecheck:examples && npm run typecheck:actions",
     "typecheck:packages": "tsc -b packages/otlpjson packages/query packages/views packages/adapters --pretty false --force",
     "typecheck:examples": "npm run typecheck --workspace @otlpkit/example-chartjs && npm run typecheck --workspace @otlpkit/example-echarts && npm run typecheck --workspace @otlpkit/example-recharts && npm run typecheck --workspace @otlpkit/example-uplot && npm run typecheck --workspace @otlpkit/example-demo",
+    "build:actions": "npm run build --workspace @o11ykit/action-parse-results",
+    "typecheck:actions": "npm run typecheck --workspace @o11ykit/action-parse-results",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
@@ -42,6 +45,8 @@
     "release:publish": "changeset publish"
   },
   "devDependencies": {
+    "@types/node": "^24.7.2",
+    "@vercel/ncc": "^0.38.4",
     "@arethetypeswrong/cli": "^0.18.2",
     "@biomejs/biome": "^2.4.10",
     "@changesets/cli": "^2.30.0",

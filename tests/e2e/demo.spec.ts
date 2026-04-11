@@ -14,9 +14,7 @@ test("demo story renders KPI + chart narrative", async ({ page }) => {
 
   await page.goto("/");
 
-  await expect(page.getByTestId("hero-title")).toContainText(
-    "Ten Seconds In The Life Of A Spiky Checkout"
-  );
+  await expect(page.getByTestId("hero-title")).toContainText("Checkout Incident Timeline (10s)");
   await expect(page.getByTestId("story-kpis").locator(".kpi-card")).toHaveCount(4);
 
   await expect(page.getByTestId("act-demand-wave")).toBeVisible();

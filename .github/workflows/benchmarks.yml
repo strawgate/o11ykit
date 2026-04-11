@@ -1,0 +1,53 @@
+name: Benchmarks
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Emit benchmark output
+        shell: bash
+        run: |
+          node <<'EOF'
+          function runBench(name, fn, iterations) {
+            const start = process.hrtime.bigint();
+            for (let i = 0; i < iterations; i += 1) fn(i);
+            const end = process.hrtime.bigint();
+            const durationNs = Number(end - start);
+            const nsPerOp = Math.max(1, Math.round(durationNs / iterations));
+            console.log(
+              `Benchmark${name}-8\t${iterations}\t${nsPerOp} ns/op\t0 B/op\t0 allocs/op`
+            );
+          }
+
+          runBench("StringConcat", (i) => {
+            const value = `o11ykit-${i}`;
+            return value.toUpperCase();
+          }, 500000);
+
+          runBench("ObjectMerge", (i) => {
+            const base = { a: i, b: i + 1 };
+            return { ...base, c: i + 2 };
+          }, 300000);
+          EOF
+
+      - name: Parse and stash benchmark results
+        uses: ./actions/parse-results
+        with:
+          mode: auto
+          format: go
+          github-token: ${{ github.token }}

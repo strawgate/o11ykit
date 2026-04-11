@@ -9,6 +9,10 @@ Current packages in this repo are the `@otlpkit/*` JavaScript libraries:
 - `@otlpkit/views`: build reusable frames such as time series, latest-value tables, histograms, trace waterfalls, and event timelines
 - `@otlpkit/adapters`: project frames into library-native Chart.js, Recharts, ECharts, and uPlot shapes
 
+Current GitHub Actions in this repo:
+
+- `actions/parse-results`: parse benchmark output from workflow logs (`mode=auto`) or files (`mode=file`) and stash normalized OTLP JSON by default
+
 Planned monorepo layering:
 
 - `@otlpkit/*`: generic OTLP primitives and adapters

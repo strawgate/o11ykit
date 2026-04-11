@@ -205,33 +205,33 @@ function App(): JSX.Element {
             alt="OpenTelemetry logo"
             src="https://opentelemetry.io/img/logos/opentelemetry-horizontal-color.svg"
           />
-          <span className="chip">OTel x OtlpKit Incident Theater</span>
+          <span className="chip">OpenTelemetry + OtlpKit demo</span>
         </div>
-        <h1 data-testid="hero-title">Ten Seconds In The Life Of A Spiky Checkout</h1>
+        <h1 data-testid="hero-title">Checkout Incident Timeline (10s)</h1>
         <p>
-          This synthetic incident follows one bursty launch window. Standard practice is to emit
-          OTLP from your app, expose OTLP JSON, and project it into chart-ready views. Advanced
-          practice is a memagent-style processor pipeline that keeps traces, metrics, and logs in a
-          ring buffer behind a diagnostics API.
+          This synthetic incident follows one bursty launch window. Emit OTLP from your app, expose
+          OTLP JSON to the client, and project it into chart-ready views. A more advanced pattern
+          uses a processor pipeline that keeps traces, metrics, and logs in a ring buffer behind a
+          diagnostics API.
         </p>
       </section>
 
       <section className="kpi-grid" data-testid="story-kpis">
         <StoryStat label="Peak inflight load" value={`${peakInflight} requests`} />
         <StoryStat
-          label="Noisiest route"
+          label="Highest error route"
           value={`${highestErrorRoute?.label ?? "unknown"} (${(highestErrorRoute?.value ?? 0).toFixed(1)}%)`}
         />
         <StoryStat label="Mean retry rate" value={`${averageRetryRate.toFixed(2)}%`} />
-        <StoryStat label="Narrative health score" value={`${healthScore}/100`} />
+        <StoryStat label="Incident health score" value={`${healthScore}/100`} />
       </section>
 
       <section className="story-grid">
         <article className="act-card">
-          <h2 className="act-title">Act I: Demand Wave</h2>
+          <h2 className="act-title">1. Request Volume</h2>
           <p className="act-copy">
-            Traffic ramps across checkout, inventory, and payment at once. Summed concurrency gives
-            a quick first clue about whether the incident is demand-driven or system-driven.
+            Traffic rises across checkout, inventory, and payment at once. Summed concurrency gives
+            a fast first signal of whether pressure is demand-driven or system-driven.
           </p>
           <MeasuredChart testId="act-demand-wave">
             {({ width, height }) => (
@@ -262,10 +262,10 @@ function App(): JSX.Element {
         </article>
 
         <article className="act-card">
-          <h2 className="act-title">Act II: Retry Turbulence</h2>
+          <h2 className="act-title">2. Retry Rate</h2>
           <p className="act-copy">
-            Retries spike before errors settle, especially on payment. This helps separate transient
-            retry storms from hard failures.
+            Retries spike before errors settle, especially on payment. This helps separate
+            short-lived retry storms from harder failures.
           </p>
           <MeasuredChart testId="act-retry-turbulence">
             {({ width, height }) => (
@@ -296,10 +296,10 @@ function App(): JSX.Element {
         </article>
 
         <article className="act-card">
-          <h2 className="act-title">Act III: Where Errors Landed</h2>
+          <h2 className="act-title">3. Error Snapshot</h2>
           <p className="act-copy">
-            Latest-value error rates give a clean route-by-route snapshot at incident end. Payment
-            is still hottest, but no route is in runaway mode.
+            Latest-value error rates provide a route-by-route snapshot at incident end. Payment is
+            still highest, but no route is in runaway mode.
           </p>
           <MeasuredChart testId="act-error-rates">
             {({ width, height }) => (
@@ -320,10 +320,11 @@ function App(): JSX.Element {
         </article>
 
         <article className="act-card">
-          <h2 className="act-title">Act IV: Latency Shape</h2>
+          <h2 className="act-title">4. Latency Distribution</h2>
           <p className="act-copy">
             The most populated latency band is <strong>{modalLatencyBin?.label ?? "n/a"}</strong>.
-            The long tail exists, but the center of mass moved back toward safer response times.
+            The long tail is still present, but most requests have shifted back toward safer
+            response times.
           </p>
           <MeasuredChart testId="act-latency-shape">
             {({ width, height }) => (
@@ -344,18 +345,18 @@ function App(): JSX.Element {
         </article>
 
         <article className="act-card">
-          <h2 className="act-title">Act V: Backstage Pulse</h2>
+          <h2 className="act-title">5. Collector CPU</h2>
           <p className="act-copy">
             uPlot tracks collector CPU in parallel so platform load stays visible while app-facing
-            charts tell the request story.
+            charts show request behavior.
           </p>
           <UPlotPulseCard model={collectorPulseModel} />
         </article>
       </section>
 
       <footer className="footer-note">
-        data source: synthetic OTLP metrics document in <code>examples/demo/src/demo-data.ts</code>{" "}
-        - advanced practice: processor + ring buffer API (memagent-style)
+        Data source: synthetic OTLP metrics in <code>examples/demo/src/demo-data.ts</code>. Advanced
+        pattern: processor + ring buffer diagnostics API.
       </footer>
     </main>
   );

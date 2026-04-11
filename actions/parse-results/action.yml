@@ -1,0 +1,49 @@
+name: "o11ykit Parse Results"
+description: "Parse benchmark output from workflow logs (auto mode) or files (file mode), then stash by default."
+
+inputs:
+  mode:
+    description: "Source mode: auto (download current workflow attempt logs) or file (read the results input)."
+    required: false
+    default: "auto"
+  results:
+    description: "Path or glob pattern to benchmark result file(s). Required when mode=file."
+    required: false
+  format:
+    description: "Input format: auto (default), go, rust, hyperfine, pytest-benchmark, benchmark-action, or otlp."
+    required: false
+    default: "auto"
+  data-branch:
+    description: "Branch used for benchmark data storage."
+    required: false
+    default: "bench-data"
+  github-token:
+    description: "Token used to download logs in auto mode and push when commit-results=true."
+    required: false
+    default: ${{ github.token }}
+  run-id:
+    description: "Custom run identifier. Defaults to {GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}--{GITHUB_JOB}."
+    required: false
+  monitor-results:
+    description: "Path to OTLP JSON monitor output. When provided, monitor metrics are merged before writing."
+    required: false
+  commit-results:
+    description: "When false, parse and output OTLP JSON but do not commit it to the data branch."
+    required: false
+    default: "true"
+  summary:
+    description: "When true, write a parsed benchmark summary to GITHUB_STEP_SUMMARY."
+    required: false
+    default: "true"
+
+outputs:
+  run-id:
+    description: "The run identifier used for this result."
+  file-path:
+    description: "Path to stored JSON on the data branch, or temp output path when commit-results=false."
+  source:
+    description: "Resolved source mode used by this run (auto or file)."
+
+runs:
+  using: "node24"
+  main: "dist/index.js"
