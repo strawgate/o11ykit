@@ -6,7 +6,7 @@ indexes that charts and dashboards rely on up to date.
 
 ## What it does
 
-- reads every `data/runs/*.json` file from the data branch
+- reads every `data/runs/{run-id}/benchmark.otlp.json` file from the data branch
 - sorts runs chronologically and prunes the oldest ones when `max-runs` is set
 - builds `data/index.json` — a summary of all runs with their metrics
 - builds `data/series/{metric}.json` — time-series data for each metric
@@ -91,7 +91,7 @@ baseline.
 ## How it works
 
 1. **Fetch**: clone the data branch into a temporary git worktree
-2. **Read**: load all `data/runs/*.json` files and sort them chronologically
+2. **Read**: load all `data/runs/{run-id}/benchmark.otlp.json` files and sort them chronologically
 3. **Prune** *(optional)*: when `max-runs > 0`, delete the oldest run files
    that exceed the limit
 4. **Build**: compute the index, series, navigation indexes, and run detail

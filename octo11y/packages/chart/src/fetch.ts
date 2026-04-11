@@ -41,7 +41,7 @@ export function fetchSeries(ds: DataSource, metric: string, signal?: AbortSignal
 }
 
 export function fetchRun(ds: DataSource, runId: string, signal?: AbortSignal): Promise<OtlpMetricsDocument> {
-  return fetchJson<OtlpMetricsDocument>(ds, `data/runs/${runId}.json`, signal);
+  return fetchJson<OtlpMetricsDocument>(ds, `data/runs/${runId}/benchmark.otlp.json`, signal);
 }
 
 export function fetchPrIndex(ds: DataSource, signal?: AbortSignal): Promise<PrIndexEntry[]> {
