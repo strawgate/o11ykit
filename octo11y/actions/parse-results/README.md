@@ -3,6 +3,9 @@
 Parse benchmark output from either GitHub Actions logs or explicit files, then
 stash the normalized OTLP JSON by default.
 
+Use a published dist ref (`@main-dist` or a version tag). Do not use `@main`
+for JS actions, because `@main` does not include compiled action bundles.
+
 ## Modes
 
 - `mode=auto` (default): downloads the current workflow run attempt logs through

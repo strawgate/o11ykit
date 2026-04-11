@@ -1,0 +1,17 @@
+{
+  "name": "@benchkit/ingest-ci-runs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GitHub Action: discover candidate workflow runs for benchmark ingestion.",
+  "scripts": {
+    "build": "tsc && ncc build lib/main.js -o dist -s",
+    "test": "tsc && node --test lib/*.test.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.0",
+    "@actions/exec": "^1.1.1",
+    "@benchkit/actions-common": "*",
+    "@octo11y/core": "*"
+  }
+}

@@ -2,6 +2,9 @@
 
 Parses benchmark output into OTLP metrics JSON and stashes it to a data branch.
 
+Use a published dist ref (`@main-dist` or a version tag). Do not use `@main`
+for JS actions, because `@main` does not include compiled action bundles.
+
 ## Modes
 
 - `mode: auto` (default): downloads current run logs via GitHub Actions API using `github-token`.
@@ -32,7 +35,7 @@ permissions:
 steps:
   - uses: actions/checkout@v4
   - run: go test -bench=. -benchmem ./...
-  - uses: ./actions/parse-results
+  - uses: strawgate/o11ykit/actions/parse-results@main-dist
     with:
       mode: auto
       format: go
