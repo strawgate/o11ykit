@@ -19,7 +19,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      BASE_PATH: /o11ykit/demo/
+      BASE_PATH: /o11ykit/otlpkit/
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,10 +43,9 @@ jobs:
       - name: Assemble site artifact
         run: |
           rm -rf .site
-          mkdir -p .site/demo
-          cp site/index.html .site/index.html
-          cp site/styles.css .site/styles.css
-          cp -R examples/demo/dist/* .site/demo/
+          mkdir -p .site/otlpkit
+          cp -R site/* .site/
+          cp -R examples/demo/dist/* .site/otlpkit/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

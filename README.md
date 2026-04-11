@@ -21,8 +21,10 @@ Dependency rule: `benchkit -> octo11y -> otlpkit`.
 
 GitHub Pages publishes a small portal:
 
-- `/o11ykit/` landing page with links to OtlpKit, Octo11y, and Benchkit
-- `/o11ykit/demo/` OtlpKit incident-story demo
+- `/o11ykit/` landing page only
+- `/o11ykit/otlpkit/` OtlpKit incident-story site
+- `/o11ykit/octo11y/` Octo11y handoff page
+- `/o11ykit/benchkit/` Benchkit handoff page
 
 ## Development
 
