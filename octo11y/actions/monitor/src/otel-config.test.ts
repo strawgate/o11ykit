@@ -105,6 +105,14 @@ describe("generateCollectorConfig", () => {
     assert.match(yaml, /mute_process_name_error: true/);
     assert.match(yaml, /mute_process_exe_error: true/);
     assert.match(yaml, /mute_process_io_error: true/);
+    assert.doesNotMatch(yaml, /mute_process_all_errors: true/);
+  });
+
+  it("enables process all-error mute when configured", () => {
+    const yaml = generateCollectorConfig(
+      baseOpts({ metricSets: ["process"], muteProcessAllErrors: true }),
+    );
+    assert.match(yaml, /mute_process_all_errors: true/);
   });
 
   it("omits optional resource attrs when not provided", () => {

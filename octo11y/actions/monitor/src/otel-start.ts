@@ -20,7 +20,7 @@ import type { MonitorProfile, OtelState } from "./types.js";
 
 const STATE_NAME = ".benchkit-otel.state.json";
 const DEFAULT_METRIC_SETS = ["cpu", "memory", "load", "process"];
-const CI_PROFILE_DEFAULT_METRIC_SETS = ["cpu", "memory", "load"];
+const CI_PROFILE_DEFAULT_METRIC_SETS = ["cpu", "memory", "load", "process"];
 
 function runnerTemp(): string {
   return process.env.RUNNER_TEMP || os.tmpdir();
@@ -182,6 +182,7 @@ export async function startOtelCollector(): Promise<void> {
     runId,
     ref: process.env.GITHUB_REF,
     commit: process.env.GITHUB_SHA,
+    muteProcessAllErrors: profile === "ci",
   });
   fs.writeFileSync(configPath, configYaml);
   core.info(`Collector config written to ${configPath}`);

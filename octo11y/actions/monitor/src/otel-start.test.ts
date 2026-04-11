@@ -85,7 +85,12 @@ describe("resolveMetricSetsInput", () => {
   });
 
   it("uses ci defaults when empty and profile=ci", () => {
-    assert.deepEqual(resolveMetricSetsInput("", "ci"), ["cpu", "memory", "load"]);
+    assert.deepEqual(resolveMetricSetsInput("", "ci"), [
+      "cpu",
+      "memory",
+      "load",
+      "process",
+    ]);
   });
 
   it("uses default profile defaults when empty", () => {
