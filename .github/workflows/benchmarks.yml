@@ -1,4 +1,4 @@
-name: Benchmarks
+name: ingest-benchmark-sample-data
 
 on:
   push:

@@ -1,4 +1,4 @@
-name: Publish octo11y Packages
+name: publish-octo11y-packages-manual-or-tag
 
 on:
   workflow_dispatch:

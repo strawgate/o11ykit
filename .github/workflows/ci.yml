@@ -1,4 +1,4 @@
-name: CI
+name: validate-o11ykit-monorepo
 
 on:
   push:

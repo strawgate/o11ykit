@@ -1,4 +1,4 @@
-name: o11ykit Site
+name: deploy-o11ykit-github-pages
 
 on:
   push:

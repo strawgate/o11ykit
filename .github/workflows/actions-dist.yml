@@ -1,4 +1,4 @@
-name: Publish Action Dist Branches
+name: publish-gh-actions-to-dist-branch
 
 on:
   push:
