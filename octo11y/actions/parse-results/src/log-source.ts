@@ -84,24 +84,31 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function findCurrentJobId(payload: unknown, githubJob: string): number | undefined {
-  if (!payload || typeof payload !== "object" || !("jobs" in payload)) {
-    return undefined;
-  }
-  const jobs = (payload as { jobs?: Array<{ id?: number; name?: string }> }).jobs;
-  if (!Array.isArray(jobs)) return undefined;
-  return jobs.find((j) => j?.name === githubJob)?.id;
+interface RunJobSummary {
+  id: number;
+  name: string;
+  status?: string;
 }
 
-async function loadCurrentJobLogs(token: string): Promise<string> {
+function parseRunJobs(payload: unknown): RunJobSummary[] {
+  if (!payload || typeof payload !== "object" || !("jobs" in payload)) {
+    return [];
+  }
+  const jobs = (payload as { jobs?: Array<{ id?: number; name?: string; status?: string }> }).jobs;
+  if (!Array.isArray(jobs)) return [];
+  return jobs
+    .map((j) => ({ id: j.id ?? 0, name: j.name ?? "", status: j.status }))
+    .filter((j) => j.id > 0 && j.name.length > 0);
+}
+
+async function fetchRunJobs(token: string): Promise<RunJobSummary[]> {
   const repo = process.env.GITHUB_REPOSITORY;
   const runId = process.env.GITHUB_RUN_ID;
   const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
-  const githubJob = process.env.GITHUB_JOB;
   const apiBase = process.env.GITHUB_API_URL || "https://api.github.com";
 
-  if (!repo || !runId || !githubJob) {
-    throw new Error("GITHUB_REPOSITORY, GITHUB_RUN_ID, and GITHUB_JOB are required for job log lookup");
+  if (!repo || !runId) {
+    throw new Error("GITHUB_REPOSITORY and GITHUB_RUN_ID are required for job log lookup");
   }
 
   const jobsAttemptUrl = runAttempt
@@ -109,27 +116,26 @@ async function loadCurrentJobLogs(token: string): Promise<string> {
     : "";
   const jobsRunUrl = `${apiBase}/repos/${repo}/actions/runs/${runId}/jobs?per_page=100`;
 
-  // Current job metadata and logs can both lag briefly after job start.
-  // Retry both resolution and download to make auto mode reliable.
+  try {
+    const payload = jobsAttemptUrl
+      ? await requestJson(jobsAttemptUrl, token)
+      : await requestJson(jobsRunUrl, token);
+    return parseRunJobs(payload);
+  } catch (err) {
+    if (!jobsAttemptUrl) throw err;
+    const payload = await requestJson(jobsRunUrl, token);
+    return parseRunJobs(payload);
+  }
+}
+
+async function downloadJobLogsWithRetry(
+  token: string,
+  jobLogsUrl: string,
+  attempts: number,
+): Promise<string> {
   let lastError: unknown;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      let jobsPayload: unknown;
-      try {
-        jobsPayload = jobsAttemptUrl
-          ? await requestJson(jobsAttemptUrl, token)
-          : await requestJson(jobsRunUrl, token);
-      } catch (err) {
-        if (!jobsAttemptUrl) throw err;
-        jobsPayload = await requestJson(jobsRunUrl, token);
-      }
-
-      const jobId = findCurrentJobId(jobsPayload, githubJob);
-      if (!jobId) {
-        throw new Error(`Could not resolve current job id for GITHUB_JOB=${githubJob}`);
-      }
-
-      const jobLogsUrl = `${apiBase}/repos/${repo}/actions/jobs/${jobId}/logs`;
       return await downloadJobLogs(jobLogsUrl, token);
     } catch (err) {
       lastError = err;
@@ -140,6 +146,48 @@ async function loadCurrentJobLogs(token: string): Promise<string> {
   throw lastError instanceof Error
     ? lastError
     : new Error("Failed to download current job logs");
+}
+
+async function loadAvailableJobLogs(token: string): Promise<string> {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const apiBase = process.env.GITHUB_API_URL || "https://api.github.com";
+  const currentJob = process.env.GITHUB_JOB || "";
+  if (!repo) {
+    throw new Error("GITHUB_REPOSITORY is required for job log lookup");
+  }
+
+  const jobs = await fetchRunJobs(token);
+  if (jobs.length === 0) {
+    throw new Error("Could not resolve any jobs for this run");
+  }
+
+  const preferred = [
+    ...jobs.filter((j) => j.name !== currentJob && j.status === "completed"),
+    ...jobs.filter((j) => j.name === currentJob),
+    ...jobs.filter((j) => j.name !== currentJob && j.status !== "completed"),
+  ];
+
+  const seen = new Set<number>();
+  const chunks: string[] = [];
+  let lastError: unknown;
+
+  for (const job of preferred) {
+    if (seen.has(job.id)) continue;
+    seen.add(job.id);
+    const logsUrl = `${apiBase}/repos/${repo}/actions/jobs/${job.id}/logs`;
+    const retries = job.name === currentJob ? 8 : 1;
+    try {
+      const text = await downloadJobLogsWithRetry(token, logsUrl, retries);
+      chunks.push(text);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  if (chunks.length > 0) {
+    return chunks.join("\n");
+  }
+  throw lastError instanceof Error ? lastError : new Error("Failed to download job logs");
 }
 
 export async function loadWorkflowAttemptLogs(token: string): Promise<string> {
@@ -155,11 +203,10 @@ export async function loadWorkflowAttemptLogs(token: string): Promise<string> {
     throw new Error("GITHUB_RUN_ID is required for mode=auto");
   }
 
-  // Prefer current job logs: this is available during the run and avoids
-  // relying on workflow-level log archives, which can be unavailable (404)
-  // until the entire run has completed.
+  // Prefer per-job logs: completed sibling jobs are available during the run,
+  // and current-job logs may become available shortly after start.
   try {
-    return await loadCurrentJobLogs(token);
+    return await loadAvailableJobLogs(token);
   } catch {
     // Fall back to workflow archive retrieval below.
   }
