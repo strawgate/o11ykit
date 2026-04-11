@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as core from "@actions/core";
 import * as glob from "@actions/glob";
 import { countDataPoints, mergeOtlpDocuments } from "./build-otlp.js";
+import { enforceDatapointPolicy, parseMinDatapoints } from "./guardrails.js";
 import { readCurrentRunLogs } from "./log-source.js";
 import { parseToOtlpDocument } from "./parsers.js";
 import { buildRunId, createTempResultPath, stashResult, writeResultFile } from "./stash.js";
@@ -46,6 +47,8 @@ function summaryMarkdown(options: {
   readonly mode: ParseMode;
   readonly format: Format;
   readonly dataPoints: number;
+  readonly resourceMetricsCount: number;
+  readonly hasMetrics: boolean;
   readonly filePath: string;
 }): string {
   return [
@@ -55,6 +58,8 @@ function summaryMarkdown(options: {
     `Mode: \`${options.mode}\``,
     `Format: \`${options.format}\``,
     `Datapoints: **${options.dataPoints}**`,
+    `Resource metrics: **${options.resourceMetricsCount}**`,
+    `Has metrics: \`${String(options.hasMetrics)}\``,
     `Output: \`${options.filePath}\``,
     "",
   ].join("\n");
@@ -68,6 +73,8 @@ async function run(): Promise<void> {
   const resultsPattern = core.getInput("results");
   const monitorPath = core.getInput("monitor-results");
   const commitResults = core.getBooleanInput("commit-results");
+  const failOnZeroDatapoints = core.getBooleanInput("fail-on-zero-datapoints");
+  const minDatapoints = parseMinDatapoints(core.getInput("min-datapoints") || "0");
   const includeSummary = core.getBooleanInput("summary");
   const customRunId = core.getInput("run-id");
   const sourceRunId = core.getInput("source-run-id");
@@ -122,11 +129,18 @@ async function run(): Promise<void> {
   );
 
   const dataPoints = countDataPoints(merged);
+  const resourceMetricsCount = merged.resourceMetrics.length;
+  const hasMetrics = dataPoints > 0;
   if (dataPoints === 0) {
     core.warning(
       `Parsed 0 datapoints from ${sourceName}. Confirm your format (${format}) and log/file content.`
     );
   }
+  enforceDatapointPolicy({
+    dataPoints,
+    failOnZeroDatapoints,
+    minDatapoints,
+  });
 
   const tempPath = createTempResultPath(runId);
   writeResultFile(merged, tempPath);
@@ -156,6 +170,8 @@ async function run(): Promise<void> {
           mode,
           format,
           dataPoints,
+          resourceMetricsCount,
+          hasMetrics,
           filePath: outputPath,
         }),
         true
@@ -166,6 +182,10 @@ async function run(): Promise<void> {
   core.setOutput("run-id", runId);
   core.setOutput("file-path", outputPath);
   core.setOutput("source", mode);
+  core.setOutput("datapoint-count", String(dataPoints));
+  core.setOutput("resource-metrics-count", String(resourceMetricsCount));
+  core.setOutput("has-metrics", String(hasMetrics));
+  core.setOutput("normalized-otlp-path", tempPath);
 }
 
 run().catch((error: unknown) => {

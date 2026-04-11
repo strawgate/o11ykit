@@ -41,10 +41,9 @@ benchmark tool output
 bench-data
 └── data/
     ├── runs/
-    │   ├── {run-id}.otlp.json          # benchmark results
-    │   └── ...
-    ├── telemetry/
-    │   ├── {run-id}.otlp.json          # monitor/diagnostic data
+    │   ├── {run-id}/
+    │   │   ├── benchmark.otlp.json     # benchmark results
+    │   │   └── telemetry.otlp.jsonl.gz # monitor/diagnostic data
     │   └── ...
     ├── index/                           # navigation indexes
     ├── series/                          # pre-aggregated time series
@@ -100,7 +99,7 @@ Medium-sized files loaded after user intent is clear:
 
 ### D. Raw telemetry (on demand)
 
-- `data/telemetry/{run-id}.otlp.json`
+- `data/runs/{run-id}/telemetry.otlp.jsonl.gz`
 
 ## Frontend responsibilities
 

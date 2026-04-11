@@ -13,6 +13,20 @@ import { DEFAULT_DATA_BRANCH } from "@benchkit/format";
 import { computeRetryDelayMs, DEFAULT_PUSH_RETRY_COUNT, sleep } from "@octo11y/core";
 
 export { DEFAULT_DATA_BRANCH, DEFAULT_PUSH_RETRY_COUNT };
+const DEFAULT_FETCH_RETRY_COUNT = 5;
+
+/**
+ * Detect git ref-update races (common in concurrent CI branch writers).
+ */
+function isConcurrentRefUpdateError(stderr: string): boolean {
+  const normalized = stderr.toLowerCase();
+  return (
+    normalized.includes("cannot lock ref")
+    || normalized.includes("unable to update local ref")
+    || normalized.includes("failed to update ref")
+    || (normalized.includes(" is at ") && normalized.includes(" expected "))
+  );
+}
 
 /**
  * Configure git user identity and token-based auth.
@@ -45,18 +59,21 @@ export async function checkoutDataBranch(
 ): Promise<string> {
   const worktree = path.join(os.tmpdir(), `${prefix}-${Date.now()}`);
 
+  let fetchCode = 1;
   let fetchStderr = "";
-  const fetchCode = await exec.exec(
-    "git", ["fetch", "origin", `+${dataBranch}:${dataBranch}`],
-    {
-      ignoreReturnCode: true,
-      listeners: {
-        stderr: (data: Buffer) => { fetchStderr += data.toString(); },
+  for (let attempt = 1; attempt <= DEFAULT_FETCH_RETRY_COUNT; attempt += 1) {
+    fetchStderr = "";
+    fetchCode = await exec.exec(
+      "git", ["fetch", "origin", `+${dataBranch}:${dataBranch}`],
+      {
+        ignoreReturnCode: true,
+        listeners: {
+          stderr: (data: Buffer) => { fetchStderr += data.toString(); },
+        },
       },
-    },
-  );
+    );
+    if (fetchCode === 0) break;
 
-  if (fetchCode !== 0) {
     if (fetchStderr.includes("couldn't find remote ref")) {
       core.info(`Branch '${dataBranch}' does not exist; creating orphan branch.`);
       await exec.exec("git", ["worktree", "add", "--detach", worktree]);
@@ -71,6 +88,17 @@ export async function checkoutDataBranch(
         + "the action fetches the data branch into its own worktree.",
       );
     }
+    if (isConcurrentRefUpdateError(fetchStderr) && attempt < DEFAULT_FETCH_RETRY_COUNT) {
+      const delayMs = computeRetryDelayMs(Math.random());
+      core.warning(
+        `Fetch of '${dataBranch}' hit a concurrent ref update (attempt ${attempt}/${DEFAULT_FETCH_RETRY_COUNT}); retrying in ${delayMs}ms...`,
+      );
+      await sleep(delayMs);
+      continue;
+    }
+    break;
+  }
+  if (fetchCode !== 0) {
     throw new Error(
       `Failed to fetch '${dataBranch}' from origin: ${fetchStderr.trim() || `git fetch exited with code ${fetchCode}`}`,
     );
@@ -109,7 +137,8 @@ export async function pushWithRetry(
     const isConflict =
       pushStderr.includes("non-fast-forward")
       || pushStderr.includes("fetch first")
-      || pushStderr.includes("Updates were rejected");
+      || pushStderr.includes("Updates were rejected")
+      || isConcurrentRefUpdateError(pushStderr);
 
     if (isConflict && attempt < maxRetries) {
       const delayMs = computeRetryDelayMs(Math.random());

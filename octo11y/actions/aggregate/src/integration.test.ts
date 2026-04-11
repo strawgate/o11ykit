@@ -187,18 +187,18 @@ function simulatePipeline(tmpDir: string): {
   const runsDir = path.join(tmpDir, "data", "runs");
   fs.mkdirSync(runsDir, { recursive: true });
 
-  fs.writeFileSync(
-    path.join(runsDir, "run-001.json"),
-    JSON.stringify(RUN_1, null, 2),
-  );
-  fs.writeFileSync(
-    path.join(runsDir, "run-002.json"),
-    JSON.stringify(RUN_2, null, 2),
-  );
-  fs.writeFileSync(
-    path.join(runsDir, "run-003.json"),
-    JSON.stringify(RUN_3, null, 2),
-  );
+  for (const [id, doc] of [
+    ["run-001", RUN_1],
+    ["run-002", RUN_2],
+    ["run-003", RUN_3],
+  ] as const) {
+    const runDir = path.join(runsDir, id);
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(runDir, "benchmark.otlp.json"),
+      JSON.stringify(doc, null, 2),
+    );
+  }
 
   // --- Aggregate via readRuns ---
   const runs = readRuns(runsDir);
@@ -224,24 +224,28 @@ describe("integration: aggregate pipeline", () => {
 
   // ── Run files ─────────────────────────────────────────────────────
 
-  it("creates 3 run files", () => {
-    const files = fs.readdirSync(pipeline.runsDir).filter((f) => f.endsWith(".json"));
-    assert.equal(files.length, 3);
+  it("creates 3 run directories", () => {
+    const runDirs = fs
+      .readdirSync(pipeline.runsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory());
+    assert.equal(runDirs.length, 3);
   });
 
   it("each run file is readable as a ParsedRun", () => {
-    const files = fs.readdirSync(pipeline.runsDir).filter((f) => f.endsWith(".json"));
-    for (const file of files) {
+    const runDirs = fs
+      .readdirSync(pipeline.runsDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory());
+    for (const runDir of runDirs) {
       const content = JSON.parse(
-        fs.readFileSync(path.join(pipeline.runsDir, file), "utf-8"),
+        fs.readFileSync(path.join(pipeline.runsDir, runDir.name, "benchmark.otlp.json"), "utf-8"),
       );
-      assert.ok(typeof content === "object" && content !== null, `${file} should be an object`);
+      assert.ok(typeof content === "object" && content !== null, `${runDir.name} should be an object`);
     }
   });
 
   it("run-001 includes monitor benchmarks", () => {
     const r1 = JSON.parse(
-      fs.readFileSync(path.join(pipeline.runsDir, "run-001.json"), "utf-8"),
+      fs.readFileSync(path.join(pipeline.runsDir, "run-001", "benchmark.otlp.json"), "utf-8"),
     );
     assert.ok(Array.isArray(r1.resourceMetrics), "should be OTLP format");
   });
@@ -255,7 +259,7 @@ describe("integration: aggregate pipeline", () => {
 
   it("run-003 is in OTLP format", () => {
     const r3 = JSON.parse(
-      fs.readFileSync(path.join(pipeline.runsDir, "run-003.json"), "utf-8"),
+      fs.readFileSync(path.join(pipeline.runsDir, "run-003", "benchmark.otlp.json"), "utf-8"),
     );
     assert.ok(Array.isArray(r3.resourceMetrics), "should have resourceMetrics array");
   });

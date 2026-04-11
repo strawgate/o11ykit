@@ -4,29 +4,121 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>o11ykit / octo11y</title>
-    <meta http-equiv="refresh" content="0; url=https://strawgate.com/octo11y/" />
+    <meta
+      name="description"
+      content="Octo11y docs: GitHub-native telemetry pipelines for benchmark and repository metrics."
+    />
     <link rel="stylesheet" href="../styles.css" />
   </head>
   <body>
+    <div class="ambient" aria-hidden="true"></div>
     <main class="page">
-      <section class="hero">
-        <p class="eyebrow">o11ykit / octo11y</p>
-        <h1>Forwarding to Octo11y</h1>
-        <p>
-          Octo11y is the GitHub-driven metrics surface in this stack. If you are not redirected,
-          use the links below.
+      <header class="topbar panel">
+        <a class="brand" href="/o11ykit/">o11ykit</a>
+        <nav class="topnav" aria-label="Primary">
+          <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
+          <a href="/o11ykit/octo11y/" aria-current="page">Octo11y</a>
+          <a href="/o11ykit/benchkit/">Benchkit</a>
+          <a href="https://strawgate.github.io/o11ykit-playground/" target="_blank" rel="noreferrer">Playground</a>
+        </nav>
+      </header>
+
+      <section class="hero panel">
+        <p class="eyebrow">Product docs: Octo11y</p>
+        <h1>Turn GitHub activity into telemetry you can graph.</h1>
+        <p class="lede">
+          Octo11y is for repository maintainers and platform teams that want to convert workflow
+          logs, benchmark outputs, and repo metadata into structured run history and published views.
         </p>
+        <div class="hero-actions">
+          <a class="cta cta-primary" href="https://strawgate.github.io/o11ykit-playground/" target="_blank" rel="noreferrer">
+            Open Live Playground
+          </a>
+          <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/octo11y" target="_blank" rel="noreferrer">
+            Browse Source
+          </a>
+        </div>
       </section>
-      <section class="solutions">
-        <article class="card octo11y">
-          <h2>Open Octo11y</h2>
-          <div class="actions">
-            <a href="https://strawgate.com/octo11y/">Go to Octo11y Site</a>
-            <a href="https://github.com/strawgate/octo11y">Open GitHub Repository</a>
-            <a href="../">Back to o11ykit Home</a>
-          </div>
-        </article>
+
+      <section class="panel">
+        <h2>Where Octo11y Fits</h2>
+        <div class="grid grid-2">
+          <article class="journey">
+            <h3>Who Uses It</h3>
+            <p>
+              OSS maintainers, CI owners, and developer productivity teams who want objective
+              trend data across pull requests and releases.
+            </p>
+          </article>
+          <article class="journey">
+            <h3>What You Get</h3>
+            <p>
+              A clean data branch with run artifacts, indexes, and per-metric series files that can
+              be consumed by dashboards, badges, and custom reports.
+            </p>
+          </article>
+        </div>
       </section>
+
+      <section class="panel">
+        <h2>Core Capabilities</h2>
+        <div class="grid grid-3">
+          <article class="feature-card octo11y">
+            <h3>Parse Results</h3>
+            <p>Read benchmark outputs from files or workflow logs and convert to OTLP metrics.</p>
+          </article>
+          <article class="feature-card octo11y">
+            <h3>Aggregate History</h3>
+            <p>Produce run indexes, refs/PR views, and per-metric time-series artifacts.</p>
+          </article>
+          <article class="feature-card octo11y">
+            <h3>Repository Metrics</h3>
+            <p>Collect stars, forks, workflow health, and language distribution as telemetry.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel code-panel">
+        <h2>Quickstart Workflow</h2>
+<pre><code>name: benchmark-pipeline
+on: [workflow_dispatch]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  run-benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: go test ./... -bench=. | tee bench.txt
+      - uses: strawgate/o11ykit/octo11y/actions/parse-results@main-dist
+        with:
+          mode: file
+          results: bench.txt
+          format: go
+          github-token: ${{ github.token }}
+      - uses: strawgate/o11ykit/octo11y/actions/aggregate@main-dist
+        with:
+          github-token: ${{ github.token }}</code></pre>
+      </section>
+
+      <section class="panel">
+        <h2>Typical Outcomes</h2>
+        <ul class="checklist wide">
+          <li>Trend charts for benchmark and repository metrics over time</li>
+          <li>Consistent metric history per branch, PR, and commit</li>
+          <li>Data artifacts that power public or internal pages</li>
+        </ul>
+      </section>
+
+      <footer>
+        <p>
+          Need performance-specific automation on top?
+          <a href="/o11ykit/benchkit/">Go to Benchkit docs</a>
+        </p>
+      </footer>
     </main>
   </body>
 </html>

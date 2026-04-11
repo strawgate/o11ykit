@@ -417,7 +417,7 @@ const series = await fetchSeries(
 
 ### `fetchRun(source, runId, signal?)`
 
-Fetches `data/runs/{runId}.json` and returns an `OtlpMetricsDocument`.
+Fetches `data/runs/{runId}/benchmark.otlp.json` and returns an `OtlpMetricsDocument`.
 
 ```ts
 import { fetchRun } from "@benchkit/chart";

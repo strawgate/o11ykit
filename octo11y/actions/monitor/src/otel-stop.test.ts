@@ -4,7 +4,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { spawn } from "node:child_process";
-import { isProcessRunning, safeUnlink, stopCollector, findDescendantPids, filterToRunnerDescendants } from "./otel-stop.js";
+import {
+  filterToRunnerDescendants,
+  findDescendantPids,
+  isProcessRunning,
+  safeUnlink,
+  stopCollector,
+  suppressExpectedCiNoise,
+} from "./otel-stop.js";
 import type { OtelState } from "./types.js";
 
 // ── isProcessRunning ────────────────────────────────────────────────
@@ -44,6 +51,29 @@ describe("safeUnlink", () => {
 
   it("does not throw for a non-existent file", () => {
     assert.doesNotThrow(() => safeUnlink("/tmp/this-file-does-not-exist-12345"));
+  });
+});
+
+describe("suppressExpectedCiNoise", () => {
+  it("suppresses known process-scraper noise lines", () => {
+    const log = [
+      "info exporter started",
+      "error scraping process metrics: unknown userid 65535",
+      "warn process no such process",
+      "info flush complete",
+    ].join("\n");
+    const result = suppressExpectedCiNoise(log);
+    assert.equal(result.suppressedLineCount, 2);
+    assert.match(result.filteredLog, /exporter started/);
+    assert.match(result.filteredLog, /flush complete/);
+    assert.doesNotMatch(result.filteredLog, /unknown userid/);
+  });
+
+  it("keeps logs unchanged when no suppression patterns match", () => {
+    const log = "info collector started\ninfo collector stopped";
+    const result = suppressExpectedCiNoise(log);
+    assert.equal(result.suppressedLineCount, 0);
+    assert.equal(result.filteredLog, log);
   });
 });
 
