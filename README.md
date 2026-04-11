@@ -1,6 +1,6 @@
-# obskit
+# o11ykit
 
-`obskit` is a monorepo for OTLP-driven tooling.
+`o11ykit` is a monorepo for OTLP-driven tooling.
 
 Current packages in this repo are the `@otlpkit/*` JavaScript libraries:
 

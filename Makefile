@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 NPM ?= npm
-BASE_PATH ?= /obskit/
+BASE_PATH ?= /o11ykit/
 
 .PHONY: install lint format typecheck test test-e2e build check check-release clean clean-all
 .PHONY: dev-demo dev-chartjs dev-echarts dev-recharts dev-uplot pages-build
