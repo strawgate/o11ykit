@@ -51,6 +51,21 @@ describe("parse + merge helpers", () => {
     assert.ok(batch.scenarios.includes("BenchmarkSort"));
   });
 
+  it("parses go benchmarks from timestamp-prefixed workflow logs", () => {
+    const log = [
+      "2026-04-11T17:24:52.7649381Z goos: linux",
+      "2026-04-11T17:24:52.7649919Z goarch: amd64",
+      "2026-04-11T17:24:52.7650438Z cpu: synthetic",
+      "2026-04-11T17:24:52.7651143Z BenchmarkHash/map-8       2000000  680 ns/op   32 B/op  1 allocs/op",
+      "2026-04-11T17:24:52.7652001Z BenchmarkHash/robin-8     2000000  610 ns/op   24 B/op  1 allocs/op",
+    ].join("\n");
+    const doc = parseBenchmarkContent(log, "go", "workflow-log-go");
+    const batch = MetricsBatch.fromOtlp(doc);
+    assert.ok(batch.size > 0);
+    assert.ok(batch.scenarios.includes("BenchmarkHash/map"));
+    assert.ok(batch.scenarios.includes("BenchmarkHash/robin"));
+  });
+
   it("merges monitor and benchmark documents", () => {
     const bench = buildOtlpResult({
       benchmarks: [{ name: "BenchmarkA", metrics: { ns_per_op: { value: 100 } } }],
@@ -90,4 +105,3 @@ describe("writeResultFile", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 });
-

@@ -46,10 +46,16 @@ export function parseBenchmarkContent(
   format: Format,
   sourceName: string,
 ): OtlpMetricsDocument {
-  const normalized = content.replace(
+  const strippedAnsi = content.replace(
     // Strip ANSI color/control sequences that commonly appear in workflow logs.
     // eslint-disable-next-line no-control-regex
     /\u001b\[[0-9;]*[A-Za-z]/g,
+    "",
+  );
+  const normalized = strippedAnsi.replace(
+    // Strip the GH Actions timestamp prefix that appears in downloaded logs,
+    // e.g. `2026-04-11T17:24:52.7651143Z `.
+    /^\uFEFF?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s+/gm,
     "",
   );
   try {
