@@ -1,0 +1,15 @@
+{
+  "name": "@benchkit/emit-metric",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GitHub Action: emit a one-off OTLP metric to the Benchkit monitor collector.",
+  "scripts": {
+    "build": "tsc && ncc build lib/main.js -o dist -s",
+    "test": "tsc && node --test lib/emit-metric.test.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.0",
+    "@benchkit/format": "*"
+  }
+}

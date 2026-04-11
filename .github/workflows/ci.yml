@@ -42,3 +42,22 @@ jobs:
         with:
           name: coverage-report
           path: coverage
+
+  validate-octo11y:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: octo11y/package-lock.json
+
+      - name: Install octo11y dependencies
+        run: npm ci --prefix octo11y
+
+      - name: Validate octo11y workspace
+        run: npm run octo11y:check

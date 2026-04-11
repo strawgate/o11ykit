@@ -1,0 +1,28 @@
+name: 'Benchkit Aggregate'
+description: 'Rebuild index.json and series files from benchmark runs on the data branch.'
+inputs:
+  data-branch:
+    description: 'Branch used for benchmark data storage.'
+    required: false
+    # Keep in sync with DEFAULT_DATA_BRANCH in @benchkit/format
+    default: 'bench-data'
+  github-token:
+    description: 'Token with push access to the data branch.'
+    required: false
+    default: ${{ github.token }}
+  max-runs:
+    description: 'Maximum number of runs to keep. 0 means unlimited.'
+    required: false
+    default: '0'
+  badges:
+    description: 'Generate Shields.io endpoint badge JSON files in data/badges/. Set to false to disable.'
+    required: false
+    default: 'true'
+outputs:
+  run-count:
+    description: 'Number of runs in the index.'
+  metrics:
+    description: 'Comma-separated list of metric names found.'
+runs:
+  using: 'node24'
+  main: 'dist/index.js'

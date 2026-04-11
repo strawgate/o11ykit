@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/strawgate/octo11y/schema/index.schema.json",
+  "title": "Benchkit Index",
+  "description": "Index of all benchmark runs stored on the data branch.",
+  "type": "object",
+  "required": ["runs"],
+  "properties": {
+    "runs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/run_entry"
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "description": "List of all known metric names across all runs.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "run_entry": {
+      "type": "object",
+      "required": ["id", "timestamp"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique run identifier (e.g. GitHub Actions run_id-run_attempt, or a UUID)."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "benchmarks": {
+          "type": "integer",
+          "description": "Number of benchmarks in this run."
+        },
+        "metrics": {
+          "type": "array",
+          "description": "Metric names present in this run.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "monitor": {
+          "$ref": "#/$defs/monitor_context",
+          "description": "Runner environment captured by the monitor action."
+        }
+      }
+    },
+    "monitor_context": {
+      "type": "object",
+      "required": ["monitor_version", "poll_interval_ms", "duration_ms"],
+      "properties": {
+        "monitor_version": { "type": "string" },
+        "poll_interval_ms": { "type": "integer" },
+        "duration_ms": { "type": "integer" },
+        "runner_os": { "type": "string" },
+        "runner_arch": { "type": "string" },
+        "poll_count": { "type": "integer" },
+        "kernel": { "type": "string" },
+        "cpu_model": { "type": "string" },
+        "cpu_count": { "type": "integer" },
+        "total_memory_mb": { "type": "number" }
+      }
+    }
+  }
+}

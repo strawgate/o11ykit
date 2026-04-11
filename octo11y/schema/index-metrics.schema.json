@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/strawgate/octo11y/schema/index-metrics.schema.json",
+  "title": "Benchkit Metrics Index",
+  "description": "Navigation index summarising all known metrics, produced by bench-aggregate.",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/metric_summary_entry"
+  },
+  "$defs": {
+    "metric_summary_entry": {
+      "type": "object",
+      "required": ["metric", "latestSeriesCount"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "description": "Metric name."
+        },
+        "latestSeriesCount": {
+          "type": "integer",
+          "description": "Number of distinct benchmark series that include this metric."
+        },
+        "latestRunId": {
+          "type": "string",
+          "description": "Run ID of the most recent data point for this metric."
+        },
+        "latestTimestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the most recent data point for this metric."
+        }
+      }
+    }
+  }
+}

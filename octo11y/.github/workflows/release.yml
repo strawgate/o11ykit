@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-and-test:
+    uses: ./.github/workflows/validate.yml
+
+  publish:
+    needs: build-and-test
+    uses: ./.github/workflows/publish-to-npm.yml
+    with:
+      tag: ${{ github.ref_name }}
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build action bundles
+        run: npm run build
+
+      - name: Push release dist branch
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f actions/*/dist/
+          git commit -m "dist: build for $TAG"
+          git push origin HEAD:refs/heads/${TAG}-dist --force
+          echo "✓ Pushed ${TAG}-dist branch"
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          PREV_TAG=$(git tag --sort=-v:refname | grep '^v' | sed -n '2p' || true)
+
+          if [[ -n "$PREV_TAG" ]]; then
+            echo "Generating changelog from $PREV_TAG to $TAG"
+            LOG=$(git log "$PREV_TAG".."$TAG" --pretty=format:"- %s (%h)" --no-merges)
+          else
+            echo "No previous tag found; listing all commits"
+            LOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          {
+            echo "notes<<EOF"
+            echo "## What's Changed"
+            echo ""
+            echo "$LOG"
+            echo ""
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG:-$(git rev-list --max-parents=0 HEAD)}...$TAG"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace('refs/tags/', '');
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: tag,
+              body: ${{ toJSON(steps.notes.outputs.notes) }},
+              draft: false,
+              prerelease: tag.includes('-'),
+            });
+
+  update-major-tag:
+    needs: github-release
+    runs-on: ubuntu-latest
+    # Only update the major tag for stable (non-pre-release) versions
+    if: ${{ !contains(github.ref_name, '-') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update major version tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' does not match expected semver format v<major>.<minor>.<patch>; skipping major tag update"
+            exit 1
+          fi
+          MAJOR="v$(echo "${TAG#v}" | cut -d. -f1)"
+          echo "Updating $MAJOR to point to $TAG"
+          git tag -f "$MAJOR"
+          git push origin -f "refs/tags/$MAJOR"

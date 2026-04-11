@@ -1,0 +1,64 @@
+{
+  "name": "@benchkit/adapters",
+  "version": "0.1.1",
+  "description": "Data adapters for transforming benchkit metrics into charting library formats (Chart.js, ECharts, Recharts, D3, etc.).",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./shared-contract": {
+      "import": "./dist/shared-contract.js",
+      "types": "./dist/shared-contract.d.ts"
+    },
+    "./coordinate-transforms": {
+      "import": "./dist/coordinate-transforms.js",
+      "types": "./dist/coordinate-transforms.d.ts"
+    },
+    "./recharts": {
+      "import": "./dist/recharts.js",
+      "types": "./dist/recharts.d.ts"
+    },
+    "./echarts": {
+      "import": "./dist/echarts.js",
+      "types": "./dist/echarts.d.ts"
+    },
+    "./visx": {
+      "import": "./dist/visx.js",
+      "types": "./dist/visx.d.ts"
+    },
+    "./chartjs": {
+      "import": "./dist/chartjs.js",
+      "types": "./dist/chartjs.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "tsc --noEmit",
+    "test": "node --test dist/*.test.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@benchkit/format": "*",
+    "@octo11y/core": "*"
+  },
+  "peerDependencies": {
+    "chart.js": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "chart.js": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/strawgate/octo11y.git",
+    "directory": "packages/adapters"
+  }
+}

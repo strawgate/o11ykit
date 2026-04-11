@@ -1,0 +1,46 @@
+name: 'Benchkit Stash'
+description: 'Parse benchmark results and commit them to a data branch.'
+inputs:
+  results:
+    description: 'Path or glob pattern to benchmark result file(s).'
+    required: true
+  format:
+    description: 'Input format: auto (default), go, rust, hyperfine, pytest-benchmark, benchmark-action, or otlp.'
+    required: false
+    default: 'auto'
+  data-branch:
+    description: 'Branch used for benchmark data storage.'
+    required: false
+    # Keep in sync with DEFAULT_DATA_BRANCH in @benchkit/format
+    default: 'bench-data'
+  github-token:
+    description: 'Token with push access to the data branch.'
+    required: false
+    default: ${{ github.token }}
+  run-id:
+    description: >-
+      Custom run identifier. When omitted, defaults to
+      `{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}--{GITHUB_JOB}` (with the job
+      segment sanitized to lowercase alphanumeric and dashes). This makes
+      concurrent jobs in the same workflow run collision-proof by default.
+      For matrix jobs, supply a custom value that includes the matrix key so
+      each variant writes a distinct file.
+    required: false
+  monitor-results:
+    description: 'Path to monitor.json produced by the monitor action. When provided, monitor benchmarks and context are merged into the stored result.'
+    required: false
+  commit-results:
+    description: 'When false, parse and output the result JSON but do not commit it to the data branch.'
+    required: false
+  summary:
+    description: 'When true, write a parsed benchmark summary to GITHUB_STEP_SUMMARY.'
+    required: false
+    default: 'true'
+outputs:
+  run-id:
+    description: 'The run identifier used for this stash.'
+  file-path:
+    description: 'Path to the stored JSON file on the data branch, or to the temporary output file when commit-results is false.'
+runs:
+  using: 'node24'
+  main: 'dist/index.js'

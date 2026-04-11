@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/strawgate/octo11y/schema/series.schema.json",
+  "title": "Benchkit Series",
+  "description": "Pre-aggregated time-series data for a single metric, produced by bench-aggregate.",
+  "type": "object",
+  "required": ["metric", "series"],
+  "properties": {
+    "metric": {
+      "type": "string",
+      "description": "Metric name, e.g. 'eps' or 'ns_per_op'."
+    },
+    "unit": {
+      "type": "string",
+      "description": "Unit of measurement."
+    },
+    "direction": {
+      "type": "string",
+      "enum": ["bigger_is_better", "smaller_is_better"]
+    },
+    "series": {
+      "type": "object",
+      "description": "Keyed by benchmark name (or name+tags combo). Each entry is a time-ordered array of data points.",
+      "additionalProperties": {
+        "$ref": "#/$defs/series_entry"
+      }
+    }
+  },
+  "$defs": {
+    "series_entry": {
+      "type": "object",
+      "required": ["points"],
+      "properties": {
+        "tags": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/data_point"
+          }
+        }
+      }
+    },
+    "data_point": {
+      "type": "object",
+      "required": ["timestamp", "value"],
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "value": {
+          "type": "number"
+        },
+        "commit": {
+          "type": "string"
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "range": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

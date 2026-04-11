@@ -1,0 +1,459 @@
+name: Test Actions
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build all action bundles
+        run: npm run build
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: action-dist
+          path: actions/*/dist/
+          retention-days: 1
+
+  test-stash-go:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: action-dist
+          path: actions/
+
+      - name: Create fake Go bench output
+        run: |
+          mkdir -p results
+          cat > results/bench.txt << 'EOF'
+          BenchmarkSort-4           5000000       320 ns/op      48 B/op       2 allocs/op
+          BenchmarkSearch-4        10000000       120 ns/op       0 B/op       0 allocs/op
+          BenchmarkInsert-4         3000000       450 ns/op      64 B/op       3 allocs/op
+          EOF
+
+      - name: Stash Go bench results
+        uses: ./actions/stash
+        id: stash
+        with:
+          results: results/bench.txt
+          format: go
+          run-id: test-go-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Verify stash outputs
+        run: |
+          echo "Run ID: ${{ steps.stash.outputs.run-id }}"
+          echo "File:   ${{ steps.stash.outputs.file-path }}"
+          [[ -n "${{ steps.stash.outputs.run-id }}" ]] || exit 1
+
+  test-stash-otlp:
+    needs: [build, test-stash-go]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: action-dist
+          path: actions/
+
+      - name: Create OTLP format results
+        run: |
+          cat > results.json << 'EOF'
+          {
+            "resourceMetrics": [{
+              "resource": { "attributes": [] },
+              "scopeMetrics": [{
+                "scope": { "name": "benchkit" },
+                "metrics": [
+                  {
+                    "name": "requests_per_sec",
+                    "gauge": {
+                      "dataPoints": [{
+                        "asDouble": 15230,
+                        "attributes": [
+                          { "key": "benchkit.scenario", "value": { "stringValue": "http-throughput" } },
+                          { "key": "benchkit.metric.direction", "value": { "stringValue": "bigger_is_better" } }
+                        ]
+                      }]
+                    }
+                  },
+                  {
+                    "name": "p99_latency_ms",
+                    "gauge": {
+                      "dataPoints": [{
+                        "asDouble": 12.4,
+                        "attributes": [
+                          { "key": "benchkit.scenario", "value": { "stringValue": "http-throughput" } },
+                          { "key": "benchkit.metric.direction", "value": { "stringValue": "smaller_is_better" } }
+                        ]
+                      }]
+                    }
+                  }
+                ]
+              }]
+            }]
+          }
+          EOF
+
+      - name: Stash OTLP results
+        uses: ./actions/stash
+        id: stash
+        with:
+          results: results.json
+          format: otlp
+          run-id: test-otlp-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Verify stash outputs
+        run: |
+          echo "Run ID: ${{ steps.stash.outputs.run-id }}"
+          [[ -n "${{ steps.stash.outputs.run-id }}" ]] || exit 1
+
+  test-stash-go-count:
+    needs: [build, test-stash-otlp]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: action-dist
+          path: actions/
+
+      - name: Create Go bench output with -count=3 (duplicate benchmarks)
+        run: |
+          mkdir -p results
+          cat > results/bench.txt << 'EOF'
+          BenchmarkSort-4           5000000       300 ns/op      48 B/op       2 allocs/op
+          BenchmarkSort-4           5000000       320 ns/op      48 B/op       2 allocs/op
+          BenchmarkSort-4           5000000       310 ns/op      48 B/op       2 allocs/op
+          BenchmarkSearch-4        10000000       100 ns/op       0 B/op       0 allocs/op
+          BenchmarkSearch-4        10000000       120 ns/op       0 B/op       0 allocs/op
+          BenchmarkSearch-4        10000000       110 ns/op       0 B/op       0 allocs/op
+          EOF
+
+      - name: Stash Go count=3 results
+        uses: ./actions/stash
+        id: stash
+        with:
+          results: results/bench.txt
+          format: go
+          run-id: test-count-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Verify stash outputs
+        run: |
+          echo "Run ID: ${{ steps.stash.outputs.run-id }}"
+          [[ -n "${{ steps.stash.outputs.run-id }}" ]] || exit 1
+
+          # Verify the stashed OTLP file has all 6 benchmark entries (not averaged yet)
+          # Each Go bench line produces 3 metrics (ns_per_op, b_per_op, allocs_per_op),
+          # so 6 lines × 3 = 18 total datapoints across metrics.
+          git fetch origin bench-data
+          content=$(git show origin/bench-data:data/runs/${{ steps.stash.outputs.run-id }}.json)
+          count=$(echo "$content" | python3 -c "
+          import sys, json
+          doc = json.load(sys.stdin)
+          total = sum(
+              len(m.get('gauge', m.get('sum', m.get('histogram', {}))).get('dataPoints', []))
+              for rm in doc['resourceMetrics']
+              for sm in rm.get('scopeMetrics', [])
+              for m in sm.get('metrics', [])
+          )
+          print(total)
+          ")
+          echo "Total OTLP datapoints: $count"
+          [[ "$count" -eq 18 ]] || { echo "Expected 18 datapoints (6 bench lines × 3 metrics), got $count"; exit 1; }
+
+  test-aggregate:
+    needs: [build, test-stash-go, test-stash-otlp, test-stash-go-count]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: action-dist
+          path: actions/
+
+      - name: Aggregate results
+        uses: ./actions/aggregate
+        id: agg
+
+      - name: Verify aggregate outputs
+        run: |
+          echo "Run count: ${{ steps.agg.outputs.run-count }}"
+          echo "Metrics:   ${{ steps.agg.outputs.metrics }}"
+          [[ "${{ steps.agg.outputs.run-count }}" -ge 3 ]] || exit 1
+
+      - name: Verify data branch contents
+        run: |
+          git fetch origin bench-data
+          git show origin/bench-data:data/index.json | head -20
+          echo "---"
+          ls_output=$(git ls-tree --name-only origin/bench-data data/series/)
+          echo "Series files: $ls_output"
+          [[ -n "$ls_output" ]] || exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Validate schemas on data branch
+        run: |
+          git fetch origin bench-data
+
+          # Extract and validate index.json
+          git show origin/bench-data:data/index.json > /tmp/index.json
+          echo "=== index.json ==="
+          cat /tmp/index.json
+          npx ajv validate -s schema/index.schema.json -d /tmp/index.json --spec=draft2020 -c ajv-formats || exit 1
+          echo "✓ index.json conforms to schema"
+
+          # Validate each series file
+          for file in $(git ls-tree --name-only origin/bench-data data/series/); do
+            git show "origin/bench-data:$file" > "/tmp/series-$(basename $file)"
+            echo "=== $file ==="
+            cat "/tmp/series-$(basename $file)"
+            npx ajv validate -s schema/series.schema.json -d "/tmp/series-$(basename $file)" --spec=draft2020 -c ajv-formats || exit 1
+            echo "✓ $file conforms to schema"
+          done
+
+          # Validate each run file
+          for file in $(git ls-tree --name-only origin/bench-data data/runs/); do
+            git show "origin/bench-data:$file" > "/tmp/run-$(basename $file)"
+            npx ajv validate -s schema/benchmark-result.schema.json -d "/tmp/run-$(basename $file)" --spec=draft2020 -c ajv-formats || exit 1
+            echo "✓ $file conforms to schema"
+          done
+
+      - name: Verify duplicate benchmark averaging in series
+        run: |
+          git fetch origin bench-data
+          series=$(git show origin/bench-data:data/series/ns_per_op.json)
+          echo "=== ns_per_op series ==="
+          echo "$series" | python3 -m json.tool
+
+          # Verify that -count=3 run produced averaged values with range
+          python3 -c "
+          import json, sys
+          series = json.loads('''$series''')
+          found_range = False
+          for key, entry in series['series'].items():
+            for pt in entry['points']:
+              if pt.get('range') is not None:
+                found_range = True
+                print(f'  {key}: value={pt[\"value\"]}, range={pt[\"range\"]}')
+          if not found_range:
+            print('WARNING: No range values found (expected from -count=3 averaging)')
+          print('Averaging check complete')
+          "
+
+  test-aggregate-max-runs:
+    needs: [build, test-aggregate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: action-dist
+          path: actions/
+
+      - name: Count runs before pruning
+        run: |
+          git fetch origin bench-data
+          before=$(git show origin/bench-data:data/index.json | python3 -c "import sys,json; print(len(json.load(sys.stdin)['runs']))")
+          echo "Runs before pruning: $before"
+          echo "RUNS_BEFORE=$before" >> "$GITHUB_ENV"
+
+      - name: Aggregate with max-runs=2
+        uses: ./actions/aggregate
+        id: agg
+        with:
+          max-runs: "2"
+
+      - name: Verify pruning occurred
+        run: |
+          echo "Run count after pruning: ${{ steps.agg.outputs.run-count }}"
+          [[ "${{ steps.agg.outputs.run-count }}" -le 2 ]] || { echo "Expected at most 2 runs"; exit 1; }
+
+          # Verify the data branch reflects pruning
+          git fetch origin bench-data
+          after=$(git show origin/bench-data:data/index.json | python3 -c "import sys,json; print(len(json.load(sys.stdin)['runs']))")
+          echo "Runs on data branch: $after"
+          [[ "$after" -le 2 ]] || { echo "Expected at most 2 runs on data branch"; exit 1; }
+
+          # Verify run files were actually removed
+          run_files=$(git ls-tree --name-only origin/bench-data data/runs/ | wc -l)
+          echo "Run files on branch: $run_files"
+          [[ "$run_files" -le 2 ]] || { echo "Expected at most 2 run files"; exit 1; }
+          echo "✓ Pruning verified: $RUNS_BEFORE -> $after runs"
+
+  test-repo-stats:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: action-dist
+          path: actions/
+
+      - name: Collect all repo stats (default token)
+        uses: ./actions/repo-stats
+        id: stats
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Validate output file exists and is valid OTLP JSON
+        run: |
+          FILE="${{ steps.stats.outputs.results-file }}"
+          echo "Output file: $FILE"
+          [[ -f "$FILE" ]] || { echo "Output file not found"; exit 1; }
+
+          python3 -c "
+          import json, sys
+
+          doc = json.load(open('$FILE'))
+
+          # Must have resourceMetrics
+          assert 'resourceMetrics' in doc, 'Missing resourceMetrics'
+          assert len(doc['resourceMetrics']) == 1, f'Expected 1 resourceMetrics, got {len(doc[\"resourceMetrics\"])}'
+
+          rm = doc['resourceMetrics'][0]
+
+          # Verify resource attributes include source_format
+          res_attrs = {a['key']: a['value'] for a in rm['resource']['attributes']}
+          assert 'benchkit.source_format' in res_attrs, f'Missing source_format. Attrs: {list(res_attrs.keys())}'
+
+          # Collect all metric names
+          metrics = rm['scopeMetrics'][0]['metrics']
+          names = [m['name'] for m in metrics]
+          print(f'Metrics found ({len(names)}): {names}')
+
+          # Non-traffic, non-security metrics should always be present
+          expected = [
+              'stars', 'forks', 'open_issues', 'open_prs', 'contributors',
+              'releases', 'repo_size_kb', 'watchers', 'network_count',
+              'workflow_success_pct', 'weekly_commits', 'weekly_additions',
+              'weekly_deletions',
+              'avg_issue_close_days', 'median_issue_close_days',
+              'avg_pr_merge_hours', 'median_pr_merge_hours',
+          ]
+          for name in expected:
+              assert name in names, f'Missing expected metric: {name}'
+
+          # Language metrics should produce at least one lang_bytes_* metric
+          lang_metrics = [n for n in names if n.startswith('lang_bytes_')]
+          print(f'Language metrics: {lang_metrics}')
+          assert len(lang_metrics) >= 1, 'Expected at least one lang_bytes_* metric'
+
+          # Every metric must be a gauge with at least one datapoint
+          for m in metrics:
+              assert 'gauge' in m, f'{m[\"name\"]} is not a gauge'
+              dps = m['gauge']['dataPoints']
+              assert len(dps) >= 1, f'{m[\"name\"]} has no datapoints'
+              dp = dps[0]
+              assert 'asInt' in dp or 'asDouble' in dp, f'{m[\"name\"]} datapoint has no value'
+
+              # Verify scenario attribute
+              dp_attrs = {a['key']: a['value'] for a in dp.get('attributes', [])}
+              assert 'benchkit.scenario' in dp_attrs, f'{m[\"name\"]} missing scenario attr'
+
+          print('✓ All validations passed')
+          "
+
+      - name: Collect specific metrics only
+        uses: ./actions/repo-stats
+        id: subset
+        with:
+          github-token: ${{ github.token }}
+          metrics: stars, forks, watchers
+          output-file: subset-stats.json
+          scenario: custom-scenario
+
+      - name: Validate subset output
+        run: |
+          python3 -c "
+          import json
+
+          doc = json.load(open('subset-stats.json'))
+          metrics = doc['resourceMetrics'][0]['scopeMetrics'][0]['metrics']
+          names = sorted([m['name'] for m in metrics])
+          print(f'Subset metrics: {names}')
+
+          assert names == ['forks', 'stars', 'watchers'], f'Expected [forks, stars, watchers], got {names}'
+
+          # Verify custom scenario name
+          dp = metrics[0]['gauge']['dataPoints'][0]
+          scenario = next(a['value']['stringValue'] for a in dp['attributes'] if a['key'] == 'benchkit.scenario')
+          assert scenario == 'custom-scenario', f'Expected custom-scenario, got {scenario}'
+
+          # Verify all values are non-negative integers
+          for m in metrics:
+              dp = m['gauge']['dataPoints'][0]
+              val = int(dp.get('asInt', dp.get('asDouble', -1)))
+              assert val >= 0, f'{m[\"name\"]} has negative value: {val}'
+
+          print('✓ Subset validations passed')
+          "
+
+      - name: Collect stats for a different repository
+        uses: ./actions/repo-stats
+        id: external
+        with:
+          github-token: ${{ github.token }}
+          repository: actions/checkout
+          metrics: stars, forks, releases
+          output-file: external-stats.json
+
+      - name: Validate external repo output
+        run: |
+          python3 -c "
+          import json
+
+          doc = json.load(open('external-stats.json'))
+          metrics = doc['resourceMetrics'][0]['scopeMetrics'][0]['metrics']
+          names = sorted([m['name'] for m in metrics])
+          print(f'External repo metrics: {names}')
+
+          assert names == ['forks', 'releases', 'stars'], f'Expected [forks, releases, stars], got {names}'
+
+          # actions/checkout should have > 0 stars
+          stars = next(m for m in metrics if m['name'] == 'stars')
+          val = int(stars['gauge']['dataPoints'][0].get('asInt', 0))
+          print(f'actions/checkout stars: {val}')
+          assert val > 0, f'Expected actions/checkout to have stars, got {val}'
+
+          # Verify scenario defaults to repo name
+          dp = metrics[0]['gauge']['dataPoints'][0]
+          scenario = next(a['value']['stringValue'] for a in dp['attributes'] if a['key'] == 'benchkit.scenario')
+          assert scenario == 'checkout', f'Expected checkout scenario, got {scenario}'
+
+          print('✓ External repo validations passed')
+          "

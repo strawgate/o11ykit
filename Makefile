@@ -2,8 +2,9 @@ SHELL := /bin/bash
 NPM ?= npm
 BASE_PATH ?= /o11ykit/otlpkit/
 
-.PHONY: install lint format typecheck test test-e2e build check check-release clean clean-all
+.PHONY: install lint format typecheck test test-e2e build check check-release check-all clean clean-all
 .PHONY: dev-demo dev-chartjs dev-echarts dev-recharts dev-uplot pages-build
+.PHONY: octo11y-install octo11y-lint octo11y-test octo11y-build octo11y-check
 
 install:
 	$(NPM) ci
@@ -29,8 +30,26 @@ build:
 check:
 	$(NPM) run check
 
+check-all:
+	$(NPM) run check:all
+
 check-release:
 	$(NPM) run check:release
+
+octo11y-install:
+	$(NPM) run octo11y:install
+
+octo11y-lint:
+	$(NPM) run octo11y:lint
+
+octo11y-test:
+	$(NPM) run octo11y:test
+
+octo11y-build:
+	$(NPM) run octo11y:build
+
+octo11y-check:
+	$(NPM) run octo11y:check
 
 clean:
 	$(NPM) run clean

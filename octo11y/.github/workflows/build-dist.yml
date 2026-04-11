@@ -1,0 +1,56 @@
+name: Build Dist
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build-dist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build all packages and action bundles
+        run: npm run build
+
+      - name: Determine target branch
+        id: target
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "branch=main-dist" >> "$GITHUB_OUTPUT"
+            echo "should_push=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "branch=pr/${{ github.event.pull_request.number }}-dist" >> "$GITHUB_OUTPUT"
+            echo "should_push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_push=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push dist branch
+        if: steps.target.outputs.should_push == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Force-add dist/ files (overrides .gitignore)
+          git add -f actions/*/dist/
+
+          # Only commit+push if there are changes
+          if git diff --cached --quiet; then
+            echo "No dist changes to push"
+          else
+            git commit -m "dist: build from ${GITHUB_SHA::8}"
+            git push origin HEAD:refs/heads/${{ steps.target.outputs.branch }} --force
+            echo "✓ Pushed to ${{ steps.target.outputs.branch }}"
+          fi

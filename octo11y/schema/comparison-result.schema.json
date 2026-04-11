@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/strawgate/octo11y/schema/comparison-result.schema.json",
+  "title": "Benchkit Comparison Result",
+  "description": "Output of compare() — per-benchmark per-metric comparison with regression detection.",
+  "type": "object",
+  "required": ["entries", "hasRegression"],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "description": "Per-benchmark per-metric comparison entries.",
+      "items": {
+        "$ref": "#/$defs/comparisonEntry"
+      }
+    },
+    "hasRegression": {
+      "type": "boolean",
+      "description": "True if any entry has status 'regressed'."
+    },
+    "warnings": {
+      "type": "array",
+      "description": "Human-readable warnings for metrics that were skipped (e.g. zero baseline).",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "comparisonEntry": {
+      "type": "object",
+      "required": ["benchmark", "metric", "direction", "baseline", "current", "percentChange", "status"],
+      "properties": {
+        "benchmark": {
+          "type": "string",
+          "description": "Benchmark name."
+        },
+        "metric": {
+          "type": "string",
+          "description": "Metric name (e.g. 'ns_per_op')."
+        },
+        "unit": {
+          "type": "string",
+          "description": "Metric unit (e.g. 'ns/op')."
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["bigger_is_better", "smaller_is_better"],
+          "description": "Whether higher or lower values are better."
+        },
+        "baseline": {
+          "type": "number",
+          "description": "Averaged baseline value across the comparison window."
+        },
+        "current": {
+          "type": "number",
+          "description": "Current run value."
+        },
+        "percentChange": {
+          "type": "number",
+          "description": "Percentage change from baseline to current. Positive = increased, negative = decreased."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["improved", "stable", "regressed"],
+          "description": "Classification based on threshold test."
+        }
+      }
+    }
+  }
+}

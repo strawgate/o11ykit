@@ -1,0 +1,43 @@
+name: 'Benchkit Compare'
+description: 'Compare benchmark results against a baseline on the data branch and report regressions.'
+inputs:
+  results:
+    description: 'Path or glob pattern to benchmark result file(s) for the current run.'
+    required: true
+  format:
+    description: 'Input format: auto, go, rust, hyperfine, pytest-benchmark, benchmark-action, or otlp.'
+    required: false
+    default: 'auto'
+  data-branch:
+    description: 'Branch used for benchmark data storage.'
+    required: false
+    # Keep in sync with DEFAULT_DATA_BRANCH in @benchkit/format
+    default: 'bench-data'
+  baseline-runs:
+    description: 'Number of most recent baseline runs to average.'
+    required: false
+    default: '5'
+  threshold:
+    description: 'Percentage change threshold for regression detection.'
+    required: false
+    default: '5'
+  fail-on-regression:
+    description: 'Fail the action step when a regression is detected.'
+    required: false
+    default: 'false'
+  comment-on-pr:
+    description: 'Post comparison results as a PR comment.'
+    required: false
+    default: 'true'
+  github-token:
+    description: 'Token with read access to the data branch and permission to comment on pull requests.'
+    required: false
+    default: ${{ github.token }}
+outputs:
+  has-regression:
+    description: "'true' if any benchmark regressed beyond the threshold, 'false' otherwise."
+  summary:
+    description: 'Markdown-formatted comparison report.'
+runs:
+  using: 'node24'
+  main: 'dist/index.js'

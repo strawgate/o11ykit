@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/strawgate/octo11y/schema/index-prs.schema.json",
+  "title": "Benchkit PRs Index",
+  "description": "Navigation index grouping benchmark runs by pull request number, produced by bench-aggregate.",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/pr_index_entry"
+  },
+  "$defs": {
+    "pr_index_entry": {
+      "type": "object",
+      "required": ["prNumber", "ref", "latestRunId", "latestTimestamp", "runCount"],
+      "properties": {
+        "prNumber": {
+          "type": "integer",
+          "description": "Pull request number extracted from the ref."
+        },
+        "ref": {
+          "type": "string",
+          "description": "Git ref for this pull request (e.g. refs/pull/42/merge)."
+        },
+        "latestRunId": {
+          "type": "string",
+          "description": "Run ID of the most recent run for this PR."
+        },
+        "latestTimestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the most recent run for this PR."
+        },
+        "latestCommit": {
+          "type": "string",
+          "description": "Commit SHA of the most recent run for this PR."
+        },
+        "runCount": {
+          "type": "integer",
+          "description": "Total number of runs for this PR."
+        }
+      }
+    }
+  }
+}

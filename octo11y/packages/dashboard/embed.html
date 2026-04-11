@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Octo11y Embed</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+    .bk-embed-error { padding: 16px; color: #dc2626; }
+  </style>
+</head>
+<body>
+  <div id="embed-root"></div>
+  <script type="module">
+    import "@benchkit/chart/css";
+    import { mount } from "@benchkit/chart/embed";
+
+    const params = new URLSearchParams(location.search);
+
+    const source = {};
+    if (params.get("owner")) source.owner = params.get("owner");
+    if (params.get("repo")) source.repo = params.get("repo");
+    if (params.get("branch")) source.branch = params.get("branch");
+    if (params.get("baseUrl")) source.baseUrl = params.get("baseUrl");
+
+    const mode = params.get("mode") || "dashboard";
+    const metric = params.get("metric") || undefined;
+    const maxPoints = params.get("maxPoints") ? parseInt(params.get("maxPoints"), 10) : undefined;
+    const threshold = params.get("threshold") ? parseFloat(params.get("threshold")) : undefined;
+
+    try {
+      mount({
+        target: "#embed-root",
+        source,
+        mode,
+        metric,
+        maxPoints,
+        regressionThreshold: threshold,
+      });
+    } catch (err) {
+      document.getElementById("embed-root").innerHTML =
+        `<div class="bk-embed-error">${err.message}</div>`;
+    }
+  </script>
+</body>
+</html>

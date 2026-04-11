@@ -1,0 +1,48 @@
+name: 'Benchkit Monitor'
+description: 'Background system and custom metrics collection via OpenTelemetry Collector.'
+
+inputs:
+  collector-version:
+    description: 'OTel Collector Contrib version to download.'
+    required: false
+    default: '0.149.0'
+  scrape-interval:
+    description: 'Host metrics scrape interval (e.g. "5s", "1s", "250ms").'
+    required: false
+    default: '5s'
+  metric-sets:
+    description: 'Comma-separated host metric scrapers: cpu,memory,disk,network,process,load,filesystem,paging.'
+    required: false
+    default: 'cpu,memory,load,process'
+  otlp-grpc-port:
+    description: 'OTLP gRPC receiver port. Set to 0 to disable.'
+    required: false
+    default: '4317'
+  otlp-http-port:
+    description: 'OTLP HTTP receiver port. Set to 0 to disable.'
+    required: false
+    default: '4318'
+  data-branch:
+    description: 'Branch to push telemetry data.'
+    required: false
+    # Keep in sync with DEFAULT_DATA_BRANCH in @benchkit/format
+    default: 'bench-data'
+  run-id:
+    description: 'Run identifier. When empty (the default), falls back to $GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT at runtime.'
+    required: false
+    default: ''
+  github-token:
+    description: 'Token with push access to the data branch.'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  otlp-grpc-endpoint:
+    description: 'OTLP gRPC endpoint (e.g. localhost:4317).'
+  otlp-http-endpoint:
+    description: 'OTLP HTTP endpoint (e.g. http://localhost:4318).'
+
+runs:
+  using: 'node24'
+  main: 'dist/main/index.js'
+  post: 'dist/post/index.js'

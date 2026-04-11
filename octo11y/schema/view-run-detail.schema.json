@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/strawgate/octo11y/schema/view-run-detail.schema.json",
+  "title": "Benchkit Run Detail View",
+  "description": "All benchmarks and metric values for a single run, produced by bench-aggregate.",
+  "type": "object",
+  "required": ["run", "metricSnapshots"],
+  "properties": {
+    "run": {
+      "$ref": "#/$defs/run_entry"
+    },
+    "metricSnapshots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/metric_snapshot"
+      }
+    }
+  },
+  "$defs": {
+    "run_entry": {
+      "type": "object",
+      "required": ["id", "timestamp"],
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "commit": { "type": "string" },
+        "ref": { "type": "string" },
+        "benchmarks": { "type": "integer" },
+        "metrics": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "monitor": {
+          "type": "object",
+          "required": ["monitor_version", "poll_interval_ms", "duration_ms"],
+          "properties": {
+            "monitor_version": { "type": "string" },
+            "poll_interval_ms": { "type": "integer" },
+            "duration_ms": { "type": "integer" },
+            "runner_os": { "type": "string" },
+            "runner_arch": { "type": "string" },
+            "poll_count": { "type": "integer" },
+            "kernel": { "type": "string" },
+            "cpu_model": { "type": "string" },
+            "cpu_count": { "type": "integer" },
+            "total_memory_mb": { "type": "number" }
+          }
+        }
+      }
+    },
+    "metric_snapshot": {
+      "type": "object",
+      "required": ["metric", "values"],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "description": "Metric name."
+        },
+        "unit": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["bigger_is_better", "smaller_is_better"]
+        },
+        "values": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/snapshot_value"
+          }
+        }
+      }
+    },
+    "snapshot_value": {
+      "type": "object",
+      "required": ["name", "value"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Benchmark name (including tag suffix if any)."
+        },
+        "value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["bigger_is_better", "smaller_is_better"]
+        },
+        "range": {
+          "type": "number"
+        },
+        "tags": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

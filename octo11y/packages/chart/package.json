@@ -1,0 +1,46 @@
+{
+  "name": "@benchkit/chart",
+  "version": "0.2.0",
+  "description": "Preact components for rendering benchkit benchmark dashboards.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./embed": {
+      "import": "./dist/embed.js",
+      "types": "./dist/embed.d.ts"
+    },
+    "./css": "./dist/style.css"
+  },
+  "scripts": {
+    "build": "tsc && cp src/style.css dist/style.css",
+    "lint": "tsc --noEmit",
+    "test": "node --test dist/*.test.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/strawgate/octo11y.git",
+    "directory": "packages/chart"
+  },
+  "dependencies": {
+    "@benchkit/format": "*",
+    "@octo11y/core": "*",
+    "chart.js": "^4.4.0",
+    "chartjs-adapter-date-fns": "^3.0.0",
+    "date-fns": "^4.1.0"
+  },
+  "peerDependencies": {
+    "preact": "^10.0.0"
+  },
+  "devDependencies": {
+    "preact": "^10.25.0"
+  }
+}

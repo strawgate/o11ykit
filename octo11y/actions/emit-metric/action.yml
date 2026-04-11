@@ -1,0 +1,80 @@
+name: "Benchkit Emit Metric"
+description: "Emit a one-off OTLP metric to the Benchkit monitor collector."
+
+inputs:
+  otlp-http-endpoint:
+    description: "Collector OTLP HTTP endpoint, typically from steps.monitor.outputs.otlp-http-endpoint."
+    required: false
+    default: "http://localhost:4318"
+  name:
+    description: "Metric name to emit."
+    required: true
+  value:
+    description: "Numeric metric value to emit."
+    required: true
+  unit:
+    description: "Metric unit, such as ms, ns/op, events/sec, or points."
+    required: false
+    default: ""
+  metric-kind:
+    description: "OTLP metric kind to emit: gauge or sum."
+    required: false
+    default: "gauge"
+  aggregation-temporality:
+    description: "Aggregation temporality for sum metrics: cumulative or delta."
+    required: false
+    default: "cumulative"
+  monotonic:
+    description: "Whether a sum metric is monotonic."
+    required: false
+    default: "false"
+  description:
+    description: "Optional metric description."
+    required: false
+    default: ""
+  scenario:
+    description: "Benchkit scenario name. Defaults to the metric name."
+    required: false
+    default: ""
+  series:
+    description: "Benchkit series name. Defaults to GITHUB_JOB or 'default'."
+    required: false
+    default: ""
+  direction:
+    description: "Metric direction: bigger_is_better or smaller_is_better. Defaults to inferred from unit or metric name."
+    required: false
+    default: ""
+  role:
+    description: "Benchkit metric role: outcome or diagnostic."
+    required: false
+    default: "outcome"
+  attributes:
+    description: "Additional datapoint attributes as JSON object or key=value lines."
+    required: false
+    default: ""
+  run-id:
+    description: "Run identifier to stamp on OTLP resource attributes. Defaults to GITHUB_RUN_ID-GITHUB_RUN_ATTEMPT."
+    required: false
+    default: ""
+  benchkit-kind:
+    description: "Benchkit run kind stamped on resource attributes: code, workflow, or hybrid."
+    required: false
+    default: "hybrid"
+  service-name:
+    description: "Optional service.name resource attribute."
+    required: false
+    default: ""
+  timeout-ms:
+    description: "HTTP timeout in milliseconds."
+    required: false
+    default: "10000"
+
+outputs:
+  run-id:
+    description: "Run identifier stamped on the emitted OTLP resource."
+  request-url:
+    description: "Resolved OTLP HTTP metrics URL used for the request."
+
+runs:
+  using: "node24"
+  main: "dist/index.js"

@@ -1,0 +1,9 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    uses: ./.github/workflows/validate.yml

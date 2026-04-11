@@ -1,0 +1,57 @@
+name: Deploy to GitHub Pages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # For release-driven deploys, build the exact tagged commit.
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build core package
+        run: npm run build --workspace=packages/core
+
+      - name: Build format package
+        run: npm run build --workspace=packages/format
+
+      - name: Build chart package
+        run: npm run build --workspace=packages/chart
+
+      - name: Build dashboard
+        run: npm run build --workspace=packages/dashboard
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/dashboard/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

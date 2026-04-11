@@ -9,7 +9,8 @@
       "!**/node_modules",
       "!**/.site",
       "!**/playwright-report",
-      "!**/test-results"
+      "!**/test-results",
+      "!octo11y"
     ]
   },
   "formatter": {

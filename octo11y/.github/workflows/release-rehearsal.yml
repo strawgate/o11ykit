@@ -1,0 +1,99 @@
+name: Release Rehearsal
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/release*.yml"
+      - ".github/workflows/publish-to-npm.yml"
+      - "packages/core/**"
+      - "packages/format/**"
+      - "packages/chart/**"
+      - "package.json"
+      - "package-lock.json"
+      - "RELEASING.md"
+      - "scripts/release-rehearsal-local.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rehearsal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify publishable versions are aligned
+        run: |
+          CORE_VERSION=$(node -p "require('./packages/core/package.json').version")
+          FORMAT_VERSION=$(node -p "require('./packages/format/package.json').version")
+          CHART_VERSION=$(node -p "require('./packages/chart/package.json').version")
+
+          echo "Core version:   $CORE_VERSION"
+          echo "Format version: $FORMAT_VERSION"
+          echo "Chart version:  $CHART_VERSION"
+
+          if [[ "$CORE_VERSION" != "$FORMAT_VERSION" || "$FORMAT_VERSION" != "$CHART_VERSION" ]]; then
+            echo "::error::Publishable package versions are not aligned"
+            exit 1
+          fi
+
+      - name: Build publishable packages
+        run: |
+          npm run build --workspace=packages/core
+          npm run build --workspace=packages/format
+          npm run build --workspace=packages/chart
+
+      - name: Pack publishable packages
+        run: |
+          mkdir -p .tmp/release-rehearsal
+          npm pack --workspace=packages/core --pack-destination .tmp/release-rehearsal
+          npm pack --workspace=packages/format --pack-destination .tmp/release-rehearsal
+          npm pack --workspace=packages/chart --pack-destination .tmp/release-rehearsal
+
+      - name: Consumer install/import smoke test
+        run: |
+          mkdir -p .tmp/release-rehearsal/consumer
+          cd .tmp/release-rehearsal/consumer
+
+          npm init -y >/dev/null
+
+          npm install \
+            ../octo11y-core-*.tgz \
+            ../benchkit-format-*.tgz \
+            ../benchkit-chart-*.tgz \
+            preact
+
+          node -e "const core=require('@octo11y/core'); const format=require('@benchkit/format'); if(!core.parseOtlp) throw new Error('missing parseOtlp'); if(!format.parseBenchmarks) throw new Error('missing parseBenchmarks');"
+          node --input-type=module -e "import('@benchkit/chart').then((m)=>{if(!m.Dashboard) throw new Error('missing Dashboard export');});"
+
+      - name: npm publish dry-run checks
+        run: |
+          CORE_VERSION=$(node -p "require('./packages/core/package.json').version")
+          FORMAT_VERSION=$(node -p "require('./packages/format/package.json').version")
+          CHART_VERSION=$(node -p "require('./packages/chart/package.json').version")
+
+          publish_dry_run_if_unpublished() {
+            local package_name="$1"
+            local package_version="$2"
+            local workspace_path="$3"
+
+            if npm view "${package_name}@${package_version}" version >/dev/null 2>&1; then
+              echo "Skipping npm publish --dry-run for ${package_name}@${package_version} (already published)."
+              return 0
+            fi
+
+            npm publish --workspace="${workspace_path}" --dry-run --access public
+          }
+
+          publish_dry_run_if_unpublished "@octo11y/core" "$CORE_VERSION" "packages/core"
+          publish_dry_run_if_unpublished "@benchkit/format" "$FORMAT_VERSION" "packages/format"
+          publish_dry_run_if_unpublished "@benchkit/chart" "$CHART_VERSION" "packages/chart"

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/strawgate/octo11y/schema/index-refs.schema.json",
+  "title": "Benchkit Refs Index",
+  "description": "Navigation index grouping benchmark runs by git ref, produced by bench-aggregate.",
+  "type": "array",
+  "items": {
+    "$ref": "#/$defs/ref_index_entry"
+  },
+  "$defs": {
+    "ref_index_entry": {
+      "type": "object",
+      "required": ["ref", "latestRunId", "latestTimestamp", "runCount"],
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Git ref (e.g. refs/heads/main or refs/pull/42/merge)."
+        },
+        "latestRunId": {
+          "type": "string",
+          "description": "Run ID of the most recent run for this ref."
+        },
+        "latestTimestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp of the most recent run for this ref."
+        },
+        "latestCommit": {
+          "type": "string",
+          "description": "Commit SHA of the most recent run for this ref."
+        },
+        "runCount": {
+          "type": "integer",
+          "description": "Total number of runs for this ref."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+export const T = {
+  bgPage: "#f6f8fa",
+  bgCard: "#ffffff",
+  bgHeaderTop: "#0d1117",
+  bgHeaderBot: "#161b22",
+  bgCode: "#161b22",
+  textPrimary: "#1f2328",
+  textSecondary: "#656d76",
+  textMuted: "#8b949e",
+  textOnDark: "#e6edf3",
+  textSubtleOnDark: "#8b949e",
+  blue: "#2f81f7",
+  green: "#3fb950",
+  purple: "#a371f7",
+  orange: "#d29922",
+  red: "#f85149",
+  border: "#d0d7de",
+  borderSubtle: "#e8ecf0",
+  radius: "8px",
+  radiusLg: "12px",
+  shadow: "0 1px 3px rgba(27,31,36,0.04), 0 1px 2px rgba(27,31,36,0.06)",
+  shadowMd: "0 3px 6px rgba(27,31,36,0.06), 0 2px 4px rgba(27,31,36,0.04)",
+  maxW: "1080px",
+  font: '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif',
+  fontMono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+} as const;
+
+export const ACCENT_COLORS = [T.blue, T.green, T.purple, T.orange, T.red];

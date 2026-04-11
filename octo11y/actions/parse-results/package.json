@@ -1,0 +1,20 @@
+{
+  "name": "@benchkit/parse-results",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GitHub Action: parse benchmark results from logs or files and stash by default.",
+  "scripts": {
+    "build": "tsc && ncc build lib/main.js -o dist -s",
+    "test": "tsc && node --test lib/*.test.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.0",
+    "@actions/exec": "^1.1.1",
+    "@actions/glob": "^0.5.0",
+    "@actions/tool-cache": "^2.0.1",
+    "@benchkit/actions-common": "*",
+    "@benchkit/format": "*",
+    "@octo11y/core": "*"
+  }
+}

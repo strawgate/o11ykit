@@ -1,0 +1,50 @@
+name: "Benchkit: Repo Stats"
+description: >-
+  Collect GitHub repository statistics (stars, forks, issues, PRs, and more)
+  and write benchkit-format OTLP JSON for stashing.
+inputs:
+  github-token:
+    description: >-
+      GitHub token with repo read access. Needs `issues: read`,
+      `pull-requests: read`, and `actions: read` for full metric coverage.
+    required: true
+    default: ${{ github.token }}
+  repository:
+    description: "owner/repo to query (defaults to the current repository)."
+    required: false
+    default: ${{ github.repository }}
+  scenario:
+    description: >-
+      Benchkit scenario name used in the output metrics. Defaults to the
+      repository name (the part after the slash).
+    required: false
+  metrics:
+    description: >-
+      Comma-separated list of metrics to collect, or "all" for every
+      available metric. Available: stars, forks, open-issues, open-prs,
+      contributors, releases, repo-size-kb, watchers, network-count,
+      workflow-success-pct, page-views, unique-visitors, clones,
+      unique-cloners, weekly-commits, weekly-additions,
+      weekly-deletions, avg-issue-close-days, median-issue-close-days,
+      avg-pr-merge-hours, median-pr-merge-hours, dependabot-alerts,
+      code-scanning-alerts, languages. Traffic metrics need
+      administration:read; security metrics need security_events;
+      both are silently skipped if unavailable.
+    required: false
+    default: "all"
+  output-file:
+    description: "Path to write the generated OTLP JSON file."
+    required: false
+    default: "repo-stats.json"
+  workflow-run-count:
+    description: >-
+      Number of recent workflow runs to examine when computing the
+      workflow-success-pct metric.
+    required: false
+    default: "30"
+outputs:
+  results-file:
+    description: "Path to the generated OTLP JSON file (same as output-file input)."
+runs:
+  using: node24
+  main: dist/index.js

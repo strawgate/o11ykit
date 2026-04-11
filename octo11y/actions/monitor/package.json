@@ -1,0 +1,16 @@
+{
+  "name": "@benchkit/monitor",
+  "version": "0.2.0",
+  "private": true,
+  "description": "GitHub Action: background system and custom metrics collection via OpenTelemetry Collector.",
+  "scripts": {
+    "build": "tsc && ncc build lib/main.js -o dist/main -s && ncc build lib/post.js -o dist/post -s",
+    "test": "tsc && node --test lib/otel-config.test.js lib/otel-start.test.js lib/otel-stop.test.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.0",
+    "@actions/tool-cache": "^2.0.1",
+    "@benchkit/format": "*"
+  }
+}

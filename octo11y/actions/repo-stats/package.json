@@ -1,0 +1,16 @@
+{
+  "name": "@benchkit/repo-stats",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GitHub Action: collect GitHub repository statistics as benchkit metrics.",
+  "scripts": {
+    "build": "tsc && ncc build lib/main.js -o dist -s",
+    "test": "tsc && node --test lib/repo-stats.test.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.0",
+    "@actions/github": "^6.0.0",
+    "@benchkit/format": "*"
+  }
+}

@@ -1,0 +1,80 @@
+name: Publish to npm
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag name to validate and publish (for example v0.1.0)
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag name to validate and publish (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish packages
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      - name: Build core package
+        run: npm run build --workspace=packages/core
+
+      - name: Build format package
+        run: npm run build --workspace=packages/format
+
+      - name: Build chart package
+        run: npm run build --workspace=packages/chart
+
+      - name: Verify tag matches package versions
+        run: |
+          RAW_TAG="${{ inputs.tag }}"
+          TAG="${RAW_TAG#v}"
+          CORE_VERSION=$(node -p "require('./packages/core/package.json').version")
+          FORMAT_VERSION=$(node -p "require('./packages/format/package.json').version")
+          CHART_VERSION=$(node -p "require('./packages/chart/package.json').version")
+
+          echo "Tag version:    $TAG"
+          echo "Core version:   $CORE_VERSION"
+          echo "Format version: $FORMAT_VERSION"
+          echo "Chart version:  $CHART_VERSION"
+
+          if [[ "$TAG" != "$CORE_VERSION" ]]; then
+            echo "::error::Tag ${RAW_TAG} does not match @octo11y/core version $CORE_VERSION"
+            exit 1
+          fi
+          if [[ "$TAG" != "$FORMAT_VERSION" ]]; then
+            echo "::error::Tag ${RAW_TAG} does not match @benchkit/format version $FORMAT_VERSION"
+            exit 1
+          fi
+          if [[ "$TAG" != "$CHART_VERSION" ]]; then
+            echo "::error::Tag ${RAW_TAG} does not match @benchkit/chart version $CHART_VERSION"
+            exit 1
+          fi
+
+      - name: Publish @octo11y/core
+        run: npm publish --workspace=packages/core --provenance --access public
+
+      - name: Publish @benchkit/format
+        run: npm publish --workspace=packages/format --provenance --access public
+
+      - name: Publish @benchkit/chart
+        run: npm publish --workspace=packages/chart --provenance --access public
