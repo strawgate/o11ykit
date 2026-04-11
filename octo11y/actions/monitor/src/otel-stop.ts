@@ -308,12 +308,12 @@ function pushTelemetryToDataBranch(state: OtelState): void {
     }
 
     // Write telemetry file (gzipped)
-    const telemetryDir = path.join(worktreePath, "data", "telemetry");
+    const telemetryDir = path.join(worktreePath, "data", "runs", state.runId);
     fs.mkdirSync(telemetryDir, { recursive: true });
-    const targetPath = path.join(telemetryDir, `${state.runId}.otlp.jsonl.gz`);
+    const targetPath = path.join(telemetryDir, "telemetry.otlp.jsonl.gz");
     if (fs.existsSync(targetPath)) {
       throw new Error(
-        `Refusing to overwrite existing telemetry sidecar: data/telemetry/${state.runId}.otlp.jsonl.gz `
+        `Refusing to overwrite existing telemetry sidecar: data/runs/${state.runId}/telemetry.otlp.jsonl.gz `
         + `already exists on '${state.dataBranch}'. run-id values must be unique per write.`,
       );
     }

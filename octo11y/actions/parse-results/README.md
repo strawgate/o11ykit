@@ -75,6 +75,7 @@ steps:
 
 ## Run ID uniqueness
 
-When `commit-results=true`, parse-results treats `data/runs/{run-id}.json` as
-immutable. If that path already exists on the data branch, the action fails
+When `commit-results=true`, parse-results treats
+`data/runs/{run-id}/benchmark.otlp.json` as immutable. If that path already
+exists on the data branch, the action fails
 instead of overwriting it.

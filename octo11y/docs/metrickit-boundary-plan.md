@@ -134,7 +134,7 @@ the benchkit versions become thin wrappers or aliases.
 
 ### Existing files are valid forever
 
-Run files (`data/runs/*.json`) contain OTLP with `benchkit.*` attributes. These
+Run files (`data/runs/{run-id}/benchmark.otlp.json`) contain OTLP with `benchkit.*` attributes. These
 attributes are part of the published data contract and will not be renamed.
 Metrickit will read OTLP generically (ignoring attribute names it doesn't
 know) while benchkit will continue to interpret `benchkit.*` attributes.

@@ -18,7 +18,7 @@ for JS actions, because `@main` does not include compiled action bundles.
 - works with `actions/emit-metric` for simple one-off workflow metrics without a
   full OTLP SDK
 - writes a raw OTLP JSONL sidecar (gzipped) to the data branch at
-  `data/telemetry/{run-id}.otlp.jsonl.gz`
+  `data/runs/{run-id}/telemetry.otlp.jsonl.gz`
 - filters process metrics to runner-descendant processes before pushing, so the
   stored telemetry stays focused on the benchmark job instead of the whole host
 
@@ -105,12 +105,12 @@ job. In the post step, benchkit:
 1. stops the collector gracefully
 2. filters process resources to runner-descendant processes
 3. compresses the telemetry sidecar with gzip
-4. copies the telemetry sidecar to `data/telemetry/{run-id}.otlp.jsonl.gz`
+4. copies the telemetry sidecar to `data/runs/{run-id}/telemetry.otlp.jsonl.gz`
 5. commits and pushes that file to the data branch
 
 Telemetry sidecars are immutable by `run-id`. If
-`data/telemetry/{run-id}.otlp.jsonl.gz` already exists, the post step fails
-instead of overwriting it.
+`data/runs/{run-id}/telemetry.otlp.jsonl.gz` already exists, the post step
+fails instead of overwriting it.
 
 Benchkit also stamps resource attributes such as `benchkit.run_id`,
 `benchkit.kind=hybrid`, `benchkit.source_format=otlp`, and, when available,
@@ -138,10 +138,10 @@ fetch today:
 
 ## Relationship to stash and aggregate
 
-- `actions/stash` still stores the benchmark result itself at
-  `data/runs/{run-id}.json`
-- `actions/monitor` stores raw OTLP telemetry separately at
-  `data/telemetry/{run-id}.otlp.jsonl.gz` (gzipped NDJSON)
+- `actions/stash` stores the benchmark result itself at
+  `data/runs/{run-id}/benchmark.otlp.json`
+- `actions/monitor` stores raw OTLP telemetry alongside it at
+  `data/runs/{run-id}/telemetry.otlp.jsonl.gz` (gzipped NDJSON)
 - aggregate and chart work can then consume those sidecars through OTLP-aware
   pipelines without forcing an eager conversion to `BenchmarkResult` at capture
   time

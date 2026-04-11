@@ -11,7 +11,7 @@ that later aggregation and comparison steps have a stable history to work with.
   OTLP metrics document
 - optionally merges monitor context produced by `actions/monitor` into the
   stored result
-- writes the result to `data/runs/{run-id}.json` on the data branch
+- writes the result to `data/runs/{run-id}/benchmark.otlp.json` on the data branch
 - retries the push with an automatic rebase so concurrent matrix jobs do not
   race each other
 - optionally writes a parsed benchmark summary to `GITHUB_STEP_SUMMARY`
@@ -62,14 +62,14 @@ jobs:
 
 ## Stored output
 
-Each stash call writes one JSON file to the data branch:
+Each stash call writes one benchmark JSON file under the run directory:
 
 ```
-data/runs/{run-id}.json
+data/runs/{run-id}/benchmark.otlp.json
 ```
 
-`run-id` paths are immutable. If `data/runs/{run-id}.json` already exists on
-the data branch, stash fails instead of overwriting it.
+`run-id` paths are immutable. If `data/runs/{run-id}/benchmark.otlp.json`
+already exists on the data branch, stash fails instead of overwriting it.
 
 The file contains OTLP metrics JSON including benchmark names, metric values,
 units, and resource attributes (commit SHA, ref, runner OS, source format).
@@ -89,8 +89,8 @@ attributes are merged in before writing.
 ## Relationship to aggregate and monitor
 
 - `actions/stash` stores the parsed benchmark result at
-  `data/runs/{run-id}.json`
-- `actions/monitor` stores raw OTLP telemetry separately at
-  `data/telemetry/{run-id}.otlp.jsonl.gz`
+  `data/runs/{run-id}/benchmark.otlp.json`
+- `actions/monitor` stores raw OTLP telemetry alongside it at
+  `data/runs/{run-id}/telemetry.otlp.jsonl.gz`
 - `actions/aggregate` reads all run files written by stash and rebuilds the
   query indexes used by charts and dashboards
