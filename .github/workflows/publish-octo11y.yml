@@ -25,7 +25,6 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: octo11y/package-lock.json
-          registry-url: https://registry.npmjs.org
 
       - name: Install octo11y dependencies
         run: npm run octo11y:install
@@ -38,8 +37,15 @@ jobs:
           npm run build --workspace=packages/chart
           npm run build --workspace=packages/adapters
 
+      - name: Upgrade npm for trusted publishing
+        run: |
+          npm install -g npm@^11.11.0
+          npm --version
+
       - name: Publish missing versions
         working-directory: octo11y
+        env:
+          NODE_AUTH_TOKEN: ""
         run: |
           set -euo pipefail
           workspaces=(packages/core packages/format packages/chart packages/adapters)
