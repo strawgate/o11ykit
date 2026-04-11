@@ -17,6 +17,7 @@ A common end-to-end setup looks like this:
 | Action | Use it for | Produces | Reference |
 |---|---|---|---|
 | `actions/parse-results` | Parse benchmark logs/files and persist one raw run | `data/runs/{run-id}.json` | [`../../actions/parse-results/README.md`](../../actions/parse-results/README.md) |
+| `actions/ingest-ci-runs` | Discover completed workflow runs for scheduled ingestion | `runs-json`, `cursor-json` outputs | [`../../actions/ingest-ci-runs/README.md`](../../actions/ingest-ci-runs/README.md) |
 | `actions/stash` | Parse benchmark files and persist one raw run | `data/runs/{run-id}.json` | [`../../actions/stash/README.md`](../../actions/stash/README.md) |
 | `actions/aggregate` | Rebuild derived indexes, series, run views, and badges | `data/index.json`, `data/series/*`, `data/index/*`, `data/views/runs/*`, `data/badges/*` | [`../../actions/aggregate/README.md`](../../actions/aggregate/README.md) |
 | `actions/compare` | Compare current results to recent baselines | PR comment, step summary, regression status | [`../../actions/compare/README.md`](../../actions/compare/README.md) |
@@ -46,6 +47,17 @@ Best for:
 - no-file workflows where benchmark output is only in step logs
 - file-based workflows that still want one canonical parse+stash step
 - gradual migration from explicit stash-only pipelines
+
+### Ingest CI Runs
+
+Start here when you want a scheduled workflow that scans historical CI runs and
+backfills benchmark data automatically.
+
+Best for:
+
+- scanning all workflows by default, with optional workflow filters
+- first-time setup with bounded lookback instead of unbounded history scans
+- incremental ingest using a cursor persisted on the `bench-data` branch
 
 ### Aggregate
 
