@@ -39,7 +39,7 @@
     "dev:uplot": "npm run dev --workspace @otlpkit/example-uplot",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release:publish": "npm publish --workspace @otlpkit/otlpjson --workspace @otlpkit/query --workspace @otlpkit/views --workspace @otlpkit/adapters --access public"
+    "release:publish": "changeset publish"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
