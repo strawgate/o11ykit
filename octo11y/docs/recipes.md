@@ -112,7 +112,7 @@ jobs:
 
 ## Workflow metrics (non-benchmark)
 
-These recipes use `emit-metric` to track any numeric value over time.
+These recipes use `benchkit-emit` to track any numeric value over time.
 They require `actions/monitor` to provide an OTLP collector endpoint.
 
 ### Scheduled ingest from existing CI runs
@@ -203,26 +203,16 @@ jobs:
           echo "JS=$JS" >> "$GITHUB_ENV"
           echo "CSS=$CSS" >> "$GITHUB_ENV"
 
-      - uses: strawgate/octo11y/actions/emit-metric@main-dist
-        with:
-          otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-          name: bundle_total_bytes
-          value: ${{ env.TOTAL }}
-          unit: bytes
-          direction: smaller_is_better
-          scenario: bundle
+      - run: |
+          benchkit-emit --name bundle_total_bytes --value "${{ env.TOTAL }}" \
+            --unit bytes --direction down --scenario bundle
 
-      - uses: strawgate/octo11y/actions/emit-metric@main-dist
-        with:
-          otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-          name: bundle_js_bytes
-          value: ${{ env.JS }}
-          unit: bytes
-          direction: smaller_is_better
-          scenario: bundle
+      - run: |
+          benchkit-emit --name bundle_js_bytes --value "${{ env.JS }}" \
+            --unit bytes --direction down --scenario bundle
 
       - uses: strawgate/octo11y/actions/stash@main-dist
-        with: { results: ${{ steps.monitor.outputs.monitor-results }}, format: otlp }
+        with: { metrics-dir: ${{ steps.monitor.outputs.metrics-dir }} }
       - uses: strawgate/octo11y/actions/aggregate@main-dist
         if: github.ref == 'refs/heads/main'
 ```
@@ -249,17 +239,12 @@ jobs:
           SIZE=$(docker inspect myapp:latest --format '{{.Size}}')
           echo "IMAGE_SIZE=$SIZE" >> "$GITHUB_ENV"
 
-      - uses: strawgate/octo11y/actions/emit-metric@main-dist
-        with:
-          otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-          name: image_size_bytes
-          value: ${{ env.IMAGE_SIZE }}
-          unit: bytes
-          direction: smaller_is_better
-          scenario: docker
+      - run: |
+          benchkit-emit --name image_size_bytes --value "${{ env.IMAGE_SIZE }}" \
+            --unit bytes --direction down --scenario docker
 
       - uses: strawgate/octo11y/actions/stash@main-dist
-        with: { results: ${{ steps.monitor.outputs.monitor-results }}, format: otlp }
+        with: { metrics-dir: ${{ steps.monitor.outputs.metrics-dir }} }
       - uses: strawgate/octo11y/actions/aggregate@main-dist
 ```
 
@@ -302,35 +287,20 @@ jobs:
           END=$(date +%s%N)
           echo "TEST_MS=$(( (END - START) / 1000000 ))" >> "$GITHUB_ENV"
 
-      - uses: strawgate/octo11y/actions/emit-metric@main-dist
-        with:
-          otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-          name: install_duration_ms
-          value: ${{ env.INSTALL_MS }}
-          unit: ms
-          direction: smaller_is_better
-          scenario: ci-timing
+      - run: |
+          benchkit-emit --name install_duration_ms --value "${{ env.INSTALL_MS }}" \
+            --unit ms --direction down --scenario ci-timing
 
-      - uses: strawgate/octo11y/actions/emit-metric@main-dist
-        with:
-          otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-          name: build_duration_ms
-          value: ${{ env.BUILD_MS }}
-          unit: ms
-          direction: smaller_is_better
-          scenario: ci-timing
+      - run: |
+          benchkit-emit --name build_duration_ms --value "${{ env.BUILD_MS }}" \
+            --unit ms --direction down --scenario ci-timing
 
-      - uses: strawgate/octo11y/actions/emit-metric@main-dist
-        with:
-          otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-          name: test_duration_ms
-          value: ${{ env.TEST_MS }}
-          unit: ms
-          direction: smaller_is_better
-          scenario: ci-timing
+      - run: |
+          benchkit-emit --name test_duration_ms --value "${{ env.TEST_MS }}" \
+            --unit ms --direction down --scenario ci-timing
 
       - uses: strawgate/octo11y/actions/stash@main-dist
-        with: { results: ${{ steps.monitor.outputs.monitor-results }}, format: otlp }
+        with: { metrics-dir: ${{ steps.monitor.outputs.metrics-dir }} }
       - uses: strawgate/octo11y/actions/aggregate@main-dist
 ```
 
@@ -360,26 +330,16 @@ jobs:
           echo "TEST_COUNT=$TOTAL" >> "$GITHUB_ENV"
           echo "COVERAGE=$COVER" >> "$GITHUB_ENV"
 
-      - uses: strawgate/octo11y/actions/emit-metric@main-dist
-        with:
-          otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-          name: test_count
-          value: ${{ env.TEST_COUNT }}
-          unit: tests
-          direction: bigger_is_better
-          scenario: test-health
+      - run: |
+          benchkit-emit --name test_count --value "${{ env.TEST_COUNT }}" \
+            --unit tests --direction up --scenario test-health
 
-      - uses: strawgate/octo11y/actions/emit-metric@main-dist
-        with:
-          otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-          name: coverage_pct
-          value: ${{ env.COVERAGE }}
-          unit: "%"
-          direction: bigger_is_better
-          scenario: test-health
+      - run: |
+          benchkit-emit --name coverage_pct --value "${{ env.COVERAGE }}" \
+            --unit "%" --direction up --scenario test-health
 
       - uses: strawgate/octo11y/actions/stash@main-dist
-        with: { results: ${{ steps.monitor.outputs.monitor-results }}, format: otlp }
+        with: { metrics-dir: ${{ steps.monitor.outputs.metrics-dir }} }
       - uses: strawgate/octo11y/actions/aggregate@main-dist
 ```
 
@@ -407,17 +367,12 @@ jobs:
           HEALTH_MS=$(echo "$HEALTH * 1000" | bc | cut -d. -f1)
           echo "HEALTH_MS=$HEALTH_MS" >> "$GITHUB_ENV"
 
-      - uses: strawgate/octo11y/actions/emit-metric@main-dist
-        with:
-          otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-          name: health_latency_ms
-          value: ${{ env.HEALTH_MS }}
-          unit: ms
-          direction: smaller_is_better
-          scenario: api-latency
+      - run: |
+          benchkit-emit --name health_latency_ms --value "${{ env.HEALTH_MS }}" \
+            --unit ms --direction down --scenario api-latency
 
       - uses: strawgate/octo11y/actions/stash@main-dist
-        with: { results: ${{ steps.monitor.outputs.monitor-results }}, format: otlp }
+        with: { metrics-dir: ${{ steps.monitor.outputs.metrics-dir }} }
       - uses: strawgate/octo11y/actions/aggregate@main-dist
 ```
 
@@ -477,7 +432,7 @@ metrics alongside your benchmark results:
       - uses: strawgate/octo11y/actions/stash@main-dist
         with:
           results: bench.txt
-          monitor-results: ${{ steps.monitor.outputs.monitor-results }}
+          metrics-dir: ${{ steps.monitor.outputs.metrics-dir }}
 ```
 
 The monitor data appears in the run detail view alongside your benchmark

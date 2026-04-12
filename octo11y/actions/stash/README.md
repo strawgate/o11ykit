@@ -11,6 +11,8 @@ that later aggregation and comparison steps have a stable history to work with.
   OTLP metrics document
 - optionally merges monitor context produced by `actions/monitor` into the
   stored result
+- optionally merges `*.otlp.json` files from a shared metrics directory
+  (defaults to `BENCHKIT_METRICS_DIR`)
 - writes the result to `data/runs/{run-id}/benchmark.otlp.json` on the data branch
 - retries the push with an automatic rebase so concurrent matrix jobs do not
   race each other
@@ -37,19 +39,20 @@ jobs:
         with:
           results: bench.txt
           format: go
-          monitor-results: monitor.json
+          metrics-dir: ${{ steps.monitor.outputs.metrics-dir }}
 ```
 
 ## Inputs
 
 | Input | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `results` | **yes** | — | Path or glob pattern to benchmark result file(s). |
+| `results` | no | — | Path or glob pattern to benchmark result file(s). |
 | `format` | no | `auto` | Input format: `auto`, `go`, `rust`, `hyperfine`, `pytest-benchmark`, `benchmark-action`, or `otlp`. |
 | `data-branch` | no | `bench-data` | Branch used for benchmark data storage. |
 | `github-token` | no | `${{ github.token }}` | Token with push access to the repository. |
 | `run-id` | no | `{GITHUB_RUN_ID}-{GITHUB_RUN_ATTEMPT}--{GITHUB_JOB}` | Custom run identifier. Defaults to a value that is collision-proof across concurrent jobs. For matrix jobs, supply a value that includes the matrix key so each variant writes a distinct file. |
 | `monitor-results` | no | — | Path to `monitor.json` produced by `actions/monitor`. When provided, monitor benchmarks and context are merged into the stored result. |
+| `metrics-dir` | no | `BENCHKIT_METRICS_DIR` | Directory to scan for `*.otlp.json` files (for example monitor + `benchkit-emit` output files). |
 | `commit-results` | no | `true` | When `false`, parse and output the result JSON but do not commit it to the data branch. |
 | `summary` | no | `true` | When `true`, write a parsed benchmark summary to `GITHUB_STEP_SUMMARY`. |
 
@@ -80,8 +83,8 @@ attributes are merged in before writing.
 
 1. **Parse**: glob-expand `results`, parse every matched file using the
    requested (or auto-detected) format, and merge into a single result document
-2. **Merge** *(optional)*: if `monitor-results` is set, read the monitor output and
-   merge its benchmarks and context into the result
+2. **Merge** *(optional)*: merge `monitor-results` and all `*.otlp.json` files in
+   `metrics-dir` (or `BENCHKIT_METRICS_DIR`) into the result
 3. **Push**: checkout (or create) the data branch in a temporary git worktree,
    write the result file, commit, and push — retrying up to five times with a
    randomized backoff and automatic rebase on conflict

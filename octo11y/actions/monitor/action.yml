@@ -45,6 +45,8 @@ outputs:
     description: 'OTLP gRPC endpoint (e.g. localhost:4317).'
   otlp-http-endpoint:
     description: 'OTLP HTTP endpoint (e.g. http://localhost:4318).'
+  metrics-dir:
+    description: 'Shared metrics directory for monitor and benchkit-emit outputs.'
 
 runs:
   using: 'node24'

@@ -11,6 +11,7 @@ import {
   getEmptyBenchmarksWarning,
   parseBenchmarkFiles,
   parseBenchmarks,
+  readMetricsDir,
   readMonitorOutput,
   writeResultFile,
 } from "./stash.js";
@@ -139,6 +140,21 @@ describe("buildResult", () => {
     assert.ok(scenarios.includes("_monitor/system"));
   });
 
+  it("merges metrics-dir document", () => {
+    const metricsDirDoc = buildOtlpResult({
+      benchmarks: [{ name: "workflow", metrics: { bundle_size_bytes: { value: 1024 } } }],
+      context: { sourceFormat: "otlp" },
+    });
+    const result = buildResult({
+      benchmarkDoc: baseBenchmarkDoc,
+      metricsDirDoc,
+      context: baseContext,
+    });
+    const batch = MetricsBatch.fromOtlp(result);
+    assert.equal(batch.size, 2);
+    assert.ok(batch.metricNames.includes("bundle_size_bytes"));
+  });
+
   it("does not mutate input document", () => {
     const inputDoc = buildOtlpResult({
       benchmarks: [{ name: "BenchA", metrics: { m: { value: 1 } } }],
@@ -164,6 +180,13 @@ describe("buildResult", () => {
     });
     const batch = MetricsBatch.fromOtlp(result);
     assert.equal(batch.context.runner, undefined);
+  });
+
+  it("throws when no data sources are provided", () => {
+    assert.throws(
+      () => buildResult({ context: baseContext }),
+      /No benchmark or monitor metrics were provided/,
+    );
   });
 });
 
@@ -370,6 +393,50 @@ describe("readMonitorOutput", () => {
     } finally {
       fs.rmSync(tmpDir, { recursive: true });
     }
+  });
+});
+
+describe("readMetricsDir", () => {
+  it("merges *.otlp.json files in the directory", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "stash-metrics-dir-"));
+    const docA = buildOtlpResult({
+      benchmarks: [{ name: "bench-a", metrics: { ns_per_op: { value: 120 } } }],
+      context: { sourceFormat: "otlp" },
+    });
+    const docB = buildOtlpResult({
+      benchmarks: [{ name: "bench-b", metrics: { ns_per_op: { value: 220 } } }],
+      context: { sourceFormat: "otlp" },
+    });
+    fs.writeFileSync(path.join(tmpDir, "a.otlp.json"), JSON.stringify(docA));
+    fs.writeFileSync(path.join(tmpDir, "b.otlp.json"), JSON.stringify(docB));
+
+    try {
+      const merged = readMetricsDir(tmpDir);
+      assert.ok(merged);
+      const batch = MetricsBatch.fromOtlp(merged!);
+      assert.equal(batch.size, 2);
+      assert.ok(batch.scenarios.includes("bench-a"));
+      assert.ok(batch.scenarios.includes("bench-b"));
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns undefined when no *.otlp.json files exist", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "stash-metrics-dir-empty-"));
+    try {
+      assert.equal(readMetricsDir(tmpDir), undefined);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws when metrics-dir path is missing", () => {
+    const missing = path.join(os.tmpdir(), `stash-metrics-missing-${Date.now()}`);
+    assert.throws(
+      () => readMetricsDir(missing),
+      /Metrics directory not found/,
+    );
   });
 });
 

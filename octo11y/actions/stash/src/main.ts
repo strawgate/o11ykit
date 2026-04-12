@@ -10,6 +10,7 @@ import {
   formatResultSummaryMarkdown,
   getEmptyBenchmarksWarning,
   parseBenchmarkFiles,
+  readMetricsDir,
   readMonitorOutput,
   writeResultFile,
 } from "./stash.js";
@@ -26,12 +27,14 @@ import {
 import { DEFAULT_PUSH_RETRY_COUNT } from "@octo11y/core";
 
 async function run(): Promise<void> {
-  const resultsPattern = core.getInput("results", { required: true });
+  const resultsPattern = core.getInput("results").trim();
   const format = (core.getInput("format") || "auto") as Format;
   const dataBranch = core.getInput("data-branch") || DEFAULT_DATA_BRANCH;
   const token = core.getInput("github-token", { required: true });
 
   const monitorPath = core.getInput("monitor-results") || "";
+  const metricsDirInput = core.getInput("metrics-dir").trim();
+  const metricsDir = metricsDirInput || process.env.BENCHKIT_METRICS_DIR || "";
 
   const commitResultsInputRaw = core.getInput("commit-results");
   let saveDataFile = true;
@@ -49,25 +52,37 @@ async function run(): Promise<void> {
     githubJob: process.env.GITHUB_JOB,
   });
 
-  // Parse benchmark files
-  const globber = await glob.create(resultsPattern);
-  const files = await globber.glob();
-  if (files.length === 0) {
-    throw new Error(`No files matched pattern: ${resultsPattern}`);
-  }
-  core.info(`Found ${files.length} result file(s)`);
-  const benchmarkDoc = parseBenchmarkFiles(files, format);
-  const emptyBenchmarksWarning = getEmptyBenchmarksWarning(benchmarkDoc);
-  if (emptyBenchmarksWarning) {
-    core.warning(emptyBenchmarksWarning);
+  let benchmarkDoc: ReturnType<typeof parseBenchmarkFiles> | undefined;
+  if (resultsPattern) {
+    const globber = await glob.create(resultsPattern);
+    const files = await globber.glob();
+    if (files.length === 0) {
+      throw new Error(`No files matched pattern: ${resultsPattern}`);
+    }
+    core.info(`Found ${files.length} result file(s)`);
+    benchmarkDoc = parseBenchmarkFiles(files, format);
+    const emptyBenchmarksWarning = getEmptyBenchmarksWarning(benchmarkDoc);
+    if (emptyBenchmarksWarning) {
+      core.warning(emptyBenchmarksWarning);
+    }
+  } else {
+    core.info("No benchmark results pattern provided; relying on monitor/metrics-dir inputs.");
   }
 
   // Merge monitor output if provided
   const monitorDoc = monitorPath ? readMonitorOutput(monitorPath) : undefined;
+  const metricsDirDoc = metricsDir ? readMetricsDir(metricsDir) : undefined;
+
+  if (!benchmarkDoc && !monitorDoc && !metricsDirDoc) {
+    throw new Error(
+      "No data sources provided. Set 'results' or provide 'monitor-results' / 'metrics-dir' inputs.",
+    );
+  }
 
   const result = buildResult({
     benchmarkDoc,
     monitorDoc,
+    metricsDirDoc,
     context: {
       commit: process.env.GITHUB_SHA,
       ref: process.env.GITHUB_REF,
@@ -79,10 +94,13 @@ async function run(): Promise<void> {
   });
 
   const batch = MetricsBatch.fromOtlp(result);
-  const monitorCount = monitorDoc
-    ? MetricsBatch.fromOtlp(monitorDoc).size
-    : 0;
-  core.info(`Parsed ${batch.withoutMonitor().size} benchmark metric(s)${monitorCount ? ` + ${monitorCount} monitor metric(s)` : ""}`);
+  const monitorCount = monitorDoc ? MetricsBatch.fromOtlp(monitorDoc).size : 0;
+  const metricsDirCount = metricsDirDoc ? MetricsBatch.fromOtlp(metricsDirDoc).size : 0;
+  core.info(
+    `Parsed ${batch.withoutMonitor().size} benchmark metric(s)`
+    + `${monitorCount ? ` + ${monitorCount} monitor metric(s)` : ""}`
+    + `${metricsDirCount ? ` + ${metricsDirCount} metrics-dir metric(s)` : ""}`,
+  );
 
   const tempResultPath = createTempResultPath(runId);
   writeResultFile(result, runId, tempResultPath);
