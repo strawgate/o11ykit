@@ -28,16 +28,43 @@ export function readBaselineRuns(runsDir: string, maxRuns: number): MetricsBatch
   }
 
   const files = fs.readdirSync(runsDir)
-    .filter((file) => file.endsWith(".json"))
-    .sort()
-    .reverse()
-    .slice(0, maxRuns);
+    .filter((file) => file.endsWith(".json"));
 
-  return files.map((file) => {
+  const baselines = files.map((file) => {
     const content = fs.readFileSync(path.join(runsDir, file), "utf-8");
     const doc = JSON.parse(content) as OtlpMetricsDocument;
-    return MetricsBatch.fromOtlp(doc);
+    const batch = MetricsBatch.fromOtlp(doc);
+    return {
+      file,
+      batch,
+      latestTimestamp: latestTimestampNanos(batch),
+    };
   });
+
+  baselines.sort((a, b) => {
+    if (a.latestTimestamp === b.latestTimestamp) {
+      return b.file.localeCompare(a.file);
+    }
+    return a.latestTimestamp > b.latestTimestamp ? -1 : 1;
+  });
+
+  return baselines
+    .slice(0, maxRuns)
+    .map((entry) => entry.batch);
+}
+
+function latestTimestampNanos(batch: MetricsBatch): bigint {
+  let latest = 0n;
+  for (const point of batch.points) {
+    if (!point.timestamp || !/^\d+$/.test(point.timestamp)) {
+      continue;
+    }
+    const nanos = BigInt(point.timestamp);
+    if (nanos > latest) {
+      latest = nanos;
+    }
+  }
+  return latest;
 }
 
 export interface CompareOptions {

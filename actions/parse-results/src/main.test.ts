@@ -32,6 +32,16 @@ describe("parseToOtlpDocument", () => {
     assert.ok(countDataPoints(doc) >= 3);
   });
 
+  it("parses go benchmark names with hyphens", () => {
+    const input = "BenchmarkMonitor/path-a-8   1000000   2200 ns/op   96 B/op   3 allocs/op";
+    const doc = parseToOtlpDocument(input, "go", {
+      runId: "run-1b",
+      workflow: "bench",
+    });
+    assert.ok(doc.resourceMetrics.length > 0);
+    assert.ok(countDataPoints(doc) >= 3);
+  });
+
   it("auto-detects benchmark-action json", () => {
     const input = JSON.stringify([{ name: "Bundle", value: 1200, unit: "ms" }]);
     const doc = parseToOtlpDocument(input, "auto", { runId: "run-2" });

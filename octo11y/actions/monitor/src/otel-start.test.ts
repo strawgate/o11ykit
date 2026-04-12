@@ -1,7 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as http from "node:http";
-import { platformArch, downloadUrl, resolveRunId, validatePort, waitForOtlpHttpReady } from "./otel-start.js";
+import {
+  downloadUrl,
+  platformArch,
+  resolveMetricSetsInput,
+  resolveProfile,
+  resolveRunId,
+  validatePort,
+  waitForOtlpHttpReady,
+} from "./otel-start.js";
 
 // ── platformArch ────────────────────────────────────────────────────
 
@@ -52,6 +60,46 @@ describe("platformArch", () => {
         delete (process as unknown as Record<string, unknown>).arch;
       }
     }
+  });
+});
+
+describe("resolveProfile", () => {
+  it("accepts default and ci", () => {
+    assert.equal(resolveProfile("default"), "default");
+    assert.equal(resolveProfile("ci"), "ci");
+    assert.equal(resolveProfile(""), "default");
+  });
+
+  it("rejects unknown profiles", () => {
+    assert.throws(() => resolveProfile("prod"), /Invalid profile/);
+  });
+});
+
+describe("resolveMetricSetsInput", () => {
+  it("uses explicit metric sets when provided", () => {
+    assert.deepEqual(resolveMetricSetsInput("cpu,memory,process", "ci"), [
+      "cpu",
+      "memory",
+      "process",
+    ]);
+  });
+
+  it("uses ci defaults when empty and profile=ci", () => {
+    assert.deepEqual(resolveMetricSetsInput("", "ci"), [
+      "cpu",
+      "memory",
+      "load",
+      "process",
+    ]);
+  });
+
+  it("uses default profile defaults when empty", () => {
+    assert.deepEqual(resolveMetricSetsInput("", "default"), [
+      "cpu",
+      "memory",
+      "load",
+      "process",
+    ]);
   });
 });
 
