@@ -55,6 +55,8 @@ GitHub Pages publishes a small portal:
 - `npm run dev:recharts`
 - `npm run dev:uplot`
 - `npm run dev:types`
+- `npm run clean`
+- `npm run clean:all`
 - `npm run octo11y:install`
 - `npm run octo11y:check`
 - `npm run check:all`
