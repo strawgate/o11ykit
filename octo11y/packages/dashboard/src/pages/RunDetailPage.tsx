@@ -141,7 +141,7 @@ export function RunDetailPage(props: {
           </summary>
           {monitorSnapshots.map((snapshot) => (
             <Card key={snapshot.metric} style={{ marginTop: "8px" }}>
-              <div style={{ fontWeight: 600, fontSize: "0.8rem", marginBottom: "8px" }}>{snapshot.metric.replace("_monitor/", "")}</div>
+              <div style={{ fontWeight: 600, fontSize: "0.8rem", marginBottom: "8px" }}>{snapshot.metric.replace("_monitor.", "")}</div>
               <div style={{ fontSize: "0.8rem", color: T.textSecondary }}>
                 {(snapshot.values ?? []).map((v) => `${v.name}: ${fmtValue(v.value)}`).join(", ")}
               </div>

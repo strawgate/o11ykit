@@ -1,3 +1,5 @@
+import { MONITOR_METRIC_PREFIX } from "@benchkit/format";
+
 const MONITOR_METRIC_LABELS: Record<string, string> = {
   cpu_system_ms: "CPU system time (ms)",
   cpu_system_pct: "CPU system %",
@@ -19,7 +21,7 @@ function titleCase(input: string): string {
 }
 
 export function defaultMetricLabel(metric: string): string {
-  if (metric.startsWith("_monitor/")) {
+  if (metric.startsWith(MONITOR_METRIC_PREFIX)) {
     return defaultMonitorMetricLabel(metric);
   }
 
@@ -30,11 +32,11 @@ export function defaultMetricLabel(metric: string): string {
 
 /** Returns true when the metric name belongs to the monitor action's output. */
 export function isMonitorMetric(metric: string): boolean {
-  return metric.startsWith("_monitor/");
+  return metric.startsWith(MONITOR_METRIC_PREFIX);
 }
 
 export function defaultMonitorMetricLabel(metric: string): string {
-  const raw = metric.replace(/^_monitor\//, "");
+  const raw = metric.replace(new RegExp(`^${MONITOR_METRIC_PREFIX.replace(".", "\\.")}`), "");
   if (MONITOR_METRIC_LABELS[raw]) {
     return MONITOR_METRIC_LABELS[raw];
   }

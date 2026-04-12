@@ -207,11 +207,8 @@ describe("validatePort", () => {
     );
   });
 
-  it("throws for port 0", () => {
-    assert.throws(
-      () => validatePort("otlp-grpc-port", "0"),
-      /Invalid port number for otlp-grpc-port: 0 is out of range/,
-    );
+  it("accepts port 0 (disable sentinel)", () => {
+    assert.equal(validatePort("otlp-grpc-port", "0"), 0);
   });
 
   it("throws for port above 65535", () => {
@@ -268,11 +265,8 @@ describe("validatePort — error paths", () => {
     );
   });
 
-  it("rejects port 0", () => {
-    assert.throws(
-      () => validatePort("otlp-http-port", "0"),
-      /out of range/,
-    );
+  it("accepts port 0 as disabled", () => {
+    assert.equal(validatePort("otlp-http-port", "0"), 0);
   });
 
   it("rejects port above 65535", () => {

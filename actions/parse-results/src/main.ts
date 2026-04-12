@@ -70,6 +70,7 @@ async function run(): Promise<void> {
   const format = (core.getInput("format") || "auto") as Format;
   const dataBranch = core.getInput("data-branch") || "bench-data";
   const token = core.getInput("github-token");
+  if (token) core.setSecret(token);
   const resultsPattern = core.getInput("results");
   const monitorPath = core.getInput("monitor-results");
   const commitResults = core.getBooleanInput("commit-results");

@@ -68,12 +68,12 @@ function makeMonitorDetail(): RunDetailView {
         values: [{ name: "BenchFoo", value: 10.0, unit: "ms" }],
       },
       {
-        metric: "_monitor/cpu_percent",
+        metric: "_monitor.cpu_percent",
         unit: "%",
         values: [{ name: "default", value: 55.2, unit: "%" }],
       },
       {
-        metric: "_monitor/memory_mb",
+        metric: "_monitor.memory_mb",
         unit: "MB",
         values: [{ name: "default", value: 4096, unit: "MB" }],
       },
@@ -137,8 +137,8 @@ describe("RunDetail data model", () => {
     assert.equal(d.run.monitor?.runner_os, "Linux");
     assert.equal(d.run.monitor?.cpu_count, 4);
 
-    const userSnaps = d.metricSnapshots.filter((s) => !s.metric.startsWith("_monitor/"));
-    const monitorSnaps = d.metricSnapshots.filter((s) => s.metric.startsWith("_monitor/"));
+    const userSnaps = d.metricSnapshots.filter((s) => !s.metric.startsWith("_monitor."));
+    const monitorSnaps = d.metricSnapshots.filter((s) => s.metric.startsWith("_monitor."));
 
     assert.equal(userSnaps.length, 1);
     assert.equal(monitorSnaps.length, 2);

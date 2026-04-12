@@ -83,8 +83,8 @@ export function getUniqueTags(series: SeriesFile): Record<string, Set<string>> {
  */
 export function normalizeValues(values: number[]): number[] {
   if (!values.length) return [];
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const min = values.reduce((a, b) => Math.min(a, b), Infinity);
+  const max = values.reduce((a, b) => Math.max(a, b), -Infinity);
   const range = max - min;
   if (range === 0) return values.map(() => 50);
   return values.map((v) => ((v - min) / range) * 100);

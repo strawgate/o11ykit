@@ -54,15 +54,16 @@ export function downloadUrl(version: string, os: string, arch: string, ext: stri
 
 /**
  * Parse and validate a port number input.
- * Throws a descriptive error if the value is not a valid integer in the range 1–65535.
+ * Throws a descriptive error if the value is not a valid integer in the range 0–65535.
+ * Port 0 means "disabled" — callers should check for 0 after validation.
  */
 export function validatePort(inputName: string, raw: string): number {
   const port = parseInt(raw, 10);
   if (isNaN(port)) {
     throw new Error(`Invalid port number for ${inputName}: expected a number, got '${raw}'`);
   }
-  if (port < 1 || port > 65535) {
-    throw new Error(`Invalid port number for ${inputName}: ${port} is out of range (1–65535)`);
+  if (port < 0 || port > 65535) {
+    throw new Error(`Invalid port number for ${inputName}: ${port} is out of range (0–65535)`);
   }
   return port;
 }

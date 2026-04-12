@@ -117,13 +117,18 @@ export function readMonitorOutput(monitorPath: string): OtlpMetricsDocument {
  * replaced with `-`, with consecutive dashes collapsed and leading/trailing
  * dashes stripped.
  */
+/** Sanitize a runId for safe use as a filename (strip path separators and shell-unsafe chars). */
+function sanitizeRunId(raw: string): string {
+  return raw.replace(/[/\\:*?"<>|]/g, "_");
+}
+
 export function buildRunId(options: {
   customRunId?: string;
   githubRunId?: string;
   githubRunAttempt?: string;
   githubJob?: string;
 }): string {
-  if (options.customRunId) return options.customRunId;
+  if (options.customRunId) return sanitizeRunId(options.customRunId);
   const base = `${options.githubRunId ?? "local"}-${options.githubRunAttempt ?? "1"}`;
   if (options.githubJob) {
     const sanitized = options.githubJob
