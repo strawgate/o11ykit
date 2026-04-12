@@ -1,10 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as http from "node:http";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
   downloadUrl,
+  installBenchkitEmitCli,
   platformArch,
   resolveMetricSetsInput,
+  resolveMetricsDir,
   resolveProfile,
   resolveRunId,
   validatePort,
@@ -179,6 +184,38 @@ describe("resolveRunId", () => {
     } finally {
       if (savedId !== undefined) process.env.GITHUB_RUN_ID = savedId;
       else delete process.env.GITHUB_RUN_ID;
+    }
+  });
+});
+
+describe("resolveMetricsDir", () => {
+  it("uses RUNNER_TEMP when available", () => {
+    const prev = process.env.RUNNER_TEMP;
+    process.env.RUNNER_TEMP = "/tmp/benchkit-test";
+    try {
+      assert.equal(resolveMetricsDir(), "/tmp/benchkit-test/benchkit-metrics");
+    } finally {
+      if (prev === undefined) delete process.env.RUNNER_TEMP;
+      else process.env.RUNNER_TEMP = prev;
+    }
+  });
+});
+
+describe("installBenchkitEmitCli", () => {
+  it("creates a runnable wrapper command", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "benchkit-cli-bin-"));
+    try {
+      installBenchkitEmitCli("/tmp/fake-cli.js", tempDir);
+      if (process.platform === "win32") {
+        assert.ok(fs.existsSync(path.join(tempDir, "benchkit-emit.cmd")));
+      } else {
+        const wrapper = path.join(tempDir, "benchkit-emit");
+        assert.ok(fs.existsSync(wrapper));
+        const mode = fs.statSync(wrapper).mode & 0o777;
+        assert.equal(mode, 0o755);
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
 });

@@ -5,12 +5,14 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { spawn } from "node:child_process";
 import {
+  consolidateJsonl,
   filterToRunnerDescendants,
   findDescendantPids,
   isProcessRunning,
   safeUnlink,
   stopCollector,
   suppressExpectedCiNoise,
+  writeMonitorMetricsDoc,
 } from "./otel-stop.js";
 import type { OtelState } from "./types.js";
 
@@ -77,6 +79,43 @@ describe("suppressExpectedCiNoise", () => {
   });
 });
 
+describe("consolidateJsonl", () => {
+  it("merges resourceMetrics across JSONL lines", () => {
+    const content = [
+      JSON.stringify({ resourceMetrics: [{ resource: { attributes: [] }, scopeMetrics: [] }] }),
+      JSON.stringify({ resourceMetrics: [{ resource: { attributes: [] }, scopeMetrics: [] }] }),
+    ].join("\n");
+    const doc = consolidateJsonl(content);
+    assert.equal(doc.resourceMetrics.length, 2);
+  });
+
+  it("ignores malformed JSON lines", () => {
+    const content = [
+      "not-json",
+      JSON.stringify({ resourceMetrics: [{ resource: { attributes: [] }, scopeMetrics: [] }] }),
+    ].join("\n");
+    const doc = consolidateJsonl(content);
+    assert.equal(doc.resourceMetrics.length, 1);
+  });
+});
+
+describe("writeMonitorMetricsDoc", () => {
+  it("writes monitor.otlp.json in the metrics directory", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "otel-monitor-doc-"));
+    try {
+      const outputPath = writeMonitorMetricsDoc(
+        tmpDir,
+        JSON.stringify({ resourceMetrics: [{ resource: { attributes: [] }, scopeMetrics: [] }] }),
+      );
+      assert.equal(path.basename(outputPath), "monitor.otlp.json");
+      const parsed = JSON.parse(fs.readFileSync(outputPath, "utf-8")) as { resourceMetrics: unknown[] };
+      assert.equal(parsed.resourceMetrics.length, 1);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── stopCollector ───────────────────────────────────────────────────
 
 describe("stopCollector", () => {
@@ -86,6 +125,7 @@ describe("stopCollector", () => {
       configPath: "/tmp/fake-config.yaml",
       outputPath: "/tmp/fake-output.jsonl",
       logPath: "/tmp/fake-otelcol.log",
+      metricsDir: "/tmp/fake-metrics-dir",
       startTime: Date.now(),
       runId: "test-1",
       dataBranch: "bench-data",
@@ -107,6 +147,7 @@ describe("stopCollector", () => {
       configPath: "/tmp/fake-config.yaml",
       outputPath: "/tmp/fake-output.jsonl",
       logPath: "/tmp/fake-otelcol.log",
+      metricsDir: "/tmp/fake-metrics-dir",
       startTime: Date.now(),
       runId: "test-2",
       dataBranch: "bench-data",
