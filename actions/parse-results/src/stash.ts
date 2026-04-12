@@ -41,13 +41,18 @@ function pushWithRetry(worktree: string, branch: string, attempts = 3): void {
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
+/** Sanitize a runId for safe use as a filename (strip path separators and shell-unsafe chars). */
+function sanitizeRunId(raw: string): string {
+  return raw.replace(/[/\\:*?"<>|]/g, "_");
+}
+
 export function buildRunId(options: {
   readonly customRunId?: string;
   readonly githubRunId?: string;
   readonly githubRunAttempt?: string;
   readonly githubJob?: string;
 }): string {
-  if (options.customRunId) return options.customRunId;
+  if (options.customRunId) return sanitizeRunId(options.customRunId);
   const base = `${options.githubRunId ?? "local"}-${options.githubRunAttempt ?? "1"}`;
   if (!options.githubJob) return base;
   const sanitizedJob = options.githubJob

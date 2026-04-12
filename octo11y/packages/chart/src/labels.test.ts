@@ -15,18 +15,18 @@ describe("defaultMetricLabel", () => {
   });
 
   it("delegates monitor metrics to the monitor label formatter", () => {
-    assert.equal(defaultMetricLabel("_monitor/cpu_user_pct"), "CPU user %");
+    assert.equal(defaultMetricLabel("_monitor.cpu_user_pct"), "CPU user %");
   });
 });
 
 describe("defaultMonitorMetricLabel", () => {
   it("uses friendly labels for known monitor metrics", () => {
-    assert.equal(defaultMonitorMetricLabel("_monitor/wall_clock_ms"), "Wall clock time (ms)");
-    assert.equal(defaultMonitorMetricLabel("_monitor/mem_available_min_mb"), "Lowest available memory (MB)");
+    assert.equal(defaultMonitorMetricLabel("_monitor.wall_clock_ms"), "Wall clock time (ms)");
+    assert.equal(defaultMonitorMetricLabel("_monitor.mem_available_min_mb"), "Lowest available memory (MB)");
   });
 
   it("formats unknown monitor metrics into title case", () => {
-    assert.equal(defaultMonitorMetricLabel("_monitor/process/background_worker"), "Process Background Worker");
-    assert.equal(defaultMonitorMetricLabel("_monitor/custom_probe"), "Custom Probe");
+    assert.equal(defaultMonitorMetricLabel("_monitor.process/background_worker"), "Process Background Worker");
+    assert.equal(defaultMonitorMetricLabel("_monitor.custom_probe"), "Custom Probe");
   });
 });

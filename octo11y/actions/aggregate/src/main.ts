@@ -35,6 +35,7 @@ interface AggregateOutputs {
 async function run(): Promise<void> {
   const dataBranch = core.getInput("data-branch") || DEFAULT_DATA_BRANCH;
   const token = core.getInput("github-token", { required: true });
+  core.setSecret(token);
   const maxRuns = parseInt(core.getInput("max-runs") || "0", 10);
   if (maxRuns < 0 || maxRuns > 10_000) {
     throw new Error(`max-runs must be between 0 and 10000, got ${maxRuns}`);
@@ -223,6 +224,9 @@ function writeAggregatedFiles(
   const dataDir = path.join(worktree, "data");
   fs.writeFileSync(path.join(dataDir, "index.json"), JSON.stringify(index, null, 2) + "\n");
 
+  /** Sanitize a name for safe use as a filename (strip path separators and shell-unsafe chars). */
+  const sanitizeName = (raw: string): string => raw.replace(/[/\\:*?"<>|]/g, "_");
+
   const seriesDir = path.join(dataDir, "series");
   fs.mkdirSync(seriesDir, { recursive: true });
 
@@ -233,7 +237,7 @@ function writeAggregatedFiles(
   fs.mkdirSync(seriesDir, { recursive: true });
 
   for (const [metricName, series] of seriesMap) {
-    const fileName = `${metricName}.json`;
+    const fileName = `${sanitizeName(metricName)}.json`;
     const filePath = path.join(seriesDir, fileName);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(series, null, 2) + "\n");
@@ -286,7 +290,7 @@ function writeAggregatedFiles(
 
     const badges = buildBadges(seriesMap);
     for (const [metric, badge] of badges) {
-      const fileName = `${metric}.json`;
+      const fileName = `${sanitizeName(metric)}.json`;
       const filePath = path.join(badgesDir, fileName);
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, JSON.stringify(badge, null, 2) + "\n");

@@ -49,6 +49,7 @@ async function run(): Promise<void> {
   const format = (core.getInput("format") || "auto") as Format;
   const dataBranch = core.getInput("data-branch") || DEFAULT_DATA_BRANCH;
   const token = core.getInput("github-token");
+  if (token) core.setSecret(token);
   const resultsPattern = core.getInput("results");
   const monitorPath = core.getInput("monitor-results");
   const writeSummary = core.getBooleanInput("summary");
@@ -113,19 +114,22 @@ async function run(): Promise<void> {
     }
     await configureGit(token);
     const worktree = await checkoutDataBranch(dataBranch, "benchkit-parse-results");
-    const resultPath = path.join(worktree, "data", "runs", runId, "benchmark.otlp.json");
-    if (fs.existsSync(resultPath)) {
-      throw new Error(
-        `Refusing to overwrite existing run document: data/runs/${runId}/benchmark.otlp.json already exists on '${dataBranch}'. `
-        + "run-id values must be unique per write.",
-      );
+    try {
+      const resultPath = path.join(worktree, "data", "runs", runId, "benchmark.otlp.json");
+      if (fs.existsSync(resultPath)) {
+        throw new Error(
+          `Refusing to overwrite existing run document: data/runs/${runId}/benchmark.otlp.json already exists on '${dataBranch}'. `
+          + "run-id values must be unique per write.",
+        );
+      }
+      writeResultFile(result, resultPath);
+      await exec.exec("git", ["-C", worktree, "add", "."]);
+      await exec.exec("git", ["-C", worktree, "commit", "-m", `bench: add run ${runId}`]);
+      await pushWithRetry(worktree, dataBranch, DEFAULT_PUSH_RETRY_COUNT);
+      filePathOutput = `data/runs/${runId}/benchmark.otlp.json`;
+    } finally {
+      await exec.exec("git", ["worktree", "remove", worktree, "--force"], { ignoreReturnCode: true });
     }
-    writeResultFile(result, resultPath);
-    await exec.exec("git", ["-C", worktree, "add", "."]);
-    await exec.exec("git", ["-C", worktree, "commit", "-m", `bench: add run ${runId}`]);
-    await pushWithRetry(worktree, dataBranch, DEFAULT_PUSH_RETRY_COUNT);
-    await exec.exec("git", ["worktree", "remove", worktree, "--force"]);
-    filePathOutput = `data/runs/${runId}/benchmark.otlp.json`;
   } else {
     core.info("commit-results=false; skipping data branch commit");
   }
