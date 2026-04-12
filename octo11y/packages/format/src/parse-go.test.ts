@@ -86,6 +86,17 @@ describe("parseGoBench", () => {
     assert.equal(batch.scenarios[0], "BenchmarkSort/asc");
   });
 
+  it("parses benchmark names that include hyphens", () => {
+    const input = `BenchmarkMonitor/path-a-8    1000000    2200 ns/op    96 B/op    3 allocs/op`;
+    const batch = MetricsBatch.fromOtlp(parseGoBench(input));
+    assert.equal(batch.scenarios.length, 1);
+    assert.equal(batch.scenarios[0], "BenchmarkMonitor/path-a");
+    assert.equal(batch.forMetric("ns_per_op").points[0].value, 2200);
+    assert.equal(batch.forMetric("bytes_per_op").points[0].value, 96);
+    assert.equal(batch.forMetric("allocs_per_op").points[0].value, 3);
+    assert.equal(batch.forMetric("ns_per_op").points[0].tags["procs"], "8");
+  });
+
   it("parses benchmark names with special characters", () => {
     const input = `BenchmarkParse/json(100)-8    5000    200 ns/op`;
     const batch = MetricsBatch.fromOtlp(parseGoBench(input));

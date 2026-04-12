@@ -2,7 +2,18 @@
   "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
   "changelog": false,
   "commit": false,
-  "fixed": [],
+  "fixed": [
+    [
+      "@otlpkit/adapters",
+      "@otlpkit/otlpjson",
+      "@otlpkit/query",
+      "@otlpkit/views",
+      "@octo11y/core",
+      "@benchkit/format",
+      "@benchkit/chart",
+      "@benchkit/adapters"
+    ]
+  ],
   "linked": [],
   "access": "public",
   "baseBranch": "main",

@@ -1,0 +1,91 @@
+name: publish-gh-actions-to-dist-branch
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-dist:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      DIST_BRANCH: ${{ github.event_name == 'pull_request' && format('pr/{0}-dist', github.event.pull_request.number) || 'main-dist' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            octo11y/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci --include=dev
+          npm run octo11y:install
+
+      - name: Build all action bundles
+        run: |
+          set -euo pipefail
+          npm run build --workspace @o11ykit/action-parse-results
+          npm run octo11y:build
+
+      - name: Publish dist branch
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git switch -C "$DIST_BRANCH"
+
+          git add -f \
+            actions/parse-results/action.yml \
+            actions/parse-results/README.md \
+            actions/parse-results/dist \
+            octo11y/actions/stash/action.yml \
+            octo11y/actions/stash/README.md \
+            octo11y/actions/stash/dist \
+            octo11y/actions/aggregate/action.yml \
+            octo11y/actions/aggregate/README.md \
+            octo11y/actions/aggregate/dist \
+            octo11y/actions/compare/action.yml \
+            octo11y/actions/compare/README.md \
+            octo11y/actions/compare/dist \
+            octo11y/actions/monitor/action.yml \
+            octo11y/actions/monitor/README.md \
+            octo11y/actions/monitor/dist \
+            octo11y/actions/emit-metric/action.yml \
+            octo11y/actions/emit-metric/README.md \
+            octo11y/actions/emit-metric/dist \
+            octo11y/actions/parse-results/action.yml \
+            octo11y/actions/parse-results/README.md \
+            octo11y/actions/parse-results/dist \
+            octo11y/actions/repo-stats/action.yml \
+            octo11y/actions/repo-stats/README.md \
+            octo11y/actions/repo-stats/dist \
+            octo11y/actions/ingest-ci-runs/action.yml \
+            octo11y/actions/ingest-ci-runs/README.md \
+            octo11y/actions/ingest-ci-runs/dist
+
+          if git diff --cached --quiet; then
+            echo "No dist changes to publish."
+            exit 0
+          fi
+
+          git commit -m "chore(actions): update dist bundles for ${GITHUB_SHA}"
+          git push origin "$DIST_BRANCH" --force

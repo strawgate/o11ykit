@@ -36,6 +36,10 @@ inputs:
     description: "Path to write the generated OTLP JSON file."
     required: false
     default: "repo-stats.json"
+  resource-attributes:
+    description: "Additional resource-level attributes as JSON object or key=value lines."
+    required: false
+    default: ""
   workflow-run-count:
     description: >-
       Number of recent workflow runs to examine when computing the

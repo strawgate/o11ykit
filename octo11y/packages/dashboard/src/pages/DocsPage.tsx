@@ -172,10 +172,10 @@ jobs:
     content: () => (
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         {[
-          { name: "stash", icon: "📥", desc: "Parse benchmark output and commit one raw run to bench-data. Auto-detects Go, Rust, Hyperfine, pytest, benchmark-action, and OTLP formats. Retries push with rebase up to 5×.", produces: "data/runs/{run-id}.json", inputs: "results, format, run-id, monitor-results" },
+          { name: "stash", icon: "📥", desc: "Parse benchmark output and commit one raw run to bench-data. Auto-detects Go, Rust, Hyperfine, pytest, benchmark-action, and OTLP formats. Retries push with rebase up to 5×.", produces: "data/runs/{run-id}/benchmark.otlp.json", inputs: "results, format, run-id, monitor-results" },
           { name: "aggregate", icon: "📊", desc: "Rebuild derived indexes, time-series, and run-detail views from all runs on bench-data. Triggered by data branch pushes with path filter.", produces: "index.json, series/*, index/refs|prs|metrics, views/*/detail.json", inputs: "data-branch, max-runs" },
           { name: "compare", icon: "🔍", desc: "Compare current results against a rolling baseline. Post a PR comment showing regressions and optionally fail the build.", produces: "PR comment + step summary", inputs: "results, baseline-runs, threshold, fail-on-regression, comment-on-pr" },
-          { name: "monitor", icon: "📡", desc: "Download otelcol-contrib and collect CPU, memory, load, and process metrics. Exposes OTLP gRPC (4317) and HTTP (4318) receivers.", produces: "data/telemetry/{run-id}.otlp.jsonl.gz", inputs: "scrape-interval, metric-sets, collector-version" },
+          { name: "monitor", icon: "📡", desc: "Download otelcol-contrib and collect CPU, memory, load, and process metrics. Exposes OTLP gRPC (4317) and HTTP (4318) receivers.", produces: "data/runs/{run-id}/telemetry.otlp.jsonl.gz", inputs: "scrape-interval, metric-sets, collector-version" },
           { name: "emit-metric", icon: "📤", desc: "Send a single OTLP metric to the monitor's collector. Lightweight custom values without a full SDK — perfect for shell steps.", produces: "OTLP metric → collector", inputs: "name, value, scenario, series, direction" },
         ].map(action => (
           <div key={action.name} style={{
@@ -292,12 +292,12 @@ jobs:
 │   ├── refs.json              ← per-branch index
 │   ├── prs.json               ← per-PR index
 │   └── metrics.json           ← metric summary
-├── runs/{id}.json             ← raw OTLP per run
+├── runs/{id}/
+│   ├── benchmark.otlp.json    ← raw benchmark OTLP
+│   └── telemetry.otlp.jsonl.gz← monitor sidecar
 ├── series/{metric}.json       ← time-series per metric
 ├── views/runs/{id}/
-│   └── detail.json            ← pre-built run view
-└── telemetry/
-    └── {id}.otlp.jsonl.gz     ← monitor sidecar`}</pre>
+│   └── detail.json            ← pre-built run view`}</pre>
         </DocCard>
 
         <DocCard>

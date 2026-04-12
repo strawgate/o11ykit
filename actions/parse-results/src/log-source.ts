@@ -43,6 +43,16 @@ async function downloadLogsArchive(url: string, token: string): Promise<Buffer> 
   return Buffer.from(await response.arrayBuffer());
 }
 
+function isZipArchive(buffer: Buffer): boolean {
+  return (
+    buffer.length >= 4 &&
+    buffer[0] === 0x50 &&
+    buffer[1] === 0x4b &&
+    (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07) &&
+    (buffer[3] === 0x04 || buffer[3] === 0x06 || buffer[3] === 0x08)
+  );
+}
+
 interface RunJob {
   readonly id: number;
   readonly name: string;
@@ -170,8 +180,11 @@ export async function readCurrentRunLogs(
     os.tmpdir(),
     `o11ykit-run-logs-${runId}-${runAttempt ?? "1"}-${Date.now()}.zip`
   );
-  fs.writeFileSync(zipPath, archive);
+  if (!isZipArchive(archive)) {
+    return archive.toString("utf-8");
+  }
 
+  fs.writeFileSync(zipPath, archive);
   const extractedDir = await tc.extractZip(zipPath);
   const files = walkFiles(extractedDir).filter(isLogTextFile);
   if (files.length === 0) {

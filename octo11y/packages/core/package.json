@@ -1,6 +1,6 @@
 {
   "name": "@octo11y/core",
-  "version": "0.2.0",
+  "version": "0.2.3",
   "description": "Generic OTLP metric types, parsing, and data structures for metric storage and visualization.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,7 +15,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/strawgate/octo11y.git",
-    "directory": "packages/core"
+    "url": "https://github.com/strawgate/o11ykit.git",
+    "directory": "octo11y/packages/core"
   }
 }

@@ -55,11 +55,17 @@ GitHub Pages publishes a small portal:
 - `npm run dev:recharts`
 - `npm run dev:uplot`
 - `npm run dev:types`
+- `npm run clean`
+- `npm run clean:all`
 - `npm run octo11y:install`
 - `npm run octo11y:check`
 - `npm run check:all`
 
 `check:release` validates publish artifacts with `npm pack --dry-run`, `publint`, and `attw`.
+
+## Release + Publishing
+
+See [`RELEASING.md`](./RELEASING.md) for trusted publishing setup, bootstrap steps for new package names, and the recommended security-key flow that avoids one OTP per command.
 
 ## Make Targets
 

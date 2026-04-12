@@ -1,6 +1,6 @@
 {
   "name": "@benchkit/chart",
-  "version": "0.2.0",
+  "version": "0.2.3",
   "description": "Preact components for rendering benchkit benchmark dashboards.",
   "type": "module",
   "main": "dist/index.js",
@@ -27,8 +27,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/strawgate/octo11y.git",
-    "directory": "packages/chart"
+    "url": "https://github.com/strawgate/o11ykit.git",
+    "directory": "octo11y/packages/chart"
   },
   "dependencies": {
     "@benchkit/format": "*",

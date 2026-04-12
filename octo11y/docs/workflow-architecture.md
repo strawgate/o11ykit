@@ -59,7 +59,7 @@ The stash action's default run identifier embeds three components:
 For example, run `12345` attempt `1` from a job named `bench-go` produces:
 
 ```
-data/runs/12345-1--bench-go.json
+data/runs/12345-1--bench-go/benchmark.otlp.json
 ```
 
 This means two jobs in the same workflow run can both call the stash action

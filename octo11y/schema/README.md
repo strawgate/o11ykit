@@ -139,8 +139,8 @@ npx ajv validate -s schema/view-run-detail.schema.json -d data/views/runs/my-run
 bench-stash                      bench-aggregate
     │                                  │
     ▼                                  ▼
-data/runs/{id}.json ───────► data/index.json
-  (OTLP metrics JSON)         data/index/refs.json
+data/runs/{id}/benchmark.otlp.json ───────► data/index.json
+  (OTLP metrics JSON)                    data/index/refs.json
                                data/index/prs.json
                                data/index/metrics.json
                                data/series/{metric}.json
@@ -149,8 +149,8 @@ data/runs/{id}.json ───────► data/index.json
 actions/monitor
     │
     ▼
-data/telemetry/{id}.otlp.json
-  (raw OTLP JSON sidecar)
+data/runs/{id}/telemetry.otlp.jsonl.gz
+  (raw OTLP JSONL sidecar)
 ```
 
 1. `bench-stash` parses benchmark output and writes a run file.
