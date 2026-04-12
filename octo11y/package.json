@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "clean:artifacts": "rm -rf packages/*/dist actions/*/dist actions/*/lib",
-    "build": "npm run clean:artifacts && npm run build -w packages/core && npm run build -w packages/format && npm run build -w packages/adapters && npm run build -w packages/chart && npm run build -w packages/dashboard && npm run build -w actions/actions-common && npm run build -w actions/stash && npm run build -w actions/parse-results && npm run build -w actions/aggregate && npm run build -w actions/compare && npm run build -w actions/monitor && npm run build -w actions/emit-metric && npm run build -w actions/repo-stats",
+    "build": "npm run clean:artifacts && npm run build -w packages/core && npm run build -w packages/format && npm run build -w packages/adapters && npm run build -w packages/chart && npm run build -w packages/dashboard && npm run build -w actions/actions-common && npm run build -w actions/stash && npm run build -w actions/parse-results && npm run build -w actions/aggregate && npm run build -w actions/compare && npm run build -w actions/monitor && npm run build -w actions/emit-metric && npm run build -w actions/repo-stats && npm run build -w actions/ingest-ci-runs",
     "test": "npm run build && npm run test:workspaces",
     "test:workspaces": "npm run test --workspaces --if-present",
     "lint": "eslint . && npm run lint --workspaces --if-present",

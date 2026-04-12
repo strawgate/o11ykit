@@ -1,6 +1,6 @@
 {
   "name": "@benchkit/format",
-  "version": "0.2.0",
+  "version": "0.2.3",
   "description": "Benchmark result types and format parsers (Go bench, Rust bench, Hyperfine, pytest-benchmark, benchmark-action, OTLP).",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -18,7 +18,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/strawgate/octo11y.git",
-    "directory": "packages/format"
+    "url": "https://github.com/strawgate/o11ykit.git",
+    "directory": "octo11y/packages/format"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@otlpkit/otlpjson",
-  "version": "0.1.0",
+  "version": "0.2.3",
   "description": "OTLP JSON parsing and iterators for metrics, traces, and logs.",
   "license": "UNLICENSED",
   "engines": {
@@ -33,5 +33,10 @@
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/strawgate/o11ykit.git",
+    "directory": "packages/otlpjson"
   }
 }

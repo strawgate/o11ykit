@@ -18,3 +18,5 @@ test-results/
 actions/*/lib/
 !actions/parse-results/dist/
 !actions/parse-results/dist/**
+!octo11y/actions/*/dist/
+!octo11y/actions/*/dist/**

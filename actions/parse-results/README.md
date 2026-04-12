@@ -2,6 +2,9 @@
 
 Parses benchmark output into OTLP metrics JSON and stashes it to a data branch.
 
+Use a published dist ref (`@main-dist` or a version tag). Do not use `@main`
+for JS actions, because `@main` does not include compiled action bundles.
+
 ## Modes
 
 - `mode: auto` (default): downloads current run logs via GitHub Actions API using `github-token`.
@@ -20,7 +23,22 @@ Parses benchmark output into OTLP metrics JSON and stashes it to a data branch.
 - `source-job`: optional job name to target when `auto` run logs are unavailable
 - `monitor-results`: optional OTLP JSON file path to merge into output
 - `commit-results`: whether to push to data branch (default `true`)
+- `fail-on-zero-datapoints`: fail action if parsed datapoints is zero (default `false`)
+- `min-datapoints`: minimum datapoints required for success (default `0`)
 - `summary`: write step summary (default `true`)
+
+Guardrails are evaluated before committing results. If thresholds are not met,
+the action fails and no stash commit is pushed.
+
+## Outputs
+
+- `run-id`: resolved run identifier
+- `file-path`: stashed path (`data/runs/...`) or temp output path
+- `source`: resolved source mode (`auto` or `file`)
+- `datapoint-count`: total datapoints in normalized OTLP
+- `resource-metrics-count`: total `resourceMetrics` entries
+- `has-metrics`: `true` when datapoints are present, otherwise `false`
+- `normalized-otlp-path`: local path to normalized OTLP JSON for downstream steps
 
 ## Example
 
@@ -32,7 +50,7 @@ permissions:
 steps:
   - uses: actions/checkout@v4
   - run: go test -bench=. -benchmem ./...
-  - uses: ./actions/parse-results
+  - uses: strawgate/o11ykit/actions/parse-results@main-dist
     with:
       mode: auto
       format: go

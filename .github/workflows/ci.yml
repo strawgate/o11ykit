@@ -1,10 +1,13 @@
-name: CI
+name: validate-o11ykit-monorepo
 
 on:
   push:
     branches:
       - main
   pull_request:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   validate:
@@ -27,7 +30,10 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --include=dev
+
+      - name: Install octo11y dependencies
+        run: npm run octo11y:install
 
       - name: Validate workspace
         run: npm run check
@@ -57,7 +63,7 @@ jobs:
           cache-dependency-path: octo11y/package-lock.json
 
       - name: Install octo11y dependencies
-        run: npm ci --prefix octo11y
+        run: npm run octo11y:install
 
       - name: Validate octo11y workspace
         run: npm run octo11y:check

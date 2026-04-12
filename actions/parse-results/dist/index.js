@@ -63625,6 +63625,24 @@ function countDataPoints(doc) {
     return count;
 }
 //# sourceMappingURL=build-otlp.js.map
+;// CONCATENATED MODULE: ./lib/guardrails.js
+function parseMinDatapoints(raw) {
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error(`min-datapoints must be a non-negative integer, got "${raw}".`);
+    }
+    return parsed;
+}
+function enforceDatapointPolicy(options) {
+    if (options.failOnZeroDatapoints && options.dataPoints === 0) {
+        throw new Error("Parsed 0 datapoints and fail-on-zero-datapoints=true. " +
+            "Verify format/source content or disable the guardrail.");
+    }
+    if (options.dataPoints < options.minDatapoints) {
+        throw new Error(`Parsed ${options.dataPoints} datapoints, below min-datapoints=${options.minDatapoints}.`);
+    }
+}
+//# sourceMappingURL=guardrails.js.map
 ;// CONCATENATED MODULE: external "node:os"
 const external_node_os_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:os");
 // EXTERNAL MODULE: ../../node_modules/@actions/tool-cache/lib/tool-cache.js
@@ -63671,6 +63689,13 @@ async function downloadLogsArchive(url, token) {
         throw new Error(`Logs API request failed (${response.status}): ${body.slice(0, 300)}`);
     }
     return Buffer.from(await response.arrayBuffer());
+}
+function isZipArchive(buffer) {
+    return (buffer.length >= 4 &&
+        buffer[0] === 0x50 &&
+        buffer[1] === 0x4b &&
+        (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07) &&
+        (buffer[3] === 0x04 || buffer[3] === 0x06 || buffer[3] === 0x08));
 }
 async function listRunJobs(options) {
     const endpoint = new URL(`${options.apiUrl}/repos/${options.repository}/actions/runs/${options.runId}/jobs`);
@@ -63763,6 +63788,9 @@ async function readCurrentRunLogs(token, options) {
         }
     }
     const zipPath = external_node_path_namespaceObject.join(external_node_os_namespaceObject.tmpdir(), `o11ykit-run-logs-${runId}-${runAttempt ?? "1"}-${Date.now()}.zip`);
+    if (!isZipArchive(archive)) {
+        return archive.toString("utf-8");
+    }
     external_node_fs_namespaceObject.writeFileSync(zipPath, archive);
     const extractedDir = await tool_cache.extractZip(zipPath);
     const files = walkFiles(extractedDir).filter(isLogTextFile);
@@ -63810,11 +63838,17 @@ function metricNameFromUnit(unit) {
 }
 function parseGo(input) {
     const benchmarks = [];
-    const re = /^(?<name>Benchmark\w[\w/()$%^&*=|,[\]{}"#]*?)(?:-(?<procs>\d+))?\s+(?<iters>\d+)\s+(?<rest>.+)$/;
+    const re = /^(?<fullName>Benchmark\S+)\s+(?<iters>\d+)\s+(?<rest>.+)$/;
     for (const line of input.split(/\r?\n/)) {
         const m = line.match(re);
         if (!m?.groups)
             continue;
+        const fullName = m.groups.fullName;
+        if (!fullName)
+            continue;
+        const procsMatch = fullName.match(/^(?<name>.+?)-(?<procs>\d+)$/);
+        const name = procsMatch?.groups?.name ?? fullName;
+        const procs = procsMatch?.groups?.procs;
         const rest = m.groups.rest ?? "";
         const parts = rest.trim().split(/\s+/);
         const metrics = {};
@@ -63833,10 +63867,7 @@ function parseGo(input) {
         }
         if (Object.keys(metrics).length === 0)
             continue;
-        const tags = m.groups.procs ? { procs: m.groups.procs } : null;
-        const name = m.groups.name;
-        if (!name)
-            continue;
+        const tags = procs ? { procs } : null;
         benchmarks.push({
             name,
             ...(tags ? { tags } : {}),
@@ -64143,6 +64174,7 @@ function stashResult(options) {
 
 
 
+
 function resolveMode(raw) {
     if (raw === "auto" || raw === "file")
         return raw;
@@ -64179,6 +64211,8 @@ function summaryMarkdown(options) {
         `Mode: \`${options.mode}\``,
         `Format: \`${options.format}\``,
         `Datapoints: **${options.dataPoints}**`,
+        `Resource metrics: **${options.resourceMetricsCount}**`,
+        `Has metrics: \`${String(options.hasMetrics)}\``,
         `Output: \`${options.filePath}\``,
         "",
     ].join("\n");
@@ -64191,6 +64225,8 @@ async function run() {
     const resultsPattern = core.getInput("results");
     const monitorPath = core.getInput("monitor-results");
     const commitResults = core.getBooleanInput("commit-results");
+    const failOnZeroDatapoints = core.getBooleanInput("fail-on-zero-datapoints");
+    const minDatapoints = parseMinDatapoints(core.getInput("min-datapoints") || "0");
     const includeSummary = core.getBooleanInput("summary");
     const customRunId = core.getInput("run-id");
     const sourceRunId = core.getInput("source-run-id");
@@ -64238,9 +64274,16 @@ async function run() {
     });
     const merged = mergeOtlpDocuments(parsed, monitorPath ? readMonitorDocument(monitorPath) : undefined);
     const dataPoints = countDataPoints(merged);
+    const resourceMetricsCount = merged.resourceMetrics.length;
+    const hasMetrics = dataPoints > 0;
     if (dataPoints === 0) {
         core.warning(`Parsed 0 datapoints from ${sourceName}. Confirm your format (${format}) and log/file content.`);
     }
+    enforceDatapointPolicy({
+        dataPoints,
+        failOnZeroDatapoints,
+        minDatapoints,
+    });
     const tempPath = createTempResultPath(runId);
     writeResultFile(merged, tempPath);
     let outputPath = tempPath;
@@ -64267,6 +64310,8 @@ async function run() {
             mode,
             format,
             dataPoints,
+            resourceMetricsCount,
+            hasMetrics,
             filePath: outputPath,
         }), true)
             .write();
@@ -64274,6 +64319,10 @@ async function run() {
     core.setOutput("run-id", runId);
     core.setOutput("file-path", outputPath);
     core.setOutput("source", mode);
+    core.setOutput("datapoint-count", String(dataPoints));
+    core.setOutput("resource-metrics-count", String(resourceMetricsCount));
+    core.setOutput("has-metrics", String(hasMetrics));
+    core.setOutput("normalized-otlp-path", tempPath);
 }
 run().catch((error) => {
     core.setFailed(error instanceof Error ? error.message : String(error));

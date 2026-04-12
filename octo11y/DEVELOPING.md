@@ -25,6 +25,8 @@ Use the docs that match the audience you are working for:
 - `packages/chart/`: Preact dashboard components, chart primitives, fetch helpers
 - `packages/dashboard/`: private dogfood app deployed to [GitHub Pages](https://strawgate.github.io/octo11y/) — not a template (build from `@benchkit/chart` instead)
 - `actions/stash/`: GitHub Action to parse and store run data
+- `actions/parse-results/`: GitHub Action to parse logs/files and stash normalized OTLP
+- `actions/ingest-ci-runs/`: GitHub Action to discover completed CI runs for scheduled ingest
 - `actions/aggregate/`: GitHub Action to build indexes and views
 - `actions/compare/`: GitHub Action to compare results against a baseline
 - `actions/monitor/`: GitHub Action for collector-backed telemetry capture
@@ -55,6 +57,8 @@ npm run build --workspace=packages/format
 npm run build --workspace=packages/chart
 npm run build --workspace=packages/dashboard
 npm run build --workspace=actions/stash
+npm run build --workspace=actions/parse-results
+npm run build --workspace=actions/ingest-ci-runs
 npm run build --workspace=actions/aggregate
 npm run build --workspace=actions/compare
 npm run build --workspace=actions/monitor
