@@ -23,7 +23,7 @@
 ## Roadmap and planning
 
 - [`vision-and-roadmap.md`](vision-and-roadmap.md) — product direction and roadmap
-- [`metrickit-boundary-plan.md`](metrickit-boundary-plan.md) — metrickit/benchkit split boundary and compatibility plan
+- [`otlpkit-boundary-plan.md`](otlpkit-boundary-plan.md) — otlpkit/benchkit split boundary and compatibility plan
 - [`internal/agent-handoff.md`](internal/agent-handoff.md) — current execution queue for agents
 
 ## Package and action references

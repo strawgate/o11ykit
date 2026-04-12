@@ -610,6 +610,19 @@ describe("readRuns", () => {
     }
   });
 
+  it("ignores run directories that only contain telemetry sidecars", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "benchkit-agg-test-"));
+    try {
+      const runDir = path.join(tmpDir, "run-001");
+      fs.mkdirSync(runDir, { recursive: true });
+      fs.writeFileSync(path.join(runDir, "telemetry.otlp.jsonl.gz"), "not parsed by aggregate");
+      const runs = readRuns(tmpDir);
+      assert.equal(runs.length, 0);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+
   it("rejects non-OTLP JSON files", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "benchkit-agg-test-"));
     try {

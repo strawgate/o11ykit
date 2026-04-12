@@ -21,6 +21,7 @@ drop in one step:
 | `scenario` | no | repo name | Benchkit scenario name for the metrics |
 | `metrics` | no | `all` | Comma-separated list of metrics to collect (see below) |
 | `output-file` | no | `repo-stats.json` | Path to write the OTLP JSON file |
+| `resource-attributes` | no | `""` | Additional OTLP resource attributes as JSON object or key=value lines |
 | `workflow-run-count` | no | `30` | Recent runs to sample for `workflow-success-pct` |
 
 ## Outputs
@@ -127,6 +128,9 @@ jobs:
 - uses: strawgate/octo11y/actions/repo-stats@main-dist
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
+    resource-attributes: |
+      team=platform
+      env=prod
     metrics: stars, forks, contributors, watchers
 ```
 

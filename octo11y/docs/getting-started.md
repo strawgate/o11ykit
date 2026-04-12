@@ -175,7 +175,7 @@ To record a one-off workflow metric without wiring up a full OTLP SDK:
             variant=bm25
 ```
 
-The monitor action stores raw OTLP telemetry at `data/telemetry/{run-id}.otlp.jsonl.gz`.
+The monitor action stores raw OTLP telemetry at `data/runs/{run-id}/telemetry.otlp.jsonl.gz`.
 
 ### Custom workflow metrics (non-benchmark)
 

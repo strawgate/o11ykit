@@ -1,10 +1,13 @@
-name: Publish octo11y Packages
+name: publish-octo11y-packages-manual-or-tag
 
 on:
   workflow_dispatch:
   push:
     tags:
       - "octo11y-v*"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 permissions:
   contents: read

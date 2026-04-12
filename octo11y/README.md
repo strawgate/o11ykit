@@ -62,6 +62,7 @@ Works with Go, Rust, Hyperfine, pytest-benchmark, and more — see
 | `@benchkit/adapters` | Library-agnostic data transforms (filters, regressions) + Chart.js adapter | [`packages/adapters/README.md`](packages/adapters/README.md) |
 | `@benchkit/chart` | Preact dashboards, charts, and fetch helpers | [`packages/chart/README.md`](packages/chart/README.md) |
 | `actions/parse-results` | Parse benchmark output from logs/files and stash by default | [`actions/parse-results/README.md`](actions/parse-results/README.md) |
+| `actions/ingest-ci-runs` | Discover completed workflow runs for scheduled benchmark ingestion | [`actions/ingest-ci-runs/README.md`](actions/ingest-ci-runs/README.md) |
 | `actions/stash` | Store raw run results on the data branch | [`actions/stash/README.md`](actions/stash/README.md) |
 | `actions/aggregate` | Build derived indexes, series, and run views | [`actions/aggregate/README.md`](actions/aggregate/README.md) |
 | `actions/compare` | Compare current results to a baseline and comment on PRs | [`actions/compare/README.md`](actions/compare/README.md) |

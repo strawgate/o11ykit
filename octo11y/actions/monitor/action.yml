@@ -10,10 +10,14 @@ inputs:
     description: 'Host metrics scrape interval (e.g. "5s", "1s", "250ms").'
     required: false
     default: '5s'
-  metric-sets:
-    description: 'Comma-separated host metric scrapers: cpu,memory,disk,network,process,load,filesystem,paging.'
+  profile:
+    description: 'Preset tuning profile. Use "ci" to reduce process-scraper noise in GitHub-hosted runners.'
     required: false
-    default: 'cpu,memory,load,process'
+    default: 'default'
+  metric-sets:
+    description: 'Comma-separated host metric scrapers: cpu,memory,disk,network,process,load,filesystem,paging. When empty, uses profile defaults.'
+    required: false
+    default: ''
   otlp-grpc-port:
     description: 'OTLP gRPC receiver port. Set to 0 to disable.'
     required: false

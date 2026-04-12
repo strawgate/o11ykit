@@ -21,14 +21,16 @@ export function parseGoBench(input: string): OtlpMetricsDocument {
   try {
     const benchmarks: OtlpResultBenchmark[] = [];
 
-    const re =
-      /^(?<name>Benchmark\w[\w/()$%^&*=|,[\]{}"#]*?)(?:-(?<procs>\d+))?\s+(?<iters>\d+)\s+(?<rest>.+)$/;
+    const re = /^(?<fullName>Benchmark\S+)\s+(?<iters>\d+)\s+(?<rest>.+)$/;
 
     for (const line of input.split(/\r?\n/)) {
       const m = line.match(re);
       if (!m?.groups) continue;
 
-      const { name, procs, iters: _iters, rest } = m.groups;
+      const { fullName, iters: _iters, rest } = m.groups;
+      const procsMatch = fullName.match(/^(?<name>.+?)-(?<procs>\d+)$/);
+      const name = procsMatch?.groups?.name ?? fullName;
+      const procs = procsMatch?.groups?.procs;
       const tags: Record<string, string> = {};
       if (procs) tags.procs = procs;
 
@@ -69,5 +71,4 @@ export function parseGoBench(input: string): OtlpMetricsDocument {
     );
   }
 }
-
 

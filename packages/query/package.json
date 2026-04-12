@@ -1,6 +1,6 @@
 {
   "name": "@otlpkit/query",
-  "version": "0.1.0",
+  "version": "0.2.3",
   "description": "Generic telemetry query helpers for otlpkit.",
   "license": "UNLICENSED",
   "engines": {
@@ -31,7 +31,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@otlpkit/otlpjson": "^0.1.0"
+    "@otlpkit/otlpjson": "^0.2.3"
   },
   "scripts": {
     "build": "tsc -b",
