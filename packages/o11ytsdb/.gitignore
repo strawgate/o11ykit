@@ -1,0 +1,9 @@
+bench/results/
+bench/dist/
+wasm/
+dist/
+.tsbuildinfo
+zig/zig-cache/
+zig/zig-out/
+zig/.zig-cache/
+rust/target/

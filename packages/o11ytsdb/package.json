@@ -1,0 +1,56 @@
+{
+  "name": "o11ytsdb",
+  "version": "0.0.1",
+  "description": "Browser-native time-series database for OpenTelemetry data.",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "opentelemetry",
+    "otlp",
+    "tsdb",
+    "time-series",
+    "metrics",
+    "compression"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "wasm",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@otlpkit/otlpjson": "^0.1.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "build:zig": "cd zig && zig build -Doptimize=ReleaseSmall && cp zig-out/lib/o11ytsdb.wasm ../wasm/o11ytsdb-zig.wasm",
+    "build:rust": "cd rust && cargo build --release --target wasm32-unknown-unknown && cp target/wasm32-unknown-unknown/release/o11ytsdb_wasm.wasm ../wasm/o11ytsdb-rust.wasm",
+    "build:wasm": "npm run build:zig && npm run build:rust",
+    "build:all": "npm run build:wasm && npm run build",
+    "bench:build": "tsc -p bench/tsconfig.json",
+    "bench": "npm run build && npm run bench:build && node bench/run.mjs",
+    "bench:codec": "npm run bench -- codec",
+    "bench:interner": "npm run bench -- interner",
+    "bench:postings": "npm run bench -- postings",
+    "bench:ingest": "npm run bench -- ingest",
+    "bench:query": "npm run bench -- query",
+    "bench:compare": "npm run bench -- --compare",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
