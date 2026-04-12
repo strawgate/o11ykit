@@ -17,6 +17,22 @@ function writeOtlpResult(dir: string, name: string, doc: OtlpMetricsDocument): s
   return file;
 }
 
+function setAllPointTimestamps(doc: OtlpMetricsDocument, timeUnixNano: string): OtlpMetricsDocument {
+  for (const resourceMetric of doc.resourceMetrics ?? []) {
+    for (const scopeMetric of resourceMetric.scopeMetrics ?? []) {
+      for (const metric of scopeMetric.metrics ?? []) {
+        for (const point of metric.gauge?.dataPoints ?? []) {
+          point.timeUnixNano = timeUnixNano;
+        }
+        for (const point of metric.sum?.dataPoints ?? []) {
+          point.timeUnixNano = timeUnixNano;
+        }
+      }
+    }
+  }
+  return doc;
+}
+
 describe("parseCurrentRun", () => {
   it("parses OTLP JSON files", () => {
     const dir = makeTmpDir();
@@ -77,6 +93,40 @@ describe("readBaselineRuns", () => {
       // Most recent first (102, 101)
       assert.equal(baselines[0].points[0].value, 120);
       assert.equal(baselines[1].points[0].value, 110);
+    } finally {
+      fs.rmSync(dir, { recursive: true });
+    }
+  });
+
+  it("prefers latest metric timestamps over filename ordering", () => {
+    const dir = makeTmpDir();
+    try {
+      writeOtlpResult(
+        dir,
+        "zzz-new-name-old-data.json",
+        setAllPointTimestamps(
+          buildOtlpResult({
+            benchmarks: [{ name: "BenchA", metrics: { ns_per_op: { value: 100 } } }],
+            context: { sourceFormat: "go" },
+          }),
+          "1000000000",
+        ),
+      );
+      writeOtlpResult(
+        dir,
+        "aaa-old-name-new-data.json",
+        setAllPointTimestamps(
+          buildOtlpResult({
+            benchmarks: [{ name: "BenchA", metrics: { ns_per_op: { value: 250 } } }],
+            context: { sourceFormat: "go" },
+          }),
+          "3000000000",
+        ),
+      );
+
+      const baselines = readBaselineRuns(dir, 1);
+      assert.equal(baselines.length, 1);
+      assert.equal(baselines[0].points[0].value, 250);
     } finally {
       fs.rmSync(dir, { recursive: true });
     }

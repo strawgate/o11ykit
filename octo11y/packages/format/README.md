@@ -478,7 +478,9 @@ on a dedicated Git branch (default `bench-data`). The branch layout is:
 data/
 ├── index.json              # All runs (IndexFile)
 ├── runs/
-│   ├── {runId}.json        # OTLP metrics JSON for one run
+│   ├── {runId}/
+│   │   ├── benchmark.otlp.json     # OTLP benchmark metrics JSON for one run
+│   │   └── telemetry.otlp.jsonl.gz # Optional OTLP telemetry sidecar
 │   └── ...
 └── series/
     ├── {metricName}.json   # Time-series for one metric (SeriesFile)
@@ -488,7 +490,7 @@ data/
 | File | Schema | Written by |
 |---|---|---|
 | `data/index.json` | [`index.schema.json`](../../schema/index.schema.json) | `bench-aggregate` |
-| `data/runs/{id}.json` | OTLP metrics JSON | `bench-stash` |
+| `data/runs/{id}/benchmark.otlp.json` | OTLP metrics JSON | `bench-stash` |
 | `data/series/{metric}.json` | [`series.schema.json`](../../schema/series.schema.json) | `bench-aggregate` |
 
 ## Validating your own output

@@ -23,6 +23,8 @@ export interface CollectorConfigOptions {
   ref?: string;
   /** Commit SHA. */
   commit?: string;
+  /** When true, set process scraper to mute all process-level scraper errors. */
+  muteProcessAllErrors?: boolean;
 }
 
 const VALID_METRIC_SETS = new Set([
@@ -115,6 +117,9 @@ export function generateCollectorConfig(opts: CollectorConfigOptions): string {
         lines.push("        mute_process_name_error: true");
         lines.push("        mute_process_exe_error: true");
         lines.push("        mute_process_io_error: true");
+        if (opts.muteProcessAllErrors) {
+          lines.push("        mute_process_all_errors: true");
+        }
       } else {
         lines.push(`      ${set}: {}`);
       }

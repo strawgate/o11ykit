@@ -42,6 +42,7 @@ export interface EmitMetricOptions {
   runId: string;
   benchkitKind: BenchkitKind;
   serviceName?: string;
+  resourceAttributes: Record<string, AttributeValue>;
   ref?: string;
   commit?: string;
   workflow?: string;
@@ -204,6 +205,16 @@ function buildResourceAttributes(options: EmitMetricOptions): OtlpAttribute[] {
   if (options.job) attributes.push(buildAttribute("benchkit.job", options.job));
   if (options.runAttempt) attributes.push(buildAttribute("benchkit.run_attempt", options.runAttempt));
   if (options.serviceName) attributes.push(buildAttribute("service.name", options.serviceName));
+  for (const key of Object.keys(options.resourceAttributes)) {
+    if (key.startsWith("benchkit.")) {
+      throw new Error(
+        `Resource attributes must not use the 'benchkit.' prefix. Got '${key}'.`,
+      );
+    }
+  }
+  for (const [key, value] of Object.entries(options.resourceAttributes)) {
+    attributes.push(buildAttribute(key, value));
+  }
 
   return attributes;
 }
@@ -348,6 +359,7 @@ export async function runEmitMetricAction(): Promise<void> {
   );
   const role = parseBenchkitRole(core.getInput("role") || "outcome");
   const attributes = parseAttributes(core.getInput("attributes") || "");
+  const resourceAttributes = parseAttributes(core.getInput("resource-attributes") || "");
   const runId = core.getInput("run-id").trim() || defaultRunId();
   const benchkitKind = parseBenchkitKind(core.getInput("benchkit-kind") || "hybrid");
   const serviceName = core.getInput("service-name").trim() || process.env.GITHUB_REPOSITORY;
@@ -375,6 +387,7 @@ export async function runEmitMetricAction(): Promise<void> {
     direction,
     role,
     attributes,
+    resourceAttributes,
     runId,
     benchkitKind,
     serviceName,

@@ -53,6 +53,7 @@ export interface OtlpResultContext {
   runAttempt?: string;
   runner?: string;
   serviceName?: string;
+  resourceAttributes?: Record<string, string | number | boolean>;
 }
 
 export interface BuildOtlpResultOptions {
@@ -96,6 +97,11 @@ function buildResourceAttributes(ctx: OtlpResultContext): OtlpAttribute[] {
   if (ctx.runAttempt) attrs.push(attr(ATTR_RUN_ATTEMPT, ctx.runAttempt));
   if (ctx.runner) attrs.push(attr(ATTR_RUNNER, ctx.runner));
   if (ctx.serviceName) attrs.push(attr(ATTR_SERVICE_NAME, ctx.serviceName));
+  if (ctx.resourceAttributes) {
+    for (const [key, value] of Object.entries(ctx.resourceAttributes)) {
+      attrs.push(attr(key, value));
+    }
+  }
   return attrs;
 }
 

@@ -1,6 +1,6 @@
 {
   "name": "@otlpkit/otlpjson",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "OTLP JSON parsing and iterators for metrics, traces, and logs.",
   "license": "UNLICENSED",
   "engines": {

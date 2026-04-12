@@ -25,6 +25,9 @@ SDK inside benchmark code.
     attributes: |
       dataset=wiki
       variant=bm25
+    resource-attributes: |
+      team=platform
+      env=production
 ```
 
 The action sends OTLP/HTTP to the collector's `/v1/metrics` endpoint. Benchkit
@@ -43,6 +46,7 @@ inputs are:
 - `series`
 - `direction`
 - `attributes`
+- `resource-attributes`
 - `otlp-http-endpoint`
 
 `scenario` defaults to the metric name, `series` defaults to `GITHUB_JOB` (or

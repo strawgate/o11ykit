@@ -4,6 +4,8 @@ import { buildOtlpResult } from "@benchkit/format";
 import type { OtlpResultBenchmark, OtlpResultMetric } from "@benchkit/format";
 import * as fs from "node:fs";
 
+type AttributeValue = string | number | boolean;
+
 // ---- Types ----------------------------------------------------------------
 
 export type MetricName =
@@ -105,6 +107,7 @@ export interface RepoStatsOptions {
   metrics: MetricName[];
   outputFile: string;
   workflowRunCount: number;
+  resourceAttributes: Record<string, AttributeValue>;
 }
 
 // ---- Input parsing --------------------------------------------------------
@@ -146,8 +149,19 @@ export function parseOptions(): RepoStatsOptions {
     core.getInput("workflow-run-count") || "30",
     "workflow-run-count",
   );
+  const resourceAttributes = parseResourceAttributes(
+    core.getInput("resource-attributes") || "",
+  );
 
-  return { token, repository, scenario, metrics, outputFile, workflowRunCount };
+  return {
+    token,
+    repository,
+    scenario,
+    metrics,
+    outputFile,
+    workflowRunCount,
+    resourceAttributes,
+  };
 }
 
 function parsePositiveInt(value: string, label: string): number {
@@ -156,6 +170,66 @@ function parsePositiveInt(value: string, label: string): number {
     throw new Error(`${label} must be a positive integer, got "${value}".`);
   }
   return n;
+}
+
+export function parseResourceAttributes(raw: string): Record<string, AttributeValue> {
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+
+  if (trimmed.startsWith("{")) {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+      throw new Error("resource-attributes JSON must be an object.");
+    }
+    const result: Record<string, AttributeValue> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!key.trim()) {
+        throw new Error("resource-attributes keys must not be empty.");
+      }
+      if (
+        typeof value !== "string"
+        && typeof value !== "number"
+        && typeof value !== "boolean"
+      ) {
+        throw new Error(
+          `resource-attributes '${key}' must be a string, number, or boolean.`,
+        );
+      }
+      if (key.startsWith("benchkit.")) {
+        throw new Error(
+          `resource-attributes must not use the 'benchkit.' prefix. Got '${key}'.`,
+        );
+      }
+      result[key] = value;
+    }
+    return result;
+  }
+
+  const result: Record<string, AttributeValue> = {};
+  const entries = trimmed
+    .split(/\r?\n/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const entry of entries) {
+    const separator = entry.indexOf("=");
+    if (separator <= 0) {
+      throw new Error(
+        `resource-attributes entry '${entry}' must use key=value format.`,
+      );
+    }
+    const key = entry.slice(0, separator).trim();
+    const value = entry.slice(separator + 1).trim();
+    if (!key) {
+      throw new Error("resource-attributes keys must not be empty.");
+    }
+    if (key.startsWith("benchkit.")) {
+      throw new Error(
+        `resource-attributes must not use the 'benchkit.' prefix. Got '${key}'.`,
+      );
+    }
+    result[key] = value;
+  }
+  return result;
 }
 
 // ---- Metric collectors ----------------------------------------------------
@@ -737,6 +811,7 @@ export function writeOtlpFile(
   metrics: Record<string, OtlpResultMetric>,
   scenario: string,
   outputFile: string,
+  resourceAttributes: Record<string, AttributeValue> = {},
 ): void {
   const benchmark: OtlpResultBenchmark = {
     name: scenario,
@@ -745,7 +820,10 @@ export function writeOtlpFile(
 
   const doc = buildOtlpResult({
     benchmarks: [benchmark],
-    context: { sourceFormat: "otlp" },
+    context: {
+      sourceFormat: "otlp",
+      resourceAttributes,
+    },
   });
 
   fs.writeFileSync(outputFile, JSON.stringify(doc, null, 2));
@@ -761,7 +839,12 @@ export async function runRepoStatsAction(): Promise<void> {
   );
 
   const metrics = await collectMetrics(options);
-  writeOtlpFile(metrics, options.scenario, options.outputFile);
+  writeOtlpFile(
+    metrics,
+    options.scenario,
+    options.outputFile,
+    options.resourceAttributes,
+  );
 
   core.info(`Wrote ${options.outputFile}`);
   core.setOutput("results-file", options.outputFile);

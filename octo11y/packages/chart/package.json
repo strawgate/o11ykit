@@ -1,6 +1,6 @@
 {
   "name": "@benchkit/chart",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Preact components for rendering benchkit benchmark dashboards.",
   "type": "module",
   "main": "dist/index.js",

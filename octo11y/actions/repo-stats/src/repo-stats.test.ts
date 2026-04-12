@@ -1,6 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseMetricNames, ALL_METRICS, writeOtlpFile, median } from "./repo-stats.js";
+import {
+  parseMetricNames,
+  ALL_METRICS,
+  writeOtlpFile,
+  median,
+  parseResourceAttributes,
+} from "./repo-stats.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -88,6 +94,45 @@ describe("parseMetricNames", () => {
   it("accepts languages", () => {
     const result = parseMetricNames("languages");
     assert.deepStrictEqual(result, ["languages"]);
+  });
+});
+
+// ---- parseResourceAttributes ----------------------------------------------
+
+describe("parseResourceAttributes", () => {
+  it("parses JSON resource attributes with typed values", () => {
+    assert.deepStrictEqual(
+      parseResourceAttributes('{"team":"platform","batch_size":2000,"warm":true}'),
+      {
+        team: "platform",
+        batch_size: 2000,
+        warm: true,
+      },
+    );
+  });
+
+  it("parses key=value lines", () => {
+    assert.deepStrictEqual(
+      parseResourceAttributes("team=platform\nenv=prod"),
+      {
+        team: "platform",
+        env: "prod",
+      },
+    );
+  });
+
+  it("rejects benchkit-prefixed keys", () => {
+    assert.throws(
+      () => parseResourceAttributes("benchkit.team=platform"),
+      /must not use the 'benchkit\.' prefix/,
+    );
+  });
+
+  it("rejects non-object JSON", () => {
+    assert.throws(
+      () => parseResourceAttributes('[1,2,3]'),
+      /must use key=value format/,
+    );
   });
 });
 
@@ -186,6 +231,37 @@ describe("writeOtlpFile", () => {
       const metric = doc.resourceMetrics[0].scopeMetrics[0].metrics[0];
       assert.equal(metric.name, "workflow_success_pct");
       assert.equal(metric.gauge.dataPoints[0].asDouble, 93.3);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes custom resource attributes", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "repo-stats-test-"));
+    const outFile = path.join(tmpDir, "out.json");
+
+    try {
+      writeOtlpFile(
+        {
+          stars: { value: 42, unit: "count", direction: "bigger_is_better" },
+        },
+        "my-repo",
+        outFile,
+        {
+          team: "platform",
+          batch_size: 2000,
+          warm: true,
+        },
+      );
+
+      const doc = JSON.parse(fs.readFileSync(outFile, "utf-8"));
+      const resAttrs = doc.resourceMetrics[0].resource.attributes;
+      const teamAttr = resAttrs.find((a: { key: string }) => a.key === "team");
+      const batchSizeAttr = resAttrs.find((a: { key: string }) => a.key === "batch_size");
+      const warmAttr = resAttrs.find((a: { key: string }) => a.key === "warm");
+      assert.equal(teamAttr?.value?.stringValue, "platform");
+      assert.equal(batchSizeAttr?.value?.intValue, "2000");
+      assert.equal(warmAttr?.value?.boolValue, true);
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
