@@ -19,6 +19,7 @@ import {
 import type { MonitorProfile, OtelState } from "./types.js";
 
 const STATE_NAME = ".benchkit-otel.state.json";
+const BENCHKIT_METRICS_DIR_NAME = "benchkit-metrics";
 const DEFAULT_METRIC_SETS = ["cpu", "memory", "load", "process"];
 const CI_PROFILE_DEFAULT_METRIC_SETS = ["cpu", "memory", "load", "process"];
 
@@ -124,6 +125,41 @@ export function resolveRunId(): string {
   return `local-${Date.now()}`;
 }
 
+export function resolveMetricsDir(): string {
+  return path.join(runnerTemp(), BENCHKIT_METRICS_DIR_NAME);
+}
+
+function resolveEmitEndpoint(port: number): string {
+  return `http://localhost:${port}/v1/metrics`;
+}
+
+function resolveBenchkitEmitCliEntry(): string {
+  // ncc build layout
+  const distEntry = path.join(__dirname, "..", "cli", "index.js");
+  if (fs.existsSync(distEntry)) return distEntry;
+  // tsc test layout
+  const libEntry = path.join(__dirname, "cli.js");
+  if (fs.existsSync(libEntry)) return libEntry;
+  return distEntry;
+}
+
+export function installBenchkitEmitCli(
+  cliEntry: string,
+  binDir: string = path.join(runnerTemp(), "benchkit-bin"),
+): string {
+  fs.mkdirSync(binDir, { recursive: true });
+  if (process.platform === "win32") {
+    const cmdPath = path.join(binDir, "benchkit-emit.cmd");
+    fs.writeFileSync(cmdPath, `@echo off\r\nnode "${cliEntry}" %*\r\n`, { encoding: "utf-8" });
+  } else {
+    const shellPath = path.join(binDir, "benchkit-emit");
+    fs.writeFileSync(shellPath, `#!/usr/bin/env bash\nnode "${cliEntry}" "$@"\n`, { encoding: "utf-8" });
+    fs.chmodSync(shellPath, 0o755);
+  }
+  core.addPath(binDir);
+  return binDir;
+}
+
 export async function waitForOtlpHttpReady(
   port: number,
   timeoutMs: number,
@@ -158,8 +194,10 @@ export async function startOtelCollector(): Promise<void> {
   const otlpHttpPort = validatePort("otlp-http-port", core.getInput("otlp-http-port") || "4318");
   const dataBranch = core.getInput("data-branch") || DEFAULT_DATA_BRANCH;
   const runId = resolveRunId();
+  const metricsDir = resolveMetricsDir();
 
   const metricSets = validateMetricSets(metricSetsRaw);
+  fs.mkdirSync(metricsDir, { recursive: true });
 
   // Record the runner worker PID (our parent) so the post step can
   // filter process metrics to only runner descendants. This works
@@ -204,7 +242,7 @@ export async function startOtelCollector(): Promise<void> {
   }
 
   // Wait for the OTLP HTTP port to be ready before returning.
-  // The collector takes ~500ms-1s to bind on a cold start, so emit-metric
+  // The collector takes ~500ms-1s to bind on a cold start, so benchkit-emit
   // calls in the immediately following step would otherwise hit ECONNREFUSED.
   if (otlpHttpPort > 0) {
     const ready = await waitForOtlpHttpReady(otlpHttpPort, 15_000);
@@ -215,12 +253,18 @@ export async function startOtelCollector(): Promise<void> {
     }
   }
 
+  const emitEndpoint = resolveEmitEndpoint(otlpHttpPort);
+  const cliEntry = resolveBenchkitEmitCliEntry();
+  const binDir = installBenchkitEmitCli(cliEntry);
+  core.info(`benchkit-emit CLI installed to ${binDir}`);
+
   // Write state for the post step
   const state: OtelState = {
     pid: child.pid,
     configPath,
     outputPath,
     logPath,
+    metricsDir,
     startTime: Date.now(),
     runId,
     dataBranch,
@@ -240,6 +284,11 @@ export async function startOtelCollector(): Promise<void> {
   if (otlpHttpPort > 0) {
     core.setOutput("otlp-http-endpoint", `http://localhost:${otlpHttpPort}`);
   }
+  core.setOutput("metrics-dir", metricsDir);
+
+  core.exportVariable("BENCHKIT_METRICS_DIR", metricsDir);
+  core.exportVariable("BENCHKIT_RUN_ID", runId);
+  core.exportVariable("BENCHKIT_EMIT_ENDPOINT", emitEndpoint);
 
   core.info(
     `OTel Collector started (PID ${child.pid}, scrape interval ${scrapeInterval}, profile ${profile})`,
@@ -247,4 +296,5 @@ export async function startOtelCollector(): Promise<void> {
   core.info(`Enabled metric sets: ${metricSets.join(", ") || "(none)"}`);
   if (otlpGrpcPort > 0) core.info(`OTLP gRPC endpoint: grpc://localhost:${otlpGrpcPort}`);
   if (otlpHttpPort > 0) core.info(`OTLP HTTP endpoint: http://localhost:${otlpHttpPort}`);
+  core.info(`Shared metrics dir: ${metricsDir}`);
 }

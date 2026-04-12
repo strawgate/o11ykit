@@ -135,7 +135,7 @@ describe additional features you can layer on.
           comment-on-pr: true      # post/update a PR comment
 ```
 
-### Telemetry with monitor and emit-metric
+### Telemetry with monitor and benchkit-emit
 
 If you want host metrics or custom OTLP metrics, start the monitor once near the top of the job:
 
@@ -161,38 +161,36 @@ To record a one-off workflow metric without wiring up a full OTLP SDK:
 
 ```yaml
       - name: Emit score metric
-        uses: strawgate/octo11y/actions/emit-metric@main-dist
-        with:
-          otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-          name: test_score
-          value: 74
-          unit: points
-          scenario: search-relevance
-          series: baseline
-          direction: bigger_is_better
-          attributes: |
-            dataset=wiki
-            variant=bm25
+        run: |
+          benchkit-emit --name test_score --value 74 --unit points \
+            --scenario search-relevance --series baseline \
+            --direction up --attribute dataset=wiki --attribute variant=bm25
 ```
 
-The monitor action stores raw OTLP telemetry at `data/runs/{run-id}/telemetry.otlp.jsonl.gz`.
+Then stash benchmarks and monitor/custom metrics together:
+
+```yaml
+      - uses: strawgate/octo11y/actions/stash@main-dist
+        with:
+          results: bench.txt
+          metrics-dir: ${{ steps.monitor.outputs.metrics-dir }}
+```
+
+The monitor action stores raw telemetry at `data/runs/{run-id}/telemetry.otlp.jsonl.gz`
+and writes a merged OTLP snapshot to `${BENCHKIT_METRICS_DIR}/monitor.otlp.json`.
 
 ### Custom workflow metrics (non-benchmark)
 
 You do not need a benchmark tool to use Octo11y. Any numeric value you can
-compute in a workflow step can become a tracked metric with `emit-metric`:
+compute in a workflow step can become a tracked metric with `benchkit-emit`:
 
 ```yaml
       - name: Track bundle size
         run: echo "BUNDLE_SIZE=$(du -sb dist/ | cut -f1)" >> "$GITHUB_ENV"
 
-      - uses: strawgate/octo11y/actions/emit-metric@main-dist
-        with:
-          otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-          name: bundle_size_bytes
-          value: ${{ env.BUNDLE_SIZE }}
-          unit: bytes
-          direction: smaller_is_better
+      - run: |
+          benchkit-emit --name bundle_size_bytes --value "${{ env.BUNDLE_SIZE }}" \
+            --unit bytes --direction down
 ```
 
 Other ideas: Docker image size, test count, build duration, dependency count,

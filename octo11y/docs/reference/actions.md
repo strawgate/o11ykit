@@ -10,7 +10,7 @@ A common end-to-end setup looks like this:
 2. Use `actions/parse-results` to parse and stash results from logs or files.
 3. Use `actions/aggregate` to rebuild indexes and views.
 4. Use `actions/compare` on pull requests.
-5. Optionally use `actions/monitor` and `actions/emit-metric` for OTLP telemetry.
+5. Optionally use `actions/monitor` and its `benchkit-emit` CLI for OTLP telemetry.
 
 ## Actions at a glance
 
@@ -22,7 +22,6 @@ A common end-to-end setup looks like this:
 | `actions/aggregate` | Rebuild derived indexes, series, run views, and badges | `data/index.json`, `data/series/*`, `data/index/*`, `data/views/runs/*`, `data/badges/*` | [`../../actions/aggregate/README.md`](../../actions/aggregate/README.md) |
 | `actions/compare` | Compare current results to recent baselines | PR comment, step summary, regression status | [`../../actions/compare/README.md`](../../actions/compare/README.md) |
 | `actions/monitor` | Collect host and custom OTLP telemetry | `data/runs/{run-id}/telemetry.otlp.jsonl.gz` | [`../../actions/monitor/README.md`](../../actions/monitor/README.md) |
-| `actions/emit-metric` | Emit one-off OTLP metrics during a job | OTLP metric into the running collector | [`../../actions/emit-metric/README.md`](../../actions/emit-metric/README.md) |
 | `actions/repo-stats` | Collect GitHub repo statistics as metrics | `repo-stats.json` (OTLP) | [`../../actions/repo-stats/README.md`](../../actions/repo-stats/README.md) |
 
 ## Which action should I start with?
@@ -88,16 +87,6 @@ Best for:
 - CPU, memory, load, and process metrics
 - hybrid benchmark runs
 - storing raw OTLP sidecars for later aggregation
-
-### Emit Metric
-
-Use this with `actions/monitor` when you need to send one custom metric from a shell step.
-
-Best for:
-
-- simple scores or counters
-- workflow metrics without a full OTLP SDK
-- glue code in GitHub Actions jobs
 
 ### Repo Stats
 
