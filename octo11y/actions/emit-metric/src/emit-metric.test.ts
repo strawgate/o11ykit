@@ -86,6 +86,7 @@ describe("buildOtlpMetricPayload", () => {
       direction: "bigger_is_better",
       role: "outcome",
       attributes: { dataset: "wiki" },
+      resourceAttributes: { team: "platform", batch_size: 2000, warm: true },
       runId: "123-1",
       benchkitKind: "hybrid",
       serviceName: "benchkit-selftest",
@@ -110,6 +111,9 @@ describe("buildOtlpMetricPayload", () => {
     assert.ok(resourceAttributes.some((attr) => attr.key === "benchkit.run_id"));
     assert.ok(resourceAttributes.some((attr) => attr.key === "benchkit.kind"));
     assert.ok(resourceAttributes.some((attr) => attr.key === "service.name"));
+    assert.ok(resourceAttributes.some((attr) => attr.key === "team"));
+    assert.ok(resourceAttributes.some((attr) => attr.key === "batch_size"));
+    assert.ok(resourceAttributes.some((attr) => attr.key === "warm"));
 
     const gauge = metrics[0].gauge as { dataPoints: Array<Record<string, unknown>> };
     const dataPoint = gauge.dataPoints[0];
@@ -135,6 +139,7 @@ describe("buildOtlpMetricPayload", () => {
       direction: "bigger_is_better",
       role: "outcome",
       attributes: {},
+      resourceAttributes: {},
       runId: "123-1",
       benchkitKind: "workflow",
     }, new Date("2026-04-02T03:00:00.000Z"));
@@ -161,6 +166,7 @@ describe("buildOtlpMetricPayload", () => {
         direction: "bigger_is_better",
         role: "outcome",
         attributes: { "benchkit.scenario": "oops" },
+        resourceAttributes: {},
         runId: "123-1",
         benchkitKind: "hybrid",
       }),
@@ -182,10 +188,33 @@ describe("buildOtlpMetricPayload", () => {
         direction: "bigger_is_better",
         role: "outcome",
         attributes: { "benchkit.custom.foo": "bar" },
+        resourceAttributes: {},
         runId: "123-1",
         benchkitKind: "hybrid",
       }),
       /Custom attributes must not use the 'benchkit\.' prefix/,
+    );
+  });
+
+  it("rejects resource attributes with benchkit. prefix", () => {
+    assert.throws(
+      () => buildOtlpMetricPayload({
+        endpoint: "http://localhost:4318/v1/metrics",
+        name: "test_score",
+        value: 74,
+        metricKind: "gauge",
+        aggregationTemporality: "cumulative",
+        monotonic: false,
+        scenario: "search",
+        series: "baseline",
+        direction: "bigger_is_better",
+        role: "outcome",
+        attributes: {},
+        resourceAttributes: { "benchkit.team": "platform" },
+        runId: "123-1",
+        benchkitKind: "hybrid",
+      }),
+      /Resource attributes must not use the 'benchkit\.' prefix/,
     );
   });
 });

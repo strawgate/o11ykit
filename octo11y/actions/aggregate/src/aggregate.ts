@@ -20,6 +20,8 @@ export interface ParsedRun {
   monitor?: MonitorContext;
 }
 
+const RUN_BENCHMARK_FILE = "benchmark.otlp.json";
+
 /**
  * When a scenario name starts with `_monitor/`, prefix the metric name
  * so Dashboard can partition monitor metrics from user benchmarks.
@@ -180,24 +182,43 @@ export function buildSeries(runs: ParsedRun[]): Map<string, SeriesFile> {
  */
 export function readRuns(runsDir: string): ParsedRun[] {
   if (!fs.existsSync(runsDir)) return [];
-  const runFiles = fs.readdirSync(runsDir).filter((f) => f.endsWith(".json")).sort();
-  return runFiles.map((file) => {
-    const filePath = path.join(runsDir, file);
+  const entries = fs.readdirSync(runsDir, { withFileTypes: true });
+  const runFiles = entries
+    .flatMap((entry): Array<{ id: string; fileName: string; filePath: string }> => {
+      if (entry.isDirectory()) {
+        const runId = entry.name;
+        const fileName = RUN_BENCHMARK_FILE;
+        const filePath = path.join(runsDir, runId, fileName);
+        if (!fs.existsSync(filePath)) {
+          return [];
+        }
+        return [{ id: runId, fileName: `${runId}/${fileName}`, filePath }];
+      }
+      if (entry.isFile() && entry.name.endsWith(".json")) {
+        const id = path.basename(entry.name, ".json");
+        const fileName = entry.name;
+        const filePath = path.join(runsDir, entry.name);
+        return [{ id, fileName, filePath }];
+      }
+      return [];
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return runFiles.map(({ id, fileName, filePath }) => {
     let parsed: unknown;
     try {
       parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     } catch (err) {
       throw new Error(
-        `Failed to parse run file '${file}': ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to parse run file '${fileName}': ${err instanceof Error ? err.message : String(err)}`,
         { cause: err },
       );
     }
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       throw new Error(
-        `Run file '${file}' must contain a JSON object, got ${parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed}`,
+        `Run file '${fileName}' must contain a JSON object, got ${parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed}`,
       );
     }
-    return parseRunFile(path.basename(file, ".json"), parsed as Record<string, unknown>);
+    return parseRunFile(id, parsed as Record<string, unknown>);
   });
 }
 

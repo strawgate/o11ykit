@@ -52,6 +52,10 @@ inputs:
     description: "Additional datapoint attributes as JSON object or key=value lines."
     required: false
     default: ""
+  resource-attributes:
+    description: "Additional resource-level attributes as JSON object or key=value lines."
+    required: false
+    default: ""
   run-id:
     description: "Run identifier to stamp on OTLP resource attributes. Defaults to GITHUB_RUN_ID-GITHUB_RUN_ATTEMPT."
     required: false

@@ -160,7 +160,13 @@ async function rebuildAggregates(
   sortRuns(runs);
   const pruned = pruneRuns(runs, maxRuns);
   for (const id of pruned) {
-    fs.unlinkSync(path.join(runsDir, `${id}.json`));
+    const runDir = path.join(runsDir, id);
+    const legacyRunFile = path.join(runsDir, `${id}.json`);
+    if (fs.existsSync(runDir)) {
+      fs.rmSync(runDir, { recursive: true, force: true });
+    } else if (fs.existsSync(legacyRunFile)) {
+      fs.rmSync(legacyRunFile, { force: true });
+    }
     core.info(`Pruned old run: ${id}`);
   }
 

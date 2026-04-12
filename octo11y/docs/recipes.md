@@ -115,6 +115,63 @@ jobs:
 These recipes use `emit-metric` to track any numeric value over time.
 They require `actions/monitor` to provide an OTLP collector endpoint.
 
+### Scheduled ingest from existing CI runs
+
+Backfill and continuously ingest benchmark output from completed workflow runs.
+This scans all workflows by default, then only new runs after the first pass.
+
+```yaml
+name: Ingest benchmark runs
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: write
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      runs: ${{ steps.discover.outputs.runs-json }}
+      run-count: ${{ steps.discover.outputs.run-count }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: discover
+        uses: strawgate/o11ykit/octo11y/actions/ingest-ci-runs@main-dist
+        with:
+          github-token: ${{ github.token }}
+          lookback-hours: 72
+          max-runs: 40
+
+  parse:
+    needs: discover
+    if: ${{ needs.discover.outputs.run-count != '0' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        run: ${{ fromJson(needs.discover.outputs.runs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: strawgate/o11ykit/actions/parse-results@main-dist
+        with:
+          mode: auto
+          format: auto
+          github-token: ${{ github.token }}
+          source-run-id: ${{ matrix.run.id }}
+          source-run-attempt: ${{ matrix.run.run_attempt }}
+          run-id: ${{ matrix.run.id }}-${{ matrix.run.run_attempt }}
+
+  aggregate:
+    needs: [discover, parse]
+    if: ${{ always() && needs.discover.result == 'success' && (needs.parse.result == 'success' || needs.parse.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: strawgate/o11ykit/octo11y/actions/aggregate@main-dist
+```
+
 ### Bundle size
 
 Track JavaScript bundle size and fail on bloat:

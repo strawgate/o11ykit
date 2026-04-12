@@ -46,6 +46,19 @@ export interface TimeSeriesFrame {
   readonly series: readonly TimeSeriesSeries[];
 }
 
+export interface TimeSeriesFrameOptions {
+  readonly signal?: Signal;
+  readonly title?: string;
+  readonly metricName?: string;
+  readonly name?: string;
+  readonly intervalMs?: number;
+  readonly splitBy?: string;
+  readonly reduce?: "sum" | "avg" | "min" | "max" | "last" | "count";
+  readonly filters?: Record<string, unknown>;
+  readonly valueFn?: (record: TelemetryRecord) => number | null;
+  readonly unit?: string;
+}
+
 export interface LatestValueRow {
   readonly key: string;
   readonly label: string;
@@ -66,6 +79,17 @@ export interface LatestValuesFrame {
   readonly rows: readonly LatestValueRow[];
 }
 
+export interface LatestValuesFrameOptions {
+  readonly signal?: Signal;
+  readonly title?: string;
+  readonly metricName?: string;
+  readonly name?: string;
+  readonly splitBy?: string;
+  readonly filters?: Record<string, unknown>;
+  readonly valueFn?: (record: TelemetryRecord) => number | null;
+  readonly unit?: string;
+}
+
 export interface HistogramBin {
   readonly start: number;
   readonly end: number;
@@ -79,6 +103,17 @@ export interface HistogramFrame {
   readonly title: string;
   readonly unit: string | null;
   readonly bins: readonly HistogramBin[];
+}
+
+export interface HistogramFrameOptions {
+  readonly signal?: Signal;
+  readonly title?: string;
+  readonly metricName?: string;
+  readonly name?: string;
+  readonly filters?: Record<string, unknown>;
+  readonly valueFn?: (record: TelemetryRecord) => number | null;
+  readonly unit?: string;
+  readonly binCount?: number;
 }
 
 export interface TraceWaterfallSpan {
@@ -111,6 +146,11 @@ export interface TraceWaterfallFrame {
   readonly traces: readonly TraceWaterfallTrace[];
 }
 
+export interface TraceWaterfallFrameOptions {
+  readonly title?: string;
+  readonly filters?: Record<string, unknown>;
+}
+
 export interface EventTimelineEvent {
   readonly kind: "span-event" | "log";
   readonly timeUnixNano: string | null;
@@ -131,6 +171,37 @@ export interface EventTimelineFrame {
   readonly signal: "traces" | "logs";
   readonly title: string;
   readonly events: readonly EventTimelineEvent[];
+}
+
+export interface EventTimelineFrameOptions {
+  readonly signal?: "traces" | "logs";
+  readonly title?: string;
+  readonly filters?: Record<string, unknown>;
+}
+
+export interface TelemetryStoreOptions {
+  readonly maxPoints?: number;
+  readonly maxAgeMs?: number;
+}
+
+export interface TelemetryStoreIngestSummary {
+  readonly metrics: number;
+  readonly traces: number;
+  readonly logs: number;
+  readonly total: number;
+}
+
+export interface TelemetryStoreSize extends TelemetryStoreIngestSummary {}
+
+export interface TelemetryStore {
+  ingest(input: unknown): TelemetryStoreIngestSummary;
+  size(): TelemetryStoreSize;
+  clear(): void;
+  selectTimeSeries(options?: TimeSeriesFrameOptions): TimeSeriesFrame;
+  selectLatestValues(options?: LatestValuesFrameOptions): LatestValuesFrame;
+  selectHistogram(options?: HistogramFrameOptions): HistogramFrame;
+  selectTraceWaterfall(options?: TraceWaterfallFrameOptions): TraceWaterfallFrame;
+  selectEventTimeline(options?: EventTimelineFrameOptions): EventTimelineFrame;
 }
 
 function materialize(
@@ -241,18 +312,7 @@ function computeDepths(spans: readonly SpanRecord[]): Map<string, number> {
 
 export function buildTimeSeriesFrame(
   input: unknown,
-  options: {
-    readonly signal?: Signal;
-    readonly title?: string;
-    readonly metricName?: string;
-    readonly name?: string;
-    readonly intervalMs?: number;
-    readonly splitBy?: string;
-    readonly reduce?: "sum" | "avg" | "min" | "max" | "last" | "count";
-    readonly filters?: Record<string, unknown>;
-    readonly valueFn?: (record: TelemetryRecord) => number | null;
-    readonly unit?: string;
-  } = {}
+  options: TimeSeriesFrameOptions = {}
 ): TimeSeriesFrame {
   const { signal, records } = materialize(input, options.signal);
   const filters = {
@@ -281,16 +341,7 @@ export function buildTimeSeriesFrame(
 
 export function buildLatestValuesFrame(
   input: unknown,
-  options: {
-    readonly signal?: Signal;
-    readonly title?: string;
-    readonly metricName?: string;
-    readonly name?: string;
-    readonly splitBy?: string;
-    readonly filters?: Record<string, unknown>;
-    readonly valueFn?: (record: TelemetryRecord) => number | null;
-    readonly unit?: string;
-  } = {}
+  options: LatestValuesFrameOptions = {}
 ): LatestValuesFrame {
   const { signal, records } = materialize(input, options.signal);
   const filters = {
@@ -310,16 +361,7 @@ export function buildLatestValuesFrame(
 
 export function buildHistogramFrame(
   input: unknown,
-  options: {
-    readonly signal?: Signal;
-    readonly title?: string;
-    readonly metricName?: string;
-    readonly name?: string;
-    readonly filters?: Record<string, unknown>;
-    readonly valueFn?: (record: TelemetryRecord) => number | null;
-    readonly unit?: string;
-    readonly binCount?: number;
-  } = {}
+  options: HistogramFrameOptions = {}
 ): HistogramFrame {
   const { signal, records } = materialize(input, options.signal);
   const filters = {
@@ -374,10 +416,7 @@ export function buildHistogramFrame(
 
 export function buildTraceWaterfallFrame(
   input: unknown,
-  options: {
-    readonly title?: string;
-    readonly filters?: Record<string, unknown>;
-  } = {}
+  options: TraceWaterfallFrameOptions = {}
 ): TraceWaterfallFrame {
   const filtered = filterRecords(collectTraces(input), options.filters ?? {});
   const traces = new Map<string, SpanRecord[]>();
@@ -446,11 +485,7 @@ export function buildTraceWaterfallFrame(
 
 export function buildEventTimelineFrame(
   input: unknown,
-  options: {
-    readonly signal?: "traces" | "logs";
-    readonly title?: string;
-    readonly filters?: Record<string, unknown>;
-  } = {}
+  options: EventTimelineFrameOptions = {}
 ): EventTimelineFrame {
   if (options.signal === "logs") {
     const logs = filterRecords(collectLogs(input), options.filters ?? {});
@@ -505,5 +540,131 @@ export function buildEventTimelineFrame(
     events: events.sort((left, right) =>
       (toUnixNanos(left.timeUnixNano) ?? 0n) < (toUnixNanos(right.timeUnixNano) ?? 0n) ? -1 : 1
     ),
+  };
+}
+
+function validateStoreOptions(options: TelemetryStoreOptions): void {
+  if (options.maxPoints !== undefined) {
+    if (!Number.isInteger(options.maxPoints) || options.maxPoints < 1) {
+      throw new Error("maxPoints must be a positive integer when provided.");
+    }
+  }
+  if (options.maxAgeMs !== undefined) {
+    if (!Number.isFinite(options.maxAgeMs) || options.maxAgeMs <= 0) {
+      throw new Error("maxAgeMs must be a positive number when provided.");
+    }
+  }
+}
+
+function pruneByMaxAge(
+  records: TelemetryRecord[],
+  maxAgeMs: number | undefined
+): TelemetryRecord[] {
+  if (maxAgeMs === undefined || records.length === 0) {
+    return records;
+  }
+  let newest: bigint | null = null;
+  for (const record of records) {
+    const timestamp = toUnixNanos(recordTimestampNanos(record));
+    if (timestamp === null) {
+      continue;
+    }
+    if (newest === null || timestamp > newest) {
+      newest = timestamp;
+    }
+  }
+  if (newest === null) {
+    return records;
+  }
+  const maxAgeNanos = BigInt(Math.floor(maxAgeMs * 1_000_000));
+  const cutoff = newest - maxAgeNanos;
+  return records.filter((record) => {
+    const timestamp = toUnixNanos(recordTimestampNanos(record));
+    return timestamp === null || timestamp >= cutoff;
+  });
+}
+
+function pruneByMaxPoints(
+  records: TelemetryRecord[],
+  maxPoints: number | undefined
+): TelemetryRecord[] {
+  if (maxPoints === undefined || records.length <= maxPoints) {
+    return records;
+  }
+  return records.slice(records.length - maxPoints);
+}
+
+function applyRetention(
+  records: TelemetryRecord[],
+  options: TelemetryStoreOptions
+): TelemetryRecord[] {
+  return pruneByMaxPoints(pruneByMaxAge(records, options.maxAgeMs), options.maxPoints);
+}
+
+export function createTelemetryStore(options: TelemetryStoreOptions = {}): TelemetryStore {
+  validateStoreOptions(options);
+
+  let metricRecords: TelemetryRecord[] = [];
+  let traceRecords: TelemetryRecord[] = [];
+  let logRecords: TelemetryRecord[] = [];
+
+  const snapshot = (): readonly [
+    readonly TelemetryRecord[],
+    readonly TelemetryRecord[],
+    readonly TelemetryRecord[],
+  ] => [metricRecords, traceRecords, logRecords];
+
+  return {
+    ingest(input: unknown): TelemetryStoreIngestSummary {
+      const nextMetrics = collectMetrics(input);
+      const nextTraces = collectTraces(input);
+      const nextLogs = collectLogs(input);
+
+      metricRecords = applyRetention([...metricRecords, ...nextMetrics], options);
+      traceRecords = applyRetention([...traceRecords, ...nextTraces], options);
+      logRecords = applyRetention([...logRecords, ...nextLogs], options);
+
+      return {
+        metrics: nextMetrics.length,
+        traces: nextTraces.length,
+        logs: nextLogs.length,
+        total: nextMetrics.length + nextTraces.length + nextLogs.length,
+      };
+    },
+
+    size(): TelemetryStoreSize {
+      return {
+        metrics: metricRecords.length,
+        traces: traceRecords.length,
+        logs: logRecords.length,
+        total: metricRecords.length + traceRecords.length + logRecords.length,
+      };
+    },
+
+    clear(): void {
+      metricRecords = [];
+      traceRecords = [];
+      logRecords = [];
+    },
+
+    selectTimeSeries(frameOptions: TimeSeriesFrameOptions = {}): TimeSeriesFrame {
+      return buildTimeSeriesFrame(snapshot(), frameOptions);
+    },
+
+    selectLatestValues(frameOptions: LatestValuesFrameOptions = {}): LatestValuesFrame {
+      return buildLatestValuesFrame(snapshot(), frameOptions);
+    },
+
+    selectHistogram(frameOptions: HistogramFrameOptions = {}): HistogramFrame {
+      return buildHistogramFrame(snapshot(), frameOptions);
+    },
+
+    selectTraceWaterfall(frameOptions: TraceWaterfallFrameOptions = {}): TraceWaterfallFrame {
+      return buildTraceWaterfallFrame(snapshot(), frameOptions);
+    },
+
+    selectEventTimeline(frameOptions: EventTimelineFrameOptions = {}): EventTimelineFrame {
+      return buildEventTimelineFrame(snapshot(), frameOptions);
+    },
   };
 }

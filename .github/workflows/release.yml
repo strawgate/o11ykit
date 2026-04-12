@@ -1,9 +1,12 @@
-name: Release
+name: release-all-packages-lockstep
 
 on:
   push:
     branches:
       - main
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -28,10 +31,15 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            octo11y/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install octo11y dependencies
+        run: npm run octo11y:install
 
       - name: Upgrade npm for trusted publishing
         run: |
@@ -41,7 +49,11 @@ jobs:
       - name: Build publishable packages
         run: |
           npm run build:packages
-          npm run build:octo-packages
+          cd octo11y
+          npm run build --workspace=packages/core
+          npm run build --workspace=packages/format
+          npm run build --workspace=packages/chart
+          npm run build --workspace=packages/adapters
 
       - name: Create release PR or publish
         uses: changesets/action@v1
