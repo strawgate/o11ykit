@@ -323,7 +323,8 @@ async function emitToCollector(endpoint: string, payload: Record<string, unknown
 }
 
 function writePayloadFile(outputDir: string, metricName: string, payload: Record<string, unknown>): string {
-  const fileName = `emit-${sanitizeFileName(metricName)}-${Date.now()}.otlp.json`;
+  const nonce = Math.random().toString(36).slice(2, 8);
+  const fileName = `emit-${sanitizeFileName(metricName)}-${Date.now()}-${nonce}.otlp.json`;
   const outputPath = path.join(outputDir, fileName);
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
