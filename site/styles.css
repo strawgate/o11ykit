@@ -367,13 +367,13 @@ code {
   color: inherit;
 }
 
-footer p {
+.site-footer p {
   margin: 0;
   color: #345166;
   font-size: 13px;
 }
 
-footer a {
+.site-footer a {
   color: #0e5d8f;
 }
 

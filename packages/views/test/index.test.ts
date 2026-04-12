@@ -7,6 +7,7 @@ import {
   buildLatestValuesFrame,
   buildTimeSeriesFrame,
   buildTraceWaterfallFrame,
+  createTelemetryStore,
 } from "../src/index.js";
 
 describe("@otlpkit/views", () => {
@@ -344,5 +345,210 @@ describe("@otlpkit/views", () => {
     expect(waterfall.traces[0]?.spans[0]?.spanId).toBe("null-time");
     expect(logEvents.events[0]?.body).toBe("null");
     expect(traceEvents.events[0]?.name).toBe("null");
+  });
+
+  it("matches batch frame output through an incremental store", () => {
+    const store = createTelemetryStore();
+    store.ingest(metricsDocument);
+
+    const batch = buildTimeSeriesFrame(metricsDocument, {
+      metricName: "logfwd.inflight_batches",
+      intervalMs: 1000,
+      splitBy: "output",
+    });
+    const fromStore = store.selectTimeSeries({
+      metricName: "logfwd.inflight_batches",
+      intervalMs: 1000,
+      splitBy: "output",
+    });
+
+    expect(fromStore).toEqual(batch);
+  });
+
+  it("supports append-only ingest across multiple calls", () => {
+    const store = createTelemetryStore();
+
+    const first = {
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: "app.requests",
+                  gauge: {
+                    dataPoints: [{ timeUnixNano: "1000000", asInt: "3" }],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const second = {
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: "app.requests",
+                  gauge: {
+                    dataPoints: [{ timeUnixNano: "2000000", asInt: "8" }],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(store.ingest(first).metrics).toBe(1);
+    expect(store.ingest(second).metrics).toBe(1);
+    expect(store.size().metrics).toBe(2);
+
+    const frame = store.selectTimeSeries({
+      metricName: "app.requests",
+      intervalMs: 1,
+    });
+    expect(frame.series).toHaveLength(1);
+    expect(frame.series[0]?.points).toHaveLength(2);
+    expect(frame.series[0]?.points[1]?.value).toBe(8);
+  });
+
+  it("applies maxPoints retention per signal", () => {
+    const store = createTelemetryStore({ maxPoints: 2 });
+
+    store.ingest({
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: "queue.depth",
+                  gauge: {
+                    dataPoints: [
+                      { timeUnixNano: "1000000", asInt: "1" },
+                      { timeUnixNano: "2000000", asInt: "2" },
+                      { timeUnixNano: "3000000", asInt: "3" },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const frame = store.selectTimeSeries({
+      metricName: "queue.depth",
+      intervalMs: 1,
+    });
+    expect(store.size().metrics).toBe(2);
+    expect(frame.series[0]?.points).toHaveLength(2);
+    expect(frame.series[0]?.points[0]?.timeUnixNano).toBe("2000000");
+    expect(frame.series[0]?.points[1]?.timeUnixNano).toBe("3000000");
+  });
+
+  it("applies maxAgeMs retention per signal", () => {
+    const store = createTelemetryStore({ maxAgeMs: 2 });
+
+    store.ingest({
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: "queue.latency",
+                  gauge: {
+                    dataPoints: [
+                      { timeUnixNano: "6000000", asInt: "6" },
+                      { timeUnixNano: "5000000", asInt: "5" },
+                      { timeUnixNano: "1000000", asInt: "1" },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const frame = store.selectTimeSeries({
+      metricName: "queue.latency",
+      intervalMs: 1,
+    });
+    expect(store.size().metrics).toBe(2);
+    expect(frame.series[0]?.points).toHaveLength(2);
+    expect(frame.series[0]?.points[0]?.timeUnixNano).toBe("5000000");
+    expect(frame.series[0]?.points[1]?.timeUnixNano).toBe("6000000");
+  });
+
+  it("supports traces/logs selectors from incremental ingest", () => {
+    const store = createTelemetryStore();
+    store.ingest(tracesDocument);
+    store.ingest(logsDocument);
+
+    expect(store.selectTraceWaterfall().traces.length).toBeGreaterThan(0);
+    expect(store.selectEventTimeline({ signal: "logs" }).events.length).toBeGreaterThan(0);
+  });
+
+  it("supports latest/histogram selectors and clear()", () => {
+    const store = createTelemetryStore();
+    store.ingest(metricsDocument);
+
+    expect(
+      store.selectLatestValues({ metricName: "logfwd.inflight_batches" }).rows.length
+    ).toBeGreaterThan(0);
+    expect(
+      store.selectHistogram({ metricName: "logfwd.output.duration" }).bins.length
+    ).toBeGreaterThan(0);
+
+    store.clear();
+    expect(store.size().total).toBe(0);
+    expect(store.selectLatestValues({ metricName: "logfwd.inflight_batches" }).rows).toHaveLength(
+      0
+    );
+  });
+
+  it("keeps records with missing timestamps when maxAgeMs is set", () => {
+    const store = createTelemetryStore({ maxAgeMs: 5 });
+    store.ingest({
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: "untimed.metric",
+                  gauge: {
+                    dataPoints: [{ asInt: "42" }],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const latest = store.selectLatestValues({ metricName: "untimed.metric" });
+    expect(latest.rows).toHaveLength(1);
+    expect(latest.rows[0]?.value).toBe(42);
+  });
+
+  it("validates telemetry store retention options", () => {
+    expect(() => createTelemetryStore({ maxPoints: 0 })).toThrow(
+      /maxPoints must be a positive integer/
+    );
+    expect(() => createTelemetryStore({ maxAgeMs: 0 })).toThrow(
+      /maxAgeMs must be a positive number/
+    );
   });
 });
