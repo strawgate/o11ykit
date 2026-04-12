@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { gzipSync } from "node:zlib";
 import Ajv from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import {
@@ -610,14 +611,119 @@ describe("readRuns", () => {
     }
   });
 
-  it("ignores run directories that only contain telemetry sidecars", () => {
+  it("reads telemetry sidecar-only runs from .otlp.jsonl.gz", () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "benchkit-agg-test-"));
     try {
       const runDir = path.join(tmpDir, "run-001");
       fs.mkdirSync(runDir, { recursive: true });
-      fs.writeFileSync(path.join(runDir, "telemetry.otlp.jsonl.gz"), "not parsed by aggregate");
+
+      const telemetryLine = JSON.stringify({
+        resourceMetrics: [
+          {
+            resource: { attributes: [] },
+            scopeMetrics: [
+              {
+                metrics: [
+                  {
+                    name: "system.cpu.utilization",
+                    gauge: {
+                      dataPoints: [
+                        {
+                          attributes: [],
+                          asDouble: 0.42,
+                          timeUnixNano: "1711929600000000000",
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      fs.writeFileSync(
+        path.join(runDir, "telemetry.otlp.jsonl.gz"),
+        gzipSync(`${telemetryLine}\n`),
+      );
+
       const runs = readRuns(tmpDir);
-      assert.equal(runs.length, 0);
+      assert.equal(runs.length, 1);
+      assert.equal(runs[0].id, "run-001");
+      assert.equal(runs[0].batch.points.length, 1);
+      assert.equal(runs[0].batch.points[0].scenario, "_monitor/system");
+      assert.equal(runs[0].batch.points[0].series, "system");
+      assert.equal(runs[0].batch.points[0].role, "diagnostic");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it("merges benchmark and telemetry files from the same run directory", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "benchkit-agg-test-"));
+    try {
+      const runDir = path.join(tmpDir, "run-001");
+      fs.mkdirSync(runDir, { recursive: true });
+
+      const benchmarkDoc = buildOtlpResult({
+        benchmarks: [{ name: "BenchA", metrics: { ns_per_op: { value: 100, unit: "ns/op" } } }],
+        context: { sourceFormat: "otlp", commit: "abc123" },
+      });
+      fs.writeFileSync(path.join(runDir, "benchmark.otlp.json"), JSON.stringify(benchmarkDoc));
+
+      const telemetryLine = JSON.stringify({
+        resourceMetrics: [
+          {
+            resource: { attributes: [] },
+            scopeMetrics: [
+              {
+                metrics: [
+                  {
+                    name: "process.cpu.time",
+                    gauge: {
+                      dataPoints: [
+                        {
+                          attributes: [],
+                          asDouble: 12.5,
+                          timeUnixNano: "1711929600000000000",
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      fs.writeFileSync(path.join(runDir, "telemetry.otlp.jsonl"), `${telemetryLine}\n`);
+
+      const runs = readRuns(tmpDir);
+      assert.equal(runs.length, 1);
+      const points = runs[0].batch.points;
+      assert.ok(points.some((point) => point.scenario === "BenchA" && point.metric === "ns_per_op"));
+      assert.ok(points.some((point) => point.scenario === "_monitor/system" && point.metric === "process.cpu.time"));
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it("ignores non-OTLP JSON files inside run directories", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "benchkit-agg-test-"));
+    try {
+      const runDir = path.join(tmpDir, "run-001");
+      fs.mkdirSync(runDir, { recursive: true });
+      fs.writeFileSync(path.join(runDir, "result.json"), JSON.stringify({ ok: true }));
+
+      const benchmarkDoc = buildOtlpResult({
+        benchmarks: [{ name: "BenchA", metrics: { ns_per_op: { value: 100, unit: "ns/op" } } }],
+        context: { sourceFormat: "otlp" },
+      });
+      fs.writeFileSync(path.join(runDir, "benchmark.otlp.json"), JSON.stringify(benchmarkDoc));
+
+      const runs = readRuns(tmpDir);
+      assert.equal(runs.length, 1);
+      assert.equal(runs[0].id, "run-001");
     } finally {
       fs.rmSync(tmpDir, { recursive: true });
     }

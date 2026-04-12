@@ -1,7 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { gunzipSync } from "node:zlib";
 import {
   MetricsBatch,
+  type MetricPoint,
+  type ResourceContext,
 } from "@benchkit/format";
 import type {
   MonitorContext,
@@ -20,13 +23,19 @@ export interface ParsedRun {
   monitor?: MonitorContext;
 }
 
-const RUN_BENCHMARK_FILE = "benchmark.otlp.json";
+const OTLP_JSON_SUFFIX = ".otlp.json";
+const OTLP_JSONL_SUFFIX = ".otlp.jsonl";
+const OTLP_JSONL_GZ_SUFFIX = ".otlp.jsonl.gz";
 
 /**
  * When a scenario name starts with `_monitor/`, prefix the metric name
  * so Dashboard can partition monitor metrics from user benchmarks.
  */
 export function resolveMetricName(scenario: string, metricName: string): string {
+  if (metricName.startsWith("_monitor/")) return metricName;
+  if (metricName.startsWith("_monitor.")) {
+    return `_monitor/${metricName.slice("_monitor.".length)}`;
+  }
   return scenario.startsWith("_monitor/") ? `_monitor/${metricName}` : metricName;
 }
 
@@ -183,53 +192,196 @@ export function buildSeries(runs: ParsedRun[]): Map<string, SeriesFile> {
 export function readRuns(runsDir: string): ParsedRun[] {
   if (!fs.existsSync(runsDir)) return [];
   const entries = fs.readdirSync(runsDir, { withFileTypes: true });
-  const runFiles = entries
-    .flatMap((entry): Array<{ id: string; fileName: string; filePath: string }> => {
-      if (entry.isDirectory()) {
-        const runId = entry.name;
-        const fileName = RUN_BENCHMARK_FILE;
-        const filePath = path.join(runsDir, runId, fileName);
-        if (!fs.existsSync(filePath)) {
-          return [];
-        }
-        return [{ id: runId, fileName: `${runId}/${fileName}`, filePath }];
-      }
-      if (entry.isFile() && entry.name.endsWith(".json")) {
-        const id = path.basename(entry.name, ".json");
-        const fileName = entry.name;
-        const filePath = path.join(runsDir, entry.name);
-        return [{ id, fileName, filePath }];
-      }
-      return [];
-    })
-    .sort((a, b) => a.id.localeCompare(b.id));
-  return runFiles.map(({ id, fileName, filePath }) => {
+  const runs: ParsedRun[] = [];
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const parsed = parseRunDirectory(runsDir, entry.name);
+      if (parsed) runs.push(parsed);
+      continue;
+    }
+    if (entry.isFile() && entry.name.endsWith(".json")) {
+      const id = path.basename(entry.name, ".json");
+      const fileName = entry.name;
+      const filePath = path.join(runsDir, entry.name);
+      runs.push(parseRunFileFromJsonDocument(id, fileName, filePath));
+    }
+  }
+
+  runs.sort((a, b) => a.id.localeCompare(b.id));
+  return runs;
+}
+
+function parseRunDirectory(runsDir: string, runId: string): ParsedRun | undefined {
+  const runPath = path.join(runsDir, runId);
+  const entries = fs.readdirSync(runPath, { withFileTypes: true });
+  const files = entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((name) =>
+      name.endsWith(OTLP_JSON_SUFFIX)
+      || name.endsWith(OTLP_JSONL_SUFFIX)
+      || name.endsWith(OTLP_JSONL_GZ_SUFFIX))
+    .sort();
+
+  if (files.length === 0) {
+    return undefined;
+  }
+
+  const batches: MetricsBatch[] = files.map((fileName) => {
+    const filePath = path.join(runPath, fileName);
+    if (fileName.endsWith(OTLP_JSONL_GZ_SUFFIX)) {
+      const compressed = fs.readFileSync(filePath);
+      const content = gunzipSync(compressed).toString("utf-8");
+      return parseJsonlFile(runId, `${runId}/${fileName}`, content);
+    }
+    if (fileName.endsWith(OTLP_JSONL_SUFFIX)) {
+      const content = fs.readFileSync(filePath, "utf-8");
+      return parseJsonlFile(runId, `${runId}/${fileName}`, content);
+    }
+    return parseRunFileFromJsonDocument(runId, `${runId}/${fileName}`, filePath).batch;
+  });
+
+  const merged = mergeBatches(batches);
+  return buildParsedRun(runId, normalizeMonitorTelemetryPoints(merged));
+}
+
+function parseJsonlFile(runId: string, fileName: string, content: string): MetricsBatch {
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    return MetricsBatch.fromOtlp({ resourceMetrics: [] });
+  }
+
+  const batches: MetricsBatch[] = lines.map((line, index) => {
     let parsed: unknown;
     try {
-      parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+      parsed = JSON.parse(line);
     } catch (err) {
       throw new Error(
-        `Failed to parse run file '${fileName}': ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to parse run file '${fileName}' line ${index + 1}: ${err instanceof Error ? err.message : String(err)}`,
         { cause: err },
       );
     }
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
       throw new Error(
-        `Run file '${fileName}' must contain a JSON object, got ${parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed}`,
+        `Run file '${fileName}' line ${index + 1} must contain a JSON object, got ${parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed}`,
       );
     }
-    return parseRunFile(id, parsed as Record<string, unknown>);
+    return parseRunObject(runId, parsed as Record<string, unknown>, fileName).batch;
   });
+  return mergeBatches(batches);
+}
+
+function mergeBatches(batches: readonly MetricsBatch[]): MetricsBatch {
+  if (batches.length === 0) {
+    return MetricsBatch.fromOtlp({ resourceMetrics: [] });
+  }
+  let runId: string | undefined;
+  let kind: string | undefined;
+  let sourceFormat: string | undefined;
+  let commit: string | undefined;
+  let ref: string | undefined;
+  let workflow: string | undefined;
+  let job: string | undefined;
+  let runAttempt: string | undefined;
+  let runner: string | undefined;
+  let serviceName: string | undefined;
+  const points: MetricPoint[] = [];
+  for (const batch of batches) {
+    points.push(...batch.points);
+    runId ??= batch.context.runId;
+    kind ??= batch.context.kind;
+    sourceFormat ??= batch.context.sourceFormat;
+    commit ??= batch.context.commit;
+    ref ??= batch.context.ref;
+    workflow ??= batch.context.workflow;
+    job ??= batch.context.job;
+    runAttempt ??= batch.context.runAttempt;
+    runner ??= batch.context.runner;
+    serviceName ??= batch.context.serviceName;
+  }
+  const context: ResourceContext = {
+    runId,
+    kind,
+    sourceFormat,
+    commit,
+    ref,
+    workflow,
+    job,
+    runAttempt,
+    runner,
+    serviceName,
+  };
+  return MetricsBatch.fromPoints(points, context);
+}
+
+function normalizeMonitorTelemetryPoints(batch: MetricsBatch): MetricsBatch {
+  const normalized = batch.points.map((point) => {
+    const scenario = point.scenario.trim();
+    const series = point.series.trim();
+
+    const isMonitorScenario = scenario.startsWith("_monitor/");
+    const isMonitorMetric = point.metric.startsWith("_monitor.") || point.metric.startsWith("_monitor/");
+    if (isMonitorScenario) {
+      const normalizedSeries = series || scenario.slice("_monitor/".length) || "system";
+      return {
+        ...point,
+        series: normalizedSeries,
+        role: point.role ?? "diagnostic",
+      };
+    }
+    if (scenario) {
+      return point;
+    }
+
+    if (!isMonitorMetric && series) {
+      return point;
+    }
+
+    const monitorSeries = series || "system";
+    return {
+      ...point,
+      scenario: `_monitor/${monitorSeries}`,
+      series: monitorSeries,
+      role: point.role ?? "diagnostic",
+    };
+  });
+  return MetricsBatch.fromPoints(normalized, batch.context);
+}
+
+function parseRunFileFromJsonDocument(id: string, fileName: string, filePath: string): ParsedRun {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  } catch (err) {
+    throw new Error(
+      `Failed to parse run file '${fileName}': ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(
+      `Run file '${fileName}' must contain a JSON object, got ${parsed === null ? "null" : Array.isArray(parsed) ? "array" : typeof parsed}`,
+    );
+  }
+  return parseRunObject(id, parsed as Record<string, unknown>, fileName);
 }
 
 /** Convert a parsed JSON object into a ParsedRun. Expects OTLP format. */
-function parseRunFile(id: string, data: Record<string, unknown>): ParsedRun {
+function parseRunObject(id: string, data: Record<string, unknown>, fileName: string): ParsedRun {
   if (!Array.isArray(data.resourceMetrics)) {
     throw new Error(
-      `Run file '${id}.json' is not valid OTLP JSON (missing resourceMetrics array).`,
+      `Run file '${fileName}' is not valid OTLP JSON (missing resourceMetrics array).`,
     );
   }
   const batch = MetricsBatch.fromOtlp(data as unknown as import("@benchkit/format").OtlpMetricsDocument);
+  return buildParsedRun(id, normalizeMonitorTelemetryPoints(batch));
+}
+
+function buildParsedRun(id: string, batch: MetricsBatch): ParsedRun {
   let timestamp = new Date().toISOString();
   if (batch.points.length > 0 && batch.points[0].timestamp) {
     const nanos = BigInt(batch.points[0].timestamp);
