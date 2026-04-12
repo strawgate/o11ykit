@@ -139,7 +139,7 @@ competitive-first experiences.
 |---|---|---|
 | #179 | Extract `@octo11y/core` package | Done (PR #264) |
 | #180 | Explicit core imports across actions + chart | Done (PR #265) |
-| #189–#193 | Metrickit boundary plan and compatibility shims | Done (PR #263) |
+| #189–#193 | OtlpKit boundary plan and compatibility shims | Done (PR #263) |
 | #182 | Release, docs, and demo migration | In progress |
 | #183 | Epic umbrella | Open (closes when #182 ships) |
 
