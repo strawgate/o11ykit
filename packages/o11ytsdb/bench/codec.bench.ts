@@ -58,31 +58,25 @@ try {
   console.log('  ⚠ TS codec not built — skipping. Run `npm run build` first.');
 }
 
-// Zig WASM implementation — uncomment when M1 Zig is complete.
-// try {
-//   const zigWasm = await loadZigCodec('../wasm/o11ytsdb-zig.wasm');
-//   implementations.push({
-//     runtime: 'zig',
-//     name: 'Zig→WASM',
-//     encode: zigWasm.encode,
-//     decode: zigWasm.decode,
-//   });
-// } catch (e) {
-//   console.log('  ⚠ Zig WASM codec not built — skipping.');
-// }
+// Zig WASM implementation.
+try {
+  const { loadWasm, makeCodecImpl } = await import('./wasm-loader.js');
+  const zigWasmPath = pkgPath('wasm/o11ytsdb-zig.wasm');
+  const zigWasm = await loadWasm(zigWasmPath);
+  implementations.push(makeCodecImpl(zigWasm, 'zig', 'Zig→WASM'));
+} catch (e: any) {
+  console.log(`  ⚠ Zig WASM codec not available — skipping. ${e.message ?? e}`);
+}
 
-// Rust WASM implementation — uncomment when M1 Rust is complete.
-// try {
-//   const rustWasm = await loadRustCodec('../wasm/o11ytsdb-rust.wasm');
-//   implementations.push({
-//     runtime: 'rust',
-//     name: 'Rust→WASM',
-//     encode: rustWasm.encode,
-//     decode: rustWasm.decode,
-//   });
-// } catch (e) {
-//   console.log('  ⚠ Rust WASM codec not built — skipping.');
-// }
+// Rust WASM implementation.
+try {
+  const { loadWasm, makeCodecImpl } = await import('./wasm-loader.js');
+  const rustWasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+  const rustWasm = await loadWasm(rustWasmPath);
+  implementations.push(makeCodecImpl(rustWasm, 'rust', 'Rust→WASM'));
+} catch (e: any) {
+  console.log(`  ⚠ Rust WASM codec not available — skipping. ${e.message ?? e}`);
+}
 
 // ── Correctness: round-trip within a single implementation ───────────
 

@@ -23,7 +23,7 @@ import { allGenerators } from './vectors.js';
 import type { ChunkData } from './vectors.js';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gzipSync, gunzipSync } from 'node:zlib';
+import { gzipSync, gunzipSync, brotliCompressSync, brotliDecompressSync, constants as zlibConstants } from 'node:zlib';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -85,6 +85,32 @@ function gzipRawDecode(buf: Uint8Array, n: number): { timestamps: BigInt64Array;
   return rawDecode(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength), n);
 }
 
+/** 3b. Brotli on raw bytes (available in Node 12+ natively). */
+function brotliRawEncode(data: ChunkData): Uint8Array {
+  const raw = rawEncode(data);
+  return brotliCompressSync(raw, {
+    params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
+  });
+}
+
+function brotliRawDecode(buf: Uint8Array, n: number): { timestamps: BigInt64Array; values: Float64Array } {
+  const raw = brotliDecompressSync(buf);
+  return rawDecode(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength), n);
+}
+
+/** 3c. Brotli on XOR-delta output. */
+function xorBrotliEncode(data: ChunkData): Uint8Array {
+  const xor = encodeChunk(data.timestamps, data.values);
+  return brotliCompressSync(xor, {
+    params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
+  });
+}
+
+function xorBrotliDecode(buf: Uint8Array): { timestamps: BigInt64Array; values: Float64Array } {
+  const xor = brotliDecompressSync(buf);
+  return decodeChunk(new Uint8Array(xor.buffer, xor.byteOffset, xor.byteLength));
+}
+
 /** 4. Our XOR-delta codec (already imported). */
 function xorEncode(data: ChunkData): Uint8Array {
   return encodeChunk(data.timestamps, data.values);
@@ -119,8 +145,10 @@ const competitors: Competitor[] = [
   { name: 'raw', encode: rawEncode, decode: rawDecode, needsCount: true },
   { name: 'json', encode: jsonEncode, decode: (buf) => jsonDecode(buf), needsCount: false },
   { name: 'gzip-raw', encode: gzipRawEncode, decode: (buf, n) => gzipRawDecode(buf, n), needsCount: true },
+  { name: 'brotli-raw', encode: brotliRawEncode, decode: (buf, n) => brotliRawDecode(buf, n), needsCount: true },
   { name: 'xor-delta', encode: xorEncode, decode: (buf) => xorDecode(buf), needsCount: false },
   { name: 'xor+gzip', encode: xorGzipEncode, decode: (buf) => xorGzipDecode(buf), needsCount: false },
+  { name: 'xor+brotli', encode: xorBrotliEncode, decode: (buf) => xorBrotliDecode(buf), needsCount: false },
 ];
 
 // ── Main ─────────────────────────────────────────────────────────────

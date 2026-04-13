@@ -3,7 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
-    const lib = b.addSharedLibrary(.{
+    const exe = b.addExecutable(.{
         .name = "o11ytsdb",
         .root_source_file = b.path("src/root.zig"),
         .target = b.resolveTargetQuery(.{
@@ -14,14 +14,18 @@ pub fn build(b: *std.Build) void {
     });
 
     // Strip debug info for smallest binary.
-    lib.root_module.strip = optimize != .Debug;
+    exe.root_module.strip = optimize != .Debug;
 
     // Export WASM memory so JS can read/write buffers.
-    lib.export_memory = true;
-    lib.initial_memory = 256 * 65536; // 16 MB
-    lib.max_memory = 1024 * 65536; // 64 MB
+    exe.entry = .disabled;
+    exe.export_memory = true;
+    exe.initial_memory = 256 * 65536; // 16 MB
+    exe.max_memory = 1024 * 65536; // 64 MB
 
-    b.installArtifact(lib);
+    // Export all pub extern functions.
+    exe.rdynamic = true;
+
+    b.installArtifact(exe);
 
     // Unit tests (native target for development).
     const unit_tests = b.addTest(.{
