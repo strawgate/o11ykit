@@ -2,9 +2,11 @@ import { defineConfig } from "vite";
 import { resolve } from "node:path";
 import preact from "@preact/preset-vite";
 
+const base = process.env.BASE_PATH || "/octo11y/";
+
 export default defineConfig({
   plugins: [preact()],
-  base: "/octo11y/",
+  base,
   build: {
     commonjsOptions: {
       include: [/format/, /node_modules/],
