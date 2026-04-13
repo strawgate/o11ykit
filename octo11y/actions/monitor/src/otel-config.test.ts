@@ -2,6 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   generateCollectorConfig,
+  mergeResourceAttributesInputs,
+  parseResourceAttributes,
   validateMetricSets,
   validateScrapeInterval,
   type CollectorConfigOptions,
@@ -54,6 +56,7 @@ describe("generateCollectorConfig", () => {
   it("generates config with hostmetrics and otlp receivers", () => {
     const yaml = generateCollectorConfig(baseOpts());
     assert.match(yaml, /hostmetrics:/);
+    assert.match(yaml, /initial_delay: 0s/);
     assert.match(yaml, /collection_interval: 1s/);
     assert.match(yaml, /cpu: \{\}/);
     assert.match(yaml, /memory: \{\}/);
@@ -179,6 +182,24 @@ describe("generateCollectorConfig", () => {
     assert.match(yaml, /processors: \[resource\]/);
   });
 
+  it("includes custom resource attributes", () => {
+    const yaml = generateCollectorConfig(
+      baseOpts({
+        resourceAttributes: {
+          "service.namespace": "bench",
+          "test.enabled": true,
+          "run.slot": 7,
+        },
+      }),
+    );
+    assert.match(yaml, /key: service\.namespace/);
+    assert.match(yaml, /value: "bench"/);
+    assert.match(yaml, /key: test\.enabled/);
+    assert.match(yaml, /value: "true"/);
+    assert.match(yaml, /key: run\.slot/);
+    assert.match(yaml, /value: "7"/);
+  });
+
   it("always includes benchkit.run_id, benchkit.kind, benchkit.source_format", () => {
     const yaml = generateCollectorConfig(baseOpts({ ref: undefined, commit: undefined }));
     assert.match(yaml, /benchkit\.run_id/);
@@ -206,6 +227,56 @@ describe("validateScrapeInterval", () => {
     assert.throws(() => validateScrapeInterval(""), /Invalid scrape interval/);
     assert.throws(() => validateScrapeInterval("1x"), /Invalid scrape interval/);
     assert.throws(() => validateScrapeInterval("1s\nmalicious: true"), /Invalid scrape interval/);
+  });
+});
+
+describe("resource attributes parsing", () => {
+  it("parses JSON attributes with typed values", () => {
+    assert.deepEqual(
+      parseResourceAttributes('{"service.namespace":"bench","slot":2,"enabled":true}'),
+      {
+        "service.namespace": "bench",
+        slot: 2,
+        enabled: true,
+      },
+    );
+  });
+
+  it("parses key=value line attributes", () => {
+    assert.deepEqual(
+      parseResourceAttributes("service.namespace=bench\nfeature.flag=on"),
+      {
+        "service.namespace": "bench",
+        "feature.flag": "on",
+      },
+    );
+  });
+
+  it("rejects benchkit-prefixed keys", () => {
+    assert.throws(
+      () => parseResourceAttributes("benchkit.kind=workflow"),
+      /must not use the 'benchkit\.' prefix/,
+    );
+  });
+
+  it("merges env and explicit attributes with explicit precedence", () => {
+    assert.deepEqual(
+      mergeResourceAttributesInputs(
+        "service.name=explicit\nservice.version=2",
+        "service.name=env\nservice.namespace=bench",
+      ),
+      {
+        "service.name": "explicit",
+        "service.namespace": "bench",
+        "service.version": "2",
+      },
+    );
+  });
+
+  it("uses env attributes when explicit input is empty", () => {
+    assert.deepEqual(mergeResourceAttributesInputs("", "service.name=env"), {
+      "service.name": "env",
+    });
   });
 });
 
