@@ -1,0 +1,36 @@
+{
+  "metric": "ns_per_op",
+  "unit": "ns/op",
+  "series": {
+    " [o11ykit.metric_direction=smaller_is_better,o11ykit.scenario=BenchmarkStringConcat,o11ykit.series=BenchmarkStringConcat,procs=8]": {
+      "tags": {
+        "o11ykit.scenario": "BenchmarkStringConcat",
+        "o11ykit.series": "BenchmarkStringConcat",
+        "o11ykit.metric_direction": "smaller_is_better",
+        "procs": "8"
+      },
+      "points": [
+        {
+          "timestamp": "2026-04-14T15:38:04.693Z",
+          "value": 39,
+          "run_id": "24408312829-1--benchmark"
+        }
+      ]
+    },
+    " [o11ykit.metric_direction=smaller_is_better,o11ykit.scenario=BenchmarkObjectMerge,o11ykit.series=BenchmarkObjectMerge,procs=8]": {
+      "tags": {
+        "o11ykit.scenario": "BenchmarkObjectMerge",
+        "o11ykit.series": "BenchmarkObjectMerge",
+        "o11ykit.metric_direction": "smaller_is_better",
+        "procs": "8"
+      },
+      "points": [
+        {
+          "timestamp": "2026-04-14T15:38:04.693Z",
+          "value": 529,
+          "run_id": "24408312829-1--benchmark"
+        }
+      ]
+    }
+  }
+}

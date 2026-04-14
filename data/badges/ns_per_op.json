@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "label": "ns per op",
+  "message": "284 ns/op",
+  "color": "blue"
+}

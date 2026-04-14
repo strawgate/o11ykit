@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "label": "bytes per op",
+  "message": "0 B/op",
+  "color": "blue"
+}

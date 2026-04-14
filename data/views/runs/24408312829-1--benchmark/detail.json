@@ -1,0 +1,98 @@
+{
+  "run": {
+    "id": "24408312829-1--benchmark",
+    "timestamp": "2026-04-14T15:38:04.693Z",
+    "benchmarks": 1,
+    "metrics": [
+      "allocs_per_op",
+      "bytes_per_op",
+      "ns_per_op"
+    ]
+  },
+  "metricSnapshots": [
+    {
+      "metric": "allocs_per_op",
+      "unit": "allocs/op",
+      "values": [
+        {
+          "name": " [o11ykit.metric_direction=smaller_is_better,o11ykit.scenario=BenchmarkStringConcat,o11ykit.series=BenchmarkStringConcat,procs=8]",
+          "value": 0,
+          "unit": "allocs/op",
+          "tags": {
+            "o11ykit.scenario": "BenchmarkStringConcat",
+            "o11ykit.series": "BenchmarkStringConcat",
+            "o11ykit.metric_direction": "smaller_is_better",
+            "procs": "8"
+          }
+        },
+        {
+          "name": " [o11ykit.metric_direction=smaller_is_better,o11ykit.scenario=BenchmarkObjectMerge,o11ykit.series=BenchmarkObjectMerge,procs=8]",
+          "value": 0,
+          "unit": "allocs/op",
+          "tags": {
+            "o11ykit.scenario": "BenchmarkObjectMerge",
+            "o11ykit.series": "BenchmarkObjectMerge",
+            "o11ykit.metric_direction": "smaller_is_better",
+            "procs": "8"
+          }
+        }
+      ]
+    },
+    {
+      "metric": "bytes_per_op",
+      "unit": "B/op",
+      "values": [
+        {
+          "name": " [o11ykit.metric_direction=smaller_is_better,o11ykit.scenario=BenchmarkStringConcat,o11ykit.series=BenchmarkStringConcat,procs=8]",
+          "value": 0,
+          "unit": "B/op",
+          "tags": {
+            "o11ykit.scenario": "BenchmarkStringConcat",
+            "o11ykit.series": "BenchmarkStringConcat",
+            "o11ykit.metric_direction": "smaller_is_better",
+            "procs": "8"
+          }
+        },
+        {
+          "name": " [o11ykit.metric_direction=smaller_is_better,o11ykit.scenario=BenchmarkObjectMerge,o11ykit.series=BenchmarkObjectMerge,procs=8]",
+          "value": 0,
+          "unit": "B/op",
+          "tags": {
+            "o11ykit.scenario": "BenchmarkObjectMerge",
+            "o11ykit.series": "BenchmarkObjectMerge",
+            "o11ykit.metric_direction": "smaller_is_better",
+            "procs": "8"
+          }
+        }
+      ]
+    },
+    {
+      "metric": "ns_per_op",
+      "unit": "ns/op",
+      "values": [
+        {
+          "name": " [o11ykit.metric_direction=smaller_is_better,o11ykit.scenario=BenchmarkStringConcat,o11ykit.series=BenchmarkStringConcat,procs=8]",
+          "value": 39,
+          "unit": "ns/op",
+          "tags": {
+            "o11ykit.scenario": "BenchmarkStringConcat",
+            "o11ykit.series": "BenchmarkStringConcat",
+            "o11ykit.metric_direction": "smaller_is_better",
+            "procs": "8"
+          }
+        },
+        {
+          "name": " [o11ykit.metric_direction=smaller_is_better,o11ykit.scenario=BenchmarkObjectMerge,o11ykit.series=BenchmarkObjectMerge,procs=8]",
+          "value": 529,
+          "unit": "ns/op",
+          "tags": {
+            "o11ykit.scenario": "BenchmarkObjectMerge",
+            "o11ykit.series": "BenchmarkObjectMerge",
+            "o11ykit.metric_direction": "smaller_is_better",
+            "procs": "8"
+          }
+        }
+      ]
+    }
+  ]
+}
