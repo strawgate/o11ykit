@@ -1,0 +1,292 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "o11ykit.source_format",
+            "value": {
+              "stringValue": "go"
+            }
+          },
+          {
+            "key": "o11ykit.run_id",
+            "value": {
+              "stringValue": "24408312829-1--benchmark"
+            }
+          },
+          {
+            "key": "o11ykit.commit",
+            "value": {
+              "stringValue": "f98d95f830a610de0627b7b6f182347b08b5f7d2"
+            }
+          },
+          {
+            "key": "o11ykit.ref",
+            "value": {
+              "stringValue": "refs/heads/codex/aggregate-sidecar-ingest"
+            }
+          },
+          {
+            "key": "o11ykit.workflow",
+            "value": {
+              "stringValue": "ingest-benchmark-sample-data"
+            }
+          },
+          {
+            "key": "o11ykit.job",
+            "value": {
+              "stringValue": "benchmark-and-stash"
+            }
+          },
+          {
+            "key": "o11ykit.run_attempt",
+            "value": {
+              "stringValue": "1"
+            }
+          },
+          {
+            "key": "o11ykit.runner",
+            "value": {
+              "stringValue": "Linux/X64"
+            }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "metrics": [
+            {
+              "name": "ns_per_op",
+              "unit": "ns/op",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1776181084693000000",
+                    "attributes": [
+                      {
+                        "key": "o11ykit.scenario",
+                        "value": {
+                          "stringValue": "BenchmarkStringConcat"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.series",
+                        "value": {
+                          "stringValue": "BenchmarkStringConcat"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.metric_direction",
+                        "value": {
+                          "stringValue": "smaller_is_better"
+                        }
+                      },
+                      {
+                        "key": "procs",
+                        "value": {
+                          "stringValue": "8"
+                        }
+                      }
+                    ],
+                    "asInt": "39"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "bytes_per_op",
+              "unit": "B/op",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1776181084693000000",
+                    "attributes": [
+                      {
+                        "key": "o11ykit.scenario",
+                        "value": {
+                          "stringValue": "BenchmarkStringConcat"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.series",
+                        "value": {
+                          "stringValue": "BenchmarkStringConcat"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.metric_direction",
+                        "value": {
+                          "stringValue": "smaller_is_better"
+                        }
+                      },
+                      {
+                        "key": "procs",
+                        "value": {
+                          "stringValue": "8"
+                        }
+                      }
+                    ],
+                    "asInt": "0"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "allocs_per_op",
+              "unit": "allocs/op",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1776181084693000000",
+                    "attributes": [
+                      {
+                        "key": "o11ykit.scenario",
+                        "value": {
+                          "stringValue": "BenchmarkStringConcat"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.series",
+                        "value": {
+                          "stringValue": "BenchmarkStringConcat"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.metric_direction",
+                        "value": {
+                          "stringValue": "smaller_is_better"
+                        }
+                      },
+                      {
+                        "key": "procs",
+                        "value": {
+                          "stringValue": "8"
+                        }
+                      }
+                    ],
+                    "asInt": "0"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "ns_per_op",
+              "unit": "ns/op",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1776181084693000000",
+                    "attributes": [
+                      {
+                        "key": "o11ykit.scenario",
+                        "value": {
+                          "stringValue": "BenchmarkObjectMerge"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.series",
+                        "value": {
+                          "stringValue": "BenchmarkObjectMerge"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.metric_direction",
+                        "value": {
+                          "stringValue": "smaller_is_better"
+                        }
+                      },
+                      {
+                        "key": "procs",
+                        "value": {
+                          "stringValue": "8"
+                        }
+                      }
+                    ],
+                    "asInt": "529"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "bytes_per_op",
+              "unit": "B/op",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1776181084693000000",
+                    "attributes": [
+                      {
+                        "key": "o11ykit.scenario",
+                        "value": {
+                          "stringValue": "BenchmarkObjectMerge"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.series",
+                        "value": {
+                          "stringValue": "BenchmarkObjectMerge"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.metric_direction",
+                        "value": {
+                          "stringValue": "smaller_is_better"
+                        }
+                      },
+                      {
+                        "key": "procs",
+                        "value": {
+                          "stringValue": "8"
+                        }
+                      }
+                    ],
+                    "asInt": "0"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "allocs_per_op",
+              "unit": "allocs/op",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1776181084693000000",
+                    "attributes": [
+                      {
+                        "key": "o11ykit.scenario",
+                        "value": {
+                          "stringValue": "BenchmarkObjectMerge"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.series",
+                        "value": {
+                          "stringValue": "BenchmarkObjectMerge"
+                        }
+                      },
+                      {
+                        "key": "o11ykit.metric_direction",
+                        "value": {
+                          "stringValue": "smaller_is_better"
+                        }
+                      },
+                      {
+                        "key": "procs",
+                        "value": {
+                          "stringValue": "8"
+                        }
+                      }
+                    ],
+                    "asInt": "0"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
