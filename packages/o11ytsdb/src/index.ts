@@ -16,12 +16,14 @@ export type { DecodedChunk } from './codec.js';
 
 // Experimentation framework — pluggable core
 export type {
-  Labels, SeriesId, TimeRange, Codec,
+  Labels, SeriesId, TimeRange, Codec, ValuesCodec, TimestampCodec, ChunkStats, StatsCodec,
   StorageBackend, QueryEngine, QueryOpts, QueryResult,
   SeriesResult, AggFn, Matcher,
 } from './types.js';
 export { FlatStore } from './flat-store.js';
 export { ChunkedStore } from './chunked-store.js';
+export { ColumnStore } from './column-store.js';
+export { computeStats } from './stats.js';
 export { ScanEngine } from './query.js';
 
 // M2: String interner — will export Interner once gate passes

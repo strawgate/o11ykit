@@ -33,7 +33,7 @@ type QueryEngine = import('../dist/types.js').QueryEngine;
 const NUM_SERIES = 100;
 const POINTS_PER_SERIES = 10_000;
 const TOTAL_SAMPLES = NUM_SERIES * POINTS_PER_SERIES;
-const CHUNK_SIZES = [128, 512, 1024];
+const CHUNK_SIZES = [128, 1024];
 const T0 = 1_700_000_000_000n;
 const INTERVAL = 15_000n; // 15s
 
@@ -50,23 +50,7 @@ async function loadBackends(): Promise<StorageBackend[]> {
     console.log('  ⚠ FlatStore not built — skipping');
   }
 
-  // ChunkedStore with TS codec at various chunk sizes.
-  try {
-    const { ChunkedStore } = await import(pkgPath('dist/chunked-store.js'));
-    const codec = await import(pkgPath('dist/codec.js'));
-    const tsCodec: Codec = {
-      name: 'ts',
-      encode: codec.encodeChunk,
-      decode: codec.decodeChunk,
-    };
-    for (const size of CHUNK_SIZES) {
-      backends.push(new ChunkedStore(tsCodec, size));
-    }
-  } catch (e) {
-    console.log('  ⚠ ChunkedStore/TS codec not built — skipping');
-  }
-
-  // ChunkedStore with Rust WASM codec.
+  // ChunkedStore with Rust WASM codec at various chunk sizes.
   try {
     const { ChunkedStore } = await import(pkgPath('dist/chunked-store.js'));
     const { loadWasm, makeCodecImpl } = await import('./wasm-loader.js');
@@ -83,6 +67,48 @@ async function loadBackends(): Promise<StorageBackend[]> {
     }
   } catch (e) {
     console.log(`  ⚠ Rust WASM codec not available — skipping (${(e as Error).message})`);
+  }
+
+  // ColumnStore with Rust WASM values codec (shared timestamps, uncompressed ts).
+  try {
+    const { ColumnStore } = await import(pkgPath('dist/column-store.js'));
+    const { loadWasm, makeValuesCodec } = await import('./wasm-loader.js');
+    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const wasm = await loadWasm(wasmPath);
+    const wasmVals = makeValuesCodec(wasm);
+    const valCodec = {
+      name: 'rust-wasm-values',
+      encodeValues: wasmVals.encodeValues,
+      decodeValues: wasmVals.decodeValues,
+      encodeValuesWithStats: wasmVals.encodeValuesWithStats,
+    };
+    for (const size of CHUNK_SIZES) {
+      backends.push(new ColumnStore(valCodec, size, () => 0));
+    }
+  } catch (e) {
+    console.log(`  ⚠ ColumnStore/WASM not available — skipping (${(e as Error).message})`);
+  }
+
+  // ColumnStore with WASM values + WASM timestamp compression.
+  try {
+    const { ColumnStore } = await import(pkgPath('dist/column-store.js'));
+    const { loadWasm, makeValuesCodec, makeTimestampCodec } = await import('./wasm-loader.js');
+    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const wasm = await loadWasm(wasmPath);
+    const wasmVals = makeValuesCodec(wasm);
+    const wasmTs = makeTimestampCodec(wasm);
+    const valCodec = {
+      name: 'rust-wasm-full',
+      encodeValues: wasmVals.encodeValues,
+      decodeValues: wasmVals.decodeValues,
+      encodeValuesWithStats: wasmVals.encodeValuesWithStats,
+    };
+    const tsCodec = { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps };
+    for (const size of CHUNK_SIZES) {
+      backends.push(new ColumnStore(valCodec, size, () => 0, undefined, tsCodec));
+    }
+  } catch (e) {
+    console.log(`  ⚠ ColumnStore/WASM+TS not available — skipping (${(e as Error).message})`);
   }
 
   return backends;
@@ -117,13 +143,54 @@ function generateData(): IngestData {
 
     const ts = new BigInt64Array(POINTS_PER_SERIES);
     const vs = new Float64Array(POINTS_PER_SERIES);
-    let v = rng.next() * 100;
-    for (let i = 0; i < POINTS_PER_SERIES; i++) {
-      ts[i] = T0 + BigInt(i) * INTERVAL;
-      v += rng.gaussian(0, 0.5);
-      v = Math.max(0, v);
-      vs[i] = Math.round(v * 100) / 100;
+
+    // Realistic monitoring data patterns:
+    //   - 20% constant series (e.g. num_cpus, memory_total) — all values identical
+    //   - 30% counters (e.g. requests_total) — monotonically increasing
+    //   - 30% gauges with repeats (e.g. cpu_percent) — decimal values, 30-50% repeat previous
+    //   - 20% gauges with high variance (e.g. latency) — random walk
+    const pattern = s % 10;
+
+    if (pattern < 2) {
+      // Constant series: value never changes.
+      const constant = Math.round(rng.next() * 1000) / 10;
+      for (let i = 0; i < POINTS_PER_SERIES; i++) {
+        ts[i] = T0 + BigInt(i) * INTERVAL;
+        vs[i] = constant;
+      }
+    } else if (pattern < 5) {
+      // Counter: monotonically increasing, occasional small increments.
+      let counter = Math.floor(rng.next() * 10000);
+      for (let i = 0; i < POINTS_PER_SERIES; i++) {
+        ts[i] = T0 + BigInt(i) * INTERVAL;
+        // ~40% of intervals have 0 increment (idle), rest small positive
+        const idle = rng.next() < 0.4;
+        if (!idle) counter += Math.floor(rng.next() * 10) + 1;
+        vs[i] = counter;
+      }
+    } else if (pattern < 8) {
+      // Gauge with repeats: rounded percentage, ~35% repeat previous.
+      let v = Math.round(rng.next() * 1000) / 10; // e.g. 45.2%
+      for (let i = 0; i < POINTS_PER_SERIES; i++) {
+        ts[i] = T0 + BigInt(i) * INTERVAL;
+        if (rng.next() > 0.35) {
+          v += rng.gaussian(0, 0.3);
+          v = Math.max(0, Math.min(100, v));
+          v = Math.round(v * 10) / 10;
+        }
+        vs[i] = v;
+      }
+    } else {
+      // High-variance gauge: random walk (original pattern).
+      let v = rng.next() * 100;
+      for (let i = 0; i < POINTS_PER_SERIES; i++) {
+        ts[i] = T0 + BigInt(i) * INTERVAL;
+        v += rng.gaussian(0, 0.5);
+        v = Math.max(0, v);
+        vs[i] = Math.round(v * 100) / 100;
+      }
     }
+
     timestamps.push(ts);
     values.push(vs);
   }
@@ -272,9 +339,9 @@ async function freshBackend(name: string): Promise<StorageBackend> {
   }
 
   // Parse "chunked-{codec}-{size}" pattern.
-  const match = name.match(/^chunked-(.+)-(\d+)$/);
-  if (match) {
-    const [, codecName, sizeStr] = match;
+  const chunkedMatch = name.match(/^chunked-(.+)-(\d+)$/);
+  if (chunkedMatch) {
+    const [, codecName, sizeStr] = chunkedMatch;
     const size = parseInt(sizeStr!, 10);
     const { ChunkedStore } = await import(pkgPath('dist/chunked-store.js'));
 
@@ -294,6 +361,38 @@ async function freshBackend(name: string): Promise<StorageBackend> {
       return new ChunkedStore(
         { name: 'rust-wasm', encode: impl.encode, decode: impl.decode },
         size,
+      );
+    }
+  }
+
+  // Parse "column-{codec}-{size}" pattern.
+  const columnMatch = name.match(/^column-(.+)-(\d+)$/);
+  if (columnMatch) {
+    const [, codecName, sizeStr] = columnMatch;
+    const size = parseInt(sizeStr!, 10);
+    const { ColumnStore } = await import(pkgPath('dist/column-store.js'));
+
+    if (codecName === 'rust-wasm-values') {
+      const { loadWasm, makeValuesCodec } = await import('./wasm-loader.js');
+      const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+      const wasm = await loadWasm(wasmPath);
+      const wasmVals = makeValuesCodec(wasm);
+      return new ColumnStore(
+        { name: 'rust-wasm-values', encodeValues: wasmVals.encodeValues, decodeValues: wasmVals.decodeValues, encodeValuesWithStats: wasmVals.encodeValuesWithStats },
+        size, () => 0,
+      );
+    }
+
+    if (codecName === 'rust-wasm-full') {
+      const { loadWasm, makeValuesCodec, makeTimestampCodec } = await import('./wasm-loader.js');
+      const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+      const wasm = await loadWasm(wasmPath);
+      const wasmVals = makeValuesCodec(wasm);
+      const wasmTs = makeTimestampCodec(wasm);
+      return new ColumnStore(
+        { name: 'rust-wasm-full', encodeValues: wasmVals.encodeValues, decodeValues: wasmVals.decodeValues, encodeValuesWithStats: wasmVals.encodeValuesWithStats },
+        size, () => 0, undefined,
+        { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
       );
     }
   }

@@ -28,6 +28,42 @@ export interface Codec {
   decode(buf: Uint8Array): TimeRange;
 }
 
+/** Values-only codec — encodes just values, timestamps stored separately. */
+export interface ValuesCodec {
+  readonly name: string;
+  encodeValues(values: Float64Array): Uint8Array;
+  decodeValues(buf: Uint8Array): Float64Array;
+  /** Optional: encode values and compute block stats in one pass (WASM fast-path). */
+  encodeValuesWithStats?(values: Float64Array): { compressed: Uint8Array; stats: ChunkStats };
+}
+
+/** Timestamp-only codec — delta-of-delta compression for shared timestamp columns. */
+export interface TimestampCodec {
+  readonly name: string;
+  encodeTimestamps(timestamps: BigInt64Array): Uint8Array;
+  decodeTimestamps(buf: Uint8Array): BigInt64Array;
+}
+
+/** Block-level statistics computed at freeze time. */
+export interface ChunkStats {
+  minV: number;
+  maxV: number;
+  sum: number;
+  count: number;
+  firstV: number;
+  lastV: number;
+  sumOfSquares: number;
+  resetCount: number;
+}
+
+/** Codec that also computes block stats during encoding. */
+export interface StatsCodec extends Codec {
+  encodeWithStats(timestamps: BigInt64Array, values: Float64Array): {
+    compressed: Uint8Array;
+    stats: ChunkStats;
+  };
+}
+
 // ── Storage backend ──────────────────────────────────────────────────
 
 export interface StorageBackend {

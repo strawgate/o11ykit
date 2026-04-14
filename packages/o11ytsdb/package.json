@@ -51,6 +51,7 @@
     "bench:ingest": "npm run bench -- ingest",
     "bench:query": "npm run bench -- query",
     "bench:compare": "npm run bench -- --compare",
+    "smoke": "npm run build && node bench/smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }
