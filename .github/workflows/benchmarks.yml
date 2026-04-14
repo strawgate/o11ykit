@@ -63,3 +63,18 @@ jobs:
           source-run-attempt: ${{ github.run_attempt }}
           source-job: benchmark
           run-id: ${{ github.run_id }}-${{ github.run_attempt }}--benchmark
+
+  aggregate-results:
+    needs:
+      - stash-results
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Aggregate bench-data branch
+        uses: ./octo11y/actions/aggregate
+        with:
+          github-token: ${{ github.token }}

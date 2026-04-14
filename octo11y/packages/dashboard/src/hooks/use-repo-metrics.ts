@@ -1,5 +1,11 @@
 import { useState, useEffect } from "preact/hooks";
-import { REPO_OWNER, REPO_NAME, METRIC_LABELS, METRIC_UNITS, METRIC_ICONS } from "../constants";
+import {
+  DATA_REPO_OWNER,
+  DATA_REPO_NAME,
+  METRIC_LABELS,
+  METRIC_UNITS,
+  METRIC_ICONS,
+} from "../constants";
 import { cachedFetchJson } from "../cached-fetch";
 
 /* Repo-health metrics that belong on the GuidePage story.
@@ -32,7 +38,7 @@ export function useRepoMetrics(): RepoMetrics {
   useEffect(() => {
     const ctrl = new AbortController();
     const branch = "bench-data";
-    const base = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${branch}`;
+    const base = `https://raw.githubusercontent.com/${DATA_REPO_OWNER}/${DATA_REPO_NAME}/${branch}`;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fetchJson = (path: string): Promise<any> =>
       cachedFetchJson(`${base}/${path}`, ctrl.signal).catch(() => null);

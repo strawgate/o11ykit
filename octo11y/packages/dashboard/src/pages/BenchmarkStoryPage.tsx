@@ -1,7 +1,13 @@
 import { T } from "../tokens";
 import { ACCENT_COLORS } from "../tokens";
 import type { Route } from "../router";
-import { REPO_OWNER, REPO_NAME, METRIC_UNITS, fmtMetric, fmtValue } from "../constants";
+import {
+  PRODUCT_REPO_OWNER,
+  PRODUCT_REPO_NAME,
+  METRIC_UNITS,
+  fmtMetric,
+  fmtValue,
+} from "../constants";
 import { useBenchData, deriveBenchmarks } from "../hooks/use-bench-data";
 import { Sparkline, YamlBlock, FadeIn } from "../components/ui";
 
@@ -355,14 +361,14 @@ jobs:
         run: go test -bench=. -benchmem ./... | tee bench.txt
 
       - name: Stash the results
-        uses: strawgate/octo11y/actions/stash@main-dist
+        uses: strawgate/o11ykit/octo11y/actions/stash@main-dist
         with: { results: bench.txt, format: go }
 
       - name: Build the timeline
-        uses: strawgate/octo11y/actions/aggregate@main-dist
+        uses: strawgate/o11ykit/octo11y/actions/aggregate@main-dist
 
       - name: Compare & alert 🚨
-        uses: strawgate/octo11y/actions/compare@main-dist
+        uses: strawgate/o11ykit/octo11y/actions/compare@main-dist
         with: { threshold: 15% }`}
               </YamlBlock>
             </div>
@@ -726,7 +732,7 @@ jobs:
                 Explore the dashboard →
               </button>
               <a
-                href={`https://github.com/${REPO_OWNER}/${REPO_NAME}#getting-started`}
+                href={`https://github.com/${PRODUCT_REPO_OWNER}/${PRODUCT_REPO_NAME}#getting-started`}
                 target="_blank"
                 rel="noreferrer"
                 style={{

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "preact/hooks";
 import type { IndexFile, SeriesFile } from "@benchkit/format";
-import { REPO_OWNER, REPO_NAME, fmtBenchName } from "../constants";
+import { DATA_REPO_OWNER, DATA_REPO_NAME, fmtBenchName } from "../constants";
 import { cachedFetchJson } from "../cached-fetch";
 
 export type BenchData = {
@@ -22,7 +22,7 @@ export function useBenchData(): BenchData {
     const ctrl = new AbortController();
     const { signal } = ctrl;
 
-    const base = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/bench-data`;
+    const base = `https://raw.githubusercontent.com/${DATA_REPO_OWNER}/${DATA_REPO_NAME}/bench-data`;
 
     (async () => {
       try {
