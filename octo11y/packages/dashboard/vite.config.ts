@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import { resolve } from "node:path";
 import preact from "@preact/preset-vite";
 
-const base = process.env.BASE_PATH || "/octo11y/";
+const base = process.env.BASE_PATH || "/o11ykit/experiences/dashboard/";
 
 export default defineConfig({
   plugins: [preact()],

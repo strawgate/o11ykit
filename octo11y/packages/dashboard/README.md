@@ -54,13 +54,13 @@ The dev server starts at `http://localhost:5173/benchkit/` and fetches live data
 
 The home route emphasizes the generic Actions-to-metrics story. The Benchkit route preserves deep benchmark exploration.
 
-The Benchkit route renders a `<Dashboard>` component pointed at the configured data source repo (defaults to `strawgate/o11ykit-playground`):
+The Benchkit route renders a `<Dashboard>` component pointed at the configured data source repo (defaults to `strawgate/o11ykit`):
 
 ```tsx
 <Dashboard
-  source={{ owner: "strawgate", repo: "o11ykit-playground" }}
+  source={{ owner: "strawgate", repo: "o11ykit" }}
   seriesNameFormatter={(name) => name.replace(/^Benchmark/, "")}
-  commitHref={(sha) => `https://github.com/strawgate/o11ykit-playground/commit/${sha}`}
+  commitHref={(sha) => `https://github.com/strawgate/o11ykit/commit/${sha}`}
   regressionThreshold={10}
   regressionWindow={5}
 />

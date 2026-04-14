@@ -4,7 +4,7 @@ import type { SeriesEntry } from "@benchkit/format";
 export const PRODUCT_REPO_OWNER = "strawgate";
 export const PRODUCT_REPO_NAME = "o11ykit";
 
-const DEFAULT_DATA_REPO = "strawgate/o11ykit-playground";
+const DEFAULT_DATA_REPO = "strawgate/o11ykit";
 const DATA_REPO_QUERY_KEY = "dataRepo";
 const queryValue = (() => {
   try {
@@ -19,7 +19,7 @@ const DATA_REPO_SLUG =
   queryValue && queryValue.includes("/") ? queryValue : DEFAULT_DATA_REPO;
 const [parsedDataOwner, parsedDataRepo] = DATA_REPO_SLUG.split("/", 2);
 export const DATA_REPO_OWNER = parsedDataOwner || "strawgate";
-export const DATA_REPO_NAME = parsedDataRepo || "o11ykit-playground";
+export const DATA_REPO_NAME = parsedDataRepo || "o11ykit";
 export const DATA_SOURCE: DataSource = {
   owner: DATA_REPO_OWNER,
   repo: DATA_REPO_NAME,
