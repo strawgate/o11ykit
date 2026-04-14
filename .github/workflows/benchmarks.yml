@@ -75,6 +75,6 @@ jobs:
           fetch-depth: 0
 
       - name: Aggregate bench-data branch
-        uses: ./octo11y/actions/aggregate
+        uses: strawgate/o11ykit/octo11y/actions/aggregate@main-dist
         with:
           github-token: ${{ github.token }}
