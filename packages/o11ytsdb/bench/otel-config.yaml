@@ -1,0 +1,97 @@
+receivers:
+  hostmetrics:
+    collection_interval: 15s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+          system.cpu.physical.count:
+            enabled: true
+          system.cpu.logical.count:
+            enabled: true
+          system.cpu.frequency:
+            enabled: true
+      disk:
+        metrics:
+          system.disk.io_time:
+            enabled: true
+          system.disk.operation_time:
+            enabled: true
+          system.disk.weighted_io_time:
+            enabled: true
+          system.disk.merged:
+            enabled: true
+          system.disk.pending_operations:
+            enabled: true
+      filesystem:
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
+          system.filesystem.inodes.usage:
+            enabled: true
+      load:
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+          system.linux.memory.available:
+            enabled: true
+      network:
+        metrics:
+          system.network.conntrack.count:
+            enabled: true
+          system.network.conntrack.max:
+            enabled: true
+      paging:
+        metrics:
+          system.paging.utilization:
+            enabled: true
+      process:
+        mute_process_all_errors: true
+        metrics:
+          process.cpu.utilization:
+            enabled: true
+          process.memory.utilization:
+            enabled: true
+          process.disk.io:
+            enabled: true
+          process.context_switches:
+            enabled: true
+          process.open_file_descriptors:
+            enabled: true
+          process.signals_pending:
+            enabled: true
+          process.threads:
+            enabled: true
+          process.paging.faults:
+            enabled: true
+      processes:
+
+processors:
+  resourcedetection:
+    detectors: [env, system]
+    system:
+      hostname_sources: ["os"]
+      resource_attributes:
+        host.id:
+          enabled: true
+        os.type:
+          enabled: true
+  batch:
+    send_batch_size: 1000
+    timeout: 15s
+
+exporters:
+  file/jsonl:
+    path: /home/bill_easton/o11ykit/packages/o11ytsdb/bench/data/host-metrics.jsonl
+
+service:
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    metrics:
+      receivers: [hostmetrics]
+      processors: [resourcedetection, batch]
+      exporters: [file/jsonl]
