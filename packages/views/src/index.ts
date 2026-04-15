@@ -297,6 +297,8 @@ function computeDepths(spans: readonly SpanRecord[]): Map<string, number> {
     if (existing !== undefined) {
       return existing;
     }
+    // Write a sentinel before recursing to break cycles.
+    depths.set(span.spanId, 0);
     const parent = span.parentSpanId ? byId.get(span.parentSpanId) : undefined;
     const depth = parent ? visit(parent) + 1 : 0;
     depths.set(span.spanId, depth);
@@ -383,8 +385,8 @@ export function buildHistogramFrame(
     };
   }
 
-  const minimum = Math.min(...values);
-  const maximum = Math.max(...values);
+  const minimum = values.reduce((a, b) => Math.min(a, b), Infinity);
+  const maximum = values.reduce((a, b) => Math.max(a, b), -Infinity);
   const binCount = Math.max(1, options.binCount ?? 10);
   const width = minimum === maximum ? 1 : (maximum - minimum) / binCount;
   const counts = Array.from({ length: binCount }, () => 0);
@@ -433,11 +435,11 @@ export function buildTraceWaterfallFrame(
     signal: "traces",
     title: options.title ?? "Trace waterfall",
     traces: [...traces.entries()].map(([traceId, spans]) => {
-      const sorted = [...spans].sort((left, right) =>
-        (toUnixNanos(left.startTimeUnixNano) ?? 0n) < (toUnixNanos(right.startTimeUnixNano) ?? 0n)
-          ? -1
-          : 1
-      );
+      const sorted = [...spans].sort((left, right) => {
+        const a = toUnixNanos(left.startTimeUnixNano) ?? 0n;
+        const b = toUnixNanos(right.startTimeUnixNano) ?? 0n;
+        return a < b ? -1 : a > b ? 1 : 0;
+      });
       const traceStart = sorted[0]?.startTimeUnixNano ?? null;
       const traceEnd =
         sorted.reduce<string | null>((latest, span) => {
@@ -509,9 +511,11 @@ export function buildEventTimelineFrame(
             scope: log.scope,
           })
         )
-        .sort((left, right) =>
-          (toUnixNanos(left.timeUnixNano) ?? 0n) < (toUnixNanos(right.timeUnixNano) ?? 0n) ? -1 : 1
-        ),
+        .sort((left, right) => {
+          const a = toUnixNanos(left.timeUnixNano) ?? 0n;
+          const b = toUnixNanos(right.timeUnixNano) ?? 0n;
+          return a < b ? -1 : a > b ? 1 : 0;
+        }),
     };
   }
 
@@ -537,9 +541,11 @@ export function buildEventTimelineFrame(
     kind: "event-timeline",
     signal: "traces",
     title: options.title ?? "Trace events",
-    events: events.sort((left, right) =>
-      (toUnixNanos(left.timeUnixNano) ?? 0n) < (toUnixNanos(right.timeUnixNano) ?? 0n) ? -1 : 1
-    ),
+    events: events.sort((left, right) => {
+      const a = toUnixNanos(left.timeUnixNano) ?? 0n;
+      const b = toUnixNanos(right.timeUnixNano) ?? 0n;
+      return a < b ? -1 : a > b ? 1 : 0;
+    }),
   };
 }
 

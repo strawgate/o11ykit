@@ -111,6 +111,11 @@ export function Dashboard({
     [dateFilteredSeriesMap, regressionThreshold, regressionWindow],
   );
 
+  const [monitorSeriesMap, userMetrics] = useMemo(
+    () => partitionSeriesMap(dateFilteredSeriesMap, isMonitorMetric),
+    [dateFilteredSeriesMap],
+  );
+
   const rootClassName = ["bk-dashboard", className].filter(Boolean).join(" ");
   const formatMetric = metricLabelFormatter ?? defaultMetricLabel;
 
@@ -147,10 +152,6 @@ export function Dashboard({
     );
   }
 
-  const [monitorSeriesMap, userMetrics] = useMemo(
-    () => partitionSeriesMap(dateFilteredSeriesMap, isMonitorMetric),
-    [dateFilteredSeriesMap],
-  );
   const userMetricNames = (index.metrics ?? []).filter((m) => !isMonitorMetric(m));
 
   const selectedMetric = typeof view === "object" ? view.metric : null;
