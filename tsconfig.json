@@ -12,6 +12,9 @@
     },
     {
       "path": "./packages/adapters"
+    },
+    {
+      "path": "./packages/o11ytsdb"
     }
   ]
 }

@@ -1,0 +1,91 @@
+╔══════════════════════════════════════════════════════════════╗
+║  OTLP Metrics Engine — Research Benchmarks                  ║
+║  Node v18.20.4                                             ║
+╚══════════════════════════════════════════════════════════════╝
+
+═══ R1: Gorilla Compression in TypeScript ═══
+
+  Data Type                           bits/pt  bytes/pt  ratio   enc µs/pt  dec µs/pt  ok?
+  ───────────────────────────────────────────────────────────────────────────────────────────────
+  Constant gauge (v=42)                   2.2     0.27  59.3x       0.11       0.06    ✗
+  Slow-changing gauge (CPU%)             52.1     6.51   2.5x       1.12       0.19    ✗
+  Monotonic counter (HTTP)               55.7     6.96   2.3x       0.93       0.05    ✗
+  Integer counter (small Δ)              55.9     6.99   2.3x       0.91       0.05    ✗
+  Spiky latency (5-2000ms)               60.7     7.59   2.1x       1.22       0.12    ✗
+  High entropy random                    63.2     7.90   2.0x       1.26       0.12    ✗
+
+  Chunk Size Impact (slow gauge):
+  ──────────────────────────────────────────────────────────────────────
+  chunk=  120  bits/pt=  53.6  bytes/pt= 6.70  ratio=  2.4x  enc=  1.05 µs/pt  dec=  0.13 µs/pt
+  chunk=  256  bits/pt=  52.7  bytes/pt= 6.59  ratio=  2.4x  enc=  1.05 µs/pt  dec=  0.13 µs/pt
+  chunk=  512  bits/pt=  51.8  bytes/pt= 6.48  ratio=  2.5x  enc=  1.05 µs/pt  dec=  0.12 µs/pt
+  chunk= 1024  bits/pt=  51.9  bytes/pt= 6.48  ratio=  2.5x  enc=  1.06 µs/pt  dec=  0.12 µs/pt
+  chunk= 2048  bits/pt=  51.8  bytes/pt= 6.47  ratio=  2.5x  enc=  1.08 µs/pt  dec=  0.12 µs/pt
+  chunk= 4096  bits/pt=  51.6  bytes/pt= 6.45  ratio=  2.5x  enc=  1.05 µs/pt  dec=  0.13 µs/pt
+
+  Throughput (slow gauge, 1024-point chunks):
+    Encode: 896450.07 M samples/sec
+    Decode: 5205032.14 M samples/sec
+
+
+═══ R2: VictoriaMetrics Float→Int Conversion ═══
+
+  Data Type                           % pure int  % convertible  scale distribution (0-6)
+  ───────────────────────────────────────────────────────────────────────────────────────────────
+  Constant gauge (v=42)                     100%          100%  [1024, 0, 0, 0, 0, 0, 0]
+  Slow-changing gauge (CPU%)                  0%            0%  [0, 0, 0, 0, 0, 0, 0]
+  Monotonic counter (HTTP)                  100%          100%  [1024, 0, 0, 0, 0, 0, 0]
+  Integer counter (small Δ)                 100%          100%  [1024, 0, 0, 0, 0, 0, 0]
+  Spiky latency (5-2000ms)                    0%            0%  [0, 0, 0, 0, 0, 0, 0]
+  High entropy random                         8%           70%  [81, 576, 50, 8, 1, 0, 0]
+
+
+═══ R4: Inverted Index Performance ═══
+
+  Series     Labels  Gallop µs/q   Set µs/q   Speedup
+  ────────────────────────────────────────────────────────────
+     1000       1          0.1        0.0      0.5x
+     1000       2          6.2       11.1      1.8x
+     1000       3          5.6        3.5      0.6x
+    10000       1          0.0        0.1      4.6x
+    10000       2          0.4       28.2     74.9x
+    10000       3          0.4       19.3     44.6x
+   100000       1          0.0        0.0      0.2x
+   100000       2          0.5      418.2    839.8x
+   100000       3          0.6      418.9    742.2x
+
+
+═══ R5: Streaming vs Materializing Query ═══
+
+  Series × Points     Mat ms    Stream ms  Speedup  Mat peak     Stream peak   Mem ratio
+  ──────────────────────────────────────────────────────────────────────────────────────────
+      100×1024       17.8       16.0    1.11x      1.6 MB         16 KB       100x ✗ MISMATCH
+     1000×1024      139.9      134.6    1.04x     15.6 MB         16 KB      1000x ✗ MISMATCH
+      1000×120       18.4       18.8    0.98x      1.8 MB          2 KB      1000x ✗ MISMATCH
+     5000×1024      689.7      668.1    1.03x     78.1 MB         16 KB      5000x ✗ MISMATCH
+
+
+═══ String Interning ═══
+
+  Series   Labels  Raw KB  Interned KB  Ratio   Raw ms  Intern ms  Entries
+  ────────────────────────────────────────────────────────────────────────────────
+     1000       5     518          57   9.1x     0.1       2.3       87
+    10000       5    5182         549   9.4x     0.8      20.2       87
+    10000      10   10349         944  11.0x     0.4      18.4      242
+   100000       5   51816        5471   9.5x    29.4     113.2       87
+
+
+═══ Memory Projections ═══
+
+  Average bits/point across types: 48.3 (6.04 bytes)
+
+  Scenario                         Raw         Compressed    Ratio
+  ─────────────────────────────────────────────────────────────────
+  1K series × 120 pts (Prometheus)       1.8 MB      902.7 KB     2.1x
+  1K series × 1024 pts                  15.6 MB        6.1 MB     2.6x
+  10K series × 1024 pts                156.3 MB       60.9 MB     2.6x
+  100K series × 120 pts (Prometheus)   183.1 MB       88.2 MB     2.1x
+  100K series × 1024 pts                1.53 GB      608.6 MB     2.6x
+
+═══ Done ═══
+
