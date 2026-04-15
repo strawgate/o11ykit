@@ -1,6 +1,6 @@
 import { T } from "../tokens";
 import type { Route } from "../router";
-import { REPO_OWNER, REPO_NAME, fmtValue } from "../constants";
+import { PRODUCT_REPO_OWNER, PRODUCT_REPO_NAME, fmtValue } from "../constants";
 import { useRepoMetrics } from "../hooks/use-repo-metrics";
 import { Sparkline, YamlBlock, FadeIn } from "../components/ui";
 import { useEffect } from "preact/hooks";
@@ -322,11 +322,11 @@ jobs:
           GH_TOKEN: \${{ github.token }}
 
       - name: Save them forever ✨
-        uses: strawgate/octo11y/actions/stash@main-dist
+        uses: strawgate/o11ykit/octo11y/actions/stash@main-dist
         with: { results: stats.json, format: otlp }
 
       - name: Build the timeline
-        uses: strawgate/octo11y/actions/aggregate@main-dist`}
+        uses: strawgate/o11ykit/octo11y/actions/aggregate@main-dist`}
               </YamlBlock>
             </div>
           </FadeIn>
@@ -528,7 +528,7 @@ jobs:
                 See the live dashboard →
               </button>
               <a
-                href={`https://github.com/${REPO_OWNER}/${REPO_NAME}`}
+                href={`https://github.com/${PRODUCT_REPO_OWNER}/${PRODUCT_REPO_NAME}`}
                 target="_blank"
                 rel="noreferrer"
                 style={{

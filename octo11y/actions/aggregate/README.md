@@ -1,12 +1,16 @@
 # Benchkit Aggregate
 
-Rebuild `index.json` and series files from all benchmark run files on the data
-branch. Run this action after one or more `stash` calls to keep the query
-indexes that charts and dashboards rely on up to date.
+Rebuild `index.json` and series files from run artifacts on the data branch.
+Run this action after benchmark and/or monitor writes to keep the query indexes
+that charts and dashboards rely on up to date.
 
 ## What it does
 
-- reads every `data/runs/{run-id}/benchmark.otlp.json` file from the data branch
+- reads per-run OTLP artifacts under `data/runs/{run-id}/`, including:
+  - `*.otlp.json`
+  - `*.otlp.jsonl`
+  - `*.otlp.jsonl.gz`
+- still supports legacy flat files under `data/runs/*.json`
 - sorts runs chronologically and prunes the oldest ones when `max-runs` is set
 - builds `data/index.json` — a summary of all runs with their metrics
 - builds `data/series/{metric}.json` — time-series data for each metric
@@ -91,7 +95,7 @@ baseline.
 ## How it works
 
 1. **Fetch**: clone the data branch into a temporary git worktree
-2. **Read**: load all `data/runs/{run-id}/benchmark.otlp.json` files and sort them chronologically
+2. **Read**: load all OTLP run artifacts from `data/runs/` and sort them chronologically
 3. **Prune** *(optional)*: when `max-runs > 0`, delete the oldest run files
    that exceed the limit
 4. **Build**: compute the index, series, navigation indexes, and run detail
@@ -102,7 +106,8 @@ baseline.
 
 ## Relationship to stash and chart
 
-- `actions/stash` writes individual run files consumed by this action
+- `actions/stash` / `actions/parse-results` can write benchmark OTLP run files
+- `actions/monitor` can write telemetry sidecars consumed directly by this action
 - `actions/aggregate` rebuilds the derived indexes from those run files
 - chart and dashboard tooling reads `index.json` and the series files produced
   here

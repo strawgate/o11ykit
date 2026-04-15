@@ -40,15 +40,24 @@ jobs:
       - name: Build package workspaces
         run: npm run build:packages
 
+      - name: Build octo11y package workspaces
+        run: npm run build:octo-packages
+
       - name: Build demo workspace
         run: npm run build --workspace @otlpkit/example-demo
+
+      - name: Build dashboard experiences
+        env:
+          BASE_PATH: /o11ykit/experiences/dashboard/
+        run: npm run build --workspace=@benchkit/dashboard
 
       - name: Assemble site artifact
         run: |
           rm -rf .site
-          mkdir -p .site/otlpkit
+          mkdir -p .site/otlpkit .site/experiences/dashboard
           cp -R site/* .site/
           cp -R examples/demo/dist/* .site/otlpkit/
+          cp -R octo11y/packages/dashboard/dist/* .site/experiences/dashboard/
 
       - name: Setup Pages
         uses: actions/configure-pages@v6

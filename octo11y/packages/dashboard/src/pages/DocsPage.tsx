@@ -126,7 +126,7 @@ jobs:
 
       - run: go test -bench=. -count=5 ./... | tee bench.txt
 
-      - uses: strawgate/octo11y/actions/stash@main-dist
+      - uses: strawgate/o11ykit/octo11y/actions/stash@main-dist
         with:
           results: bench.txt
           format: auto`}</YamlBlock>
@@ -142,10 +142,10 @@ jobs:
   aggregate:
     runs-on: ubuntu-latest
     steps:
-      - uses: strawgate/octo11y/actions/aggregate@main-dist`}</YamlBlock>
+      - uses: strawgate/o11ykit/octo11y/actions/aggregate@main-dist`}</YamlBlock>
 
         <YamlBlock filename="compare.yml">{`# Add to your PR workflow
-- uses: strawgate/octo11y/actions/compare@main-dist
+- uses: strawgate/o11ykit/octo11y/actions/compare@main-dist
   with:
     results: bench.txt
     baseline-runs: 5

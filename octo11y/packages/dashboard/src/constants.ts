@@ -1,9 +1,29 @@
 import type { DataSource } from "@benchkit/chart";
 import type { SeriesEntry } from "@benchkit/format";
 
-export const REPO_OWNER = "strawgate";
-export const REPO_NAME = "octo11y";
-export const DATA_SOURCE: DataSource = { owner: REPO_OWNER, repo: REPO_NAME };
+export const PRODUCT_REPO_OWNER = "strawgate";
+export const PRODUCT_REPO_NAME = "o11ykit";
+
+const DEFAULT_DATA_REPO = "strawgate/o11ykit";
+const DATA_REPO_QUERY_KEY = "dataRepo";
+const queryValue = (() => {
+  try {
+    return new URLSearchParams(globalThis.location?.search ?? "").get(
+      DATA_REPO_QUERY_KEY,
+    );
+  } catch {
+    return null;
+  }
+})();
+const DATA_REPO_SLUG =
+  queryValue && queryValue.includes("/") ? queryValue : DEFAULT_DATA_REPO;
+const [parsedDataOwner, parsedDataRepo] = DATA_REPO_SLUG.split("/", 2);
+export const DATA_REPO_OWNER = parsedDataOwner || "strawgate";
+export const DATA_REPO_NAME = parsedDataRepo || "o11ykit";
+export const DATA_SOURCE: DataSource = {
+  owner: DATA_REPO_OWNER,
+  repo: DATA_REPO_NAME,
+};
 
 export const METRIC_LABELS: Record<string, string> = {
   ns_per_op: "Duration",
@@ -76,7 +96,7 @@ export function fmtValue(v: number, metric?: string): string {
 }
 
 export function commitHref(sha: string): string {
-  return `https://github.com/${REPO_OWNER}/${REPO_NAME}/commit/${sha}`;
+  return `https://github.com/${DATA_REPO_OWNER}/${DATA_REPO_NAME}/commit/${sha}`;
 }
 
 export function timeAgo(iso: string): string {

@@ -14,13 +14,18 @@ permissions:
   contents: write
 
 jobs:
-  benchmark:
+  benchmark-and-stash:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Emit benchmark output
         shell: bash
         run: |
-          node <<'EOF'
+          node <<'EOF' | tee benchmark-results.txt
           function runBench(name, fn, iterations) {
             const start = process.hrtime.bigint();
             for (let i = 0; i < iterations; i += 1) fn(i);
@@ -43,9 +48,18 @@ jobs:
           }, 300000);
           EOF
 
-  stash-results:
+      - name: Parse and stash benchmark results
+        uses: ./actions/parse-results
+        with:
+          mode: file
+          results: benchmark-results.txt
+          format: go
+          github-token: ${{ github.token }}
+          run-id: ${{ github.run_id }}-${{ github.run_attempt }}--benchmark
+
+  aggregate-results:
     needs:
-      - benchmark
+      - benchmark-and-stash
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -53,13 +67,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Parse and stash benchmark results
-        uses: ./actions/parse-results
+      - name: Aggregate bench-data branch
+        uses: strawgate/o11ykit/octo11y/actions/aggregate@main-dist
         with:
-          mode: auto
-          format: go
           github-token: ${{ github.token }}
-          source-run-id: ${{ github.run_id }}
-          source-run-attempt: ${{ github.run_attempt }}
-          source-job: benchmark
-          run-id: ${{ github.run_id }}-${{ github.run_attempt }}--benchmark

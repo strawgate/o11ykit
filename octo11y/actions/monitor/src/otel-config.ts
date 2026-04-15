@@ -23,9 +23,13 @@ export interface CollectorConfigOptions {
   ref?: string;
   /** Commit SHA. */
   commit?: string;
+  /** Additional custom resource attributes (non-benchkit namespace). */
+  resourceAttributes?: Record<string, string | number | boolean>;
   /** When true, set process scraper to mute all process-level scraper errors. */
   muteProcessAllErrors?: boolean;
 }
+
+type ResourceAttributeValue = string | number | boolean;
 
 const VALID_METRIC_SETS = new Set([
   "cpu",
@@ -80,7 +84,84 @@ function resourceAttributes(opts: CollectorConfigOptions): Array<{
   if (opts.commit) {
     attrs.push({ key: "benchkit.commit", value: opts.commit, action: "upsert" });
   }
+  for (const [key, value] of Object.entries(opts.resourceAttributes ?? {})) {
+    attrs.push({ key, value: String(value), action: "upsert" });
+  }
   return attrs;
+}
+
+export function parseResourceAttributes(raw: string): Record<string, ResourceAttributeValue> {
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+
+  if (trimmed.startsWith("{")) {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+      throw new Error("resource-attributes JSON must be an object.");
+    }
+    const result: Record<string, ResourceAttributeValue> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!key.trim()) {
+        throw new Error("resource-attributes keys must not be empty.");
+      }
+      if (
+        typeof value !== "string"
+        && typeof value !== "number"
+        && typeof value !== "boolean"
+      ) {
+        throw new Error(
+          `resource-attributes '${key}' must be a string, number, or boolean.`,
+        );
+      }
+      if (key.startsWith("benchkit.")) {
+        throw new Error(
+          `resource-attributes must not use the 'benchkit.' prefix. Got '${key}'.`,
+        );
+      }
+      result[key] = value;
+    }
+    return result;
+  }
+
+  const result: Record<string, ResourceAttributeValue> = {};
+  const entries = trimmed
+    .split(/\r?\n/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  for (const entry of entries) {
+    const separator = entry.indexOf("=");
+    if (separator <= 0) {
+      throw new Error(
+        `resource-attributes entry '${entry}' must use key=value format.`,
+      );
+    }
+    const key = entry.slice(0, separator).trim();
+    const value = entry.slice(separator + 1).trim();
+    if (!key) {
+      throw new Error("resource-attributes keys must not be empty.");
+    }
+    if (key.startsWith("benchkit.")) {
+      throw new Error(
+        `resource-attributes must not use the 'benchkit.' prefix. Got '${key}'.`,
+      );
+    }
+    result[key] = value;
+  }
+
+  return result;
+}
+
+export function mergeResourceAttributesInputs(
+  explicitInput: string,
+  envInput: string | undefined,
+): Record<string, ResourceAttributeValue> {
+  const envAttributes = parseResourceAttributes(envInput ?? "");
+  const explicitAttributes = parseResourceAttributes(explicitInput);
+  return {
+    ...envAttributes,
+    ...explicitAttributes,
+  };
 }
 
 /** Validate that a scrape interval looks like a valid Go duration. */
@@ -109,6 +190,7 @@ export function generateCollectorConfig(opts: CollectorConfigOptions): string {
   if (opts.metricSets.length > 0) {
     receiverNames.push("hostmetrics");
     lines.push("  hostmetrics:");
+    lines.push("    initial_delay: 0s");
     lines.push(`    collection_interval: ${interval}`);
     lines.push("    scrapers:");
     for (const set of opts.metricSets) {
