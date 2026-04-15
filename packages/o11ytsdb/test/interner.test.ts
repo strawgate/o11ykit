@@ -30,4 +30,14 @@ describe("Interner", () => {
     expect(interner.resolve(ids[1]!)).toBe("b");
     expect(interner.resolve(ids[3]!)).toBe("🌊");
   });
+
+  it("enforces cardinality limit", () => {
+    const interner = new Interner(100);
+    for (let i = 0; i < 100; i++) {
+      interner.intern(`key_${i}`);
+    }
+    expect(() => interner.intern("one_too_many")).toThrow("cardinality limit");
+    // Existing strings still resolve fine
+    expect(interner.resolve(interner.intern("key_0"))).toBe("key_0");
+  });
 });

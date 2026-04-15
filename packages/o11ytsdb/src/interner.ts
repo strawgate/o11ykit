@@ -3,6 +3,7 @@ export type InternId = number;
 const FNV_OFFSET = 0x811c9dc5;
 const FNV_PRIME = 0x01000193;
 const MAX_LOAD = 0.7;
+const DEFAULT_MAX_CARDINALITY = 1_000_000;
 
 export class Interner {
   private readonly encoder = new ((globalThis as unknown) as { TextEncoder: new () => { encode(input: string): Uint8Array } }).TextEncoder();
@@ -18,6 +19,12 @@ export class Interner {
   private slots = new Uint32Array(2048); // id + 1; 0 means empty
   private hashes = new Uint32Array(2048);
   private mask = this.slots.length - 1;
+
+  private readonly maxCardinality: number;
+
+  constructor(maxCardinality: number = DEFAULT_MAX_CARDINALITY) {
+    this.maxCardinality = maxCardinality;
+  }
 
   intern(input: string): InternId {
     const encoded = this.encoder.encode(input);
@@ -58,6 +65,13 @@ export class Interner {
     while (true) {
       const existing = this.slots[slot]!;
       if (existing === 0) {
+        if (this.count >= this.maxCardinality) {
+          throw new RangeError(
+            `Interner cardinality limit reached (${this.maxCardinality}). ` +
+            'This likely indicates high-entropy label values (e.g. request IDs, timestamps). ' +
+            'Increase maxCardinality if this is intentional.',
+          );
+        }
         return this.insert(slot, hash, encoded);
       }
       const id = existing - 1;

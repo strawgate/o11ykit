@@ -1,11 +1,10 @@
 /**
  * o11ytsdb — Browser-native time-series database for OpenTelemetry data.
  *
- * This is the public API surface. Each module is exported as it passes
- * its benchmark gate.
+ * Public API surface.
  */
 
-// M1: XOR-delta codec
+// Codec — XOR-delta (Gorilla) compression
 export {
   encodeChunk,
   decodeChunk,
@@ -14,24 +13,33 @@ export {
 } from './codec.js';
 export type { DecodedChunk } from './codec.js';
 
-// Experimentation framework — pluggable core
+// Core types — pluggable interfaces for storage, codecs, and queries
 export type {
   Labels, SeriesId, TimeRange, Codec, ValuesCodec, TimestampCodec, ChunkStats, StatsCodec,
   RangeDecodeCodec, RangeDecodeResult,
   StorageBackend, QueryEngine, QueryOpts, QueryResult,
   SeriesResult, AggFn, Matcher,
 } from './types.js';
+
+// Storage backends
 export { FlatStore } from './flat-store.js';
 export { ChunkedStore } from './chunked-store.js';
 export { ColumnStore } from './column-store.js';
 export { computeStats } from './stats.js';
+
+// Query engine
 export { ScanEngine } from './query.js';
+
+// String interner + inverted index
 export { Interner, fnv1a } from './interner.js';
 export type { InternId } from './interner.js';
 export { MemPostings } from './postings.js';
+
+// OTLP ingest pipeline
 export { ingestOtlpJson } from './ingest.js';
 export type { IngestResult, OtlpMetricsDocument } from './ingest.js';
 
+// Worker isolation + transfer protocol
 export { WorkerClient } from './worker-client.js';
 export type {
   TransferStrategy,
@@ -40,7 +48,3 @@ export type {
   WorkerRequest,
   WorkerResponse,
 } from './worker-protocol.js';
-
-// M4: Chunk store — will export ChunkStore once gate passes
-// M6: Query executor — will export query builder once gate passes
-// M7: Histogram — will export histogram types once gate passes
