@@ -1,0 +1,44 @@
+{
+  "fanout_id": "o11ytsdb-rd-wave1-2026-04-15",
+  "env": "strawgate/o11ykit",
+  "branch": "feat/o11ytsdb-rd-fanout",
+  "launched_at": "2026-04-15T07:00:00Z",
+  "tasks": [
+    {
+      "workstream": "01-query-language",
+      "task_id": "task_e_69df8f0483cc832eba3ee1fd7f2b9b1c",
+      "url": "https://chatgpt.com/codex/tasks/task_e_69df8f0483cc832eba3ee1fd7f2b9b1c",
+      "attempts": 3,
+      "prompt": "01-query-language.prompt.md"
+    },
+    {
+      "workstream": "02-interner-postings",
+      "task_id": "task_e_69df8f0c99dc832e8bf8edbbd2e1787b",
+      "url": "https://chatgpt.com/codex/tasks/task_e_69df8f0c99dc832e8bf8edbbd2e1787b",
+      "attempts": 3,
+      "prompt": "02-interner-postings.prompt.md"
+    },
+    {
+      "workstream": "03-compression-rd",
+      "task_id": "task_e_69df8f13f0b4832e989fb6a5849e8881",
+      "url": "https://chatgpt.com/codex/tasks/task_e_69df8f13f0b4832e989fb6a5849e8881",
+      "attempts": 2,
+      "prompt": "03-compression-rd.prompt.md"
+    },
+    {
+      "workstream": "04-otlp-ingest",
+      "task_id": "task_e_69df8f1a91ec832eb01dd7698560f357",
+      "url": "https://chatgpt.com/codex/tasks/task_e_69df8f1a91ec832eb01dd7698560f357",
+      "attempts": 2,
+      "prompt": "04-otlp-ingest.prompt.md"
+    },
+    {
+      "workstream": "05-worker-isolation",
+      "task_id": "task_e_69df8f21e164832e947f2e0193f08140",
+      "url": "https://chatgpt.com/codex/tasks/task_e_69df8f21e164832e947f2e0193f08140",
+      "attempts": 1,
+      "prompt": "05-worker-isolation.prompt.md"
+    }
+  ],
+  "total_attempts": 11
+}
