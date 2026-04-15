@@ -91,7 +91,7 @@ export class ColumnStore implements StorageBackend {
    */
   constructor(
     valuesCodec: ValuesCodec,
-    chunkSize = 1024,
+    chunkSize = 640,
     private groupResolver: (labels: Labels) => number = () => 0,
     name?: string,
     tsCodec?: TimestampCodec,

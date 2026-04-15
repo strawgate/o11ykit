@@ -46,7 +46,7 @@ export class ChunkedStore implements StorageBackend {
   private postings = new MemPostings(this.interner);
   private _sampleCount = 0;
 
-  constructor(codec: Codec, chunkSize = 1024, name?: string) {
+  constructor(codec: Codec, chunkSize = 640, name?: string) {
     this.codec = codec;
     this.chunkSize = chunkSize;
     this.name = name ?? `chunked-${codec.name}-${chunkSize}`;
