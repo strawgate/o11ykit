@@ -8,6 +8,7 @@ export interface OtelState {
   configPath: string;
   outputPath: string;
   logPath: string;
+  metricsDir: string;
   startTime: number;
   runId: string;
   dataBranch: string;

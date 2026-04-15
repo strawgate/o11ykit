@@ -7,11 +7,17 @@
  */
 
 import * as core from "@actions/core";
+import * as exec from "@actions/exec";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { gzipSync } from "node:zlib";
-import { execFileSync } from "node:child_process";
+import {
+  checkoutDataBranch,
+  configureGit,
+  pushWithRetry,
+} from "@benchkit/actions-common";
+import { DEFAULT_PUSH_RETRY_COUNT, type OtlpMetricsDocument } from "@octo11y/core";
 import type { OtelState } from "./types.js";
 
 export function isProcessRunning(pid: number): boolean {
@@ -99,14 +105,6 @@ export async function stopCollector(state: OtelState): Promise<void> {
   } catch {
     // already gone
   }
-}
-
-function git(args: string[], cwd?: string, timeout = 30_000): string {
-  return execFileSync("git", args, {
-    cwd,
-    encoding: "utf-8",
-    timeout,
-  }).trim();
 }
 
 /**
@@ -230,7 +228,32 @@ export function filterToRunnerDescendants(
   return { filtered: outputLines.join("\n") + "\n", kept, removed };
 }
 
-function pushTelemetryToDataBranch(state: OtelState): void {
+export function consolidateJsonl(content: string): OtlpMetricsDocument {
+  const resourceMetrics: NonNullable<OtlpMetricsDocument["resourceMetrics"]> = [];
+  for (const line of content.split("\n")) {
+    if (!line.trim()) continue;
+    let parsed: { resourceMetrics?: OtlpMetricsDocument["resourceMetrics"] };
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (Array.isArray(parsed.resourceMetrics)) {
+      resourceMetrics.push(...parsed.resourceMetrics);
+    }
+  }
+  return { resourceMetrics };
+}
+
+export function writeMonitorMetricsDoc(metricsDir: string, content: string): string {
+  const monitorDocPath = path.join(metricsDir, "monitor.otlp.json");
+  fs.mkdirSync(metricsDir, { recursive: true });
+  const doc = consolidateJsonl(content);
+  fs.writeFileSync(monitorDocPath, `${JSON.stringify(doc, null, 2)}\n`);
+  return monitorDocPath;
+}
+
+async function pushTelemetryToDataBranch(state: OtelState): Promise<void> {
   if (!fs.existsSync(state.outputPath)) {
     core.warning("No telemetry output file found — nothing to push.");
     return;
@@ -253,60 +276,10 @@ function pushTelemetryToDataBranch(state: OtelState): void {
   }
   core.setSecret(token);
 
-  const workspace = process.env.GITHUB_WORKSPACE;
-  if (!workspace) {
-    core.warning("GITHUB_WORKSPACE not set — skipping data branch push.");
-    return;
-  }
-
-  const serverUrl = process.env.GITHUB_SERVER_URL || "https://github.com";
-
-  // Use a temporary worktree to commit to the data branch without
-  // disturbing the main checkout.
-  const worktreePath = path.join(
-    process.env.RUNNER_TEMP || os.tmpdir(),
-    "benchkit-data-worktree",
-  );
-
-  // Clean up any leftover worktree from a previous run
-  if (fs.existsSync(worktreePath)) {
-    try {
-      git(["worktree", "remove", "--force", worktreePath], workspace);
-    } catch {
-      fs.rmSync(worktreePath, { recursive: true, force: true });
-    }
-  }
+  await configureGit(token);
+  const worktreePath = await checkoutDataBranch(state.dataBranch, "benchkit-monitor");
 
   try {
-    // Configure git auth
-    git(
-      ["config", "--local", `http.${serverUrl}/.extraheader`,
-       `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`],
-      workspace,
-    );
-
-    // Fetch the data branch (or create it as an orphan)
-    let branchExists = false;
-    try {
-      git(["fetch", "origin", state.dataBranch, "--depth=1"], workspace);
-      branchExists = true;
-    } catch {
-      // branch does not exist yet
-    }
-
-    if (branchExists) {
-      git(
-        ["worktree", "add", worktreePath, `origin/${state.dataBranch}`],
-        workspace,
-      );
-      // Detach from remote tracking and create local branch
-      git(["checkout", "-B", state.dataBranch], worktreePath);
-    } else {
-      git(["worktree", "add", "--detach", worktreePath], workspace);
-      git(["checkout", "--orphan", state.dataBranch], worktreePath);
-      git(["rm", "-rf", "."], worktreePath);
-    }
-
     // Write telemetry file (gzipped)
     const telemetryDir = path.join(worktreePath, "data", "runs", state.runId);
     fs.mkdirSync(telemetryDir, { recursive: true });
@@ -321,76 +294,14 @@ function pushTelemetryToDataBranch(state: OtelState): void {
     const compressed = gzipSync(raw);
     fs.writeFileSync(targetPath, compressed);
 
-    // Commit and push
-    git(["add", targetPath], worktreePath);
-
-    // Check if there are changes to commit
-    try {
-      git(["diff", "--cached", "--quiet"], worktreePath);
-      core.info("No changes to commit.");
-      return;
-    } catch {
-      // diff --quiet exits non-zero if there are staged changes — good
-    }
-
-    git(
-      [
-        "-c", "user.name=benchkit[bot]",
-        "-c", "user.email=benchkit[bot]@users.noreply.github.com",
-        "commit", "-m", `telemetry: store run ${state.runId}`,
-      ],
-      worktreePath,
-    );
-
-    // Retry push up to 3 times with rebase to handle concurrent pushes
-    let pushed = false;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        git(["push", "origin", state.dataBranch], worktreePath, 120_000);
-        core.info(`Telemetry pushed to ${state.dataBranch} for run ${state.runId}`);
-        pushed = true;
-        break;
-      } catch (err) {
-        if (attempt === 3) {
-          throw err; // Fail after 3 attempts
-        }
-        core.info(`Push attempt ${attempt} failed, rebasing and retrying...`);
-        try {
-          // Fetch latest and rebase
-          git(["fetch", "origin", state.dataBranch, "--depth=1"], workspace);
-          git(["rebase", `origin/${state.dataBranch}`], worktreePath);
-          // Re-stage and re-commit after rebase
-          git(["add", targetPath], worktreePath);
-          git(
-            [
-              "-c", "user.name=benchkit[bot]",
-              "-c", "user.email=benchkit[bot]@users.noreply.github.com",
-              "commit", "--allow-empty", "-m", `telemetry: store run ${state.runId}`,
-            ],
-            worktreePath,
-          );
-        } catch (rebaseErr) {
-          core.warning(`Rebase failed: ${rebaseErr instanceof Error ? rebaseErr.message : String(rebaseErr)}`);
-          throw err; // Throw original push error if rebase fails
-        }
-      }
-    }
-    if (!pushed) {
-      throw new Error("Failed to push telemetry after retries");
-    }
+    await exec.exec("git", ["-C", worktreePath, "add", targetPath]);
+    await exec.exec("git", ["-C", worktreePath, "commit", "-m", `telemetry: store run ${state.runId}`]);
+    await pushWithRetry(worktreePath, state.dataBranch, DEFAULT_PUSH_RETRY_COUNT);
+    core.info(`Telemetry pushed to ${state.dataBranch} for run ${state.runId}`);
   } finally {
-    // Clean up git auth header
-    try {
-      git(["config", "--local", "--unset", `http.${serverUrl}/.extraheader`], workspace);
-    } catch {
-      // best effort
-    }
-    // Clean up worktree
-    try {
-      git(["worktree", "remove", "--force", worktreePath], workspace);
-    } catch {
-      // best effort
-    }
+    await exec.exec("git", ["worktree", "remove", worktreePath, "--force"], {
+      ignoreReturnCode: true,
+    });
   }
 }
 
@@ -418,6 +329,7 @@ export async function stopOtelCollector(): Promise<void> {
 
   const profile = state.profile ?? "default";
   let suppressedCollectorLogLines = 0;
+  const metricsDir = state.metricsDir || path.join(process.env.RUNNER_TEMP || os.tmpdir(), "benchkit-metrics");
 
   // Dump collector logs for diagnostics
   if (state.logPath && fs.existsSync(state.logPath)) {
@@ -440,18 +352,22 @@ export async function stopOtelCollector(): Promise<void> {
     }
   }
 
-  // Filter process metrics to only runner descendants
-  if (state.runnerPpid && fs.existsSync(state.outputPath)) {
-    const raw = fs.readFileSync(state.outputPath, "utf-8");
-    const { filtered, kept, removed } = filterToRunnerDescendants(raw, state.runnerPpid);
-    fs.writeFileSync(state.outputPath, filtered);
-    core.info(
-      `Filtered processes: ${kept} resources kept, ${removed} non-runner resources removed`,
-    );
+  if (fs.existsSync(state.outputPath)) {
+    let telemetryContent = fs.readFileSync(state.outputPath, "utf-8");
+    if (state.runnerPpid) {
+      const { filtered, kept, removed } = filterToRunnerDescendants(telemetryContent, state.runnerPpid);
+      telemetryContent = filtered;
+      fs.writeFileSync(state.outputPath, telemetryContent);
+      core.info(
+        `Filtered processes: ${kept} resources kept, ${removed} non-runner resources removed`,
+      );
+    }
+    const monitorDocPath = writeMonitorMetricsDoc(metricsDir, telemetryContent);
+    core.info(`Wrote consolidated monitor metrics: ${monitorDocPath}`);
   }
 
   try {
-    pushTelemetryToDataBranch(state);
+    await pushTelemetryToDataBranch(state);
   } catch (err) {
     core.warning(`Failed to push telemetry: ${err instanceof Error ? err.message : String(err)}`);
   }

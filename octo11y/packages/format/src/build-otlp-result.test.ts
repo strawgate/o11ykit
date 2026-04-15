@@ -153,6 +153,27 @@ describe("buildOtlpResult", () => {
     assert.equal(findAttr(attrs, ATTR_COMMIT)?.value?.stringValue, "abc123");
   });
 
+  it("merges custom resource attributes from context", () => {
+    const doc = buildOtlpResult({
+      benchmarks: [{ name: "test", metrics: { x: 1 } }],
+      context: {
+        sourceFormat: "go",
+        runId: "run-1",
+        resourceAttributes: {
+          team: "platform",
+          batch_size: 2000,
+          warm: true,
+        },
+      },
+    });
+
+    const attrs = doc.resourceMetrics[0].resource!.attributes!;
+    assert.equal(findAttr(attrs, ATTR_RUN_ID)?.value?.stringValue, "run-1");
+    assert.equal(findAttr(attrs, "team")?.value?.stringValue, "platform");
+    assert.equal(findAttr(attrs, "batch_size")?.value?.intValue, "2000");
+    assert.equal(findAttr(attrs, "warm")?.value?.boolValue, true);
+  });
+
   it("defaults to otlp source format when no context is provided", () => {
     const doc = buildOtlpResult({
       benchmarks: [{ name: "test", metrics: { x: 1 } }],

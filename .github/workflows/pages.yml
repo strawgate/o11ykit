@@ -25,10 +25,10 @@ jobs:
       BASE_PATH: /o11ykit/otlpkit/
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
@@ -40,21 +40,30 @@ jobs:
       - name: Build package workspaces
         run: npm run build:packages
 
+      - name: Build octo11y package workspaces
+        run: npm run build:octo-packages
+
       - name: Build demo workspace
         run: npm run build --workspace @otlpkit/example-demo
+
+      - name: Build dashboard experiences
+        env:
+          BASE_PATH: /o11ykit/experiences/dashboard/
+        run: npm run build --workspace=@benchkit/dashboard
 
       - name: Assemble site artifact
         run: |
           rm -rf .site
-          mkdir -p .site/otlpkit
+          mkdir -p .site/otlpkit .site/experiences/dashboard
           cp -R site/* .site/
           cp -R examples/demo/dist/* .site/otlpkit/
+          cp -R octo11y/packages/dashboard/dist/* .site/experiences/dashboard/
 
       - name: Setup Pages
         uses: actions/configure-pages@v6
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: .site
 
@@ -67,4 +76,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

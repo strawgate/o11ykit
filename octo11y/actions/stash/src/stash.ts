@@ -16,8 +16,9 @@ export interface StashContext {
 }
 
 export interface BuildResultOptions {
-  benchmarkDoc: OtlpMetricsDocument;
+  benchmarkDoc?: OtlpMetricsDocument;
   monitorDoc?: OtlpMetricsDocument;
+  metricsDirDoc?: OtlpMetricsDocument;
   context: StashContext;
 }
 
@@ -27,10 +28,21 @@ export interface SummaryOptions {
 
 /** Assemble an OtlpMetricsDocument from parsed benchmarks, optional monitor data, and CI context. */
 export function buildResult(opts: BuildResultOptions): OtlpMetricsDocument {
-  let batch = MetricsBatch.fromOtlp(opts.benchmarkDoc);
-  if (opts.monitorDoc) {
-    batch = MetricsBatch.merge(batch, MetricsBatch.fromOtlp(opts.monitorDoc));
+  const batches: MetricsBatch[] = [];
+  if (opts.benchmarkDoc) {
+    batches.push(MetricsBatch.fromOtlp(opts.benchmarkDoc));
   }
+  if (opts.monitorDoc) {
+    batches.push(MetricsBatch.fromOtlp(opts.monitorDoc));
+  }
+  if (opts.metricsDirDoc) {
+    batches.push(MetricsBatch.fromOtlp(opts.metricsDirDoc));
+  }
+  if (batches.length === 0) {
+    throw new Error("No benchmark or monitor metrics were provided to stash.");
+  }
+
+  const batch = MetricsBatch.merge(...batches);
 
   // Override resource context with stash-provided CI context
   const ctx = {
@@ -104,6 +116,40 @@ export function readMonitorOutput(monitorPath: string): OtlpMetricsDocument {
 }
 
 /**
+ * Read all *.otlp.json files in a metrics directory and merge them.
+ */
+export function readMetricsDir(metricsDir: string): OtlpMetricsDocument | undefined {
+  if (!fs.existsSync(metricsDir)) {
+    throw new Error(`Metrics directory not found: ${metricsDir}`);
+  }
+  const stat = fs.statSync(metricsDir);
+  if (!stat.isDirectory()) {
+    throw new Error(`Metrics path is not a directory: ${metricsDir}`);
+  }
+
+  const files = fs
+    .readdirSync(metricsDir)
+    .filter((name) => name.endsWith(".otlp.json"))
+    .sort()
+    .map((name) => path.join(metricsDir, name));
+
+  if (files.length === 0) {
+    return undefined;
+  }
+
+  const docs: OtlpMetricsDocument[] = [];
+  for (const file of files) {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf-8")) as OtlpMetricsDocument;
+    if (!Array.isArray(parsed.resourceMetrics)) {
+      throw new Error(`Metrics file is not valid OTLP JSON: ${file}`);
+    }
+    docs.push(parsed);
+  }
+
+  return MetricsBatch.merge(...docs.map((doc) => MetricsBatch.fromOtlp(doc))).toOtlp();
+}
+
+/**
  * Build a collision-resistant run identifier.
  *
  * Priority:
@@ -117,13 +163,18 @@ export function readMonitorOutput(monitorPath: string): OtlpMetricsDocument {
  * replaced with `-`, with consecutive dashes collapsed and leading/trailing
  * dashes stripped.
  */
+/** Sanitize a runId for safe use as a filename (strip path separators and shell-unsafe chars). */
+function sanitizeRunId(raw: string): string {
+  return raw.replace(/[/\\:*?"<>|]/g, "_");
+}
+
 export function buildRunId(options: {
   customRunId?: string;
   githubRunId?: string;
   githubRunAttempt?: string;
   githubJob?: string;
 }): string {
-  if (options.customRunId) return options.customRunId;
+  if (options.customRunId) return sanitizeRunId(options.customRunId);
   const base = `${options.githubRunId ?? "local"}-${options.githubRunAttempt ?? "1"}`;
   if (options.githubJob) {
     const sanitized = options.githubJob

@@ -17,6 +17,7 @@ async function run(): Promise<void> {
   const failOnRegression = core.getBooleanInput("fail-on-regression");
   const commentOnPr = core.getBooleanInput("comment-on-pr");
   const token = core.getInput("github-token", { required: true });
+  core.setSecret(token);
 
   const globber = await glob.create(resultsPattern);
   const files = await globber.glob();
@@ -35,31 +36,33 @@ async function run(): Promise<void> {
     return;
   }
 
-  const runsDir = path.join(worktree, "data", "runs");
-  const { markdown, hasRegression } = runComparison({
-    files,
-    format,
-    runsDir,
-    baselineRuns,
-    threshold,
-    currentCommit: process.env.GITHUB_SHA,
-    currentRef: process.env.GITHUB_REF,
-  });
+  try {
+    const runsDir = path.join(worktree, "data", "runs");
+    const { markdown, hasRegression } = runComparison({
+      files,
+      format,
+      runsDir,
+      baselineRuns,
+      threshold,
+      currentCommit: process.env.GITHUB_SHA,
+      currentRef: process.env.GITHUB_REF,
+    });
 
-  await exec.exec("git", ["worktree", "remove", worktree, "--force"]);
+    core.setOutput("has-regression", String(hasRegression));
+    core.setOutput("summary", markdown);
+    await core.summary.addRaw(markdown, true).write();
 
-  core.setOutput("has-regression", String(hasRegression));
-  core.setOutput("summary", markdown);
-  await core.summary.addRaw(markdown, true).write();
+    if (commentOnPr && github.context.payload.pull_request) {
+      await postPrComment(token, markdown);
+    } else if (commentOnPr) {
+      core.info("Not a pull request event — skipping PR comment.");
+    }
 
-  if (commentOnPr && github.context.payload.pull_request) {
-    await postPrComment(token, markdown);
-  } else if (commentOnPr) {
-    core.info("Not a pull request event — skipping PR comment.");
-  }
-
-  if (failOnRegression && hasRegression) {
-    core.setFailed("Benchmark regression detected. See job summary for details.");
+    if (failOnRegression && hasRegression) {
+      core.setFailed("Benchmark regression detected. See job summary for details.");
+    }
+  } finally {
+    await exec.exec("git", ["worktree", "remove", worktree, "--force"], { ignoreReturnCode: true });
   }
 }
 
@@ -97,6 +100,7 @@ async function postPrComment(token: string, body: string): Promise<void> {
     owner,
     repo,
     issue_number: pullNumber,
+    per_page: 100,
   });
 
   const existing = comments.find((comment) => comment.body?.includes(marker));

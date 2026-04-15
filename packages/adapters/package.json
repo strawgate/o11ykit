@@ -1,6 +1,6 @@
 {
   "name": "@otlpkit/adapters",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Charting-library adapters for otlpkit view frames.",
   "license": "UNLICENSED",
   "engines": {
@@ -57,7 +57,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@otlpkit/views": "^0.1.0"
+    "@otlpkit/views": "^0.2.3"
   },
   "scripts": {
     "build": "tsc -b",

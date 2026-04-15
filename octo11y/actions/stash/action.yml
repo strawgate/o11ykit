@@ -3,7 +3,8 @@ description: 'Parse benchmark results and commit them to a data branch.'
 inputs:
   results:
     description: 'Path or glob pattern to benchmark result file(s).'
-    required: true
+    required: false
+    default: ''
   format:
     description: 'Input format: auto (default), go, rust, hyperfine, pytest-benchmark, benchmark-action, or otlp.'
     required: false
@@ -29,6 +30,10 @@ inputs:
   monitor-results:
     description: 'Path to monitor.json produced by the monitor action. When provided, monitor benchmarks and context are merged into the stored result.'
     required: false
+  metrics-dir:
+    description: 'Directory containing *.otlp.json files to merge (defaults to BENCHKIT_METRICS_DIR when empty).'
+    required: false
+    default: ''
   commit-results:
     description: 'When false, parse and output the result JSON but do not commit it to the data branch.'
     required: false

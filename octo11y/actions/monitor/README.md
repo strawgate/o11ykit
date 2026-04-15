@@ -15,10 +15,14 @@ for JS actions, because `@main` does not include compiled action bundles.
   benchmark code can emit custom metrics to the same collector
 - waits for the OTLP HTTP receiver to answer before returning so the next step
   can emit metrics immediately
-- works with `actions/emit-metric` for simple one-off workflow metrics without a
-  full OTLP SDK
+- installs a `benchkit-emit` CLI for one-off workflow metrics without a full
+  OTLP SDK
+- creates a shared metrics directory and exports
+  `BENCHKIT_METRICS_DIR`, `BENCHKIT_RUN_ID`, and `BENCHKIT_EMIT_ENDPOINT`
 - writes a raw OTLP JSONL sidecar (gzipped) to the data branch at
   `data/runs/{run-id}/telemetry.otlp.jsonl.gz`
+- writes a consolidated OTLP JSON document to
+  `${BENCHKIT_METRICS_DIR}/monitor.otlp.json` in the post step
 - filters process metrics to runner-descendant processes before pushing, so the
   stored telemetry stays focused on the benchmark job instead of the whole host
 
@@ -60,20 +64,14 @@ OTLP sidecar to the data branch.
 
 ## Emitting a one-off custom metric
 
-If your workflow only needs to record a single custom score or count, use the
-emit action against the collector endpoint from the monitor step:
+If your workflow only needs to record a custom score or count, use the
+`benchkit-emit` CLI installed by monitor:
 
 ```yaml
 - name: Emit score metric
-  uses: strawgate/octo11y/actions/emit-metric@main-dist
-  with:
-    otlp-http-endpoint: ${{ steps.monitor.outputs.otlp-http-endpoint }}
-    name: test_score
-    value: 74
-    unit: points
-    scenario: search-relevance
-    series: baseline
-    direction: bigger_is_better
+  run: |
+    benchkit-emit --name test_score --value 74 --unit points \
+      --scenario search-relevance --series baseline --direction up
 ```
 
 ## Inputs
@@ -96,6 +94,7 @@ emit action against the collector endpoint from the monitor step:
 |--------|-------------|
 | `otlp-grpc-endpoint` | OTLP gRPC endpoint, e.g. `grpc://localhost:4317` |
 | `otlp-http-endpoint` | OTLP HTTP endpoint, e.g. `http://localhost:4318` |
+| `metrics-dir` | Shared metrics directory, e.g. `${RUNNER_TEMP}/benchkit-metrics` |
 
 ## Stored output
 
@@ -115,6 +114,10 @@ fails instead of overwriting it.
 Benchkit also stamps resource attributes such as `benchkit.run_id`,
 `benchkit.kind=hybrid`, `benchkit.source_format=otlp`, and, when available,
 `benchkit.ref` and `benchkit.commit`.
+
+In addition, monitor writes a consolidated OTLP JSON file to
+`${BENCHKIT_METRICS_DIR}/monitor.otlp.json` so `actions/stash` can merge monitor
+and custom CLI metrics without JSONL conversion glue.
 
 ## How it works
 

@@ -1,10 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import * as http from "node:http";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
   downloadUrl,
+  installBenchkitEmitCli,
   platformArch,
   resolveMetricSetsInput,
+  resolveMetricsDir,
   resolveProfile,
   resolveRunId,
   validatePort,
@@ -183,6 +188,38 @@ describe("resolveRunId", () => {
   });
 });
 
+describe("resolveMetricsDir", () => {
+  it("uses RUNNER_TEMP when available", () => {
+    const prev = process.env.RUNNER_TEMP;
+    process.env.RUNNER_TEMP = "/tmp/benchkit-test";
+    try {
+      assert.equal(resolveMetricsDir(), "/tmp/benchkit-test/benchkit-metrics");
+    } finally {
+      if (prev === undefined) delete process.env.RUNNER_TEMP;
+      else process.env.RUNNER_TEMP = prev;
+    }
+  });
+});
+
+describe("installBenchkitEmitCli", () => {
+  it("creates a runnable wrapper command", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "benchkit-cli-bin-"));
+    try {
+      installBenchkitEmitCli("/tmp/fake-cli.js", tempDir);
+      if (process.platform === "win32") {
+        assert.ok(fs.existsSync(path.join(tempDir, "benchkit-emit.cmd")));
+      } else {
+        const wrapper = path.join(tempDir, "benchkit-emit");
+        assert.ok(fs.existsSync(wrapper));
+        const mode = fs.statSync(wrapper).mode & 0o777;
+        assert.equal(mode, 0o755);
+      }
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── validatePort ───────────────────────────────────────────────────
 
 describe("validatePort", () => {
@@ -207,11 +244,8 @@ describe("validatePort", () => {
     );
   });
 
-  it("throws for port 0", () => {
-    assert.throws(
-      () => validatePort("otlp-grpc-port", "0"),
-      /Invalid port number for otlp-grpc-port: 0 is out of range/,
-    );
+  it("accepts port 0 (disable sentinel)", () => {
+    assert.equal(validatePort("otlp-grpc-port", "0"), 0);
   });
 
   it("throws for port above 65535", () => {
@@ -268,11 +302,8 @@ describe("validatePort — error paths", () => {
     );
   });
 
-  it("rejects port 0", () => {
-    assert.throws(
-      () => validatePort("otlp-http-port", "0"),
-      /out of range/,
-    );
+  it("accepts port 0 as disabled", () => {
+    assert.equal(validatePort("otlp-http-port", "0"), 0);
   });
 
   it("rejects port above 65535", () => {

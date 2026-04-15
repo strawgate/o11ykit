@@ -1,6 +1,6 @@
 # @benchkit/dashboard
 
-Private Preact app that deploys the Octo11y site to GitHub Pages. This is **not** a library or template — it is the live deployment at [strawgate.github.io/octo11y](https://strawgate.github.io/octo11y/).
+Private Preact app used for the o11ykit "Experiences" pages on GitHub Pages. This is **not** a library or template.
 
 ## Role
 
@@ -54,13 +54,13 @@ The dev server starts at `http://localhost:5173/benchkit/` and fetches live data
 
 The home route emphasizes the generic Actions-to-metrics story. The Benchkit route preserves deep benchmark exploration.
 
-The Benchkit route renders a `<Dashboard>` component pointed at `strawgate/octo11y`:
+The Benchkit route renders a `<Dashboard>` component pointed at the configured data source repo (defaults to `strawgate/o11ykit`):
 
 ```tsx
 <Dashboard
-  source={{ owner: "strawgate", repo: "octo11y" }}
+  source={{ owner: "strawgate", repo: "o11ykit" }}
   seriesNameFormatter={(name) => name.replace(/^Benchmark/, "")}
-  commitHref={(sha) => `https://github.com/strawgate/octo11y/commit/${sha}`}
+  commitHref={(sha) => `https://github.com/strawgate/o11ykit/commit/${sha}`}
   regressionThreshold={10}
   regressionWindow={5}
 />
