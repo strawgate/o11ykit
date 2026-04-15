@@ -29,9 +29,10 @@ export { ScanEngine } from './query.js';
 export { Interner, fnv1a } from './interner.js';
 export type { InternId } from './interner.js';
 export { MemPostings } from './postings.js';
+export { ingestOTLP } from './ingest.js';
+export type { IngestOptions, IngestResult } from './ingest.js';
 
 // M4: Chunk store — will export ChunkStore once gate passes
-// M5: Ingest pipeline — will export ingest() once gate passes
 // M6: Query executor — will export query builder once gate passes
 // M7: Histogram — will export histogram types once gate passes
 // M8: Worker + DB — will export O11yTSDB once gate passes

@@ -1,0 +1,129 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "service.name", "value": { "stringValue": "checkout" } },
+          { "key": "service.instance.id", "value": { "stringValue": "i-abc" } }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": {
+            "name": "otel.demo",
+            "version": "1.2.3",
+            "attributes": [
+              { "key": "scope.role", "value": { "stringValue": "ingester" } }
+            ]
+          },
+          "metrics": [
+            {
+              "name": "system.cpu.utilization",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1710000000000",
+                    "attributes": [
+                      { "key": "host.name", "value": { "stringValue": "node-a" } }
+                    ],
+                    "asDouble": 0.73
+                  },
+                  {
+                    "timeUnixNano": "1710000001000000000",
+                    "attributes": [
+                      { "key": "host.name", "value": { "stringValue": "node-a" } }
+                    ],
+                    "asDouble": 0.74
+                  },
+                  {
+                    "timeUnixNano": "bad-ts",
+                    "asDouble": 0.8
+                  }
+                ]
+              }
+            },
+            {
+              "name": "http.server.requests",
+              "sum": {
+                "aggregationTemporality": 2,
+                "isMonotonic": true,
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1710000001000000000",
+                    "attributes": [
+                      { "key": "http.method", "value": { "stringValue": "GET" } },
+                      { "key": "http.status_code", "value": { "intValue": "200" } }
+                    ],
+                    "asInt": "42"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "http.server.duration",
+              "histogram": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1710000001000000000",
+                    "attributes": [
+                      { "key": "route", "value": { "stringValue": "/cart" } }
+                    ],
+                    "count": "4",
+                    "sum": 53,
+                    "bucketCounts": ["1", "2", "1"],
+                    "explicitBounds": [10, 50]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "rpc.latency",
+              "summary": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1710000001000000000",
+                    "attributes": [
+                      { "key": "rpc.system", "value": { "stringValue": "grpc" } }
+                    ],
+                    "count": "3",
+                    "sum": 21,
+                    "quantileValues": [
+                      { "quantile": 0.5, "value": 5 },
+                      { "quantile": 0.9, "value": 11 }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "queue.delay",
+              "exponentialHistogram": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1710000001000000000",
+                    "attributes": [
+                      { "key": "queue.name", "value": { "stringValue": "emails" } }
+                    ],
+                    "count": "5",
+                    "sum": 27,
+                    "scale": "2",
+                    "zeroCount": "1",
+                    "positive": {
+                      "offset": "1",
+                      "bucketCounts": ["1", "2"]
+                    },
+                    "negative": {
+                      "offset": "-1",
+                      "bucketCounts": ["1"]
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
