@@ -17,6 +17,7 @@ export type { DecodedChunk } from './codec.js';
 // Experimentation framework — pluggable core
 export type {
   Labels, SeriesId, TimeRange, Codec, ValuesCodec, TimestampCodec, ChunkStats, StatsCodec,
+  RangeDecodeCodec, RangeDecodeResult,
   StorageBackend, QueryEngine, QueryOpts, QueryResult,
   SeriesResult, AggFn, Matcher,
 } from './types.js';

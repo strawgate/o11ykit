@@ -16,7 +16,7 @@
  */
 
 import type {
-  ChunkStats, Labels, SeriesId, StorageBackend, TimeRange, TimestampCodec, ValuesCodec,
+  ChunkStats, Labels, RangeDecodeCodec, SeriesId, StorageBackend, TimeRange, TimestampCodec, ValuesCodec,
 } from "./types.js";
 import { computeStats } from "./stats.js";
 import { concatRanges, lowerBound, seriesKey, upperBound } from "./binary-search.js";
@@ -69,6 +69,7 @@ export class ColumnStore implements StorageBackend {
 
   private valuesCodec: ValuesCodec;
   private tsCodec: TimestampCodec | undefined;
+  private rangeCodec: RangeDecodeCodec | undefined;
   private chunkSize: number;
   private allSeries: ColumnSeries[] = [];
   private groups: SeriesGroup[] = [];
@@ -83,6 +84,7 @@ export class ColumnStore implements StorageBackend {
    *                        Default: all series in one group (maximum timestamp sharing).
    * @param name - Optional display name.
    * @param tsCodec - Optional timestamp codec for delta-of-delta compression.
+   * @param rangeCodec - Optional fused range-decode codec (ALP fast-path).
    */
   constructor(
     valuesCodec: ValuesCodec,
@@ -90,9 +92,11 @@ export class ColumnStore implements StorageBackend {
     private groupResolver: (labels: Labels) => number = () => 0,
     name?: string,
     tsCodec?: TimestampCodec,
+    rangeCodec?: RangeDecodeCodec,
   ) {
     this.valuesCodec = valuesCodec;
     this.tsCodec = tsCodec;
+    this.rangeCodec = rangeCodec;
     this.chunkSize = chunkSize;
     this.name = name ?? `column-${this.valuesCodec.name}-${chunkSize}`;
   }
@@ -227,23 +231,43 @@ export class ColumnStore implements StorageBackend {
     const group = this.groups[s.groupId]!;
     const parts: TimeRange[] = [];
 
-    // Scan frozen chunks.
-    for (const chunk of s.frozen) {
-      const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex]!;
-      if (tsChunk.maxT < start || tsChunk.minT > end) continue;
+    // ── Path A: Fused range-decode (best — ts decode + binary search + partial values decode in one WASM call) ──
+    if (this.rangeCodec && this.tsCodec) {
+      for (const chunk of s.frozen) {
+        const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex]!;
+        if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
-      // Decompress timestamps if needed.
-      const timestamps = tsChunk.timestamps
-        ?? (tsChunk.timestamps = this.tsCodec!.decodeTimestamps(tsChunk.compressed!));
+        const result = this.rangeCodec.rangeDecodeValues(
+          tsChunk.compressed!, chunk.compressedValues, start, end,
+        );
+        if (result.timestamps.length > 0) {
+          parts.push(result);
 
-      const values = this.valuesCodec.decodeValues(chunk.compressedValues);
-      const lo = lowerBound(timestamps, start, 0, tsChunk.count);
-      const hi = upperBound(timestamps, end, lo, tsChunk.count);
-      if (hi > lo) {
-        parts.push({
-          timestamps: timestamps.slice(lo, hi),
-          values: values.slice(lo, hi),
-        });
+          // Cache decoded timestamps if not already cached.
+          if (!tsChunk.timestamps) {
+            tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed!);
+          }
+        }
+      }
+    } else {
+      // ── Path B: Individual decode (batch decode amortized by caller if needed) ──
+      for (const chunk of s.frozen) {
+        const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex]!;
+        if (tsChunk.maxT < start || tsChunk.minT > end) continue;
+
+        // Decompress timestamps if needed.
+        const timestamps = tsChunk.timestamps
+          ?? (tsChunk.timestamps = this.tsCodec!.decodeTimestamps(tsChunk.compressed!));
+
+        const values = this.valuesCodec.decodeValues(chunk.compressedValues);
+        const lo = lowerBound(timestamps, start, 0, tsChunk.count);
+        const hi = upperBound(timestamps, end, lo, tsChunk.count);
+        if (hi > lo) {
+          parts.push({
+            timestamps: timestamps.slice(lo, hi),
+            values: values.slice(lo, hi),
+          });
+        }
       }
     }
 
@@ -276,8 +300,8 @@ export class ColumnStore implements StorageBackend {
 
     // Group overhead: shared timestamp buffers.
     for (const g of this.groups) {
-      // Hot shared timestamps (one per group).
-      bytes += g.hotTimestamps.byteLength;
+      // Hot shared timestamps — only count active samples, not capacity.
+      bytes += g.hotCount * 8;
       // Frozen shared timestamp chunks.
       for (const tc of g.frozenTimestamps) {
         if (tc.compressed) {
@@ -290,7 +314,7 @@ export class ColumnStore implements StorageBackend {
 
     // Per-series: hot values + frozen compressed values + stats.
     for (const s of this.allSeries) {
-      bytes += s.hot.values.byteLength; // hot values buffer
+      bytes += s.hot.count * 8; // hot values — active samples only
       for (const c of s.frozen) {
         bytes += c.compressedValues.byteLength; // compressed values
         bytes += 72; // ChunkStats struct overhead
@@ -314,6 +338,7 @@ export class ColumnStore implements StorageBackend {
     const chunksToFreeze = Math.floor(minCount / this.chunkSize);
     if (chunksToFreeze === 0) return;
 
+    const hasBatch = typeof this.valuesCodec.encodeBatchValuesWithStats === 'function';
     const hasWasmStats = typeof this.valuesCodec.encodeValuesWithStats === 'function';
 
     for (let c = 0; c < chunksToFreeze; c++) {
@@ -340,49 +365,65 @@ export class ColumnStore implements StorageBackend {
         });
       }
 
-      // Freeze each member's values for this chunk.
-      for (const memberId of group.members) {
-        const s = this.allSeries[memberId]!;
-        const vals = s.hot.values.slice(chunkStart, chunkStart + this.chunkSize);
-
-        let compressedValues: Uint8Array;
-        let stats: ChunkStats;
-        if (hasWasmStats) {
-          const result = this.valuesCodec.encodeValuesWithStats!(vals);
-          compressedValues = result.compressed;
-          stats = result.stats;
-        } else {
-          compressedValues = this.valuesCodec.encodeValues(vals);
-          stats = computeStats(vals);
+      // ── Batch freeze: encode members in capped batches to bound scratch memory ──
+      if (hasBatch) {
+        const BATCH_CAP = 32; // Cap to avoid WASM scratch overflow (~32 × 128 × 28 ≈ 112KB per batch)
+        for (let bStart = 0; bStart < group.members.length; bStart += BATCH_CAP) {
+          const bEnd = Math.min(bStart + BATCH_CAP, group.members.length);
+          const arrays: Float64Array[] = [];
+          for (let m = bStart; m < bEnd; m++) {
+            const s = this.allSeries[group.members[m]!]!;
+            arrays.push(s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize));
+          }
+          const results = this.valuesCodec.encodeBatchValuesWithStats!(arrays);
+          for (let m = 0; m < results.length; m++) {
+            const s = this.allSeries[group.members[bStart + m]!]!;
+            const { compressed, stats } = results[m]!;
+            s.frozen.push({ compressedValues: compressed, tsChunkIndex, stats });
+          }
         }
+      } else {
+        // Fallback: encode each member individually.
+        for (const memberId of group.members) {
+          const s = this.allSeries[memberId]!;
+          const vals = s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
 
-        s.frozen.push({ compressedValues, tsChunkIndex, stats });
+          let compressedValues: Uint8Array;
+          let stats: ChunkStats;
+          if (hasWasmStats) {
+            const result = this.valuesCodec.encodeValuesWithStats!(vals);
+            compressedValues = result.compressed;
+            stats = result.stats;
+          } else {
+            compressedValues = this.valuesCodec.encodeValues(vals);
+            stats = computeStats(vals);
+          }
+
+          s.frozen.push({ compressedValues, tsChunkIndex, stats });
+        }
       }
     }
 
-    // Shift remaining hot data back to the start.
+    // Shift remaining hot data back to the start (reuse buffers when possible).
     const frozenSamples = chunksToFreeze * this.chunkSize;
     for (const memberId of group.members) {
       const s = this.allSeries[memberId]!;
       const remaining = s.hot.count - frozenSamples;
       if (remaining > 0) {
-        const newVals = new Float64Array(Math.max(this.chunkSize, remaining));
-        newVals.set(s.hot.values.subarray(frozenSamples, s.hot.count));
-        s.hot = { values: newVals, count: remaining };
+        // Copy remaining data to the front of the existing buffer.
+        s.hot.values.copyWithin(0, frozenSamples, s.hot.count);
+        s.hot.count = remaining;
       } else {
-        s.hot = { values: new Float64Array(this.chunkSize), count: 0 };
+        s.hot.count = 0;
       }
     }
 
-    // Shift shared timestamps.
+    // Shift shared timestamps (reuse buffer).
     const tsRemaining = group.hotCount - frozenSamples;
     if (tsRemaining > 0) {
-      const newTs = new BigInt64Array(Math.max(this.chunkSize, tsRemaining));
-      newTs.set(group.hotTimestamps.subarray(frozenSamples, group.hotCount));
-      group.hotTimestamps = newTs;
+      group.hotTimestamps.copyWithin(0, frozenSamples, group.hotCount);
       group.hotCount = tsRemaining;
     } else {
-      group.hotTimestamps = new BigInt64Array(this.chunkSize);
       group.hotCount = 0;
     }
   }

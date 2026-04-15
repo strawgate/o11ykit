@@ -160,8 +160,8 @@ export class ChunkedStore implements StorageBackend {
   memoryBytes(): number {
     let bytes = 0;
     for (const s of this.series) {
-      // Hot chunk: full pre-allocated typed arrays.
-      bytes += s.hot.timestamps.byteLength + s.hot.values.byteLength;
+      // Hot chunk: only active samples, not full capacity.
+      bytes += s.hot.count * 16; // 8 bytes timestamp + 8 bytes value per sample
       // Frozen chunks: compressed bytes + struct overhead.
       for (const c of s.frozen) {
         bytes += c.compressed.byteLength + 32; // 2 bigints + count + overhead

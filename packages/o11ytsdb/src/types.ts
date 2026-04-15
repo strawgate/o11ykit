@@ -35,6 +35,10 @@ export interface ValuesCodec {
   decodeValues(buf: Uint8Array): Float64Array;
   /** Optional: encode values and compute block stats in one pass (WASM fast-path). */
   encodeValuesWithStats?(values: Float64Array): { compressed: Uint8Array; stats: ChunkStats };
+  /** Optional: batch-encode N arrays in a single WASM call, returning compressed blobs + stats. */
+  encodeBatchValuesWithStats?(arrays: Float64Array[]): Array<{ compressed: Uint8Array; stats: ChunkStats }>;
+  /** Optional: batch-decode N compressed blobs in a single WASM call. */
+  decodeBatchValues?(blobs: Uint8Array[], chunkSize: number): Float64Array[];
 }
 
 /** Timestamp-only codec — delta-of-delta compression for shared timestamp columns. */
@@ -42,6 +46,26 @@ export interface TimestampCodec {
   readonly name: string;
   encodeTimestamps(timestamps: BigInt64Array): Uint8Array;
   decodeTimestamps(buf: Uint8Array): BigInt64Array;
+}
+
+/** Fused range-decode result: only samples within [startT, endT]. */
+export interface RangeDecodeResult {
+  timestamps: BigInt64Array;
+  values: Float64Array;
+}
+
+/**
+ * Optional fused range-decode codec — decodes timestamps + values and
+ * returns only the samples within [startT, endT]. Enables partial decode
+ * of fixed-width codecs (ALP) and moves binary search into WASM.
+ */
+export interface RangeDecodeCodec {
+  rangeDecodeValues(
+    compressedTimestamps: Uint8Array,
+    compressedValues: Uint8Array,
+    startT: bigint,
+    endT: bigint,
+  ): RangeDecodeResult;
 }
 
 /** Block-level statistics computed at freeze time. */

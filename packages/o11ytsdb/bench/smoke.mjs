@@ -87,6 +87,38 @@ async function loadWasmCodecs() {
         stats: { minV: s[0], maxV: s[1], sum: s[2], count: s[3], firstV: s[4], lastV: s[5], sumOfSquares: s[6], resetCount: s[7] },
       };
     },
+    encodeBatchValuesWithStats(arrays) {
+      const numArrays = arrays.length;
+      const chunkSize = arrays[0].length;
+      w.resetScratch();
+      const valsPtr = w.allocScratch(numArrays * chunkSize * 8);
+      for (let i = 0; i < numArrays; i++) {
+        const arr = arrays[i];
+        mem().set(new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength), valsPtr + i * chunkSize * 8);
+      }
+      const outCap = numArrays * chunkSize * 20;
+      const outPtr = w.allocScratch(outCap);
+      const offsetsPtr = w.allocScratch(numArrays * 4);
+      const sizesPtr = w.allocScratch(numArrays * 4);
+      const statsPtr = w.allocScratch(numArrays * 64);
+      w.encodeBatchValuesWithStats(valsPtr, chunkSize, numArrays, outPtr, outCap, offsetsPtr, sizesPtr, statsPtr);
+      const offsets = new Uint32Array(w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4));
+      const sizes = new Uint32Array(w.memory.buffer.slice(sizesPtr, sizesPtr + numArrays * 4));
+      const allStats = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
+      const results = [];
+      for (let i = 0; i < numArrays; i++) {
+        const compressed = new Uint8Array(w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i]));
+        const si = i * 8;
+        results.push({
+          compressed,
+          stats: {
+            minV: allStats[si], maxV: allStats[si+1], sum: allStats[si+2], count: allStats[si+3],
+            firstV: allStats[si+4], lastV: allStats[si+5], sumOfSquares: allStats[si+6], resetCount: allStats[si+7],
+          },
+        });
+      }
+      return results;
+    },
   };
 
   const tsCodec = {
@@ -112,7 +144,107 @@ async function loadWasmCodecs() {
     },
   };
 
-  return { valuesCodec, tsCodec };
+  const alpValuesCodec = {
+    name: 'rust-wasm-alp',
+    encodeValues(values) {
+      const n = values.length;
+      w.resetScratch();
+      const valPtr = w.allocScratch(n * 8);
+      const outCap = n * 20;
+      const outPtr = w.allocScratch(outCap);
+      mem().set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), valPtr);
+      const bytesWritten = w.encodeValuesALP(valPtr, n, outPtr, outCap);
+      return new Uint8Array(w.memory.buffer.slice(outPtr, outPtr + bytesWritten));
+    },
+    decodeValues(buf) {
+      w.resetScratch();
+      const inPtr = w.allocScratch(buf.length);
+      mem().set(buf, inPtr);
+      const maxSamples = (buf[0] << 8) | buf[1];
+      const valPtr = w.allocScratch(maxSamples * 8);
+      const n = w.decodeValuesALP(inPtr, buf.length, valPtr, maxSamples);
+      return new Float64Array(w.memory.buffer.slice(valPtr, valPtr + n * 8));
+    },
+    encodeValuesWithStats(values) {
+      const n = values.length;
+      w.resetScratch();
+      const valPtr = w.allocScratch(n * 8);
+      const outCap = n * 20;
+      const outPtr = w.allocScratch(outCap);
+      const statsPtr = w.allocScratch(64);
+      mem().set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), valPtr);
+      const bytesWritten = w.encodeValuesALPWithStats(valPtr, n, outPtr, outCap, statsPtr);
+      const compressed = new Uint8Array(w.memory.buffer.slice(outPtr, outPtr + bytesWritten));
+      const s = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + 64));
+      return {
+        compressed,
+        stats: { minV: s[0], maxV: s[1], sum: s[2], count: s[3], firstV: s[4], lastV: s[5], sumOfSquares: s[6], resetCount: s[7] },
+      };
+    },
+    encodeBatchValuesWithStats(arrays) {
+      const numArrays = arrays.length;
+      const chunkSize = arrays[0].length;
+      w.resetScratch();
+      const valsPtr = w.allocScratch(numArrays * chunkSize * 8);
+      for (let i = 0; i < numArrays; i++) {
+        const arr = arrays[i];
+        mem().set(new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength), valsPtr + i * chunkSize * 8);
+      }
+      const outCap = numArrays * chunkSize * 20;
+      const outPtr = w.allocScratch(outCap);
+      const offsetsPtr = w.allocScratch(numArrays * 4);
+      const sizesPtr = w.allocScratch(numArrays * 4);
+      const statsPtr = w.allocScratch(numArrays * 64);
+      w.encodeBatchValuesALPWithStats(
+        valsPtr, chunkSize, numArrays, outPtr, outCap, offsetsPtr, sizesPtr, statsPtr
+      );
+      const offsets = new Uint32Array(w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4));
+      const sizes = new Uint32Array(w.memory.buffer.slice(sizesPtr, sizesPtr + numArrays * 4));
+      const allStats = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
+      const results = [];
+      for (let i = 0; i < numArrays; i++) {
+        const compressed = new Uint8Array(w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i]));
+        const si = i * 8;
+        results.push({
+          compressed,
+          stats: {
+            minV: allStats[si], maxV: allStats[si+1], sum: allStats[si+2], count: allStats[si+3],
+            firstV: allStats[si+4], lastV: allStats[si+5], sumOfSquares: allStats[si+6], resetCount: allStats[si+7],
+          },
+        });
+      }
+      return results;
+    },
+  };
+
+  const alpRangeCodec = {
+    rangeDecodeValues(compressedTs, compressedVals, startT, endT) {
+      w.resetScratch();
+      const tsInPtr = w.allocScratch(compressedTs.length);
+      mem().set(compressedTs, tsInPtr);
+      const valInPtr = w.allocScratch(compressedVals.length);
+      mem().set(compressedVals, valInPtr);
+      const maxSamples = (compressedVals[0] << 8) | compressedVals[1];
+      const outTsPtr = w.allocScratch(maxSamples * 8);
+      const outValPtr = w.allocScratch(maxSamples * 8);
+      const n = w.rangeDecodeALP(
+        tsInPtr, compressedTs.length,
+        valInPtr, compressedVals.length,
+        startT, endT,
+        outTsPtr, outValPtr,
+        maxSamples,
+      );
+      if (n === 0) {
+        return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+      }
+      return {
+        timestamps: new BigInt64Array(w.memory.buffer.slice(outTsPtr, outTsPtr + n * 8)),
+        values: new Float64Array(w.memory.buffer.slice(outValPtr, outValPtr + n * 8)),
+      };
+    },
+  };
+
+  return { valuesCodec, alpValuesCodec, tsCodec, alpRangeCodec };
 }
 
 // ── Test a backend ───────────────────────────────────────────────────
@@ -155,7 +287,7 @@ function testBackend(name, store, data) {
 
 async function main() {
   const data = generateData();
-  const { valuesCodec, tsCodec } = await loadWasmCodecs();
+  const { valuesCodec, alpValuesCodec, tsCodec, alpRangeCodec } = await loadWasmCodecs();
 
   console.log(`\n  Smoke test: ${NUM_SERIES} series × ${POINTS_PER_SERIES} pts (chunk=${CHUNK_SIZE})\n`);
   console.log(`  ${'Backend'.padEnd(30)} ${'Ingest'.padStart(8)}          ${'Mem'.padStart(7)}     ${'Eff'.padStart(5)}    OK?`);
@@ -210,16 +342,22 @@ async function main() {
     allOk = testBackend('chunked-rust-wasm-128', new ChunkedStore(codec, CHUNK_SIZE), data) && allOk;
   }
 
-  // ColumnStore + WASM values only.
+  // ColumnStore + XOR values + WASM timestamps.
   {
     const { ColumnStore } = await import(join(pkgDir, 'dist/column-store.js'));
-    allOk = testBackend('column-wasm-values-128', new ColumnStore(valuesCodec, CHUNK_SIZE, () => 0), data) && allOk;
+    allOk = testBackend('column-xor-full-128', new ColumnStore(valuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec), data) && allOk;
   }
 
-  // ColumnStore + WASM values + WASM timestamps.
+  // ColumnStore + ALP values + WASM timestamps.
   {
     const { ColumnStore } = await import(join(pkgDir, 'dist/column-store.js'));
-    allOk = testBackend('column-wasm-full-128', new ColumnStore(valuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec), data) && allOk;
+    allOk = testBackend('column-alp-full-128', new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec), data) && allOk;
+  }
+
+  // ColumnStore + ALP fused range-decode.
+  {
+    const { ColumnStore } = await import(join(pkgDir, 'dist/column-store.js'));
+    allOk = testBackend('column-alp-fused-128', new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec), data) && allOk;
   }
 
   console.log('');
