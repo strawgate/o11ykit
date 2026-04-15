@@ -18,8 +18,10 @@
 import type {
   ChunkStats, Labels, RangeDecodeCodec, SeriesId, StorageBackend, TimeRange, TimestampCodec, ValuesCodec,
 } from "./types.js";
+import { Interner } from "./interner.js";
+import { MemPostings } from "./postings.js";
 import { computeStats } from "./stats.js";
-import { concatRanges, lowerBound, seriesKey, upperBound } from "./binary-search.js";
+import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
 
 // ── Internal types ───────────────────────────────────────────────────
 
@@ -36,7 +38,7 @@ interface HotValues {
 }
 
 interface ColumnSeries {
-  labels: Labels;
+  labelPairs: Uint32Array;
   groupId: number;
   hot: HotValues;
   frozen: FrozenChunk[];
@@ -73,8 +75,9 @@ export class ColumnStore implements StorageBackend {
   private chunkSize: number;
   private allSeries: ColumnSeries[] = [];
   private groups: SeriesGroup[] = [];
-  private labelIndex = new Map<string, SeriesId[]>();
   private labelHashToIds = new Map<string, SeriesId>();
+  private interner = new Interner();
+  private postings = new MemPostings(this.interner);
   private _sampleCount = 0;
 
   /**
@@ -104,7 +107,8 @@ export class ColumnStore implements StorageBackend {
   // ── Ingest ──
 
   getOrCreateSeries(labels: Labels): SeriesId {
-    const key = seriesKey(labels);
+    const labelPairs = internLabels(labels, this.interner);
+    const key = seriesKey(labelPairs);
     const existing = this.labelHashToIds.get(key);
     if (existing !== undefined) return existing;
 
@@ -125,19 +129,13 @@ export class ColumnStore implements StorageBackend {
     group.members.push(id);
 
     this.allSeries.push({
-      labels,
+      labelPairs,
       groupId,
       hot: { values: new Float64Array(this.chunkSize), count: 0 },
       frozen: [],
     });
     this.labelHashToIds.set(key, id);
-
-    for (const [k, v] of labels) {
-      const indexKey = `${k}\0${v}`;
-      let ids = this.labelIndex.get(indexKey);
-      if (!ids) { ids = []; this.labelIndex.set(indexKey, ids); }
-      ids.push(id);
-    }
+    this.postings.add(id, labels);
     return id;
   }
 
@@ -223,7 +221,7 @@ export class ColumnStore implements StorageBackend {
   // ── Query ──
 
   matchLabel(label: string, value: string): SeriesId[] {
-    return this.labelIndex.get(`${label}\0${value}`) ?? [];
+    return this.postings.get(label, value);
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
@@ -287,7 +285,13 @@ export class ColumnStore implements StorageBackend {
   }
 
   labels(id: SeriesId): Labels | undefined {
-    return this.allSeries[id]?.labels;
+    const pairs = this.allSeries[id]?.labelPairs;
+    if (!pairs) return undefined;
+    const out = new Map<string, string>();
+    for (let i = 0; i < pairs.length; i += 2) {
+      out.set(this.interner.resolve(pairs[i]!), this.interner.resolve(pairs[i + 1]!));
+    }
+    return out;
   }
 
   // ── Stats ──
@@ -319,8 +323,9 @@ export class ColumnStore implements StorageBackend {
         bytes += c.compressedValues.byteLength; // compressed values
         bytes += 72; // ChunkStats struct overhead
       }
-      bytes += 100; // label storage estimate
+      bytes += s.labelPairs.byteLength;
     }
+    bytes += this.postings.memoryBytes();
     return bytes;
   }
 
@@ -429,4 +434,26 @@ export class ColumnStore implements StorageBackend {
   }
 }
 
+function seriesKey(labelPairs: Uint32Array): string {
+  let out = '';
+  for (let i = 0; i < labelPairs.length; i += 2) {
+    out += `${labelPairs[i]}:${labelPairs[i + 1]},`;
+  }
+  return out;
+}
+
+function internLabels(labels: Labels, interner: Interner): Uint32Array {
+  const pairs: Array<[number, number]> = [];
+  for (const [k, v] of labels) {
+    pairs.push([interner.intern(k), interner.intern(v)]);
+  }
+  pairs.sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+  const encoded = new Uint32Array(pairs.length * 2);
+  for (let i = 0; i < pairs.length; i++) {
+    const [k, v] = pairs[i]!;
+    encoded[i * 2] = k;
+    encoded[i * 2 + 1] = v;
+  }
+  return encoded;
+}
 

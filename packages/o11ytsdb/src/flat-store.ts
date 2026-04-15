@@ -10,9 +10,11 @@
  */
 
 import type { Labels, SeriesId, StorageBackend, TimeRange } from './types.js';
+import { Interner } from './interner.js';
+import { MemPostings } from './postings.js';
 
 interface FlatSeries {
-  labels: Labels;
+  labelPairs: Uint32Array;
   timestamps: BigInt64Array;
   values: Float64Array;
   count: number;
@@ -22,8 +24,9 @@ export class FlatStore implements StorageBackend {
   readonly name: string;
 
   private series: FlatSeries[] = [];
-  private labelIndex = new Map<string, SeriesId[]>(); // "label\0value" → ids
   private labelHashToIds = new Map<string, SeriesId>(); // hash(labels) → id
+  private interner = new Interner();
+  private postings = new MemPostings(this.interner);
   private _sampleCount = 0;
 
   constructor(name = 'flat') {
@@ -33,26 +36,20 @@ export class FlatStore implements StorageBackend {
   // ── Ingest ──
 
   getOrCreateSeries(labels: Labels): SeriesId {
-    const key = seriesKey(labels);
+    const labelPairs = internLabels(labels, this.interner);
+    const key = seriesKeyFromPairs(labelPairs);
     const existing = this.labelHashToIds.get(key);
     if (existing !== undefined) return existing;
 
     const id = this.series.length;
     this.series.push({
-      labels,
+      labelPairs,
       timestamps: new BigInt64Array(128),
       values: new Float64Array(128),
       count: 0,
     });
     this.labelHashToIds.set(key, id);
-
-    // Update label index.
-    for (const [k, v] of labels) {
-      const indexKey = `${k}\0${v}`;
-      let ids = this.labelIndex.get(indexKey);
-      if (!ids) { ids = []; this.labelIndex.set(indexKey, ids); }
-      ids.push(id);
-    }
+    this.postings.add(id, labels);
     return id;
   }
 
@@ -82,7 +79,7 @@ export class FlatStore implements StorageBackend {
   // ── Query ──
 
   matchLabel(label: string, value: string): SeriesId[] {
-    return this.labelIndex.get(`${label}\0${value}`) ?? [];
+    return this.postings.get(label, value);
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
@@ -96,7 +93,13 @@ export class FlatStore implements StorageBackend {
   }
 
   labels(id: SeriesId): Labels | undefined {
-    return this.series[id]?.labels;
+    const pairs = this.series[id]?.labelPairs;
+    if (!pairs) return undefined;
+    const out = new Map<string, string>();
+    for (let i = 0; i < pairs.length; i += 2) {
+      out.set(this.interner.resolve(pairs[i]!), this.interner.resolve(pairs[i + 1]!));
+    }
+    return out;
   }
 
   // ── Stats ──
@@ -109,9 +112,9 @@ export class FlatStore implements StorageBackend {
     for (const s of this.series) {
       // Actual buffer sizes (may be larger than count due to growth).
       bytes += s.timestamps.byteLength + s.values.byteLength;
-      // Approximate label storage overhead.
-      bytes += 100;
+      bytes += s.labelPairs.byteLength;
     }
+    bytes += this.postings.memoryBytes();
     return bytes;
   }
 
@@ -130,10 +133,27 @@ export class FlatStore implements StorageBackend {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function seriesKey(labels: Labels): string {
-  // Sort for stability.
-  const entries = [...labels.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1);
-  return entries.map(([k, v]) => `${k}=${v}`).join(',');
+function seriesKeyFromPairs(labelPairs: Uint32Array): string {
+  let out = '';
+  for (let i = 0; i < labelPairs.length; i += 2) {
+    out += `${labelPairs[i]}:${labelPairs[i + 1]},`;
+  }
+  return out;
+}
+
+function internLabels(labels: Labels, interner: Interner): Uint32Array {
+  const pairs: Array<[number, number]> = [];
+  for (const [k, v] of labels) {
+    pairs.push([interner.intern(k), interner.intern(v)]);
+  }
+  pairs.sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+  const encoded = new Uint32Array(pairs.length * 2);
+  for (let i = 0; i < pairs.length; i++) {
+    const [k, v] = pairs[i]!;
+    encoded[i * 2] = k;
+    encoded[i * 2 + 1] = v;
+  }
+  return encoded;
 }
 
 function lowerBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {

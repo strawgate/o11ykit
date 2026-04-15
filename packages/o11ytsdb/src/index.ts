@@ -26,9 +26,10 @@ export { ChunkedStore } from './chunked-store.js';
 export { ColumnStore } from './column-store.js';
 export { computeStats } from './stats.js';
 export { ScanEngine } from './query.js';
+export { Interner, fnv1a } from './interner.js';
+export type { InternId } from './interner.js';
+export { MemPostings } from './postings.js';
 
-// M2: String interner — will export Interner once gate passes
-// M3: Inverted index — will export MemPostings once gate passes
 // M4: Chunk store — will export ChunkStore once gate passes
 // M5: Ingest pipeline — will export ingest() once gate passes
 // M6: Query executor — will export query builder once gate passes
