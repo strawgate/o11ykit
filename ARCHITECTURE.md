@@ -3,24 +3,27 @@
 This repository is organized as a layered monorepo:
 
 1. `@otlpkit/*` (foundation)
-2. `@octo11y/*` (GitHub-driven metrics product layer)
-3. `@benchkit/*` (benchmark + monitor extensions)
+2. `o11ytsdb` (browser-native time-series database)
+3. `@octo11y/*` (GitHub-driven metrics product layer)
+4. `@benchkit/*` (benchmark + monitor extensions)
 
 ## Dependency Direction
 
 Allowed:
 
+- `o11ytsdb` depends on `@otlpkit/*`
 - `@octo11y/*` depends on `@otlpkit/*`
 - `@benchkit/*` depends on `@octo11y/*`
 
 Disallowed:
 
-- `@otlpkit/*` depending on `@octo11y/*` or `@benchkit/*`
+- `@otlpkit/*` depending on `@octo11y/*`, `@benchkit/*`, or `o11ytsdb`
 - `@octo11y/*` depending on `@benchkit/*`
 
 ## Package Scope Rules
 
 - Generic OTLP parsing, query, view shaping, and chart adapters belong in `@otlpkit/*`.
+- Time-series storage, compression codecs, and in-browser query execution belong in `o11ytsdb`.
 - GitHub Actions/workflows and GitHub-derived metric logic belong in `@octo11y/*`.
 - Benchmark-specific parsers, semantics, and monitor-centric extensions belong in `@benchkit/*`.
 
