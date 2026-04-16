@@ -1,11 +1,10 @@
 /**
  * o11ytsdb — Browser-native time-series database for OpenTelemetry data.
  *
- * This is the public API surface. Each module is exported as it passes
- * its benchmark gate.
+ * Public API surface.
  */
 
-// M1: XOR-delta codec
+// Codec — XOR-delta (Gorilla) compression
 export {
   encodeChunk,
   decodeChunk,
@@ -14,23 +13,41 @@ export {
 } from './codec.js';
 export type { DecodedChunk } from './codec.js';
 
-// Experimentation framework — pluggable core
+// Core types — pluggable interfaces for storage, codecs, and queries
 export type {
   Labels, SeriesId, TimeRange, Codec, ValuesCodec, TimestampCodec, ChunkStats, StatsCodec,
   RangeDecodeCodec, RangeDecodeResult,
   StorageBackend, QueryEngine, QueryOpts, QueryResult,
   SeriesResult, AggFn, Matcher,
 } from './types.js';
+
+// Storage backends
 export { FlatStore } from './flat-store.js';
 export { ChunkedStore } from './chunked-store.js';
 export { ColumnStore } from './column-store.js';
 export { computeStats } from './stats.js';
+
+// Query engine
 export { ScanEngine } from './query.js';
 
-// M2: String interner — will export Interner once gate passes
-// M3: Inverted index — will export MemPostings once gate passes
-// M4: Chunk store — will export ChunkStore once gate passes
-// M5: Ingest pipeline — will export ingest() once gate passes
-// M6: Query executor — will export query builder once gate passes
-// M7: Histogram — will export histogram types once gate passes
-// M8: Worker + DB — will export O11yTSDB once gate passes
+// String interner + inverted index
+export { Interner, fnv1a } from './interner.js';
+export type { InternId } from './interner.js';
+export { MemPostings } from './postings.js';
+
+// Label index — shared label management for storage backends
+export { LabelIndex } from './label-index.js';
+
+// OTLP ingest pipeline
+export { ingestOtlpJson, parseOtlpToSamples, flushSamplesToStorage } from './ingest.js';
+export type { IngestResult, ParsedOtlpResult, PendingSeriesSamples, OtlpMetricsDocument } from './ingest.js';
+
+// Worker isolation + transfer protocol
+export { WorkerClient } from './worker-client.js';
+export type {
+  TransferStrategy,
+  RequestEnvelope,
+  ResponseEnvelope,
+  WorkerRequest,
+  WorkerResponse,
+} from './worker-protocol.js';

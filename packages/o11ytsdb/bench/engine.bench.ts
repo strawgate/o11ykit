@@ -33,7 +33,7 @@ type QueryEngine = import('../dist/types.js').QueryEngine;
 const NUM_SERIES = 100;
 const POINTS_PER_SERIES = 10_000;
 const TOTAL_SAMPLES = NUM_SERIES * POINTS_PER_SERIES;
-const CHUNK_SIZES = [128, 1024];
+const CHUNK_SIZES = [128, 640, 1024];
 const T0 = 1_700_000_000_000n;
 const INTERVAL = 15_000n; // 15s
 

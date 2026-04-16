@@ -50,9 +50,9 @@ const modules = {
   'codec': './dist/codec.bench.js',
   'competitive': './dist/competitive.bench.js',
   'engine': './dist/engine.bench.js',
-  // 'interner': './dist/interner.bench.js',
-  // 'postings': './dist/postings.bench.js',
-  // 'ingest': './dist/ingest.bench.js',
+  'interner': './dist/interner.bench.js',
+  'postings': './dist/postings.bench.js',
+  'ingest': './dist/ingest.bench.js',
   // 'query': './dist/query.bench.js',
 };
 

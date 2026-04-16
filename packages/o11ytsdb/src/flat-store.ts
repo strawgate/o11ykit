@@ -10,9 +10,10 @@
  */
 
 import type { Labels, SeriesId, StorageBackend, TimeRange } from './types.js';
+import { LabelIndex } from './label-index.js';
+import { lowerBound, upperBound } from './binary-search.js';
 
 interface FlatSeries {
-  labels: Labels;
   timestamps: BigInt64Array;
   values: Float64Array;
   count: number;
@@ -22,37 +23,25 @@ export class FlatStore implements StorageBackend {
   readonly name: string;
 
   private series: FlatSeries[] = [];
-  private labelIndex = new Map<string, SeriesId[]>(); // "label\0value" → ids
-  private labelHashToIds = new Map<string, SeriesId>(); // hash(labels) → id
+  private labelIndex: LabelIndex;
   private _sampleCount = 0;
 
-  constructor(name = 'flat') {
+  constructor(name = 'flat', labelIndex?: LabelIndex) {
     this.name = name;
+    this.labelIndex = labelIndex ?? new LabelIndex();
   }
 
   // ── Ingest ──
 
   getOrCreateSeries(labels: Labels): SeriesId {
-    const key = seriesKey(labels);
-    const existing = this.labelHashToIds.get(key);
-    if (existing !== undefined) return existing;
+    const { id, isNew } = this.labelIndex.getOrCreate(labels, this.series.length);
+    if (!isNew) return id;
 
-    const id = this.series.length;
     this.series.push({
-      labels,
       timestamps: new BigInt64Array(128),
       values: new Float64Array(128),
       count: 0,
     });
-    this.labelHashToIds.set(key, id);
-
-    // Update label index.
-    for (const [k, v] of labels) {
-      const indexKey = `${k}\0${v}`;
-      let ids = this.labelIndex.get(indexKey);
-      if (!ids) { ids = []; this.labelIndex.set(indexKey, ids); }
-      ids.push(id);
-    }
     return id;
   }
 
@@ -82,7 +71,7 @@ export class FlatStore implements StorageBackend {
   // ── Query ──
 
   matchLabel(label: string, value: string): SeriesId[] {
-    return this.labelIndex.get(`${label}\0${value}`) ?? [];
+    return this.labelIndex.matchLabel(label, value);
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
@@ -96,7 +85,7 @@ export class FlatStore implements StorageBackend {
   }
 
   labels(id: SeriesId): Labels | undefined {
-    return this.series[id]?.labels;
+    return this.labelIndex.labels(id);
   }
 
   // ── Stats ──
@@ -107,11 +96,9 @@ export class FlatStore implements StorageBackend {
   memoryBytes(): number {
     let bytes = 0;
     for (const s of this.series) {
-      // Actual buffer sizes (may be larger than count due to growth).
       bytes += s.timestamps.byteLength + s.values.byteLength;
-      // Approximate label storage overhead.
-      bytes += 100;
     }
+    bytes += this.labelIndex.memoryBytes();
     return bytes;
   }
 
@@ -126,30 +113,4 @@ export class FlatStore implements StorageBackend {
     s.timestamps = newTs;
     s.values = newVals;
   }
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-function seriesKey(labels: Labels): string {
-  // Sort for stability.
-  const entries = [...labels.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1);
-  return entries.map(([k, v]) => `${k}=${v}`).join(',');
-}
-
-function lowerBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (arr[mid]! < target) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
-function upperBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (arr[mid]! <= target) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
 }
