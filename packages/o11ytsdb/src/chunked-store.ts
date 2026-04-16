@@ -44,6 +44,7 @@ export class ChunkedStore implements StorageBackend {
   private _sampleCount = 0;
 
   constructor(codec: Codec, chunkSize = 640, name?: string, labelIndex?: LabelIndex) {
+    if (chunkSize < 1) throw new RangeError(`chunkSize must be >= 1, got ${chunkSize}`);
     this.codec = codec;
     this.chunkSize = chunkSize;
     this.name = name ?? `chunked-${codec.name}-${chunkSize}`;

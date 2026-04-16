@@ -80,14 +80,6 @@ export interface ChunkStats {
   resetCount: number;
 }
 
-/** Codec that also computes block stats during encoding. */
-export interface StatsCodec extends Codec {
-  encodeWithStats(timestamps: BigInt64Array, values: Float64Array): {
-    compressed: Uint8Array;
-    stats: ChunkStats;
-  };
-}
-
 // ── Storage backend ──────────────────────────────────────────────────
 
 export interface StorageBackend {

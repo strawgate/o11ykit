@@ -94,6 +94,7 @@ export class ColumnStore implements StorageBackend {
     rangeCodec?: RangeDecodeCodec,
     labelIndex?: LabelIndex,
   ) {
+    if (chunkSize < 1) throw new RangeError(`chunkSize must be >= 1, got ${chunkSize}`);
     this.valuesCodec = valuesCodec;
     this.tsCodec = tsCodec;
     this.rangeCodec = rangeCodec;

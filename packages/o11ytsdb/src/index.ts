@@ -15,7 +15,7 @@ export type { DecodedChunk } from './codec.js';
 
 // Core types — pluggable interfaces for storage, codecs, and queries
 export type {
-  Labels, SeriesId, TimeRange, Codec, ValuesCodec, TimestampCodec, ChunkStats, StatsCodec,
+  Labels, SeriesId, TimeRange, Codec, ValuesCodec, TimestampCodec, ChunkStats,
   RangeDecodeCodec, RangeDecodeResult,
   StorageBackend, QueryEngine, QueryOpts, QueryResult,
   SeriesResult, AggFn, Matcher,
@@ -31,7 +31,7 @@ export { computeStats } from './stats.js';
 export { ScanEngine } from './query.js';
 
 // String interner + inverted index
-export { Interner, fnv1a } from './interner.js';
+export { Interner } from './interner.js';
 export type { InternId } from './interner.js';
 export { MemPostings } from './postings.js';
 
