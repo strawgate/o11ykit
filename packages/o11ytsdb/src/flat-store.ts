@@ -10,11 +10,10 @@
  */
 
 import type { Labels, SeriesId, StorageBackend, TimeRange } from './types.js';
-import { Interner } from './interner.js';
-import { MemPostings } from './postings.js';
+import { LabelIndex } from './label-index.js';
+import { lowerBound, upperBound } from './binary-search.js';
 
 interface FlatSeries {
-  labelPairs: Uint32Array;
   timestamps: BigInt64Array;
   values: Float64Array;
   count: number;
@@ -24,32 +23,25 @@ export class FlatStore implements StorageBackend {
   readonly name: string;
 
   private series: FlatSeries[] = [];
-  private labelHashToIds = new Map<string, SeriesId>(); // hash(labels) → id
-  private interner = new Interner();
-  private postings = new MemPostings(this.interner);
+  private labelIndex: LabelIndex;
   private _sampleCount = 0;
 
-  constructor(name = 'flat') {
+  constructor(name = 'flat', labelIndex?: LabelIndex) {
     this.name = name;
+    this.labelIndex = labelIndex ?? new LabelIndex();
   }
 
   // ── Ingest ──
 
   getOrCreateSeries(labels: Labels): SeriesId {
-    const labelPairs = internLabels(labels, this.interner);
-    const key = seriesKeyFromPairs(labelPairs);
-    const existing = this.labelHashToIds.get(key);
-    if (existing !== undefined) return existing;
+    const { id, isNew } = this.labelIndex.getOrCreate(labels, this.series.length);
+    if (!isNew) return id;
 
-    const id = this.series.length;
     this.series.push({
-      labelPairs,
       timestamps: new BigInt64Array(128),
       values: new Float64Array(128),
       count: 0,
     });
-    this.labelHashToIds.set(key, id);
-    this.postings.add(id, labels);
     return id;
   }
 
@@ -79,7 +71,7 @@ export class FlatStore implements StorageBackend {
   // ── Query ──
 
   matchLabel(label: string, value: string): SeriesId[] {
-    return this.postings.get(label, value);
+    return this.labelIndex.matchLabel(label, value);
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
@@ -93,13 +85,7 @@ export class FlatStore implements StorageBackend {
   }
 
   labels(id: SeriesId): Labels | undefined {
-    const pairs = this.series[id]?.labelPairs;
-    if (!pairs) return undefined;
-    const out = new Map<string, string>();
-    for (let i = 0; i < pairs.length; i += 2) {
-      out.set(this.interner.resolve(pairs[i]!), this.interner.resolve(pairs[i + 1]!));
-    }
-    return out;
+    return this.labelIndex.labels(id);
   }
 
   // ── Stats ──
@@ -110,11 +96,9 @@ export class FlatStore implements StorageBackend {
   memoryBytes(): number {
     let bytes = 0;
     for (const s of this.series) {
-      // Actual buffer sizes (may be larger than count due to growth).
       bytes += s.timestamps.byteLength + s.values.byteLength;
-      bytes += s.labelPairs.byteLength;
     }
-    bytes += this.postings.memoryBytes();
+    bytes += this.labelIndex.memoryBytes();
     return bytes;
   }
 
@@ -129,47 +113,4 @@ export class FlatStore implements StorageBackend {
     s.timestamps = newTs;
     s.values = newVals;
   }
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-function seriesKeyFromPairs(labelPairs: Uint32Array): string {
-  let out = '';
-  for (let i = 0; i < labelPairs.length; i += 2) {
-    out += `${labelPairs[i]}:${labelPairs[i + 1]},`;
-  }
-  return out;
-}
-
-function internLabels(labels: Labels, interner: Interner): Uint32Array {
-  const pairs: Array<[number, number]> = [];
-  for (const [k, v] of labels) {
-    pairs.push([interner.intern(k), interner.intern(v)]);
-  }
-  pairs.sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
-  const encoded = new Uint32Array(pairs.length * 2);
-  for (let i = 0; i < pairs.length; i++) {
-    const [k, v] = pairs[i]!;
-    encoded[i * 2] = k;
-    encoded[i * 2 + 1] = v;
-  }
-  return encoded;
-}
-
-function lowerBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (arr[mid]! < target) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
-function upperBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (arr[mid]! <= target) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
 }

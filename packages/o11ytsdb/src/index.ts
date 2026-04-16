@@ -35,9 +35,12 @@ export { Interner, fnv1a } from './interner.js';
 export type { InternId } from './interner.js';
 export { MemPostings } from './postings.js';
 
+// Label index — shared label management for storage backends
+export { LabelIndex } from './label-index.js';
+
 // OTLP ingest pipeline
-export { ingestOtlpJson } from './ingest.js';
-export type { IngestResult, OtlpMetricsDocument } from './ingest.js';
+export { ingestOtlpJson, parseOtlpToSamples, flushSamplesToStorage } from './ingest.js';
+export type { IngestResult, ParsedOtlpResult, PendingSeriesSamples, OtlpMetricsDocument } from './ingest.js';
 
 // Worker isolation + transfer protocol
 export { WorkerClient } from './worker-client.js';

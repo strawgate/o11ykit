@@ -1,6 +1,6 @@
 import { ColumnStore } from './column-store.js';
 import { ScanEngine } from './query.js';
-import type { ValuesCodec } from './types.js';
+import type { QueryEngine, StorageBackend, ValuesCodec } from './types.js';
 import {
   err,
   ok,
@@ -58,14 +58,25 @@ function resolveEndpoint(): WorkerLikeEndpoint {
   throw new Error('No worker endpoint available.');
 }
 
+export interface WorkerRuntimeConfig {
+  /** Factory to create a storage backend. Receives the chunk size from the init message. */
+  createStore?: (chunkSize: number) => StorageBackend;
+  /** Query engine instance. Defaults to ScanEngine. */
+  queryEngine?: QueryEngine;
+}
+
 export class O11yWorkerRuntime {
   private readonly endpoint: WorkerLikeEndpoint;
-  private readonly engine = new ScanEngine();
-  private readonly codec = createValuesCodec();
-  private store = new ColumnStore(this.codec, 1024);
+  private readonly engine: QueryEngine;
+  private readonly createStore: (chunkSize: number) => StorageBackend;
+  private store: StorageBackend;
 
-  constructor(endpoint?: WorkerLikeEndpoint) {
+  constructor(endpoint?: WorkerLikeEndpoint, config?: WorkerRuntimeConfig) {
     this.endpoint = endpoint ?? resolveEndpoint();
+    const codec = createValuesCodec();
+    this.createStore = config?.createStore ?? ((cs: number) => new ColumnStore(codec, cs));
+    this.engine = config?.queryEngine ?? new ScanEngine();
+    this.store = this.createStore(1024);
   }
 
   start(): void {
@@ -97,7 +108,7 @@ export class O11yWorkerRuntime {
       switch (payload.type) {
         case 'init': {
           const chunkSize = payload.chunkSize ?? 1024;
-          this.store = new ColumnStore(this.codec, chunkSize);
+          this.store = this.createStore(chunkSize);
           this.send(ok(id, { ok: true, type: 'init', backend: this.store.name }, meta));
           return;
         }

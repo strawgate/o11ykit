@@ -13,8 +13,8 @@
 import type {
   Codec, Labels, SeriesId, StorageBackend, TimeRange,
 } from './types.js';
-import { Interner } from './interner.js';
-import { MemPostings } from './postings.js';
+import { LabelIndex } from './label-index.js';
+import { concatRanges, lowerBound, upperBound } from './binary-search.js';
 
 interface FrozenChunk {
   compressed: Uint8Array;
@@ -30,7 +30,6 @@ interface HotChunk {
 }
 
 interface ChunkedSeries {
-  labelPairs: Uint32Array;
   hot: HotChunk;
   frozen: FrozenChunk[];
 }
@@ -41,33 +40,26 @@ export class ChunkedStore implements StorageBackend {
   private codec: Codec;
   private chunkSize: number;
   private series: ChunkedSeries[] = [];
-  private labelHashToIds = new Map<string, SeriesId>();
-  private interner = new Interner();
-  private postings = new MemPostings(this.interner);
+  private labelIndex: LabelIndex;
   private _sampleCount = 0;
 
-  constructor(codec: Codec, chunkSize = 640, name?: string) {
+  constructor(codec: Codec, chunkSize = 640, name?: string, labelIndex?: LabelIndex) {
     this.codec = codec;
     this.chunkSize = chunkSize;
     this.name = name ?? `chunked-${codec.name}-${chunkSize}`;
+    this.labelIndex = labelIndex ?? new LabelIndex();
   }
 
   // ── Ingest ──
 
   getOrCreateSeries(labels: Labels): SeriesId {
-    const labelPairs = internLabels(labels, this.interner);
-    const key = seriesKey(labelPairs);
-    const existing = this.labelHashToIds.get(key);
-    if (existing !== undefined) return existing;
+    const { id, isNew } = this.labelIndex.getOrCreate(labels, this.series.length);
+    if (!isNew) return id;
 
-    const id = this.series.length;
     this.series.push({
-      labelPairs,
       hot: this.newHotChunk(),
       frozen: [],
     });
-    this.labelHashToIds.set(key, id);
-    this.postings.add(id, labels);
     return id;
   }
 
@@ -109,7 +101,7 @@ export class ChunkedStore implements StorageBackend {
   // ── Query ──
 
   matchLabel(label: string, value: string): SeriesId[] {
-    return this.postings.get(label, value);
+    return this.labelIndex.matchLabel(label, value);
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
@@ -143,17 +135,11 @@ export class ChunkedStore implements StorageBackend {
       }
     }
 
-    return concat(parts);
+    return concatRanges(parts);
   }
 
   labels(id: SeriesId): Labels | undefined {
-    const pairs = this.series[id]?.labelPairs;
-    if (!pairs) return undefined;
-    const out = new Map<string, string>();
-    for (let i = 0; i < pairs.length; i += 2) {
-      out.set(this.interner.resolve(pairs[i]!), this.interner.resolve(pairs[i + 1]!));
-    }
-    return out;
+    return this.labelIndex.labels(id);
   }
 
   // ── Stats ──
@@ -164,15 +150,12 @@ export class ChunkedStore implements StorageBackend {
   memoryBytes(): number {
     let bytes = 0;
     for (const s of this.series) {
-      // Hot chunk: only active samples, not full capacity.
-      bytes += s.hot.count * 16; // 8 bytes timestamp + 8 bytes value per sample
-      // Frozen chunks: compressed bytes + struct overhead.
+      bytes += s.hot.count * 16;
       for (const c of s.frozen) {
-        bytes += c.compressed.byteLength + 32; // 2 bigints + count + overhead
+        bytes += c.compressed.byteLength + 32;
       }
-      bytes += s.labelPairs.byteLength;
     }
-    bytes += this.postings.memoryBytes();
+    bytes += this.labelIndex.memoryBytes();
     return bytes;
   }
 
@@ -199,67 +182,4 @@ export class ChunkedStore implements StorageBackend {
       count: 0,
     };
   }
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-function seriesKey(labelPairs: Uint32Array): string {
-  let out = '';
-  for (let i = 0; i < labelPairs.length; i += 2) {
-    out += `${labelPairs[i]}:${labelPairs[i + 1]},`;
-  }
-  return out;
-}
-
-function internLabels(labels: Labels, interner: Interner): Uint32Array {
-  const pairs: Array<[number, number]> = [];
-  for (const [k, v] of labels) {
-    pairs.push([interner.intern(k), interner.intern(v)]);
-  }
-  pairs.sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
-  const encoded = new Uint32Array(pairs.length * 2);
-  for (let i = 0; i < pairs.length; i++) {
-    const [k, v] = pairs[i]!;
-    encoded[i * 2] = k;
-    encoded[i * 2 + 1] = v;
-  }
-  return encoded;
-}
-
-function lowerBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (arr[mid]! < target) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
-function upperBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (arr[mid]! <= target) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
-function concat(parts: TimeRange[]): TimeRange {
-  if (parts.length === 0) {
-    return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
-  }
-  if (parts.length === 1) return parts[0]!;
-
-  let total = 0;
-  for (const p of parts) total += p.timestamps.length;
-
-  const timestamps = new BigInt64Array(total);
-  const values = new Float64Array(total);
-  let offset = 0;
-  for (const p of parts) {
-    timestamps.set(p.timestamps, offset);
-    values.set(p.values, offset);
-    offset += p.timestamps.length;
-  }
-  return { timestamps, values };
 }

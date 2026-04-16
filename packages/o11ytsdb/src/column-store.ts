@@ -18,8 +18,7 @@
 import type {
   ChunkStats, Labels, RangeDecodeCodec, SeriesId, StorageBackend, TimeRange, TimestampCodec, ValuesCodec,
 } from "./types.js";
-import { Interner } from "./interner.js";
-import { MemPostings } from "./postings.js";
+import { LabelIndex } from "./label-index.js";
 import { computeStats } from "./stats.js";
 import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
 
@@ -38,7 +37,6 @@ interface HotValues {
 }
 
 interface ColumnSeries {
-  labelPairs: Uint32Array;
   groupId: number;
   hot: HotValues;
   frozen: FrozenChunk[];
@@ -75,9 +73,7 @@ export class ColumnStore implements StorageBackend {
   private chunkSize: number;
   private allSeries: ColumnSeries[] = [];
   private groups: SeriesGroup[] = [];
-  private labelHashToIds = new Map<string, SeriesId>();
-  private interner = new Interner();
-  private postings = new MemPostings(this.interner);
+  private labelIndex: LabelIndex;
   private _sampleCount = 0;
 
   /**
@@ -96,23 +92,22 @@ export class ColumnStore implements StorageBackend {
     name?: string,
     tsCodec?: TimestampCodec,
     rangeCodec?: RangeDecodeCodec,
+    labelIndex?: LabelIndex,
   ) {
     this.valuesCodec = valuesCodec;
     this.tsCodec = tsCodec;
     this.rangeCodec = rangeCodec;
     this.chunkSize = chunkSize;
     this.name = name ?? `column-${this.valuesCodec.name}-${chunkSize}`;
+    this.labelIndex = labelIndex ?? new LabelIndex();
   }
 
   // ── Ingest ──
 
   getOrCreateSeries(labels: Labels): SeriesId {
-    const labelPairs = internLabels(labels, this.interner);
-    const key = seriesKey(labelPairs);
-    const existing = this.labelHashToIds.get(key);
-    if (existing !== undefined) return existing;
+    const { id, isNew } = this.labelIndex.getOrCreate(labels, this.allSeries.length);
+    if (!isNew) return id;
 
-    const id = this.allSeries.length;
     const groupId = this.groupResolver(labels);
 
     // Ensure group exists.
@@ -129,13 +124,10 @@ export class ColumnStore implements StorageBackend {
     group.members.push(id);
 
     this.allSeries.push({
-      labelPairs,
       groupId,
       hot: { values: new Float64Array(this.chunkSize), count: 0 },
       frozen: [],
     });
-    this.labelHashToIds.set(key, id);
-    this.postings.add(id, labels);
     return id;
   }
 
@@ -221,7 +213,7 @@ export class ColumnStore implements StorageBackend {
   // ── Query ──
 
   matchLabel(label: string, value: string): SeriesId[] {
-    return this.postings.get(label, value);
+    return this.labelIndex.matchLabel(label, value);
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
@@ -285,13 +277,7 @@ export class ColumnStore implements StorageBackend {
   }
 
   labels(id: SeriesId): Labels | undefined {
-    const pairs = this.allSeries[id]?.labelPairs;
-    if (!pairs) return undefined;
-    const out = new Map<string, string>();
-    for (let i = 0; i < pairs.length; i += 2) {
-      out.set(this.interner.resolve(pairs[i]!), this.interner.resolve(pairs[i + 1]!));
-    }
-    return out;
+    return this.labelIndex.labels(id);
   }
 
   // ── Stats ──
@@ -318,14 +304,13 @@ export class ColumnStore implements StorageBackend {
 
     // Per-series: hot values + frozen compressed values + stats.
     for (const s of this.allSeries) {
-      bytes += s.hot.count * 8; // hot values — active samples only
+      bytes += s.hot.count * 8;
       for (const c of s.frozen) {
-        bytes += c.compressedValues.byteLength; // compressed values
-        bytes += 72; // ChunkStats struct overhead
+        bytes += c.compressedValues.byteLength;
+        bytes += 72;
       }
-      bytes += s.labelPairs.byteLength;
     }
-    bytes += this.postings.memoryBytes();
+    bytes += this.labelIndex.memoryBytes();
     return bytes;
   }
 
@@ -432,28 +417,5 @@ export class ColumnStore implements StorageBackend {
       group.hotCount = 0;
     }
   }
-}
-
-function seriesKey(labelPairs: Uint32Array): string {
-  let out = '';
-  for (let i = 0; i < labelPairs.length; i += 2) {
-    out += `${labelPairs[i]}:${labelPairs[i + 1]},`;
-  }
-  return out;
-}
-
-function internLabels(labels: Labels, interner: Interner): Uint32Array {
-  const pairs: Array<[number, number]> = [];
-  for (const [k, v] of labels) {
-    pairs.push([interner.intern(k), interner.intern(v)]);
-  }
-  pairs.sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
-  const encoded = new Uint32Array(pairs.length * 2);
-  for (let i = 0; i < pairs.length; i++) {
-    const [k, v] = pairs[i]!;
-    encoded[i * 2] = k;
-    encoded[i * 2 + 1] = v;
-  }
-  return encoded;
 }
 

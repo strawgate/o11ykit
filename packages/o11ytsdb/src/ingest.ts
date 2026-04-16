@@ -7,7 +7,7 @@ import type {
 } from '@otlpkit/otlpjson';
 import { detectSignal, flattenAttributes, isMetricsDocument, toNumber } from '@otlpkit/otlpjson';
 
-import type { Labels, SeriesId, StorageBackend } from './types.js';
+import type { Labels, StorageBackend } from './types.js';
 
 export interface IngestResult {
   pointsSeen: number;
@@ -25,10 +25,15 @@ export interface IngestResult {
   };
 }
 
-interface PendingSeriesSamples {
+export interface PendingSeriesSamples {
   labels: Labels;
   timestamps: bigint[];
   values: number[];
+}
+
+export interface ParsedOtlpResult {
+  pending: Map<string, PendingSeriesSamples>;
+  result: IngestResult;
 }
 
 const SCOPE_NAME_LABEL = 'otel.scope.name';
@@ -37,7 +42,11 @@ const ATTR_PREFIX_RESOURCE = 'resource.';
 const ATTR_PREFIX_SCOPE = 'scope_attr.';
 const ATTR_PREFIX_POINT = 'attr.';
 
-export function ingestOtlpJson(payload: unknown, storage: StorageBackend): IngestResult {
+/**
+ * Parse an OTLP metrics payload into pending samples without touching storage.
+ * Use this when you need to inspect or transform parsed metrics before flushing.
+ */
+export function parseOtlpToSamples(payload: unknown): ParsedOtlpResult {
   const result: IngestResult = {
     pointsSeen: 0,
     pointsAccepted: 0,
@@ -61,14 +70,14 @@ export function ingestOtlpJson(payload: unknown, storage: StorageBackend): Inges
     } catch {
       result.errors++;
       result.dropped++;
-      return result;
+      return { pending: new Map(), result };
     }
   }
 
   if (detectSignal(document) !== 'metrics' || !isMetricsDocument(document)) {
     result.errors++;
     result.dropped++;
-    return result;
+    return { pending: new Map(), result };
   }
 
   const pending = new Map<string, PendingSeriesSamples>();
@@ -121,11 +130,18 @@ export function ingestOtlpJson(payload: unknown, storage: StorageBackend): Inges
     }
   }
 
-  flushPending(pending, storage, result);
+  return { pending, result };
+}
+
+/** Parse and ingest OTLP metrics in one step (convenience wrapper). */
+export function ingestOtlpJson(payload: unknown, storage: StorageBackend): IngestResult {
+  const { pending, result } = parseOtlpToSamples(payload);
+  flushSamplesToStorage(pending, storage, result);
   return result;
 }
 
-function flushPending(pending: Map<string, PendingSeriesSamples>, storage: StorageBackend, result: IngestResult): void {
+/** Flush parsed samples to a storage backend. */
+export function flushSamplesToStorage(pending: Map<string, PendingSeriesSamples>, storage: StorageBackend, result: IngestResult): void {
   const beforeSeries = storage.seriesCount;
 
   for (const batch of pending.values()) {
