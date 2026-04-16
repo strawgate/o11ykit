@@ -5,8 +5,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
-    "test": "node --test dist/*.test.js",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "tsc && node --test dist/*.test.js",
     "lint": "tsc --noEmit"
   },
   "files": [
