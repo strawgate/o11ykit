@@ -1465,6 +1465,119 @@ pub extern "C" fn resetScratch() {
     }
 }
 
+// ── M2: String interner (WASM) ─────────────────────────────────────
+
+const INTERN_MAX_STRINGS: usize = 200_000;
+const INTERN_MAX_BYTES: usize = 8 * 1024 * 1024;
+const INTERN_TABLE_SIZE: usize = 1 << 19;
+const INTERN_EMPTY: u32 = u32::MAX;
+
+static mut INTERN_BYTES: [u8; INTERN_MAX_BYTES] = [0; INTERN_MAX_BYTES];
+static mut INTERN_OFFSETS: [u32; INTERN_MAX_STRINGS + 1] = [0; INTERN_MAX_STRINGS + 1];
+static mut INTERN_TABLE: [u32; INTERN_TABLE_SIZE] = [INTERN_EMPTY; INTERN_TABLE_SIZE];
+static mut INTERN_HASHES: [u32; INTERN_TABLE_SIZE] = [0; INTERN_TABLE_SIZE];
+static mut INTERN_COUNT: u32 = 0;
+static mut INTERN_BYTES_USED: u32 = 0;
+
+#[inline(always)]
+fn fnv1a32(bytes: &[u8]) -> u32 {
+    let mut hash: u32 = 0x811c9dc5;
+    for &b in bytes {
+        hash ^= b as u32;
+        hash = hash.wrapping_mul(0x01000193);
+    }
+    hash
+}
+
+#[inline(always)]
+unsafe fn intern_equals(id: u32, bytes: &[u8]) -> bool {
+    let start = INTERN_OFFSETS[id as usize] as usize;
+    let end = INTERN_OFFSETS[id as usize + 1] as usize;
+    if end - start != bytes.len() {
+        return false;
+    }
+    for i in 0..bytes.len() {
+        if INTERN_BYTES[start + i] != bytes[i] {
+            return false;
+        }
+    }
+    true
+}
+
+#[no_mangle]
+pub extern "C" fn internerReset() {
+    unsafe {
+        INTERN_COUNT = 0;
+        INTERN_BYTES_USED = 0;
+        INTERN_OFFSETS[0] = 0;
+        for i in 0..INTERN_TABLE_SIZE {
+            INTERN_TABLE[i] = INTERN_EMPTY;
+            INTERN_HASHES[i] = 0;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn internerIntern(ptr: *const u8, len: u32) -> u32 {
+    if ptr.is_null() {
+        return u32::MAX;
+    }
+    let input = unsafe { core::slice::from_raw_parts(ptr, len as usize) };
+    let hash = fnv1a32(input);
+    let mask = (INTERN_TABLE_SIZE - 1) as u32;
+    let mut slot = hash & mask;
+
+    unsafe {
+        loop {
+            let existing = INTERN_TABLE[slot as usize];
+            if existing == INTERN_EMPTY {
+                let id = INTERN_COUNT;
+                if id as usize >= INTERN_MAX_STRINGS {
+                    return u32::MAX;
+                }
+                let start = INTERN_BYTES_USED as usize;
+                let end = start + input.len();
+                if end > INTERN_MAX_BYTES {
+                    return u32::MAX;
+                }
+                INTERN_BYTES[start..end].copy_from_slice(input);
+                INTERN_OFFSETS[id as usize] = INTERN_BYTES_USED;
+                INTERN_BYTES_USED = end as u32;
+                INTERN_OFFSETS[id as usize + 1] = INTERN_BYTES_USED;
+                INTERN_TABLE[slot as usize] = id;
+                INTERN_HASHES[slot as usize] = hash;
+                INTERN_COUNT += 1;
+                return id;
+            }
+            if INTERN_HASHES[slot as usize] == hash && intern_equals(existing, input) {
+                return existing;
+            }
+            slot = (slot + 1) & mask;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn internerResolve(id: u32, out_ptr: *mut u8, out_cap: u32) -> u32 {
+    if out_ptr.is_null() {
+        return 0;
+    }
+    unsafe {
+        if id >= INTERN_COUNT {
+            return 0;
+        }
+        let start = INTERN_OFFSETS[id as usize] as usize;
+        let end = INTERN_OFFSETS[id as usize + 1] as usize;
+        let len = end - start;
+        if len > out_cap as usize {
+            return 0;
+        }
+        let out = core::slice::from_raw_parts_mut(out_ptr, len);
+        out.copy_from_slice(&INTERN_BYTES[start..end]);
+        len as u32
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]

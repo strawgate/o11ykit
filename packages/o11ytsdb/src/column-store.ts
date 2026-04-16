@@ -18,8 +18,9 @@
 import type {
   ChunkStats, Labels, RangeDecodeCodec, SeriesId, StorageBackend, TimeRange, TimestampCodec, ValuesCodec,
 } from "./types.js";
+import { LabelIndex } from "./label-index.js";
 import { computeStats } from "./stats.js";
-import { concatRanges, lowerBound, seriesKey, upperBound } from "./binary-search.js";
+import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
 
 // ── Internal types ───────────────────────────────────────────────────
 
@@ -36,7 +37,6 @@ interface HotValues {
 }
 
 interface ColumnSeries {
-  labels: Labels;
   groupId: number;
   hot: HotValues;
   frozen: FrozenChunk[];
@@ -73,8 +73,7 @@ export class ColumnStore implements StorageBackend {
   private chunkSize: number;
   private allSeries: ColumnSeries[] = [];
   private groups: SeriesGroup[] = [];
-  private labelIndex = new Map<string, SeriesId[]>();
-  private labelHashToIds = new Map<string, SeriesId>();
+  private labelIndex: LabelIndex;
   private _sampleCount = 0;
 
   /**
@@ -88,27 +87,27 @@ export class ColumnStore implements StorageBackend {
    */
   constructor(
     valuesCodec: ValuesCodec,
-    chunkSize = 1024,
+    chunkSize = 640,
     private groupResolver: (labels: Labels) => number = () => 0,
     name?: string,
     tsCodec?: TimestampCodec,
     rangeCodec?: RangeDecodeCodec,
+    labelIndex?: LabelIndex,
   ) {
     this.valuesCodec = valuesCodec;
     this.tsCodec = tsCodec;
     this.rangeCodec = rangeCodec;
     this.chunkSize = chunkSize;
     this.name = name ?? `column-${this.valuesCodec.name}-${chunkSize}`;
+    this.labelIndex = labelIndex ?? new LabelIndex();
   }
 
   // ── Ingest ──
 
   getOrCreateSeries(labels: Labels): SeriesId {
-    const key = seriesKey(labels);
-    const existing = this.labelHashToIds.get(key);
-    if (existing !== undefined) return existing;
+    const { id, isNew } = this.labelIndex.getOrCreate(labels, this.allSeries.length);
+    if (!isNew) return id;
 
-    const id = this.allSeries.length;
     const groupId = this.groupResolver(labels);
 
     // Ensure group exists.
@@ -125,19 +124,10 @@ export class ColumnStore implements StorageBackend {
     group.members.push(id);
 
     this.allSeries.push({
-      labels,
       groupId,
       hot: { values: new Float64Array(this.chunkSize), count: 0 },
       frozen: [],
     });
-    this.labelHashToIds.set(key, id);
-
-    for (const [k, v] of labels) {
-      const indexKey = `${k}\0${v}`;
-      let ids = this.labelIndex.get(indexKey);
-      if (!ids) { ids = []; this.labelIndex.set(indexKey, ids); }
-      ids.push(id);
-    }
     return id;
   }
 
@@ -223,7 +213,7 @@ export class ColumnStore implements StorageBackend {
   // ── Query ──
 
   matchLabel(label: string, value: string): SeriesId[] {
-    return this.labelIndex.get(`${label}\0${value}`) ?? [];
+    return this.labelIndex.matchLabel(label, value);
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
@@ -287,7 +277,7 @@ export class ColumnStore implements StorageBackend {
   }
 
   labels(id: SeriesId): Labels | undefined {
-    return this.allSeries[id]?.labels;
+    return this.labelIndex.labels(id);
   }
 
   // ── Stats ──
@@ -314,13 +304,13 @@ export class ColumnStore implements StorageBackend {
 
     // Per-series: hot values + frozen compressed values + stats.
     for (const s of this.allSeries) {
-      bytes += s.hot.count * 8; // hot values — active samples only
+      bytes += s.hot.count * 8;
       for (const c of s.frozen) {
-        bytes += c.compressedValues.byteLength; // compressed values
-        bytes += 72; // ChunkStats struct overhead
+        bytes += c.compressedValues.byteLength;
+        bytes += 72;
       }
-      bytes += 100; // label storage estimate
     }
+    bytes += this.labelIndex.memoryBytes();
     return bytes;
   }
 
@@ -428,5 +418,4 @@ export class ColumnStore implements StorageBackend {
     }
   }
 }
-
 
