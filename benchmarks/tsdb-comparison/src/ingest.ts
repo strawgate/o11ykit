@@ -121,7 +121,7 @@ export async function waitForData(
     let ready = false;
     while (Date.now() < deadline) {
       try {
-        const url = `${target.queryUrl}?query=count(bench_cpu_usage_percent_ratio)`;
+        const url = `${target.queryUrl}?query=count(bench_cpu_usage_percent)`;
         const headers: Record<string, string> = { ...target.otlpHeaders };
         const resp = await fetch(url, { headers });
         if (resp.ok) {

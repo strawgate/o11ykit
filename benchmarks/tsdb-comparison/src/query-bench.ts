@@ -43,13 +43,13 @@ export const BENCHMARK_QUERIES: QueryDef[] = [
   {
     name: "simple_select",
     description: "Select all gauge series",
-    expr: "bench_cpu_usage_percent_ratio",
+    expr: "bench_cpu_usage_percent",
     range: false,
   },
   {
     name: "label_filter",
     description: "Filter by label",
-    expr: 'bench_cpu_usage_percent_ratio{region="region-0"}',
+    expr: 'bench_cpu_usage_percent{region="region-0"}',
     range: false,
   },
   {
@@ -73,13 +73,13 @@ export const BENCHMARK_QUERIES: QueryDef[] = [
   {
     name: "avg_gauge",
     description: "Average gauge value",
-    expr: "avg(bench_cpu_usage_percent_ratio)",
+    expr: "avg(bench_cpu_usage_percent)",
     range: false,
   },
   {
     name: "topk",
     description: "Top 10 series by value",
-    expr: "topk(10, bench_cpu_usage_percent_ratio)",
+    expr: "topk(10, bench_cpu_usage_percent)",
     range: false,
   },
   {
@@ -97,7 +97,7 @@ export const BENCHMARK_QUERIES: QueryDef[] = [
   {
     name: "range_aggregation",
     description: "Range query: avg gauge over 1h",
-    expr: 'avg by (region) (bench_cpu_usage_percent_ratio)',
+    expr: 'avg by (region) (bench_cpu_usage_percent)',
     range: true,
   },
 ];

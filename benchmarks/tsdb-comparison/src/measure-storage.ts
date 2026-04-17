@@ -158,40 +158,65 @@ async function queryInternalMetrics(target: TsdbTarget): Promise<Record<string, 
 }
 
 /**
- * Force each TSDB to flush/compact before measuring storage.
+ * Force each TSDB to flush and compact before measuring storage.
+ *
+ * Without this, storage numbers are unfair:
+ * - Prometheus keeps data in WAL/head until min-block-duration is hit
+ * - VictoriaMetrics holds data in unmerged part files
+ * - Mimir's compactor runs on a schedule (default 1h)
  */
 async function flushTsdbs(): Promise<void> {
-  console.log("  Flushing TSDBs...");
+  console.log("  Flushing & compacting TSDBs...");
 
-  // Prometheus: trigger TSDB admin snapshot or head compaction
+  // Prometheus: with --storage.tsdb.min-block-duration=15m, the compaction loop
+  // (runs every ~1min) will cut the head into blocks once its range exceeds 15m.
+  // Do NOT use /admin/tsdb/snapshot — that creates a COPY of data, inflating disk.
+  // Clean up any leftover snapshots, then let natural compaction handle it.
   try {
-    await fetch("http://localhost:9090/api/v1/admin/tsdb/snapshot", {
-      method: "POST",
-    });
+    execSync(
+      `podman exec tsdb-bench-prometheus rm -rf /prometheus/snapshots 2>/dev/null`,
+      { stdio: "pipe", timeout: 5_000 },
+    );
   } catch {
-    // May not be enabled — that's OK
+    // May not exist
   }
+  console.log("    Prometheus: waiting for compaction loop (min-block-duration=15m)");
 
-  // VictoriaMetrics: force flush via /internal/force_flush
+  // VictoriaMetrics: flush in-memory data to disk, then merge all parts
   try {
-    await fetch("http://localhost:8428/internal/force_flush", {
-      method: "GET",
-    });
+    await fetch("http://localhost:8428/internal/force_flush", { method: "GET" });
+    console.log("    VictoriaMetrics: force_flush triggered");
   } catch {
     // Older versions may not have this
   }
-
-  // Mimir: flush ingester to force block creation
   try {
-    await fetch("http://localhost:9009/ingester/flush", {
-      method: "POST",
-    });
+    const resp = await fetch("http://localhost:8428/internal/force_merge", { method: "GET" });
+    if (resp.ok) {
+      console.log("    VictoriaMetrics: force_merge triggered");
+    } else {
+      console.log(`    VictoriaMetrics: force_merge returned ${resp.status}`);
+    }
   } catch {
-    // May not be available
+    console.log("    VictoriaMetrics: force_merge endpoint not available");
   }
 
-  // Wait for flushes to complete
-  await new Promise((r) => setTimeout(r, 5000));
+  // Mimir: flush ingester's in-memory TSDB to blocks, then let
+  // compactor merge them (compaction-interval=10s in docker-compose)
+  try {
+    const resp = await fetch("http://localhost:9009/ingester/flush", { method: "POST" });
+    if (resp.ok) {
+      console.log("    Mimir: ingester flush triggered");
+    } else {
+      console.log(`    Mimir: ingester flush returned ${resp.status}`);
+    }
+  } catch {
+    console.log("    Mimir: ingester flush endpoint not available");
+  }
+
+  // Wait for Prometheus compaction loop (~1min cycle) + Mimir compactor (10s cycle)
+  // + VictoriaMetrics merge to complete. 75s ensures at least one full Prometheus cycle.
+  console.log("    Waiting 75s for compaction to complete...");
+  await new Promise((r) => setTimeout(r, 75_000));
 }
 
 /**

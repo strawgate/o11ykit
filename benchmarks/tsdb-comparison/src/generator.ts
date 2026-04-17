@@ -155,7 +155,7 @@ export function generateOtlpRequests(config: BenchConfig): OtlpExportRequest[] {
       }
       metrics.push({
         name: "bench_cpu_usage_percent",
-        unit: "1",
+        unit: "",
         description: "Synthetic CPU usage gauge",
         gauge: { dataPoints: gaugePoints },
       });
