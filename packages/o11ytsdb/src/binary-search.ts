@@ -1,9 +1,4 @@
-import type { Labels, TimeRange } from "./types.js";
-
-export function seriesKey(labels: Labels): string {
-  const entries = [...labels.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  return entries.map(([k, v]) => `${k}=${v}`).join(",");
-}
+import type { TimeRange } from "./types.js";
 
 export function lowerBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {
   while (lo < hi) {

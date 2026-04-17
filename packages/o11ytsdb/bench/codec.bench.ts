@@ -12,18 +12,18 @@
  *   3. The harness handles the rest
  */
 
-import { Suite, printReport } from './harness.js';
-import type { BenchReport, Runtime } from './harness.js';
-import { allGenerators } from './vectors.js';
-import type { ChunkData } from './vectors.js';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { BenchReport, Runtime } from "./harness.js";
+import { printReport, Suite } from "./harness.js";
+import type { ChunkData } from "./vectors.js";
+import { allGenerators } from "./vectors.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** Resolve a path relative to the package root (two levels up from bench/dist/). */
 function pkgPath(rel: string): string {
-  return join(__dirname, '..', '..', rel);
+  return join(__dirname, "..", "..", rel);
 }
 
 // ── Pluggable codec interface ────────────────────────────────────────
@@ -46,44 +46,41 @@ const implementations: CodecImpl[] = [];
 
 // TypeScript implementation.
 try {
-  const tsPath = pkgPath('dist/codec.js');
+  const tsPath = pkgPath("dist/codec.js");
   const ts = await import(tsPath);
   implementations.push({
-    runtime: 'ts',
-    name: 'TypeScript',
+    runtime: "ts",
+    name: "TypeScript",
     encode: ts.encodeChunk,
     decode: ts.decodeChunk,
   });
-} catch (e) {
-  console.log('  ⚠ TS codec not built — skipping. Run `npm run build` first.');
+} catch (_e) {
+  console.log("  ⚠ TS codec not built — skipping. Run `npm run build` first.");
 }
 
 // Zig WASM implementation.
 try {
-  const { loadWasm, makeCodecImpl } = await import('./wasm-loader.js');
-  const zigWasmPath = pkgPath('wasm/o11ytsdb-zig.wasm');
+  const { loadWasm, makeCodecImpl } = await import("./wasm-loader.js");
+  const zigWasmPath = pkgPath("wasm/o11ytsdb-zig.wasm");
   const zigWasm = await loadWasm(zigWasmPath);
-  implementations.push(makeCodecImpl(zigWasm, 'zig', 'Zig→WASM'));
+  implementations.push(makeCodecImpl(zigWasm, "zig", "Zig→WASM"));
 } catch (e: any) {
   console.log(`  ⚠ Zig WASM codec not available — skipping. ${e.message ?? e}`);
 }
 
 // Rust WASM implementation.
 try {
-  const { loadWasm, makeCodecImpl } = await import('./wasm-loader.js');
-  const rustWasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+  const { loadWasm, makeCodecImpl } = await import("./wasm-loader.js");
+  const rustWasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
   const rustWasm = await loadWasm(rustWasmPath);
-  implementations.push(makeCodecImpl(rustWasm, 'rust', 'Rust→WASM'));
+  implementations.push(makeCodecImpl(rustWasm, "rust", "Rust→WASM"));
 } catch (e: any) {
   console.log(`  ⚠ Rust WASM codec not available — skipping. ${e.message ?? e}`);
 }
 
 // ── Correctness: round-trip within a single implementation ───────────
 
-function verifyRoundTrip(
-  impl: CodecImpl,
-  data: ChunkData,
-): { ok: boolean; detail: string } {
+function verifyRoundTrip(impl: CodecImpl, data: ChunkData): { ok: boolean; detail: string } {
   const encoded = impl.encode(data.timestamps, data.values);
   const decoded = impl.decode(encoded);
 
@@ -111,7 +108,7 @@ function verifyRoundTrip(
     }
   }
 
-  return { ok: true, detail: 'bit-exact' };
+  return { ok: true, detail: "bit-exact" };
 }
 
 // ── Cross-validation: A encodes → B decodes ─────────────────────────
@@ -119,7 +116,7 @@ function verifyRoundTrip(
 function crossValidate(
   implA: CodecImpl,
   implB: CodecImpl,
-  data: ChunkData,
+  data: ChunkData
 ): { ok: boolean; detail: string } {
   const encoded = implA.encode(data.timestamps, data.values);
   let decoded: { timestamps: BigInt64Array; values: Float64Array };
@@ -147,28 +144,28 @@ function crossValidate(
     }
   }
 
-  return { ok: true, detail: 'bit-exact' };
+  return { ok: true, detail: "bit-exact" };
 }
 
 // ── Main ─────────────────────────────────────────────────────────────
 
 export default async function (): Promise<BenchReport> {
   if (implementations.length === 0) {
-    console.log('  ✗ No codec implementations available. Build first.');
-    throw new Error('No implementations');
+    console.log("  ✗ No codec implementations available. Build first.");
+    throw new Error("No implementations");
   }
 
-  const suite = new Suite('codec');
+  const suite = new Suite("codec");
   const generators = allGenerators(1024);
 
-  console.log(`  Implementations: ${implementations.map(i => i.name).join(', ')}\n`);
+  console.log(`  Implementations: ${implementations.map((i) => i.name).join(", ")}\n`);
 
   // ── Self round-trip verification ──
-  console.log('  ── Round-trip correctness ──\n');
+  console.log("  ── Round-trip correctness ──\n");
   for (const impl of implementations) {
     for (const gen of generators) {
       const result = verifyRoundTrip(impl, gen);
-      const mark = result.ok ? '✓' : '✗';
+      const mark = result.ok ? "✓" : "✗";
       console.log(`    ${mark} ${impl.runtime}/${gen.name}: ${result.detail}`);
     }
   }
@@ -176,7 +173,7 @@ export default async function (): Promise<BenchReport> {
 
   // ── Cross-validation (pairwise: A→encode, B→decode) ──
   if (implementations.length > 1) {
-    console.log('  ── Cross-validation ──\n');
+    console.log("  ── Cross-validation ──\n");
     for (let a = 0; a < implementations.length; a++) {
       for (let b = 0; b < implementations.length; b++) {
         if (a === b) continue;
@@ -184,8 +181,10 @@ export default async function (): Promise<BenchReport> {
         const implB = implementations[b]!;
         for (const gen of generators) {
           const result = crossValidate(implA, implB, gen);
-          const mark = result.ok ? '✓' : '✗';
-          console.log(`    ${mark} ${implA.runtime}→encode, ${implB.runtime}→decode [${gen.name}]: ${result.detail}`);
+          const mark = result.ok ? "✓" : "✗";
+          console.log(
+            `    ${mark} ${implA.runtime}→encode, ${implB.runtime}→decode [${gen.name}]: ${result.detail}`
+          );
           suite.addValidation(implA.runtime, implB.runtime, gen.name, result.ok, result.detail);
         }
       }
@@ -205,46 +204,62 @@ export default async function (): Promise<BenchReport> {
   // ── Encode benchmarks ──
   for (const impl of implementations) {
     for (const gen of generators) {
-      suite.add(`encode_${gen.name}`, impl.runtime, () => {
-        impl.encode(gen.timestamps, gen.values);
-      }, {
-        unit: 'samples/sec',
-        itemsPerCall: gen.timestamps.length,
-        iterations: 500,
-      });
+      suite.add(
+        `encode_${gen.name}`,
+        impl.runtime,
+        () => {
+          impl.encode(gen.timestamps, gen.values);
+        },
+        {
+          unit: "samples/sec",
+          itemsPerCall: gen.timestamps.length,
+          iterations: 500,
+        }
+      );
     }
   }
 
   // ── Decode benchmarks ──
   for (const impl of implementations) {
-    const encodedBuffers = generators.map(gen => ({
+    const encodedBuffers = generators.map((gen) => ({
       name: gen.name,
       buf: impl.encode(gen.timestamps, gen.values),
       len: gen.timestamps.length,
     }));
 
     for (const { name, buf, len } of encodedBuffers) {
-      suite.add(`decode_${name}`, impl.runtime, () => {
-        impl.decode(buf);
-      }, {
-        unit: 'samples/sec',
-        itemsPerCall: len,
-        iterations: 500,
-      });
+      suite.add(
+        `decode_${name}`,
+        impl.runtime,
+        () => {
+          impl.decode(buf);
+        },
+        {
+          unit: "samples/sec",
+          itemsPerCall: len,
+          iterations: 500,
+        }
+      );
     }
   }
 
   // ── Memory: encode+decode 10K iterations and measure heap ──
   for (const impl of implementations) {
-    const gen = generators[1]!; // slow_gauge — realistic case
-    suite.add(`memory_encode_1024x1000`, impl.runtime, () => {
-      // Encode 1024 points. Measures allocation pressure.
-      impl.encode(gen.timestamps, gen.values);
-    }, {
-      unit: 'ops/sec',
-      iterations: 1000,
-      warmup: 50,
-    });
+    const gen = generators.find((g) => g.name === "gauge_2dp");
+    if (!gen) throw new Error("Missing benchmark vector: gauge_2dp");
+    suite.add(
+      `memory_encode_1024x1000`,
+      impl.runtime,
+      () => {
+        // Encode 1024 points. Measures allocation pressure.
+        impl.encode(gen.timestamps, gen.values);
+      },
+      {
+        unit: "ops/sec",
+        iterations: 1000,
+        warmup: 50,
+      }
+    );
   }
 
   const report = suite.run();

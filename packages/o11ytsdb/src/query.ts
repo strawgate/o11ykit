@@ -85,6 +85,34 @@ export class ScanEngine implements QueryEngine {
 
 // ── Aggregation ──────────────────────────────────────────────────────
 
+/** Initial accumulator value for a given aggregation function. */
+function aggInit(fn: AggFn): number {
+  if (fn === 'min') return Infinity;
+  if (fn === 'max') return -Infinity;
+  return 0;
+}
+
+/** Fold a new value into an accumulator for the given agg function. */
+function aggAccumulate(accum: number, v: number, fn: AggFn): number {
+  switch (fn) {
+    case 'sum': case 'avg': return accum + v;
+    case 'min': return v < accum ? v : accum;
+    case 'max': return v > accum ? v : accum;
+    case 'count': return accum + 1;
+    case 'last': return v;
+    default: return accum;
+  }
+}
+
+/** Finalize aggregated buckets (e.g. divide by count for avg). */
+function aggFinalize(values: Float64Array, counts: Float64Array, fn: AggFn): void {
+  if (fn === 'avg') {
+    for (let i = 0; i < values.length; i++) {
+      if (counts[i]! > 0) values[i]! /= counts[i]!;
+    }
+  }
+}
+
 function aggregate(ranges: TimeRange[], fn: AggFn, step?: bigint): TimeRange {
   if (ranges.length === 0) {
     return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
@@ -119,33 +147,19 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
     return { timestamps, values };
   }
 
-  // Initialize based on agg function.
-  const init = fn === 'min' ? Infinity : fn === 'max' ? -Infinity : 0;
-  values.fill(init);
+  values.fill(aggInit(fn));
   const counts = new Float64Array(timestamps.length);
 
   for (const r of ranges) {
     // Simple: assume aligned timestamps. Real engine would merge-sort.
     const len = Math.min(r.values.length, timestamps.length);
     for (let i = 0; i < len; i++) {
-      const v = r.values[i]!;
-      switch (fn) {
-        case 'sum': case 'avg': values[i]! += v; break;
-        case 'min': if (v < values[i]!) values[i]! = v; break;
-        case 'max': if (v > values[i]!) values[i]! = v; break;
-        case 'count': values[i]!++; break;
-        case 'last': values[i]! = v; break;
-      }
+      values[i] = aggAccumulate(values[i]!, r.values[i]!, fn);
       counts[i]!++;
     }
   }
 
-  if (fn === 'avg') {
-    for (let i = 0; i < values.length; i++) {
-      if (counts[i]! > 0) values[i]! /= counts[i]!;
-    }
-  }
-
+  aggFinalize(values, counts, fn);
   return { timestamps, values };
 }
 
@@ -169,30 +183,17 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
     timestamps[i] = minT + BigInt(i) * step;
   }
 
-  const init = fn === 'min' ? Infinity : fn === 'max' ? -Infinity : 0;
-  values.fill(init);
+  values.fill(aggInit(fn));
 
   for (const r of ranges) {
     for (let i = 0; i < r.timestamps.length; i++) {
       const bucket = Number((r.timestamps[i]! - minT) / step);
       if (bucket < 0 || bucket >= bucketCount) continue;
-      const v = r.values[i]!;
-      switch (fn) {
-        case 'sum': case 'avg': values[bucket]! += v; break;
-        case 'min': if (v < values[bucket]!) values[bucket]! = v; break;
-        case 'max': if (v > values[bucket]!) values[bucket]! = v; break;
-        case 'count': values[bucket]!++; break;
-        case 'last': values[bucket]! = v; break;
-      }
+      values[bucket] = aggAccumulate(values[bucket]!, r.values[i]!, fn);
       counts[bucket]!++;
     }
   }
 
-  if (fn === 'avg') {
-    for (let i = 0; i < values.length; i++) {
-      if (counts[i]! > 0) values[i]! /= counts[i]!;
-    }
-  }
-
+  aggFinalize(values, counts, fn);
   return { timestamps, values };
 }
