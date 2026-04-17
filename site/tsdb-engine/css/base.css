@@ -1,0 +1,110 @@
+/* ─── TSDB Engine Docs — Base Styles ──────────────────────────────── */
+
+.section-intro {
+  margin: 0 0 18px;
+  color: var(--ink-soft);
+  max-width: 72ch;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* ─── WASM Status Badge ──────────────────────────────────────────── */
+
+.wasm-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+  font-family: var(--font-mono, monospace);
+}
+
+.wasm-ok {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.wasm-err {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+/* ─── Codec Tag ──────────────────────────────────────────────────── */
+
+.tag-codec {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-left: 8px;
+  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+  color: #fff;
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  .arch-row {
+    flex-direction: column;
+  }
+
+  .arch-arrow {
+    transform: rotate(90deg);
+  }
+
+  .arch-box {
+    max-width: 100%;
+  }
+
+  .demo-controls {
+    flex-direction: column;
+  }
+
+  .control-group select {
+    min-width: 100%;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .explorer-stats {
+    flex-direction: column;
+  }
+
+  .series-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .series-summary {
+    margin-left: 0;
+  }
+
+  .chunk-detail-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .byte-legend {
+    flex-wrap: wrap;
+  }
+
+  .comp-bar-row {
+    grid-template-columns: 80px 1fr 60px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arch-box,
+  .stats-grid,
+  .chart-container,
+  .query-stats,
+  .compression-bench {
+    animation: none;
+    transition: none;
+  }
+}

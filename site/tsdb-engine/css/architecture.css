@@ -1,0 +1,206 @@
+/* ─── Architecture Diagram ────────────────────────────────────────── */
+
+.arch-diagram {
+  display: grid;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.arch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.arch-bottom {
+  justify-content: center;
+}
+
+.arch-box {
+  flex: 1;
+  min-width: 200px;
+  max-width: 320px;
+  background: var(--surface-strong);
+  border: 1px solid rgba(43, 80, 106, 0.22);
+  border-radius: 16px;
+  padding: 16px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+  transition: transform 200ms ease, box-shadow 200ms ease;
+}
+
+.arch-box:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 16px 40px rgba(10, 36, 56, 0.18);
+}
+
+.arch-icon {
+  font-size: 28px;
+  margin-bottom: 6px;
+}
+
+.arch-box h4 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.arch-box p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.arch-arrow {
+  font-size: 22px;
+  color: var(--ink-soft);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.arch-ingest { border-top: 3px solid var(--otlp); }
+.arch-storage { border-top: 3px solid var(--octo); }
+.arch-query { border-top: 3px solid var(--bench); }
+.arch-codec { border-top: 3px solid #8b5cf6; }
+.arch-labels { border-top: 3px solid #ec4899; }
+.arch-worker { border-top: 3px solid #f59e0b; }
+
+/* ─── Backend Cards ───────────────────────────────────────────────── */
+
+.backend-card {
+  position: relative;
+  overflow: visible;
+}
+
+.backend-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-bottom: 8px;
+}
+
+.backend-badge.flat { background: #fef3c7; color: #92400e; }
+.backend-badge.chunked { background: #dbeafe; color: #1e40af; }
+.backend-badge.column { background: #d1fae5; color: #065f46; }
+
+.backend-stat {
+  display: grid;
+  grid-template-columns: 60px 1fr 70px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.stat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.stat-bar {
+  height: 6px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.stat-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f26f2d, #e74c3c);
+  border-radius: 3px;
+  transition: width 600ms ease;
+}
+
+.stat-fill.fast {
+  background: linear-gradient(90deg, #10b981, #059669);
+}
+
+.stat-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: right;
+}
+
+/* ─── Compression Explainer ───────────────────────────────────────── */
+
+.compression-explainer {
+  display: grid;
+  gap: 14px;
+}
+
+.compression-step {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.step-num {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #10314e, #0f5a89);
+  color: white;
+  font-weight: 700;
+  font-size: 16px;
+  border-radius: 50%;
+}
+
+.step-content {
+  flex: 1;
+}
+
+.step-content h4 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  color: var(--ink);
+}
+
+.step-content p {
+  margin: 0 0 8px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* ─── Query Feature Cards ─────────────────────────────────────────── */
+
+.query-feature {
+  background: var(--surface-strong);
+  border: 1px solid rgba(43, 80, 106, 0.2);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.query-feature h4 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.agg-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agg-pill {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(16, 49, 78, 0.08), rgba(15, 90, 137, 0.08));
+  border: 1px solid rgba(16, 49, 78, 0.15);
+  color: #0f3a5e;
+}
