@@ -2,338 +2,12 @@
 
 import { $, formatBytes, readI64BE, readF64BE, formatEpochNs, superNum } from './utils.js';
 import { decodeChunkAnnotated, BitReader } from './codec.js';
-
-// ── Codec Insight Cards ──────────────────────────────────────────────
-
-function buildALPInsightHtml(p) {
-  var factor = '10' + superNum(p.exponent);
-  var excPct = p.count > 0 ? ((p.excCount / p.count) * 100).toFixed(1) : '0';
-  var rawValBits = p.count * 64;
-  var compValBits = p.bitpackedBytes * 8;
-  var valRatio = rawValBits > 0 ? (rawValBits / Math.max(1, compValBits)).toFixed(1) : '-';
-
-  var html =
-    '<div class="codec-insight">' +
-      '<div class="ci-title">\uD83E\uDDEC ALP \u00b7 Adaptive Lossless floating-Point <span class="ci-ref">(CWI Amsterdam, SIGMOD 2024)</span></div>' +
-      '<div class="ci-pipeline">' +
-        '<div class="ci-step">' +
-          '<div class="ci-num">1</div>' +
-          '<div class="ci-body">' +
-            '<div class="ci-step-title">Decimal Scaling</div>' +
-            '<div class="ci-detail">Multiply by ' + factor + ' \u2192 float64 becomes lossless int64</div>' +
-            '<div class="ci-example">e.g. 42.150 \u00d7 ' + factor + ' = ' + (42.15 * Math.pow(10, p.exponent)).toFixed(0) + '</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="ci-step">' +
-          '<div class="ci-num">2</div>' +
-          '<div class="ci-body">' +
-            '<div class="ci-step-title">Frame of Reference</div>' +
-            '<div class="ci-detail">min = ' + p.minInt.toString() + ', offsets need only ' + p.bitWidth + ' bits</div>' +
-            '<div class="ci-example">Each value stored as (int \u2212 min) in ' + p.bitWidth + ' bits vs 64 raw</div>' +
-          '</div>' +
-        '</div>' +
-        '<div class="ci-step">' +
-          '<div class="ci-num">3</div>' +
-          '<div class="ci-body">' +
-            '<div class="ci-step-title">Bit-Packing</div>' +
-            '<div class="ci-detail">' + p.count + ' \u00d7 ' + p.bitWidth + 'b = ' + formatBytes(p.bitpackedBytes) + '</div>' +
-            '<div class="ci-example">' + valRatio + '\u00d7 compression on values alone</div>' +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="ci-exceptions">' +
-        (p.excCount === 0
-          ? '\u2705 0 exceptions \u2014 100% of values fit ALP perfectly'
-          : '\u26a0\ufe0f ' + p.excCount + ' exceptions (' + excPct + '%) stored as raw f64') +
-      '</div>' +
-    '</div>';
-
-  if (p.tsCount > 0) {
-    html +=
-      '<div class="codec-insight ts">' +
-        '<div class="ci-title">\uD83D\uDD70\uFE0F Delta-of-Delta Timestamps <span class="ci-ref">(shared across ' + p.sharedCount + ' series)</span></div>' +
-        '<div class="ci-pipeline">' +
-          '<div class="ci-step">' +
-            '<div class="ci-num">\u23F1</div>' +
-            '<div class="ci-body">' +
-              '<div class="ci-step-title">Base: ' + formatEpochNs(p.firstTs) + '</div>' +
-              '<div class="ci-detail">' + formatBytes(p.tsLen) + ' total \u00f7 ' + p.sharedCount + ' series = ' + formatBytes(p.amortizedTsLen) + ' amortized</div>' +
-            '</div>' +
-          '</div>' +
-          '<div class="ci-step">' +
-            '<div class="ci-num">\u0394</div>' +
-            '<div class="ci-body">' +
-              '<div class="ci-step-title">Gorilla-style prefix coding</div>' +
-              '<div class="ci-detail">0 = same \u0394 (1 bit) \u2502 10+7b \u2502 110+9b \u2502 1110+12b \u2502 1111+64b</div>' +
-              '<div class="ci-example">Regular intervals \u2192 most timestamps encode as a single 0 bit</div>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-  }
-  return html;
-}
-
-function buildXORInsightHtml(p) {
-  var totalBits = (p.totalBytes - 18) * 8;
-  var bitsPerSample = p.count > 1 ? (totalBits / (p.count - 1)).toFixed(1) : '-';
-
-  return '<div class="codec-insight">' +
-    '<div class="ci-title">\uD83E\uDDEC XOR-Delta \u00b7 Gorilla-style Compression <span class="ci-ref">(Facebook/Meta, VLDB 2015)</span></div>' +
-    '<div class="ci-pipeline">' +
-      '<div class="ci-step">' +
-        '<div class="ci-num">\u23F1</div>' +
-        '<div class="ci-body">' +
-          '<div class="ci-step-title">Timestamps: Delta-of-Delta</div>' +
-          '<div class="ci-detail">Base: ' + formatEpochNs(p.firstTs) + '</div>' +
-          '<div class="ci-example">0 = same \u0394 (1 bit) \u2502 10+7b \u2502 110+9b \u2502 1110+12b \u2502 1111+64b</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="ci-step">' +
-        '<div class="ci-num">\u2295</div>' +
-        '<div class="ci-body">' +
-          '<div class="ci-step-title">Values: XOR of IEEE-754 bits</div>' +
-          '<div class="ci-detail">Base value: ' + p.firstVal.toPrecision(6) + '</div>' +
-          '<div class="ci-example">Similar floats share leading/trailing bits \u2192 only meaningful XOR bits stored</div>' +
-        '</div>' +
-      '</div>' +
-    '</div>' +
-    '<div class="ci-exceptions">\uD83D\uDCCA Interleaved stream: ~' + bitsPerSample + ' bits/sample (timestamps + values combined)</div>' +
-  '</div>';
-}
-
-// ── ALP bit-map builder ──────────────────────────────────────────────
-// ALP bit-packing is deterministic: each value occupies exactly bitWidth bits.
-// Timestamps use Gorilla delta-of-delta (same as XOR).
-
-function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
-  const bitMap = [];
-  const valBlobLen = primaryBlob.byteLength;
-
-  // Parse ALP header
-  const alpCount = valBlobLen >= 2 ? (primaryBlob[0] << 8) | primaryBlob[1] : 0;
-  const alpExp = valBlobLen >= 3 ? primaryBlob[2] : 0;
-  const alpBW = valBlobLen >= 4 ? primaryBlob[3] : 0;
-  const alpMin = valBlobLen >= 12 ? readI64BE(primaryBlob, 4) : 0n;
-  const alpExc = valBlobLen >= 14 ? (primaryBlob[12] << 8) | primaryBlob[13] : 0;
-
-  // Value bit positions (in the value blob)
-  const headerBits = 14 * 8; // 14-byte header
-  const bpBytes = Math.ceil(alpCount * alpBW / 8);
-
-  // Decode exception positions
-  const excPositions = new Set();
-  const excPosStart = 14 + bpBytes;
-  for (let e = 0; e < alpExc; e++) {
-    const off = excPosStart + e * 2;
-    if (off + 1 < valBlobLen) {
-      excPositions.add((primaryBlob[off] << 8) | primaryBlob[off + 1]);
-    }
-  }
-
-  // Decode exception values
-  const excValStart = excPosStart + alpExc * 2;
-  const excValues = [];
-  for (let e = 0; e < alpExc; e++) {
-    const off = excValStart + e * 8;
-    if (off + 7 < valBlobLen) {
-      excValues.push(readF64BE(primaryBlob, off));
-    }
-  }
-
-  // Build value entries from bit-packed offsets
-  const factor = Math.pow(10, alpExp);
-  let excIdx = 0;
-  for (let i = 0; i < alpCount; i++) {
-    const startBit = headerBits + i * alpBW;
-    const endBit = headerBits + (i + 1) * alpBW;
-
-    // Read the offset from the bit-packed region
-    let offset = 0n;
-    if (alpBW > 0) {
-      const bitStart = 14 * 8 + i * alpBW;
-      for (let b = 0; b < alpBW; b++) {
-        const globalBit = bitStart + b;
-        const byteIdx = Math.floor(globalBit / 8);
-        const bitIdx = 7 - (globalBit % 8);
-        if (byteIdx < valBlobLen) {
-          offset = (offset << 1n) | BigInt((primaryBlob[byteIdx] >> bitIdx) & 1);
-        }
-      }
-    }
-
-    const isException = excPositions.has(i);
-    const decodedValue = isException ? (excValues[excIdx] ?? NaN) : Number(offset + alpMin) / factor;
-    if (isException) excIdx++;
-
-    bitMap.push({
-      sampleIndex: i,
-      type: 'value',
-      startBit, endBit,
-      encoding: isException ? 'alp-exception' : 'alp-bitpacked',
-      decoded: decodedValue,
-      offset: Number(offset),
-      bitWidth: alpBW,
-      isException,
-    });
-  }
-
-  // Build timestamp entries using Gorilla delta-of-delta decoder
-  if (tsBlob && tsBlob.byteLength >= 10) {
-    const tsR = new BitReader(tsBlob);
-    const tsCount = tsR.readBitsNum(16);
-    const firstTs = BigInt.asIntN(64, tsR.readBits(64));
-
-    // First timestamp: raw 80 bits (16 count + 64 ts)
-    bitMap.push({
-      sampleIndex: 0,
-      type: 'timestamp',
-      startBit: 0,
-      endBit: 80,
-      encoding: 'raw',
-      decoded: firstTs,
-      blobOffset: valBlobLen, // offset in the combined buffer
-    });
-
-    let prevTs = firstTs, prevDelta = 0n;
-    for (let i = 1; i < tsCount && i < sampleCount; i++) {
-      const tsStart = tsR.totalBits;
-      let dod;
-      let enc;
-      if (tsR.readBit() === 0) {
-        dod = 0n; enc = 'dod-zero';
-      } else if (tsR.readBit() === 0) {
-        const zz = tsR.readBitsNum(7);
-        dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
-        enc = 'dod-7bit';
-      } else if (tsR.readBit() === 0) {
-        const zz = tsR.readBitsNum(9);
-        dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
-        enc = 'dod-9bit';
-      } else if (tsR.readBit() === 0) {
-        const zz = tsR.readBitsNum(12);
-        dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
-        enc = 'dod-12bit';
-      } else {
-        dod = BigInt.asIntN(64, tsR.readBits(64));
-        enc = 'dod-64bit';
-      }
-      const delta = prevDelta + dod;
-      const ts = prevTs + delta;
-      prevDelta = delta;
-      prevTs = ts;
-
-      bitMap.push({
-        sampleIndex: i,
-        type: 'timestamp',
-        startBit: tsStart,
-        endBit: tsR.totalBits,
-        encoding: enc,
-        decoded: ts,
-        dod, delta,
-        blobOffset: valBlobLen,
-      });
-    }
-  }
-
-  return bitMap;
-}
-
-// ── Byte-to-sample lookup ─────────────────────────────────────────────
-// Maps each byte index to the encoded-value entry that owns the majority
-// of its bits.  Used by both hex and decimal views for interactivity.
-
-function buildByteLookup(bitMap, totalBytes) {
-  if (!bitMap || bitMap.length === 0) return null;
-
-  // For each byte, count how many bits belong to each bitMap entry
-  var ownership = new Array(totalBytes); // ownership[byteIdx] = Map<entryIdx, bitCount>
-
-  for (var ei = 0; ei < bitMap.length; ei++) {
-    var entry = bitMap[ei];
-    var baseOffset = (entry.blobOffset || 0) * 8;
-    for (var b = entry.startBit; b < entry.endBit; b++) {
-      var globalBit = baseOffset + b;
-      var byteIdx = Math.floor(globalBit / 8);
-      if (byteIdx >= totalBytes) continue;
-      if (!ownership[byteIdx]) ownership[byteIdx] = new Map();
-      ownership[byteIdx].set(ei, (ownership[byteIdx].get(ei) || 0) + 1);
-    }
-  }
-
-  // For each byte pick the entry that owns the most bits
-  var lookup = new Array(totalBytes);
-  for (var i = 0; i < totalBytes; i++) {
-    if (!ownership[i]) continue;
-    var bestIdx = -1, bestCount = 0;
-    ownership[i].forEach(function(cnt, idx) {
-      if (cnt > bestCount) { bestCount = cnt; bestIdx = idx; }
-    });
-    if (bestIdx >= 0) lookup[i] = bitMap[bestIdx];
-  }
-
-  return lookup;
-}
-
-// For a given bitMap entry, return the set of byte indices it spans.
-function entryByteRange(entry, totalBytes) {
-  var baseOffset = (entry.blobOffset || 0) * 8;
-  var startByte = Math.floor((baseOffset + entry.startBit) / 8);
-  var endByte = Math.ceil((baseOffset + entry.endBit) / 8);
-  return { startByte: Math.max(0, startByte), endByte: Math.min(endByte, totalBytes) };
-}
-
-// ── Hex Row Renderer ─────────────────────────────────────────────────
-// Returns an HTML string for one row (no DOM operations).
-
-function renderHexRowHTML(row, cols, bytes, byteRegion, regions, mode, byteLookup) {
-  var startOffset = row * cols;
-  var parts = [];
-
-  parts.push('<div class="hex-offset">0x' + startOffset.toString(16).toUpperCase().padStart(4, '0') + '</div>');
-
-  var asciiStr = '';
-  for (var col = 0; col < cols; col++) {
-    var byteIdx = startOffset + col;
-    var cls = 'hex-cell';
-
-    if (byteIdx < bytes.length) {
-      var val = bytes[byteIdx];
-      var rIdx = byteRegion[byteIdx];
-      cls += ' region-' + regions[rIdx].cls;
-
-      var dataAttrs = ' data-offset="' + byteIdx + '" data-region="' + rIdx + '"';
-
-      if (byteLookup && byteLookup[byteIdx]) {
-        var blEntry = byteLookup[byteIdx];
-        cls += ' hex-mapped';
-        cls += blEntry.type === 'timestamp' ? ' hex-ts' : ' hex-val';
-        cls += blEntry.sampleIndex % 2 === 0 ? ' hex-sample-even' : ' hex-sample-odd';
-        if (byteIdx === 0 || !byteLookup[byteIdx - 1] || byteLookup[byteIdx - 1] !== blEntry) {
-          cls += ' hex-boundary';
-        }
-        dataAttrs += ' data-sample-index="' + blEntry.sampleIndex + '" data-sample-type="' + blEntry.type + '"';
-      }
-
-      var content;
-      var style = '';
-      if (mode === 'hex') {
-        content = val.toString(16).toUpperCase().padStart(2, '0');
-      } else {
-        content = val.toString().padStart(3, ' ');
-        style = ' style="font-size:8px"';
-      }
-      parts.push('<div class="' + cls + '"' + dataAttrs + style + '>' + content + '</div>');
-      asciiStr += (val >= 32 && val <= 126) ? String.fromCharCode(val) : '\u00b7';
-    } else {
-      parts.push('<div class="' + cls + ' region-padding">  </div>');
-      asciiStr += ' ';
-    }
-  }
-
-  parts.push('<div class="hex-ascii">' + asciiStr + '</div>');
-  return parts.join('');
-}
+import {
+  buildALPInsightHtml, buildXORInsightHtml,
+  parseALPHeader, parseXORHeader,
+  buildALPBitMap, buildByteLookup, entryByteRange,
+  buildByteRegionMap, renderHexRowHTML, encodingDescription,
+} from './byte-explorer-logic.js';
 
 // ── Interactive Bit View ─────────────────────────────────────────────
 
@@ -579,11 +253,9 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     var amortizedTsLen = sharedCount > 0 ? Math.round(tsLen / sharedCount) : tsLen;
 
     var ALP_HDR = Math.min(14, valBlobLen);
-    var alpCount = valBlobLen >= 2 ? (primaryBlob[0] << 8) | primaryBlob[1] : 0;
-    var alpExp = valBlobLen >= 3 ? primaryBlob[2] : 0;
-    var alpBW = valBlobLen >= 4 ? primaryBlob[3] : 0;
-    var alpMin = valBlobLen >= 12 ? readI64BE(primaryBlob, 4) : 0n;
-    var alpExc = valBlobLen >= 14 ? (primaryBlob[12] << 8) | primaryBlob[13] : 0;
+    var alpHdr = parseALPHeader(primaryBlob);
+    var alpCount = alpHdr.count, alpExp = alpHdr.exponent, alpBW = alpHdr.bitWidth;
+    var alpMin = alpHdr.minInt, alpExc = alpHdr.excCount;
 
     var bpBytes = Math.ceil(alpCount * alpBW / 8);
     var excPosBytes = alpExc * 2;
@@ -684,9 +356,8 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     bytes = primaryBlob;
     var totalBytes = bytes.byteLength;
     var hdrLen = Math.min(18, totalBytes);
-    var xorCount = totalBytes >= 2 ? (bytes[0] << 8) | bytes[1] : 0;
-    var xorFirstTs = totalBytes >= 10 ? readI64BE(bytes, 2) : 0n;
-    var xorFirstVal = totalBytes >= 18 ? readF64BE(bytes, 10) : 0;
+    var xorHdr = parseXORHeader(bytes);
+    var xorCount = xorHdr.count, xorFirstTs = xorHdr.firstTs, xorFirstVal = xorHdr.firstVal;
     var streamBytes = totalBytes - hdrLen;
 
     regions.push({
@@ -725,12 +396,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
   }
 
   // Region lookup per byte
-  const byteRegion = new Uint8Array(bytes.length);
-  for (var ri = 0; ri < regions.length; ri++) {
-    for (var i = regions[ri].start; i < regions[ri].end; i++) {
-      byteRegion[i] = ri;
-    }
-  }
+  const byteRegion = buildByteRegionMap(regions, bytes.length);
 
   // Build byte-to-sample lookup for hex/decimal interactive views
   var byteLookup = buildByteLookup(bitMap, bytes.length);
@@ -932,30 +598,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
       decodedStr = typeof entry.decoded === 'number' ? entry.decoded.toPrecision(8) : String(entry.decoded);
     }
 
-    var encodingDesc = '';
-    if (entry.encoding === 'raw') {
-      encodingDesc = 'Raw (uncompressed first sample)';
-    } else if (entry.encoding === 'dod-zero') {
-      encodingDesc = '\u0394\u00b2 = 0 \u2192 prefix <code>0</code> (1 bit)';
-    } else if (entry.encoding === 'dod-7bit') {
-      encodingDesc = '\u0394\u00b2 \u2264 \u00b164 \u2192 prefix <code>10</code> + 7-bit zigzag';
-    } else if (entry.encoding === 'dod-9bit') {
-      encodingDesc = '\u0394\u00b2 \u2264 \u00b1256 \u2192 prefix <code>110</code> + 9-bit zigzag';
-    } else if (entry.encoding === 'dod-12bit') {
-      encodingDesc = '\u0394\u00b2 \u2264 \u00b12048 \u2192 prefix <code>1110</code> + 12-bit zigzag';
-    } else if (entry.encoding === 'dod-64bit') {
-      encodingDesc = 'Large \u0394\u00b2 \u2192 prefix <code>1111</code> + 64-bit raw';
-    } else if (entry.encoding === 'xor-zero') {
-      encodingDesc = 'XOR = 0 \u2192 prefix <code>0</code> (identical value)';
-    } else if (entry.encoding === 'xor-reuse') {
-      encodingDesc = 'XOR reuse window \u2192 prefix <code>10</code> + ' + entry.meaningful + ' meaningful bits';
-    } else if (entry.encoding === 'xor-new') {
-      encodingDesc = 'XOR new window \u2192 prefix <code>11</code> + 6b leading(' + entry.leading + ') + 6b length(' + entry.meaningful + ') + ' + entry.meaningful + ' bits';
-    } else if (entry.encoding === 'alp-bitpacked') {
-      encodingDesc = 'ALP bit-packed offset = ' + entry.offset + ' (' + entry.bitWidth + ' bits)';
-    } else if (entry.encoding === 'alp-exception') {
-      encodingDesc = '\u26a0\ufe0f ALP exception \u2014 stored as raw f64';
-    }
+    var encodingDesc = encodingDescription(entry);
 
     var typeIcon = entry.type === 'timestamp' ? '\u23f1' : '\uD83D\uDCCA';
     var typeLabel = entry.type === 'timestamp' ? 'Timestamp' : 'Value';
