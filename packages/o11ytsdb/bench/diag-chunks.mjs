@@ -115,6 +115,8 @@ function parseALPChunk(buf) {
 }
 
 // ── Data generators (inline, matching vectors.ts) ────────────────────
+// NOTE: Generators below mirror packages/o11ytsdb/bench/vectors.ts.
+// Keep in sync when modifying patterns.
 
 class Rng {
   constructor(seed = 42) {

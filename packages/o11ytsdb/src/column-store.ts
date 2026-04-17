@@ -98,7 +98,9 @@ export class ColumnStore implements StorageBackend {
     labelIndex?: LabelIndex,
     precision?: number,
   ) {
-    if (chunkSize < 1) throw new RangeError(`chunkSize must be >= 1, got ${chunkSize}`);
+    if (!Number.isFinite(chunkSize) || !Number.isInteger(chunkSize) || chunkSize < 1) {
+      throw new RangeError(`chunkSize must be a finite integer >= 1, got ${chunkSize}`);
+    }
     this.valuesCodec = valuesCodec;
     this.tsCodec = tsCodec;
     this.rangeCodec = rangeCodec;

@@ -3,7 +3,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkgPath = (r) => join('/home/bill_easton/o11ykit/packages/o11ytsdb', r);
+const pkgRoot = join(__dirname, '..');
+const pkgPath = (r) => join(pkgRoot, r);
 
 const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(join(__dirname, 'dist', 'wasm-loader.js'));
 const wasm = await loadWasm(pkgPath('wasm/o11ytsdb-rust.wasm'));
@@ -168,6 +169,11 @@ for (let s = 0; s < NUM_SERIES; s++) {
     mismatches++;
     continue;
   }
+  if (fData.timestamps.length !== cData.timestamps.length || fData.timestamps.length !== rData.timestamps.length) {
+    console.log(`Series ${s}: TS LENGTH mismatch flat=${fData.timestamps.length} col=${cData.timestamps.length} rg=${rData.timestamps.length}`);
+    mismatches++;
+    continue;
+  }
   if (fData.values.length !== POINTS) {
     console.log(`Series ${s}: expected ${POINTS} got ${fData.values.length}`);
     mismatches++;
@@ -175,6 +181,16 @@ for (let s = 0; s < NUM_SERIES; s++) {
   }
 
   for (let i = 0; i < fData.values.length; i++) {
+    if (fData.timestamps[i] !== cData.timestamps[i]) {
+      console.log(`Series ${s} sample ${i}: ts flat=${fData.timestamps[i]} col=${cData.timestamps[i]}`);
+      mismatches++;
+      break;
+    }
+    if (fData.timestamps[i] !== rData.timestamps[i]) {
+      console.log(`Series ${s} sample ${i}: ts flat=${fData.timestamps[i]} rg=${rData.timestamps[i]}`);
+      mismatches++;
+      break;
+    }
     if (fData.values[i] !== cData.values[i]) {
       console.log(`Series ${s} sample ${i}: flat=${fData.values[i]} col=${cData.values[i]}`);
       mismatches++;

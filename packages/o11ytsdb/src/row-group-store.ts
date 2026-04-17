@@ -93,7 +93,9 @@ export class RowGroupStore implements StorageBackend {
     labelIndex?: LabelIndex,
     precision?: number,
   ) {
-    if (chunkSize < 1) throw new RangeError(`chunkSize must be >= 1, got ${chunkSize}`);
+    if (!Number.isFinite(chunkSize) || !Number.isInteger(chunkSize) || chunkSize < 1) {
+      throw new RangeError(`chunkSize must be a finite integer >= 1, got ${chunkSize}`);
+    }
     this.valuesCodec = valuesCodec;
     this.tsCodec = tsCodec;
     this.rangeCodec = rangeCodec;
@@ -252,10 +254,10 @@ export class RowGroupStore implements StorageBackend {
         const tsChunk = group.frozenTimestamps[rg.tsChunkIndex]!;
         if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
-        if (!tsChunk.timestamps) {
-          tsChunk.timestamps = this.tsCodec!.decodeTimestamps(tsChunk.compressed!);
+        if (!tsChunk.timestamps && this.tsCodec && tsChunk.compressed) {
+          tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed);
         }
-        const timestamps = tsChunk.timestamps;
+        const timestamps = tsChunk.timestamps!;
 
         const compressedValues = rg.valueBuffer.subarray(
           rg.offsets[s.memberIndex]!,

@@ -253,7 +253,7 @@ export function allGenerators(n = 1024): ChunkData[] {
     gauge11dp(n),
     gauge12dp(n),
     highPrecisionRatio(n),
-    highPrecisionRatio(n, undefined, 99), // second seed for variety
+    { ...highPrecisionRatio(n, undefined, 99), name: 'high_precision_ratio_b' },
     highVarianceGauge(n),
   ];
 }

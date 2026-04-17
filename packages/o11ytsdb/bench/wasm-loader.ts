@@ -327,7 +327,13 @@ export function makeALPValuesCodec(
 
     encodeBatchValuesWithStats(arrays: Float64Array[]) {
       const numArrays = arrays.length;
+      if (numArrays === 0) return [];
       const chunkSize = arrays[0]!.length;
+      for (let i = 1; i < numArrays; i++) {
+        if (arrays[i]!.length !== chunkSize) {
+          throw new RangeError('encodeBatchValuesWithStats requires equal-length arrays');
+        }
+      }
       wasm.resetScratch();
 
       // Copy all value arrays contiguously into WASM memory.
@@ -352,10 +358,10 @@ export function makeALPValuesCodec(
       const sizes = new Uint32Array(wasm.memory.buffer.slice(sizesPtr, sizesPtr + numArrays * 4));
 
       const results: Array<{ compressed: Uint8Array; stats: BlockStats }> = [];
+      const allStats = new Float64Array(wasm.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
       for (let i = 0; i < numArrays; i++) {
         const compressed = new Uint8Array(wasm.memory.buffer.slice(outPtr + offsets[i]!, outPtr + offsets[i]! + sizes[i]!));
         const si = i * 8;
-        const allStats = new Float64Array(wasm.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
         results.push({
           compressed,
           stats: {

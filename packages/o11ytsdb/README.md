@@ -155,7 +155,7 @@ formats, detection criteria, and the codec selection pipeline.
 
 ## Architecture
 
-```
+```text
 src/codec.ts         ← TypeScript XOR-delta codec
 zig/src/root.zig     ← Zig XOR-delta codec → WASM
 rust/src/lib.rs      ← Rust codecs → WASM (XOR-delta + ALP + Delta-ALP)
