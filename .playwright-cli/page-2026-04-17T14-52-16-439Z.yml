@@ -1,0 +1,440 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - link "o11ykit" [ref=e4] [cursor=pointer]:
+      - /url: /o11ykit/
+    - navigation "Primary" [ref=e5]:
+      - link "OtlpKit" [ref=e6] [cursor=pointer]:
+        - /url: /o11ykit/otlpkit-docs/
+      - link "TSDB Engine" [ref=e7] [cursor=pointer]:
+        - /url: /o11ykit/tsdb-engine/
+      - link "Octo11y" [ref=e8] [cursor=pointer]:
+        - /url: /o11ykit/octo11y/
+      - link "Benchkit" [ref=e9] [cursor=pointer]:
+        - /url: /o11ykit/benchkit/
+  - generic [ref=e10]:
+    - paragraph [ref=e11]: o11ytsdb engine
+    - heading "A time-series database that runs in your browser." [level=1] [ref=e12]:
+      - text: A time-series database
+      - text: that runs in your browser.
+    - paragraph [ref=e13]: Gorilla-style XOR-delta compression. Three pluggable storage backends. A scan query engine with aggregation, grouping, and rate computation. Generate a million data points below and query them in real time.
+    - generic [ref=e14]:
+      - link "Launch Live Demo ↓" [ref=e15] [cursor=pointer]:
+        - /url: "#live-demo"
+      - link "Browse Source" [ref=e16] [cursor=pointer]:
+        - /url: https://github.com/strawgate/o11ykit/tree/main/packages/o11ytsdb
+    - generic "Key stats" [ref=e17]:
+      - generic [ref=e18]: 57× compression on constant gauges
+      - generic [ref=e19]: 28–80× WASM encode speedup
+      - generic [ref=e20]: Zero external dependencies
+      - generic [ref=e21]: ~4 KB WASM binary
+  - generic [ref=e22]:
+    - 'heading "🚀 Live Demo: Generate & Query" [level=2] [ref=e23]'
+    - paragraph [ref=e24]: This runs entirely in your browser. Generate up to 1M data points across multiple series, then query with aggregation — watch compression ratios and query performance in real time.
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]: Series
+        - combobox "Series" [ref=e28] [cursor=pointer]:
+          - option "5 series"
+          - option "10 series" [selected]
+          - option "25 series"
+          - option "50 series"
+      - generic [ref=e29]:
+        - generic [ref=e30]: Points per series
+        - combobox "Points per series" [ref=e31] [cursor=pointer]:
+          - option "1,000"
+          - option "10,000" [selected]
+          - option "50,000"
+          - option "100,000"
+      - generic [ref=e32]:
+        - generic [ref=e33]: Data pattern
+        - combobox "Data pattern" [ref=e34] [cursor=pointer]:
+          - option "Sine wave" [selected]
+          - option "Sawtooth"
+          - option "Random walk"
+          - option "Spiky traffic"
+          - option "Constant (best compression)"
+      - generic [ref=e35]:
+        - generic [ref=e36]: Sample interval
+        - combobox "Sample interval" [ref=e37] [cursor=pointer]:
+          - option "1 s"
+          - option "10 s" [selected]
+          - option "1 min"
+          - option "5 min"
+          - option "15 min"
+          - option "1 hr"
+          - option "6 hr"
+          - option "12 hr"
+      - generic [ref=e38]:
+        - generic [ref=e39]: Storage backend
+        - combobox "Storage backend" [ref=e40] [cursor=pointer]:
+          - option "FlatStore (no compression)" [selected]
+          - option "ChunkedStore (XOR-delta)"
+          - option "ColumnStore (ALP + shared timestamps)"
+        - generic [ref=e41]: ✓ WASM loaded (26 KB)
+      - button "Generate Data" [ref=e42] [cursor=pointer]
+    - generic [ref=e202]:
+      - generic [ref=e203]:
+        - generic [ref=e204]: 100,000
+        - generic [ref=e205]: Total data points
+      - generic [ref=e206]:
+        - generic [ref=e207]: "10"
+        - generic [ref=e208]: Time series
+      - generic [ref=e209]:
+        - generic [ref=e210]: 2.50 MB
+        - generic [ref=e211]: Memory used
+      - generic [ref=e212]:
+        - generic [ref=e213]: 0.6×
+        - generic [ref=e214]: Compression ratio
+      - generic [ref=e215]:
+        - generic [ref=e216]: 16 ms
+        - generic [ref=e217]: Ingest time
+      - generic [ref=e218]:
+        - generic [ref=e219]: 6.3M pts/s
+        - generic [ref=e220]: Ingest rate
+    - generic [ref=e221]:
+      - heading "Query the Data" [level=3] [ref=e222]
+      - generic [ref=e223]:
+        - generic [ref=e224]:
+          - generic [ref=e225]: Metric
+          - combobox "Metric" [ref=e226] [cursor=pointer]:
+            - option "http_requests_total" [selected]
+            - option "cpu_usage_percent"
+            - option "memory_usage_bytes"
+        - generic [ref=e227]:
+          - generic [ref=e228]: Aggregation
+          - combobox "Aggregation" [ref=e229] [cursor=pointer]:
+            - option "None (raw series)"
+            - option "avg" [selected]
+            - option "sum"
+            - option "min"
+            - option "max"
+            - option "count"
+            - option "rate"
+        - generic [ref=e230]:
+          - generic [ref=e231]: Group by
+          - combobox "Group by" [ref=e232] [cursor=pointer]:
+            - option "No grouping"
+            - option "region" [selected]
+            - option "instance"
+        - generic [ref=e233]:
+          - generic [ref=e234]: Step
+          - combobox "Step" [ref=e235] [cursor=pointer]:
+            - option "No step (raw)"
+            - option "1 s"
+            - option "5 s"
+            - option "10 s"
+            - option "30 s"
+            - option "1 min"
+            - option "5 min"
+            - option "15 min" [selected]
+            - option "1 hr"
+            - option "6 hr"
+            - option "12 hr"
+            - option "1 day"
+        - button "Run Query" [ref=e236] [cursor=pointer]
+      - generic [ref=e237]:
+        - generic [ref=e238]:
+          - generic [ref=e239]:
+            - text: "Scanned:"
+            - strong [ref=e1177]: "4"
+            - text: series
+          - generic [ref=e241]:
+            - text: "Samples:"
+            - strong [ref=e1178]: 40,000
+          - generic [ref=e243]:
+            - text: "Result:"
+            - strong [ref=e1179]: "4"
+            - text: series
+          - generic [ref=e245]:
+            - text: "Time:"
+            - strong [ref=e1180]: 4.5 ms
+        - generic [ref=e249]:
+          - generic [ref=e1181]: region="us-east" (112 pts)
+          - generic [ref=e1183]: region="us-west" (112 pts)
+          - generic [ref=e1185]: region="eu-west" (112 pts)
+          - generic [ref=e1187]: region="ap-south" (112 pts)
+    - generic [ref=e258]:
+      - heading "Compression Breakdown" [level=3] [ref=e259]
+      - generic [ref=e260]:
+        - generic [ref=e1189]:
+          - generic [ref=e1190]: Raw (16 B/pt)
+          - generic [ref=e1192]: 1.53 MB
+          - generic [ref=e1193]: 1.0×
+        - generic [ref=e1194]:
+          - generic [ref=e1195]: XOR-Delta
+          - generic [ref=e1197]: 2.50 MB
+          - generic [ref=e1198]: 0.6×
+    - generic [ref=e271]:
+      - heading "💾 Storage Explorer" [level=3] [ref=e272]
+      - paragraph [ref=e273]:
+        - text: Explore the internal chunk layout of the storage backend. Each series is a row; frozen compressed chunks are
+        - generic [ref=e274]: frozen
+        - text: and the active write buffer is
+        - generic [ref=e275]: hot
+        - text: . Click any chunk to inspect it.
+      - generic [ref=e1199]:
+        - generic [ref=e1200]:
+          - generic [ref=e1201]: "10"
+          - generic [ref=e1202]: Series
+        - generic [ref=e1203]:
+          - generic [ref=e1204]: "10"
+          - generic [ref=e1205]: Total chunks
+        - generic [ref=e1206]:
+          - generic [ref=e1207]: "0"
+          - generic [ref=e1208]: Frozen (compressed)
+        - generic [ref=e1209]:
+          - generic [ref=e1210]: 1.53 MB
+          - generic [ref=e1211]: Total storage
+        - generic [ref=e1212]:
+          - generic [ref=e1213]: 1.0×
+          - generic [ref=e1214]: Avg compression
+      - generic [ref=e293]:
+        - generic [ref=e1215]:
+          - generic [ref=e1216]:
+            - generic [ref=e1217]: http_requests_total
+            - generic [ref=e1218]:
+              - generic [ref=e1219]: region=us-east
+              - generic [ref=e1220]: instance=web-01
+              - generic [ref=e1221]: job=demo
+            - generic [ref=e1222]: 10,000 pts · 156.3 KB · 0 chunks + hot
+          - 'generic "Hot buffer: 10000 pts, 156.3 KB (uncompressed)" [ref=e1224] [cursor=pointer]':
+            - generic: "10000"
+        - generic [ref=e1225]:
+          - generic [ref=e1226]:
+            - generic [ref=e1227]: cpu_usage_percent
+            - generic [ref=e1228]:
+              - generic [ref=e1229]: region=us-east
+              - generic [ref=e1230]: instance=web-02
+              - generic [ref=e1231]: job=demo
+            - generic [ref=e1232]: 10,000 pts · 156.3 KB · 0 chunks + hot
+          - 'generic "Hot buffer: 10000 pts, 156.3 KB (uncompressed)" [ref=e1234] [cursor=pointer]':
+            - generic: "10000"
+        - generic [ref=e1235]:
+          - generic [ref=e1236]:
+            - generic [ref=e1237]: memory_usage_bytes
+            - generic [ref=e1238]:
+              - generic [ref=e1239]: region=us-east
+              - generic [ref=e1240]: instance=web-03
+              - generic [ref=e1241]: job=demo
+            - generic [ref=e1242]: 10,000 pts · 156.3 KB · 0 chunks + hot
+          - 'generic "Hot buffer: 10000 pts, 156.3 KB (uncompressed)" [ref=e1244] [cursor=pointer]':
+            - generic: "10000"
+        - generic [ref=e1245]:
+          - generic [ref=e1246]:
+            - generic [ref=e1247]: http_requests_total
+            - generic [ref=e1248]:
+              - generic [ref=e1249]: region=us-west
+              - generic [ref=e1250]: instance=api-01
+              - generic [ref=e1251]: job=demo
+            - generic [ref=e1252]: 10,000 pts · 156.3 KB · 0 chunks + hot
+          - 'generic "Hot buffer: 10000 pts, 156.3 KB (uncompressed)" [ref=e1254] [cursor=pointer]':
+            - generic: "10000"
+        - generic [ref=e1255]:
+          - generic [ref=e1256]:
+            - generic [ref=e1257]: cpu_usage_percent
+            - generic [ref=e1258]:
+              - generic [ref=e1259]: region=us-west
+              - generic [ref=e1260]: instance=api-02
+              - generic [ref=e1261]: job=demo
+            - generic [ref=e1262]: 10,000 pts · 156.3 KB · 0 chunks + hot
+          - 'generic "Hot buffer: 10000 pts, 156.3 KB (uncompressed)" [ref=e1264] [cursor=pointer]':
+            - generic: "10000"
+        - generic [ref=e1265]:
+          - generic [ref=e1266]:
+            - generic [ref=e1267]: memory_usage_bytes
+            - generic [ref=e1268]:
+              - generic [ref=e1269]: region=us-west
+              - generic [ref=e1270]: instance=worker-01
+              - generic [ref=e1271]: job=demo
+            - generic [ref=e1272]: 10,000 pts · 156.3 KB · 0 chunks + hot
+          - 'generic "Hot buffer: 10000 pts, 156.3 KB (uncompressed)" [ref=e1274] [cursor=pointer]':
+            - generic: "10000"
+        - generic [ref=e1275]:
+          - generic [ref=e1276]:
+            - generic [ref=e1277]: http_requests_total
+            - generic [ref=e1278]:
+              - generic [ref=e1279]: region=eu-west
+              - generic [ref=e1280]: instance=worker-02
+              - generic [ref=e1281]: job=demo
+            - generic [ref=e1282]: 10,000 pts · 156.3 KB · 0 chunks + hot
+          - 'generic "Hot buffer: 10000 pts, 156.3 KB (uncompressed)" [ref=e1284] [cursor=pointer]':
+            - generic: "10000"
+        - generic [ref=e1285]:
+          - generic [ref=e1286]:
+            - generic [ref=e1287]: cpu_usage_percent
+            - generic [ref=e1288]:
+              - generic [ref=e1289]: region=eu-west
+              - generic [ref=e1290]: instance=cache-01
+              - generic [ref=e1291]: job=demo
+            - generic [ref=e1292]: 10,000 pts · 156.3 KB · 0 chunks + hot
+          - 'generic "Hot buffer: 10000 pts, 156.3 KB (uncompressed)" [ref=e1294] [cursor=pointer]':
+            - generic: "10000"
+        - generic [ref=e1295]:
+          - generic [ref=e1296]:
+            - generic [ref=e1297]: memory_usage_bytes
+            - generic [ref=e1298]:
+              - generic [ref=e1299]: region=eu-west
+              - generic [ref=e1300]: instance=db-01
+              - generic [ref=e1301]: job=demo
+            - generic [ref=e1302]: 10,000 pts · 156.3 KB · 0 chunks + hot
+          - 'generic "Hot buffer: 10000 pts, 156.3 KB (uncompressed)" [ref=e1304] [cursor=pointer]':
+            - generic: "10000"
+        - generic [ref=e1305]:
+          - generic [ref=e1306]:
+            - generic [ref=e1307]: http_requests_total
+            - generic [ref=e1308]:
+              - generic [ref=e1309]: region=ap-south
+              - generic [ref=e1310]: instance=db-02
+              - generic [ref=e1311]: job=demo
+            - generic [ref=e1312]: 10,000 pts · 156.3 KB · 0 chunks + hot
+          - 'generic "Hot buffer: 10000 pts, 156.3 KB (uncompressed)" [ref=e1314] [cursor=pointer]':
+            - generic: "10000"
+  - generic [ref=e43]:
+    - heading "Engine Architecture" [level=2] [ref=e44]
+    - paragraph [ref=e45]: Every component is a pluggable interface — swap codecs, storage backends, and query strategies independently.
+    - generic [ref=e46]:
+      - generic [ref=e47]:
+        - generic [ref=e48]:
+          - generic [ref=e49]: 📥
+          - heading "Ingest Pipeline" [level=4] [ref=e50]
+          - paragraph [ref=e51]: OTLP JSON → normalized samples with label interning & inverted index
+        - generic [ref=e52]: →
+        - generic [ref=e53]:
+          - generic [ref=e54]: 💾
+          - heading "Storage Backends" [level=4] [ref=e55]
+          - paragraph [ref=e56]: FlatStore · ChunkedStore · ColumnStore — hot chunks + frozen compressed blocks
+        - generic [ref=e57]: →
+        - generic [ref=e58]:
+          - generic [ref=e59]: 🔍
+          - heading "Query Engine" [level=4] [ref=e60]
+          - paragraph [ref=e61]: Label matching · time range scan · aggregation · groupBy · rate
+      - generic [ref=e62]:
+        - generic [ref=e63]:
+          - generic [ref=e64]: 🗜️
+          - heading "XOR-Delta Codec" [level=4] [ref=e65]
+          - paragraph [ref=e66]: "Gorilla-style: DoD timestamps + XOR float64 values. TS / Zig WASM / Rust WASM"
+        - generic [ref=e67]:
+          - generic [ref=e68]: 🏷️
+          - heading "Label Index" [level=4] [ref=e69]
+          - paragraph [ref=e70]: FNV-1a string interner + inverted postings lists with gallop search
+        - generic [ref=e71]:
+          - generic [ref=e72]: ⚡
+          - heading "Worker Isolation" [level=4] [ref=e73]
+          - paragraph [ref=e74]: Off-main-thread via Web Workers with transferable buffers
+  - generic [ref=e75]:
+    - heading "Three Storage Backends" [level=2] [ref=e76]
+    - generic [ref=e77]:
+      - article [ref=e78]:
+        - generic [ref=e79]: Baseline
+        - heading "FlatStore" [level=3] [ref=e80]
+        - paragraph [ref=e81]:
+          - text: Raw TypedArrays with exponential doubling. Zero encode/decode overhead.
+          - strong [ref=e82]: 16 bytes/sample.
+        - generic [ref=e83]:
+          - generic [ref=e84]: Memory
+          - generic [ref=e87]: 16 B/pt
+        - generic [ref=e88]:
+          - generic [ref=e89]: Write
+          - generic [ref=e92]: Fastest
+        - generic [ref=e93]:
+          - generic [ref=e94]: Read
+          - generic [ref=e97]: O(log n)
+      - article [ref=e98]:
+        - generic [ref=e99]: Compressed
+        - heading "ChunkedStore" [level=3] [ref=e100]
+        - paragraph [ref=e101]:
+          - text: Hot chunks → freeze → compress with pluggable codec. Amortized encode cost.
+          - strong [ref=e102]: ~2–4 bytes/sample.
+        - generic [ref=e103]:
+          - generic [ref=e104]: Memory
+          - generic [ref=e107]: ~3 B/pt
+        - generic [ref=e108]:
+          - generic [ref=e109]: Write
+          - generic [ref=e112]: Amortized
+        - generic [ref=e113]:
+          - generic [ref=e114]: Read
+          - generic [ref=e117]: Decode + scan
+      - article [ref=e118]:
+        - generic [ref=e119]: Optimal
+        - heading "ColumnStore" [level=3] [ref=e120]
+        - paragraph [ref=e121]:
+          - text: Shared timestamp columns for co-scraped metrics. Values-only compression per series.
+          - strong [ref=e122]: ~1–2 bytes/sample.
+        - generic [ref=e123]:
+          - generic [ref=e124]: Memory
+          - generic [ref=e127]: ~1.5 B/pt
+        - generic [ref=e128]:
+          - generic [ref=e129]: Write
+          - generic [ref=e132]: Batch freeze
+        - generic [ref=e133]:
+          - generic [ref=e134]: Read
+          - generic [ref=e137]: Fused range
+  - generic [ref=e138]:
+    - heading "XOR-Delta Compression" [level=2] [ref=e139]
+    - paragraph [ref=e140]: Based on Facebook's Gorilla paper (VLDB 2015). Timestamps use delta-of-delta with zigzag encoding. Values use XOR with leading/trailing zero tracking.
+    - generic [ref=e141]:
+      - generic [ref=e142]:
+        - generic [ref=e143]: "1"
+        - generic [ref=e144]:
+          - 'heading "Timestamp: Delta-of-Delta" [level=4] [ref=e145]'
+          - paragraph [ref=e146]:
+            - text: Regular intervals compress to
+            - strong [ref=e147]: 1 bit per sample
+            - text: . Irregular intervals use 9–68 bits with zigzag encoding.
+          - code [ref=e149]: DoD == 0 → '0' (1 bit) DoD in [-63, 64] → '10' + 7-bit zz (9 bits) DoD in [-255, 256] → '110' + 9-bit zz (12 bits) DoD in [-2047,2048] → '1110' + 12-bit (16 bits) Otherwise → '1111' + raw 64 (68 bits)
+      - generic [ref=e150]:
+        - generic [ref=e151]: "2"
+        - generic [ref=e152]:
+          - 'heading "Value: XOR Encoding" [level=4] [ref=e153]'
+          - paragraph [ref=e154]:
+            - text: "Identical values:"
+            - strong [ref=e155]: 1 bit
+            - text: . Similar values reuse the leading/trailing zero window from the previous sample.
+          - code [ref=e157]: XOR == 0 → '0' (1 bit) Reuse window → '10' + meaningful (2 + N bits) New window → '11' + 6L + 6M (14 + N bits)
+      - generic [ref=e158]:
+        - generic [ref=e159]: "3"
+        - generic [ref=e160]:
+          - 'heading "Result: Massive Compression" [level=4] [ref=e161]'
+          - paragraph [ref=e162]:
+            - text: Constant-interval gauges achieve
+            - strong [ref=e163]: 57× compression
+            - text: vs raw Float64. Even noisy data compresses 4–8×.
+  - generic [ref=e164]:
+    - heading "Query Engine" [level=2] [ref=e165]
+    - paragraph [ref=e166]: The scan engine supports label matching, time windowing, six aggregation functions, groupBy, and rate computation.
+    - generic [ref=e167]:
+      - generic [ref=e168]:
+        - heading "Aggregation Functions" [level=4] [ref=e169]
+        - generic [ref=e170]:
+          - generic [ref=e171]: sum
+          - generic [ref=e172]: avg
+          - generic [ref=e173]: min
+          - generic [ref=e174]: max
+          - generic [ref=e175]: count
+          - generic [ref=e176]: last
+          - generic [ref=e177]: rate
+      - generic [ref=e178]:
+        - heading "Query Options" [level=4] [ref=e179]
+        - code [ref=e181]: "interface QueryOpts { metric: string; matchers?: { label, value }[]; start: bigint; // ns epoch end: bigint; // ns epoch step?: bigint; // bucket size agg?: AggFn; groupBy?: string[]; }"
+  - generic [ref=e182]:
+    - heading "Quick Start" [level=2] [ref=e183]
+    - paragraph [ref=e184]: "Use the TSDB engine in three steps: create a store, ingest data, and query."
+    - code [ref=e186]: "import { FlatStore, ChunkedStore, ColumnStore, ScanEngine, encodeChunk, decodeChunk } from 'o11ytsdb'; // 1. Create a storage backend const store = new ChunkedStore({ name: 'xor-delta', encode: encodeChunk, decode: decodeChunk }); // 2. Ingest time-series data const labels = new Map([['__name__', 'http_requests'], ['method', 'GET'], ['region', 'us-east']]); const seriesId = store.getOrCreateSeries(labels); const timestamps = BigInt64Array.from({ length: 10000 }, (_, i) => BigInt(Date.now() - (10000 - i) * 1000) * 1_000_000n); const values = Float64Array.from({ length: 10000 }, (_, i) => 100 + Math.sin(i / 50) * 30 + Math.random() * 5); store.appendBatch(seriesId, timestamps, values); // 3. Query with aggregation const engine = new ScanEngine(); const result = engine.query(store, { metric: 'http_requests', start: timestamps[0], end: timestamps[timestamps.length - 1], agg: 'avg', groupBy: ['region'], step: 10_000_000_000n, // 10-second buckets }); console.log(`Found ${result.series.length} groups, scanned ${result.scannedSamples} samples`);"
+  - generic [ref=e187]:
+    - heading "OTLP Ingest Pipeline" [level=2] [ref=e188]
+    - paragraph [ref=e189]: Ingest OpenTelemetry JSON payloads directly. Supports gauge, sum, histogram, summary, and exponential histogram metric types.
+    - code [ref=e191]: "import { ingestOtlpJson, ChunkedStore, ScanEngine } from 'o11ytsdb'; const store = new ChunkedStore(codec); // Ingest raw OTLP metrics JSON const result = ingestOtlpJson(otlpPayload, store); console.log(`${result.pointsAccepted} points, ${result.seriesCreated} new series`); console.log(`Types: ${JSON.stringify(result.metricTypeCounts)}`); // → { gauge: 42, sum: 18, histogram: 6, summary: 2 } // Labels are auto-extracted: // resource.service.name, scope_attr.*, attr.*, __name__ // Histogram generates derived series: // metric_bucket, metric_count, metric_sum"
+  - generic [ref=e192]:
+    - heading "Web Worker Isolation" [level=2] [ref=e193]
+    - paragraph [ref=e194]: Move all TSDB operations off the main thread. The worker protocol supports structured clone, transferable buffers, and SharedArrayBuffer strategies.
+    - code [ref=e196]: "import { WorkerClient } from 'o11ytsdb'; const client = new WorkerClient(new Worker('./tsdb-worker.js')); await client.init({ chunkSize: 1024 }); // Ingest from main thread — data transfers automatically await client.ingest(labels, timestamps, values); // Query returns results back to main thread const result = await client.query({ metric: 'http_requests', start: 0n, end: BigInt(Date.now()) * 1_000_000n, agg: 'avg', step: 10_000_000_000n, }); const stats = await client.stats(); console.log(`${stats.seriesCount} series, ${stats.sampleCount} samples, ${stats.memoryBytes} bytes`);"
+  - paragraph [ref=e198]:
+    - text: Part of the
+    - link "o11ykit" [ref=e199] [cursor=pointer]:
+      - /url: /o11ykit/
+    - text: platform ·
+    - link "OtlpKit Docs" [ref=e200] [cursor=pointer]:
+      - /url: /o11ykit/otlpkit-docs/
+    - text: ·
+    - link "GitHub" [ref=e201] [cursor=pointer]:
+      - /url: https://github.com/strawgate/o11ykit
