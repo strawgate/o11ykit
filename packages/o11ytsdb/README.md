@@ -134,18 +134,39 @@ bun bench/run.mjs competitive
 
 Results are written to `bench/results/` as JSON.
 
+## ALP Compression (Column-Oriented Path)
+
+The column-oriented backends use ALP (Adaptive Lossless floating-Point,
+SIGMOD 2024) for value compression, with automatic Delta-ALP for counters.
+
+### ALP Bytes Per Sample (640-sample chunks)
+
+| Pattern | ALP | Delta-ALP | Improvement |
+|---------|-----|-----------|-------------|
+| constant gauge | 0.02 | — | header only (bw=0) |
+| slow gauge | 1.40 | — | not triggered |
+| monotonic counter | 2.15 | **1.03** | **2.08×** |
+| counter + 40% idle | 1.52 | **0.54** | **2.84×** |
+| high entropy | 8.48 | — | not triggered |
+
+Delta-ALP is selected automatically when the chunk is a monotonic
+integer-valued counter. See [docs/codecs.md](docs/codecs.md) for wire
+formats, detection criteria, and the codec selection pipeline.
+
 ## Architecture
 
 ```
 src/codec.ts         ← TypeScript XOR-delta codec
 zig/src/root.zig     ← Zig XOR-delta codec → WASM
-rust/src/lib.rs      ← Rust XOR-delta codec → WASM
+rust/src/lib.rs      ← Rust codecs → WASM (XOR-delta + ALP + Delta-ALP)
 wasm/                ← Pre-built .wasm binaries
+docs/codecs.md       ← Codec reference (formats, selection, benchmarks)
 bench/
   harness.ts         ← Statistical benchmark runner
   vectors.ts         ← Test vector generators
   codec.bench.ts     ← 3-runtime codec benchmark
   competitive.bench.ts ← 7-strategy compression comparison
+  delta-alp-test.mjs ← Delta-ALP targeted codec test
   wasm-loader.ts     ← WASM instantiation + CodecImpl wrapper
   run.mjs            ← CLI entry point
 ```

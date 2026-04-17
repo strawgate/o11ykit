@@ -236,7 +236,7 @@ export default async function (): Promise<BenchReport> {
 
   // ── Memory: encode+decode 10K iterations and measure heap ──
   for (const impl of implementations) {
-    const gen = generators[1]!; // slow_gauge — realistic case
+    const gen = generators[3]!; // gauge_2dp — realistic case
     suite.add(`memory_encode_1024x1000`, impl.runtime, () => {
       // Encode 1024 points. Measures allocation pressure.
       impl.encode(gen.timestamps, gen.values);

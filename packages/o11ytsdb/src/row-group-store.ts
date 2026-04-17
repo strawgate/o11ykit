@@ -1,18 +1,19 @@
 /**
- * Column store — shared timestamp columns with values-only compression.
+ * Row-group store — Parquet-style row groups with per-series ALP columns.
  *
- * The key insight: co-scraped series share the same timestamps.
- * Instead of storing N copies of the same timestamp array (one per
- * series), we store one shared timestamp column per "group" and only
- * compress values per series.
+ * Same column-oriented architecture as ColumnStore, but packs all
+ * group members' compressed values into a single contiguous buffer
+ * per chunk window (a "row group"). Each series keeps its own ALP
+ * encoding — no shared exponent or bit-width compromise.
  *
- * Memory model:
- *   - Timestamps: one BigInt64Array per group (shared across series)
- *   - Values: per-series XOR-compressed Uint8Array chunks
- *   - Stats: optional per-chunk block statistics for query skipping
+ * Advantages over per-series FrozenChunk allocations:
+ *   - One ArrayBuffer per row group instead of N per series
+ *   - Packed stats in a single Float64Array
+ *   - Lower GC pressure from fewer small allocations
+ *   - Identical compression — same codec, same quality
  *
- * This is the most memory-efficient backend: timestamps are amortized
- * to near-zero cost as group size grows.
+ * Query path: slice into the row group buffer at the series offset,
+ * decode just that series' ALP block. No query amplification.
  */
 
 import type {
@@ -24,11 +25,19 @@ import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
 
 // ── Internal types ───────────────────────────────────────────────────
 
-interface FrozenChunk {
-  compressedValues: Uint8Array;
+interface RowGroup {
+  /** Contiguous buffer of all members' compressed values. */
+  valueBuffer: Uint8Array;
+  /** Byte offset per member into valueBuffer. */
+  offsets: Uint32Array;
+  /** Byte size per member. */
+  sizes: Uint32Array;
+  /** Packed stats: 8 f64s per member (minV, maxV, sum, count, firstV, lastV, sumOfSquares, resetCount). */
+  packedStats: Float64Array;
   /** Index into the group's frozen timestamp chunks. */
   tsChunkIndex: number;
-  stats: ChunkStats;
+  /** Number of group members when this row group was frozen. */
+  memberCount: number;
 }
 
 interface HotValues {
@@ -36,16 +45,15 @@ interface HotValues {
   count: number;
 }
 
-interface ColumnSeries {
+interface RGSeries {
   groupId: number;
+  /** Position of this series within its group's members array. */
+  memberIndex: number;
   hot: HotValues;
-  frozen: FrozenChunk[];
 }
 
 interface TimestampChunk {
-  /** Raw timestamps (when no timestamp codec) or decoded cache. */
   timestamps?: BigInt64Array;
-  /** Compressed timestamps (when timestamp codec is set). */
   compressed?: Uint8Array;
   minT: bigint;
   maxT: bigint;
@@ -53,41 +61,28 @@ interface TimestampChunk {
 }
 
 interface SeriesGroup {
-  /** Hot timestamp buffer (shared across all series in this group). */
   hotTimestamps: BigInt64Array;
   hotCount: number;
-  /** Frozen timestamp chunks. */
   frozenTimestamps: TimestampChunk[];
-  /** All series IDs belonging to this group. */
   members: SeriesId[];
+  rowGroups: RowGroup[];
 }
 
-// ── ColumnStore ──────────────────────────────────────────────────────
+// ── RowGroupStore ────────────────────────────────────────────────────
 
-export class ColumnStore implements StorageBackend {
+export class RowGroupStore implements StorageBackend {
   readonly name: string;
 
   private valuesCodec: ValuesCodec;
   private tsCodec: TimestampCodec | undefined;
   private rangeCodec: RangeDecodeCodec | undefined;
   private chunkSize: number;
-  private allSeries: ColumnSeries[] = [];
+  private allSeries: RGSeries[] = [];
   private groups: SeriesGroup[] = [];
   private labelIndex: LabelIndex;
   private _sampleCount = 0;
   private quantize: ((v: number) => number) | undefined;
 
-  /**
-   * @param valuesCodec - Codec for values-only compression.
-   * @param chunkSize - Samples per chunk before freezing.
-   * @param groupResolver - Maps a label set to a group ID (e.g. by job+instance).
-   *                        Default: all series in one group (maximum timestamp sharing).
-   * @param name - Optional display name.
-   * @param tsCodec - Optional timestamp codec for delta-of-delta compression.
-   * @param rangeCodec - Optional fused range-decode codec (ALP fast-path).
-   * @param precision - Optional decimal precision for value quantization (e.g. 3 → round to 0.001).
-   *                    When set, values are rounded on ingest to guarantee ALP-clean encoding.
-   */
   constructor(
     valuesCodec: ValuesCodec,
     chunkSize = 640,
@@ -103,7 +98,7 @@ export class ColumnStore implements StorageBackend {
     this.tsCodec = tsCodec;
     this.rangeCodec = rangeCodec;
     this.chunkSize = chunkSize;
-    this.name = name ?? `column-${this.valuesCodec.name}-${chunkSize}`;
+    this.name = name ?? `rowgroup-${this.valuesCodec.name}-${chunkSize}`;
     this.labelIndex = labelIndex ?? new LabelIndex();
     if (precision != null) {
       const scale = 10 ** precision;
@@ -119,23 +114,24 @@ export class ColumnStore implements StorageBackend {
 
     const groupId = this.groupResolver(labels);
 
-    // Ensure group exists.
     while (this.groups.length <= groupId) {
       this.groups.push({
         hotTimestamps: new BigInt64Array(this.chunkSize),
         hotCount: 0,
         frozenTimestamps: [],
         members: [],
+        rowGroups: [],
       });
     }
 
     const group = this.groups[groupId]!;
+    const memberIndex = group.members.length;
     group.members.push(id);
 
     this.allSeries.push({
       groupId,
+      memberIndex,
       hot: { values: new Float64Array(this.chunkSize), count: 0 },
-      frozen: [],
     });
     return id;
   }
@@ -144,8 +140,6 @@ export class ColumnStore implements StorageBackend {
     const s = this.allSeries[id]!;
     const group = this.groups[s.groupId]!;
 
-    // Write timestamp to shared group buffer.
-    // Only the first series to write at this position sets the timestamp.
     if (s.hot.count === group.hotCount) {
       group.hotTimestamps[group.hotCount] = timestamp;
     }
@@ -154,7 +148,6 @@ export class ColumnStore implements StorageBackend {
     s.hot.count++;
     this._sampleCount++;
 
-    // Check if this was the last member to fill the slot — advance group counter.
     if (s.hot.count > group.hotCount) {
       group.hotCount = s.hot.count;
     }
@@ -171,18 +164,14 @@ export class ColumnStore implements StorageBackend {
     const len = timestamps.length;
 
     while (offset < len) {
-      // How much space remains in the hot buffer for this series.
       let space = s.hot.values.length - s.hot.count;
 
-      // If hot buffer is full, try freezing first, then expand if still full.
       if (space === 0) {
         const countBefore = s.hot.count;
         this.maybeFreeze(group);
         if (s.hot.count < countBefore) {
-          // Freeze consumed some data — recalculate space.
           space = s.hot.values.length - s.hot.count;
         } else {
-          // Group can't freeze yet (other members haven't filled). Expand buffer.
           const newSize = s.hot.values.length + this.chunkSize;
           const newVals = new Float64Array(newSize);
           newVals.set(s.hot.values);
@@ -198,7 +187,6 @@ export class ColumnStore implements StorageBackend {
 
       const batch = Math.min(space, len - offset);
 
-      // Write timestamps to shared buffer.
       const tsSlice = timestamps.subarray(offset, offset + batch);
       if (s.hot.count <= group.hotCount) {
         group.hotTimestamps.set(tsSlice, s.hot.count);
@@ -237,35 +225,43 @@ export class ColumnStore implements StorageBackend {
     const group = this.groups[s.groupId]!;
     const parts: TimeRange[] = [];
 
-    // ── Path A: Fused range-decode (best — ts decode + binary search + partial values decode in one WASM call) ──
     if (this.rangeCodec && this.tsCodec) {
-      for (const chunk of s.frozen) {
-        const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex]!;
+      for (const rg of group.rowGroups) {
+        if (s.memberIndex >= rg.memberCount) continue;
+        const tsChunk = group.frozenTimestamps[rg.tsChunkIndex]!;
         if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
+        const compressedValues = rg.valueBuffer.subarray(
+          rg.offsets[s.memberIndex]!,
+          rg.offsets[s.memberIndex]! + rg.sizes[s.memberIndex]!,
+        );
+
         const result = this.rangeCodec.rangeDecodeValues(
-          tsChunk.compressed!, chunk.compressedValues, start, end,
+          tsChunk.compressed!, compressedValues, start, end,
         );
         if (result.timestamps.length > 0) {
           parts.push(result);
-
-          // Cache decoded timestamps if not already cached.
           if (!tsChunk.timestamps) {
             tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed!);
           }
         }
       }
     } else {
-      // ── Path B: Individual decode (batch decode amortized by caller if needed) ──
-      for (const chunk of s.frozen) {
-        const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex]!;
+      for (const rg of group.rowGroups) {
+        if (s.memberIndex >= rg.memberCount) continue;
+        const tsChunk = group.frozenTimestamps[rg.tsChunkIndex]!;
         if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
-        // Decompress timestamps if needed.
-        const timestamps = tsChunk.timestamps
-          ?? (tsChunk.timestamps = this.tsCodec!.decodeTimestamps(tsChunk.compressed!));
+        if (!tsChunk.timestamps) {
+          tsChunk.timestamps = this.tsCodec!.decodeTimestamps(tsChunk.compressed!);
+        }
+        const timestamps = tsChunk.timestamps;
 
-        const values = this.valuesCodec.decodeValues(chunk.compressedValues);
+        const compressedValues = rg.valueBuffer.subarray(
+          rg.offsets[s.memberIndex]!,
+          rg.offsets[s.memberIndex]! + rg.sizes[s.memberIndex]!,
+        );
+        const values = this.valuesCodec.decodeValues(compressedValues);
         const lo = lowerBound(timestamps, start, 0, tsChunk.count);
         const hi = upperBound(timestamps, end, lo, tsChunk.count);
         if (hi > lo) {
@@ -304,11 +300,8 @@ export class ColumnStore implements StorageBackend {
   memoryBytes(): number {
     let bytes = 0;
 
-    // Group overhead: shared timestamp buffers.
     for (const g of this.groups) {
-      // Hot shared timestamps — only count active samples, not capacity.
       bytes += g.hotCount * 8;
-      // Frozen shared timestamp chunks.
       for (const tc of g.frozenTimestamps) {
         if (tc.compressed) {
           bytes += tc.compressed.byteLength;
@@ -316,16 +309,19 @@ export class ColumnStore implements StorageBackend {
           bytes += tc.timestamps.byteLength;
         }
       }
-    }
-
-    // Per-series: hot values + frozen compressed values + stats.
-    for (const s of this.allSeries) {
-      bytes += s.hot.count * 8;
-      for (const c of s.frozen) {
-        bytes += c.compressedValues.byteLength;
-        bytes += 72;
+      // Row groups: one contiguous buffer + offset/size tables + packed stats.
+      for (const rg of g.rowGroups) {
+        bytes += rg.valueBuffer.byteLength;
+        bytes += rg.offsets.byteLength;
+        bytes += rg.sizes.byteLength;
+        bytes += rg.packedStats.byteLength;
       }
     }
+
+    for (const s of this.allSeries) {
+      bytes += s.hot.count * 8;
+    }
+
     bytes += this.labelIndex.memoryBytes();
     return bytes;
   }
@@ -333,24 +329,23 @@ export class ColumnStore implements StorageBackend {
   // ── Internal ──
 
   private maybeFreeze(group: SeriesGroup): void {
-    // Find the minimum sample count across all group members.
     let minCount = Infinity;
     for (const memberId of group.members) {
       const c = this.allSeries[memberId]!.hot.count;
       if (c < minCount) minCount = c;
     }
 
-    // Freeze as many full chunks as all members can support.
     const chunksToFreeze = Math.floor(minCount / this.chunkSize);
     if (chunksToFreeze === 0) return;
 
     const hasBatch = typeof this.valuesCodec.encodeBatchValuesWithStats === 'function';
     const hasWasmStats = typeof this.valuesCodec.encodeValuesWithStats === 'function';
+    const numMembers = group.members.length;
 
     for (let c = 0; c < chunksToFreeze; c++) {
       const chunkStart = c * this.chunkSize;
 
-      // Freeze shared timestamps for this chunk.
+      // Freeze shared timestamps.
       const ts = group.hotTimestamps.slice(chunkStart, chunkStart + this.chunkSize);
       const tsChunkIndex = group.frozenTimestamps.length;
 
@@ -371,11 +366,14 @@ export class ColumnStore implements StorageBackend {
         });
       }
 
-      // ── Batch freeze: encode members in capped batches to bound scratch memory ──
+      // Encode all members and collect results.
+      const blobs: Uint8Array[] = [];
+      const allStats: ChunkStats[] = [];
+
       if (hasBatch) {
-        const BATCH_CAP = 32; // Cap to avoid WASM scratch overflow (~32 × 128 × 28 ≈ 112KB per batch)
-        for (let bStart = 0; bStart < group.members.length; bStart += BATCH_CAP) {
-          const bEnd = Math.min(bStart + BATCH_CAP, group.members.length);
+        const BATCH_CAP = 32;
+        for (let bStart = 0; bStart < numMembers; bStart += BATCH_CAP) {
+          const bEnd = Math.min(bStart + BATCH_CAP, numMembers);
           const arrays: Float64Array[] = [];
           for (let m = bStart; m < bEnd; m++) {
             const s = this.allSeries[group.members[m]!]!;
@@ -383,40 +381,76 @@ export class ColumnStore implements StorageBackend {
           }
           const results = this.valuesCodec.encodeBatchValuesWithStats!(arrays);
           for (let m = 0; m < results.length; m++) {
-            const s = this.allSeries[group.members[bStart + m]!]!;
             const { compressed, stats } = results[m]!;
-            s.frozen.push({ compressedValues: compressed, tsChunkIndex, stats });
+            blobs.push(compressed);
+            allStats.push(stats);
           }
         }
       } else {
-        // Fallback: encode each member individually.
         for (const memberId of group.members) {
           const s = this.allSeries[memberId]!;
           const vals = s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
 
-          let compressedValues: Uint8Array;
+          let compressed: Uint8Array;
           let stats: ChunkStats;
           if (hasWasmStats) {
             const result = this.valuesCodec.encodeValuesWithStats!(vals);
-            compressedValues = result.compressed;
+            compressed = result.compressed;
             stats = result.stats;
           } else {
-            compressedValues = this.valuesCodec.encodeValues(vals);
+            compressed = this.valuesCodec.encodeValues(vals);
             stats = computeStats(vals);
           }
-
-          s.frozen.push({ compressedValues, tsChunkIndex, stats });
+          blobs.push(compressed);
+          allStats.push(stats);
         }
       }
+
+      // Pack into a single row group.
+      let totalBytes = 0;
+      for (const b of blobs) totalBytes += b.byteLength;
+
+      const valueBuffer = new Uint8Array(totalBytes);
+      const offsets = new Uint32Array(numMembers);
+      const sizes = new Uint32Array(numMembers);
+      const packedStats = new Float64Array(numMembers * 8);
+
+      let pos = 0;
+      for (let m = 0; m < numMembers; m++) {
+        const blob = blobs[m]!;
+        valueBuffer.set(blob, pos);
+        offsets[m] = pos;
+        sizes[m] = blob.byteLength;
+        pos += blob.byteLength;
+
+        const st = allStats[m]!;
+        const si = m * 8;
+        packedStats[si] = st.minV;
+        packedStats[si + 1] = st.maxV;
+        packedStats[si + 2] = st.sum;
+        packedStats[si + 3] = st.count;
+        packedStats[si + 4] = st.firstV;
+        packedStats[si + 5] = st.lastV;
+        packedStats[si + 6] = st.sumOfSquares;
+        packedStats[si + 7] = st.resetCount;
+      }
+
+      group.rowGroups.push({
+        valueBuffer,
+        offsets,
+        sizes,
+        packedStats,
+        tsChunkIndex,
+        memberCount: numMembers,
+      });
     }
 
-    // Shift remaining hot data back to the start (reuse buffers when possible).
+    // Shift remaining hot data back.
     const frozenSamples = chunksToFreeze * this.chunkSize;
     for (const memberId of group.members) {
       const s = this.allSeries[memberId]!;
       const remaining = s.hot.count - frozenSamples;
       if (remaining > 0) {
-        // Copy remaining data to the front of the existing buffer.
         s.hot.values.copyWithin(0, frozenSamples, s.hot.count);
         s.hot.count = remaining;
       } else {
@@ -424,7 +458,6 @@ export class ColumnStore implements StorageBackend {
       }
     }
 
-    // Shift shared timestamps (reuse buffer).
     const tsRemaining = group.hotCount - frozenSamples;
     if (tsRemaining > 0) {
       group.hotTimestamps.copyWithin(0, frozenSamples, group.hotCount);
@@ -434,4 +467,3 @@ export class ColumnStore implements StorageBackend {
     }
   }
 }
-
