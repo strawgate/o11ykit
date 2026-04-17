@@ -16,12 +16,19 @@
  * decode just that series' ALP block. No query amplification.
  */
 
-import type {
-  ChunkStats, Labels, RangeDecodeCodec, SeriesId, StorageBackend, TimeRange, TimestampCodec, ValuesCodec,
-} from "./types.js";
+import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
 import { LabelIndex } from "./label-index.js";
 import { computeStats } from "./stats.js";
-import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
+import type {
+  ChunkStats,
+  Labels,
+  RangeDecodeCodec,
+  SeriesId,
+  StorageBackend,
+  TimeRange,
+  TimestampCodec,
+  ValuesCodec,
+} from "./types.js";
 
 // ── Internal types ───────────────────────────────────────────────────
 
@@ -91,7 +98,7 @@ export class RowGroupStore implements StorageBackend {
     tsCodec?: TimestampCodec,
     rangeCodec?: RangeDecodeCodec,
     labelIndex?: LabelIndex,
-    precision?: number,
+    precision?: number
   ) {
     if (!Number.isFinite(chunkSize) || !Number.isInteger(chunkSize) || chunkSize < 1) {
       throw new RangeError(`chunkSize must be a finite integer >= 1, got ${chunkSize}`);
@@ -235,11 +242,14 @@ export class RowGroupStore implements StorageBackend {
 
         const compressedValues = rg.valueBuffer.subarray(
           rg.offsets[s.memberIndex]!,
-          rg.offsets[s.memberIndex]! + rg.sizes[s.memberIndex]!,
+          rg.offsets[s.memberIndex]! + rg.sizes[s.memberIndex]!
         );
 
         const result = this.rangeCodec.rangeDecodeValues(
-          tsChunk.compressed!, compressedValues, start, end,
+          tsChunk.compressed!,
+          compressedValues,
+          start,
+          end
         );
         if (result.timestamps.length > 0) {
           parts.push(result);
@@ -261,7 +271,7 @@ export class RowGroupStore implements StorageBackend {
 
         const compressedValues = rg.valueBuffer.subarray(
           rg.offsets[s.memberIndex]!,
-          rg.offsets[s.memberIndex]! + rg.sizes[s.memberIndex]!,
+          rg.offsets[s.memberIndex]! + rg.sizes[s.memberIndex]!
         );
         const values = this.valuesCodec.decodeValues(compressedValues);
         const lo = lowerBound(timestamps, start, 0, tsChunk.count);
@@ -296,8 +306,12 @@ export class RowGroupStore implements StorageBackend {
 
   // ── Stats ──
 
-  get seriesCount(): number { return this.allSeries.length; }
-  get sampleCount(): number { return this._sampleCount; }
+  get seriesCount(): number {
+    return this.allSeries.length;
+  }
+  get sampleCount(): number {
+    return this._sampleCount;
+  }
 
   memoryBytes(): number {
     let bytes = 0;
@@ -340,8 +354,8 @@ export class RowGroupStore implements StorageBackend {
     const chunksToFreeze = Math.floor(minCount / this.chunkSize);
     if (chunksToFreeze === 0) return;
 
-    const hasBatch = typeof this.valuesCodec.encodeBatchValuesWithStats === 'function';
-    const hasWasmStats = typeof this.valuesCodec.encodeValuesWithStats === 'function';
+    const hasBatch = typeof this.valuesCodec.encodeBatchValuesWithStats === "function";
+    const hasWasmStats = typeof this.valuesCodec.encodeValuesWithStats === "function";
     const numMembers = group.members.length;
 
     for (let c = 0; c < chunksToFreeze; c++) {

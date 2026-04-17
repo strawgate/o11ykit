@@ -1,20 +1,22 @@
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkgRoot = join(__dirname, '..');
+const pkgRoot = join(__dirname, "..");
 const pkgPath = (r) => join(pkgRoot, r);
 
-const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(join(__dirname, 'dist', 'wasm-loader.js'));
-const wasm = await loadWasm(pkgPath('wasm/o11ytsdb-rust.wasm'));
+const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(
+  join(__dirname, "dist", "wasm-loader.js")
+);
+const wasm = await loadWasm(pkgPath("wasm/o11ytsdb-rust.wasm"));
 const alpVals = makeALPValuesCodec(wasm);
 const wasmTs = makeTimestampCodec(wasm);
 const rangeCodec = makeALPRangeCodec(wasm);
 
-const { ColumnStore } = await import(pkgPath('dist/column-store.js'));
-const { RowGroupStore } = await import(pkgPath('dist/row-group-store.js'));
-const { FlatStore } = await import(pkgPath('dist/flat-store.js'));
+const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+const { RowGroupStore } = await import(pkgPath("dist/row-group-store.js"));
+const { FlatStore } = await import(pkgPath("dist/flat-store.js"));
 
 const CHUNK_SIZE = 640;
 const NUM_SERIES = 100;
@@ -23,10 +25,16 @@ const T0 = 1_700_000_000_000n;
 const INTERVAL = 15_000n;
 
 class Rng {
-  constructor(seed) { this.state = seed; }
-  next() { this.state = (this.state * 1664525 + 1013904223) >>> 0; return this.state / 4294967296; }
+  constructor(seed) {
+    this.state = seed;
+  }
+  next() {
+    this.state = (this.state * 1664525 + 1013904223) >>> 0;
+    return this.state / 4294967296;
+  }
   gaussian(mean, std) {
-    const u1 = this.next(); const u2 = this.next();
+    const u1 = this.next();
+    const u2 = this.next();
     return mean + std * Math.sqrt(-2 * Math.log(u1 || 1e-10)) * Math.cos(2 * Math.PI * u2);
   }
 }
@@ -42,7 +50,10 @@ for (let s = 0; s < NUM_SERIES; s++) {
   if (pattern === 0) {
     // Constant
     const c = Math.round(rng.next() * 1000) / 10;
-    for (let i = 0; i < POINTS; i++) { ts[i] = T0 + BigInt(i) * INTERVAL; vs[i] = c; }
+    for (let i = 0; i < POINTS; i++) {
+      ts[i] = T0 + BigInt(i) * INTERVAL;
+      vs[i] = c;
+    }
   } else if (pattern === 1) {
     // Counter, small integers
     let counter = Math.floor(rng.next() * 10000);
@@ -120,7 +131,7 @@ for (let s = 0; s < NUM_SERIES; s++) {
 }
 
 const codec = {
-  name: 'alp',
+  name: "alp",
   encodeValues: alpVals.encodeValues,
   decodeValues: alpVals.decodeValues,
   encodeValuesWithStats: alpVals.encodeValuesWithStats,
@@ -128,7 +139,7 @@ const codec = {
   decodeBatchValues: alpVals.decodeBatchValues,
 };
 const tsCodec = {
-  name: 'ts',
+  name: "ts",
   encodeTimestamps: wasmTs.encodeTimestamps,
   decodeTimestamps: wasmTs.decodeTimestamps,
 };
@@ -137,11 +148,13 @@ const flat = new FlatStore();
 const col = new ColumnStore(codec, CHUNK_SIZE, () => 0, undefined, tsCodec, rangeCodec);
 const rg = new RowGroupStore(codec, CHUNK_SIZE, () => 0, undefined, tsCodec, rangeCodec);
 
-const flatIds = [], colIds = [], rgIds = [];
+const flatIds = [],
+  colIds = [],
+  rgIds = [];
 for (let s = 0; s < NUM_SERIES; s++) {
   const m = new Map();
-  m.set('__name__', `m_${s % 10}`);
-  m.set('idx', `${s}`);
+  m.set("__name__", `m_${s % 10}`);
+  m.set("idx", `${s}`);
   flatIds.push(flat.getOrCreateSeries(m));
   colIds.push(col.getOrCreateSeries(new Map(m)));
   rgIds.push(rg.getOrCreateSeries(new Map(m)));
@@ -165,12 +178,19 @@ for (let s = 0; s < NUM_SERIES; s++) {
   const rData = rg.read(rgIds[s], start, queryEnd);
 
   if (fData.values.length !== cData.values.length || fData.values.length !== rData.values.length) {
-    console.log(`Series ${s}: LENGTH mismatch flat=${fData.values.length} col=${cData.values.length} rg=${rData.values.length}`);
+    console.log(
+      `Series ${s}: LENGTH mismatch flat=${fData.values.length} col=${cData.values.length} rg=${rData.values.length}`
+    );
     mismatches++;
     continue;
   }
-  if (fData.timestamps.length !== cData.timestamps.length || fData.timestamps.length !== rData.timestamps.length) {
-    console.log(`Series ${s}: TS LENGTH mismatch flat=${fData.timestamps.length} col=${cData.timestamps.length} rg=${rData.timestamps.length}`);
+  if (
+    fData.timestamps.length !== cData.timestamps.length ||
+    fData.timestamps.length !== rData.timestamps.length
+  ) {
+    console.log(
+      `Series ${s}: TS LENGTH mismatch flat=${fData.timestamps.length} col=${cData.timestamps.length} rg=${rData.timestamps.length}`
+    );
     mismatches++;
     continue;
   }
@@ -182,12 +202,16 @@ for (let s = 0; s < NUM_SERIES; s++) {
 
   for (let i = 0; i < fData.values.length; i++) {
     if (fData.timestamps[i] !== cData.timestamps[i]) {
-      console.log(`Series ${s} sample ${i}: ts flat=${fData.timestamps[i]} col=${cData.timestamps[i]}`);
+      console.log(
+        `Series ${s} sample ${i}: ts flat=${fData.timestamps[i]} col=${cData.timestamps[i]}`
+      );
       mismatches++;
       break;
     }
     if (fData.timestamps[i] !== rData.timestamps[i]) {
-      console.log(`Series ${s} sample ${i}: ts flat=${fData.timestamps[i]} rg=${rData.timestamps[i]}`);
+      console.log(
+        `Series ${s} sample ${i}: ts flat=${fData.timestamps[i]} rg=${rData.timestamps[i]}`
+      );
       mismatches++;
       break;
     }
@@ -207,14 +231,33 @@ for (let s = 0; s < NUM_SERIES; s++) {
 console.log(`\nVerified ${NUM_SERIES} series x ${POINTS} pts = ${NUM_SERIES * POINTS} samples`);
 console.log(`Mismatches: ${mismatches}`);
 console.log(`\nMemory:`);
-console.log(`  flat:       ${flat.memoryBytes()} B  (${(flat.memoryBytes() / (NUM_SERIES * POINTS)).toFixed(2)} B/pt)`);
-console.log(`  column-alp: ${col.memoryBytes()} B  (${(col.memoryBytes() / (NUM_SERIES * POINTS)).toFixed(2)} B/pt)`);
-console.log(`  rowgroup:   ${rg.memoryBytes()} B  (${(rg.memoryBytes() / (NUM_SERIES * POINTS)).toFixed(2)} B/pt)`);
+console.log(
+  `  flat:       ${flat.memoryBytes()} B  (${(flat.memoryBytes() / (NUM_SERIES * POINTS)).toFixed(2)} B/pt)`
+);
+console.log(
+  `  column-alp: ${col.memoryBytes()} B  (${(col.memoryBytes() / (NUM_SERIES * POINTS)).toFixed(2)} B/pt)`
+);
+console.log(
+  `  rowgroup:   ${rg.memoryBytes()} B  (${(rg.memoryBytes() / (NUM_SERIES * POINTS)).toFixed(2)} B/pt)`
+);
 
 console.log(`\nPer-pattern ALP chunk sizes (640 samples):`);
-const patternNames = ['constant', 'counter-sm', 'counter-lg', 'gauge-2dp', 'gauge-3dp', 'gauge-11dp', 'gauge-12dp', 'hi-prec', 'hi-prec', 'high-var'];
+const patternNames = [
+  "constant",
+  "counter-sm",
+  "counter-lg",
+  "gauge-2dp",
+  "gauge-3dp",
+  "gauge-11dp",
+  "gauge-12dp",
+  "hi-prec",
+  "hi-prec",
+  "high-var",
+];
 for (let p = 0; p < 10; p++) {
   const chunk = allVs[p].subarray(0, 640);
   const { compressed, stats } = alpVals.encodeValuesWithStats(chunk);
-  console.log(`  pattern ${p} (${patternNames[p]}): ${compressed.byteLength} B  (${(compressed.byteLength / 640).toFixed(3)} B/pt)  reset=${stats.resetCount}`);
+  console.log(
+    `  pattern ${p} (${patternNames[p]}): ${compressed.byteLength} B  (${(compressed.byteLength / 640).toFixed(3)} B/pt)  reset=${stats.resetCount}`
+  );
 }

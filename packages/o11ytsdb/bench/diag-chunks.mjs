@@ -18,16 +18,16 @@
  *   node bench/diag-chunks.mjs [pattern-name]
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkgDir = join(__dirname, '..');
+const pkgDir = join(__dirname, "..");
 
 // ── Load WASM ────────────────────────────────────────────────────────
 
-const wasmBytes = readFileSync(join(pkgDir, 'wasm/o11ytsdb-rust.wasm'));
+const wasmBytes = readFileSync(join(pkgDir, "wasm/o11ytsdb-rust.wasm"));
 const { instance } = await WebAssembly.instantiate(wasmBytes, { env: {} });
 const w = instance.exports;
 const mem = () => new Uint8Array(w.memory.buffer);
@@ -60,20 +60,25 @@ function parseALPChunk(buf) {
   let pos = 0;
 
   // Header (14 bytes).
-  const count = (buf[pos] << 8) | buf[pos + 1]; pos += 2;
-  const exponent = buf[pos]; pos += 1;
-  const bitWidth = buf[pos]; pos += 1;
+  const count = (buf[pos] << 8) | buf[pos + 1];
+  pos += 2;
+  const exponent = buf[pos];
+  pos += 1;
+  const bitWidth = buf[pos];
+  pos += 1;
 
   // min_int as i64 BE.
   const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  const minInt = dv.getBigInt64(pos); pos += 8;
+  const minInt = dv.getBigInt64(pos);
+  pos += 8;
 
-  const excCount = (buf[pos] << 8) | buf[pos + 1]; pos += 2;
+  const excCount = (buf[pos] << 8) | buf[pos + 1];
+  pos += 2;
 
   const headerBytes = 14;
 
   // FoR payload: ⌈count × bitWidth / 8⌉.
-  const forPayloadBytes = Math.ceil(count * bitWidth / 8);
+  const forPayloadBytes = Math.ceil((count * bitWidth) / 8);
   pos += forPayloadBytes;
 
   // Exception positions.
@@ -88,9 +93,11 @@ function parseALPChunk(buf) {
   let excBitWidth = 0;
   let excForBytes = 0;
   if (excCount > 0) {
-    excMinU64 = dv.getBigUint64(pos); pos += 8;
-    excBitWidth = buf[pos]; pos += 1;
-    const excPayload = Math.ceil(excCount * excBitWidth / 8);
+    excMinU64 = dv.getBigUint64(pos);
+    pos += 8;
+    excBitWidth = buf[pos];
+    pos += 1;
+    const excPayload = Math.ceil((excCount * excBitWidth) / 8);
     excForBytes = 8 + 1 + excPayload;
     pos += excPayload;
   }
@@ -109,7 +116,7 @@ function parseALPChunk(buf) {
     excBitWidth,
     parsedBytes: pos,
     // Derived.
-    excPct: (excCount / count * 100).toFixed(1),
+    excPct: ((excCount / count) * 100).toFixed(1),
     bPerPt: (buf.length / count).toFixed(3),
   };
 }
@@ -129,14 +136,22 @@ class Rng {
   }
   next() {
     const s = this.s;
-    const result = (Math.imul(this.rotl(Math.imul(s[0], 5), 7), 9) >>> 0);
+    const result = Math.imul(this.rotl(Math.imul(s[0], 5), 7), 9) >>> 0;
     const t = s[1] << 9;
-    s[2] ^= s[0]; s[3] ^= s[1]; s[1] ^= s[2]; s[0] ^= s[3]; s[2] ^= t;
+    s[2] ^= s[0];
+    s[3] ^= s[1];
+    s[1] ^= s[2];
+    s[0] ^= s[3];
+    s[2] ^= t;
     s[3] = this.rotl(s[3], 11);
     return result / 0x100000000;
   }
-  rotl(x, k) { return ((x << k) | (x >>> (32 - k))) >>> 0; }
-  int(lo, hi) { return lo + Math.floor(this.next() * (hi - lo + 1)); }
+  rotl(x, k) {
+    return ((x << k) | (x >>> (32 - k))) >>> 0;
+  }
+  int(lo, hi) {
+    return lo + Math.floor(this.next() * (hi - lo + 1));
+  }
   gaussian(mean, std) {
     const u1 = this.next() || 1e-10;
     const u2 = this.next();
@@ -183,7 +198,8 @@ const generators = {
     const v = new Float64Array(N);
     let val = Math.round(rng.next() * 10000) / 100;
     for (let i = 0; i < N; i++) {
-      val += rng.gaussian(0, 0.05); val = Math.max(0, val);
+      val += rng.gaussian(0, 0.05);
+      val = Math.max(0, val);
       v[i] = Math.round(val * 100) / 100;
     }
     return { ts: makeTimes(N), values: v };
@@ -193,7 +209,8 @@ const generators = {
     const v = new Float64Array(N);
     let val = rng.next() * 500;
     for (let i = 0; i < N; i++) {
-      val += rng.gaussian(0, 0.02); val = Math.max(0, val);
+      val += rng.gaussian(0, 0.02);
+      val = Math.max(0, val);
       v[i] = Math.round(val * 1000) / 1000;
     }
     return { ts: makeTimes(N), values: v };
@@ -249,7 +266,8 @@ const generators = {
     const v = new Float64Array(N);
     let val = rng.next() * 100;
     for (let i = 0; i < N; i++) {
-      val += rng.gaussian(0, 0.5); val = Math.max(0, val);
+      val += rng.gaussian(0, 0.5);
+      val = Math.max(0, val);
       v[i] = Math.round(val * 100) / 100;
     }
     return { ts: makeTimes(N), values: v };
@@ -260,31 +278,37 @@ const generators = {
 
 const filter = process.argv[2];
 
-console.log(`\n  ╔══════════════════════════════════════════════════════════════════════════════════════╗`);
-console.log(`  ║  ALP Chunk Audit — ${N} samples/chunk, 15s intervals                                ║`);
-console.log(`  ╚══════════════════════════════════════════════════════════════════════════════════════╝\n`);
+console.log(
+  `\n  ╔══════════════════════════════════════════════════════════════════════════════════════╗`
+);
+console.log(
+  `  ║  ALP Chunk Audit — ${N} samples/chunk, 15s intervals                                ║`
+);
+console.log(
+  `  ╚══════════════════════════════════════════════════════════════════════════════════════╝\n`
+);
 
 // ── Per-pattern table ──
 
 const hdr = [
-  'Pattern'.padEnd(20),
-  'Total'.padStart(7),
-  'B/pt'.padStart(7),
-  'Exp'.padStart(4),
-  'BW'.padStart(4),
-  'Hdr'.padStart(5),
-  'FoR'.padStart(6),
-  'Exc#'.padStart(6),
-  'Exc%'.padStart(6),
-  'ExcPos'.padStart(7),
-  'ExcFoR'.padStart(7),
-  'ExcBW'.padStart(6),
-  'TsBytes'.padStart(8),
-  'TsB/pt'.padStart(7),
-  'All B/pt'.padStart(9),
-].join('  ');
+  "Pattern".padEnd(20),
+  "Total".padStart(7),
+  "B/pt".padStart(7),
+  "Exp".padStart(4),
+  "BW".padStart(4),
+  "Hdr".padStart(5),
+  "FoR".padStart(6),
+  "Exc#".padStart(6),
+  "Exc%".padStart(6),
+  "ExcPos".padStart(7),
+  "ExcFoR".padStart(7),
+  "ExcBW".padStart(6),
+  "TsBytes".padStart(8),
+  "TsB/pt".padStart(7),
+  "All B/pt".padStart(9),
+].join("  ");
 console.log(`  ${hdr}`);
-console.log(`  ${'─'.repeat(hdr.length)}`);
+console.log(`  ${"─".repeat(hdr.length)}`);
 
 let totalValBytes = 0;
 let totalTsBytes = 0;
@@ -313,21 +337,27 @@ for (const [name, gen] of Object.entries(generators)) {
     String(parsed.headerBytes).padStart(5),
     String(parsed.forPayloadBytes).padStart(6),
     String(parsed.excCount).padStart(6),
-    (parsed.excPct + '%').padStart(6),
+    (parsed.excPct + "%").padStart(6),
     String(parsed.excPosBytes).padStart(7),
     String(parsed.excForBytes).padStart(7),
     String(parsed.excBitWidth).padStart(6),
     String(tsBuf.length).padStart(8),
     (tsBuf.length / N).toFixed(3).padStart(7),
     allBpt.padStart(9),
-  ].join('  ');
+  ].join("  ");
   console.log(`  ${line}`);
 }
 
 console.log();
-console.log(`  Total values: ${totalValBytes} bytes (${(totalValBytes / totalSamples).toFixed(3)} B/pt)`);
-console.log(`  Total timestamps: ${totalTsBytes} bytes (${(totalTsBytes / totalSamples).toFixed(3)} B/pt)`);
-console.log(`  Combined: ${totalValBytes + totalTsBytes} bytes (${((totalValBytes + totalTsBytes) / totalSamples).toFixed(3)} B/pt)`);
+console.log(
+  `  Total values: ${totalValBytes} bytes (${(totalValBytes / totalSamples).toFixed(3)} B/pt)`
+);
+console.log(
+  `  Total timestamps: ${totalTsBytes} bytes (${(totalTsBytes / totalSamples).toFixed(3)} B/pt)`
+);
+console.log(
+  `  Combined: ${totalValBytes + totalTsBytes} bytes (${((totalValBytes + totalTsBytes) / totalSamples).toFixed(3)} B/pt)`
+);
 
 // ── Detailed per-pattern dump (when filter is set) ──
 
@@ -348,34 +378,52 @@ if (filter) {
     console.log(`      bit_width:     ${p.bitWidth}  (FoR offsets from min_int)`);
     console.log(`      min_int:       ${p.minInt}`);
     console.log(`      exc_count:     ${p.excCount}  (${p.excPct}% of ${p.count})`);
-    console.log(`    FoR payload:     ${p.forPayloadBytes} bytes  (${p.count} × ${p.bitWidth} bits)`);
+    console.log(
+      `    FoR payload:     ${p.forPayloadBytes} bytes  (${p.count} × ${p.bitWidth} bits)`
+    );
     if (p.excCount > 0) {
-      console.log(`    Exc positions:   ${p.excPosBytes} bytes  (${p.excCount} × 2 bytes)${p.excCount === p.count ? '  [omitted: all exceptions]' : ''}`);
-      console.log(`    Exc FoR-u64:     ${p.excForBytes} bytes  (8B min + 1B bw + ⌈${p.excCount} × ${p.excBitWidth} / 8⌉)`);
+      console.log(
+        `    Exc positions:   ${p.excPosBytes} bytes  (${p.excCount} × 2 bytes)${p.excCount === p.count ? "  [omitted: all exceptions]" : ""}`
+      );
+      console.log(
+        `    Exc FoR-u64:     ${p.excForBytes} bytes  (8B min + 1B bw + ⌈${p.excCount} × ${p.excBitWidth} / 8⌉)`
+      );
       console.log(`      exc_bit_width: ${p.excBitWidth}`);
     }
-    console.log(`    Parsed:          ${p.parsedBytes} bytes  ${p.parsedBytes === p.totalBytes ? '✓ matches total' : `✗ mismatch (total=${p.totalBytes})`}`);
+    console.log(
+      `    Parsed:          ${p.parsedBytes} bytes  ${p.parsedBytes === p.totalBytes ? "✓ matches total" : `✗ mismatch (total=${p.totalBytes})`}`
+    );
 
-    console.log(`\n  Timestamp chunk: ${tsBuf.length} bytes (${(tsBuf.length / N).toFixed(3)} B/pt)`);
+    console.log(
+      `\n  Timestamp chunk: ${tsBuf.length} bytes (${(tsBuf.length / N).toFixed(3)} B/pt)`
+    );
     console.log(`    Encoding: delta-of-delta Gorilla`);
 
     // Sample values.
-    console.log(`\n  First 5 values: ${Array.from(values.slice(0, 5)).map(v => v.toPrecision(15)).join(', ')}`);
-    console.log(`  Last  5 values: ${Array.from(values.slice(-5)).map(v => v.toPrecision(15)).join(', ')}`);
+    console.log(
+      `\n  First 5 values: ${Array.from(values.slice(0, 5))
+        .map((v) => v.toPrecision(15))
+        .join(", ")}`
+    );
+    console.log(
+      `  Last  5 values: ${Array.from(values.slice(-5))
+        .map((v) => v.toPrecision(15))
+        .join(", ")}`
+    );
 
     // Byte breakdown pie.
     const total = valBuf.length + tsBuf.length;
     const bar = (n, label) => {
-      const pct = (n / total * 100).toFixed(1);
-      const width = Math.round(n / total * 40);
-      return `    ${'█'.repeat(width)}${'░'.repeat(40 - width)}  ${String(n).padStart(5)} B  ${pct.padStart(5)}%  ${label}`;
+      const pct = ((n / total) * 100).toFixed(1);
+      const width = Math.round((n / total) * 40);
+      return `    ${"█".repeat(width)}${"░".repeat(40 - width)}  ${String(n).padStart(5)} B  ${pct.padStart(5)}%  ${label}`;
     };
     console.log(`\n  Byte breakdown (${total} total):`);
-    console.log(bar(p.headerBytes, 'header'));
-    console.log(bar(p.forPayloadBytes, 'FoR values'));
-    if (p.excPosBytes > 0) console.log(bar(p.excPosBytes, 'exc positions'));
-    if (p.excForBytes > 0) console.log(bar(p.excForBytes, 'exc FoR-u64'));
-    console.log(bar(tsBuf.length, 'timestamps'));
+    console.log(bar(p.headerBytes, "header"));
+    console.log(bar(p.forPayloadBytes, "FoR values"));
+    if (p.excPosBytes > 0) console.log(bar(p.excPosBytes, "exc positions"));
+    if (p.excForBytes > 0) console.log(bar(p.excForBytes, "exc FoR-u64"));
+    console.log(bar(tsBuf.length, "timestamps"));
   }
 }
 
