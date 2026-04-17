@@ -245,7 +245,8 @@ export default async function (): Promise<BenchReport> {
 
   // ── Memory: encode+decode 10K iterations and measure heap ──
   for (const impl of implementations) {
-    const gen = generators[3]!; // gauge_2dp — realistic case
+    const gen = generators.find((g) => g.name === "gauge_2dp");
+    if (!gen) throw new Error("Missing benchmark vector: gauge_2dp");
     suite.add(
       `memory_encode_1024x1000`,
       impl.runtime,
