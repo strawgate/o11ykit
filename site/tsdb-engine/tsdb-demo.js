@@ -1587,29 +1587,46 @@ function buildStorageExplorer(store) {
     // Render chunk blocks
     const barContainer = row.querySelector('.chunk-bar-container');
     const maxSamples = Math.max(...seriesInfos.map(s => s.frozenSamples + s.info.hot.count));
+    const totalChunksInSeries = si.info.frozen.length + (si.info.hot.count > 0 ? 1 : 0);
+    const compact = totalChunksInSeries > 40;
+    if (compact) barContainer.classList.add('compact-chunks');
 
     const isCol = si.info._isColumnStore;
     for (let ci = 0; ci < si.info.frozen.length; ci++) {
       const chunk = si.info.frozen[ci];
-      const widthPct = Math.max(2, (chunk.count / maxSamples) * 100);
       const block = document.createElement('div');
       block.className = isCol ? 'chunk-block frozen column-store' : 'chunk-block frozen';
-      block.style.width = widthPct + '%';
+      if (!compact) {
+        const widthPct = Math.max(2, (chunk.count / maxSamples) * 100);
+        block.style.width = widthPct + '%';
+      }
       block.title = `Chunk ${ci}: ${chunk.count} pts, ${formatBytes(chunk.compressedBytes)}, ${chunk.ratio.toFixed(1)}× compression`;
-      block.innerHTML = `<span class="chunk-label">${chunk.count}</span>`;
+      if (!compact) block.innerHTML = `<span class="chunk-label">${chunk.count}</span>`;
       block.addEventListener('click', () => showChunkDetail(si, ci, 'frozen', store));
       barContainer.appendChild(block);
     }
 
     if (si.info.hot.count > 0) {
-      const widthPct = Math.max(2, (si.info.hot.count / maxSamples) * 100);
       const block = document.createElement('div');
       block.className = 'chunk-block hot';
-      block.style.width = widthPct + '%';
+      if (!compact) {
+        const widthPct = Math.max(2, (si.info.hot.count / maxSamples) * 100);
+        block.style.width = widthPct + '%';
+      }
       block.title = `Hot buffer: ${si.info.hot.count} pts, ${formatBytes(si.info.hot.rawBytes)} (uncompressed)`;
-      block.innerHTML = `<span class="chunk-label">${si.info.hot.count}</span>`;
+      if (!compact) block.innerHTML = `<span class="chunk-label">${si.info.hot.count}</span>`;
       block.addEventListener('click', () => showChunkDetail(si, -1, 'hot', store));
       barContainer.appendChild(block);
+    }
+
+    // Compact summary
+    if (compact) {
+      const summary = document.createElement('div');
+      summary.className = 'chunk-summary-bar';
+      summary.innerHTML = `<span class="chunk-count-badge">${si.info.frozen.length} frozen</span>` +
+        (si.info.hot.count > 0 ? `<span class="chunk-count-badge hot">1 hot (${si.info.hot.count.toLocaleString()} pts)</span>` : '') +
+        `<span>Click any block to explore</span>`;
+      row.appendChild(summary);
     }
 
     seriesList.appendChild(row);
@@ -1709,6 +1726,7 @@ function showChunkDetail(seriesInfo, chunkIndex, type, store) {
           ${byteLayoutLegend}
         </div>
       </div>
+      <div class="byte-explorer" id="byteExplorer"></div>
       <div class="chunk-sparkline-container">
         <h4>Decoded Values</h4>
         <canvas id="${sparkId}" width="600" height="120"></canvas>
@@ -1717,8 +1735,10 @@ function showChunkDetail(seriesInfo, chunkIndex, type, store) {
     // Render byte map
     if (isColumn) {
       renderByteMapALP(chunk.compressedValues, chunk.tsChunkCompressed, chunk.sharedTsSeries);
+      renderByteExplorer(chunk.compressedValues, chunk.tsChunkCompressed, chunk.sharedTsSeries, chunk.count, 'alp');
     } else {
       renderByteMap(chunk.compressed, chunk.count);
+      renderByteExplorer(chunk.compressed, null, 0, chunk.count, 'xor');
     }
 
     // Render sparkline
@@ -1824,6 +1844,377 @@ function renderByteMapALP(compressedValues, compressedTs, sharedCount) {
     const pct = Math.max(1, (seg.bytes / totalBytes) * 100);
     return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ''}</div>`;
   }).join('');
+}
+
+// ── Interactive Byte Explorer ──────────────────────────────────────
+
+function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount, codec) {
+  const explorer = $('#byteExplorer');
+  if (!explorer) return;
+
+  // Build a unified byte array with region annotations
+  const regions = [];
+  let bytes;
+
+  if (codec === 'alp') {
+    const valBytes = primaryBlob.byteLength;
+    const headerLen = Math.min(4, valBytes);
+    const tsLen = tsBlob ? tsBlob.byteLength : 0;
+    const amortizedTsLen = sharedCount > 0 ? Math.round(tsLen / sharedCount) : tsLen;
+
+    const totalDisplay = valBytes + amortizedTsLen;
+    bytes = new Uint8Array(totalDisplay);
+    bytes.set(primaryBlob, 0);
+    if (tsBlob && amortizedTsLen > 0) {
+      bytes.set(tsBlob.slice(0, amortizedTsLen), valBytes);
+    }
+
+    regions.push({
+      name: 'ALP Header', cls: 'header', start: 0, end: headerLen,
+      decode: function() {
+        if (headerLen >= 2) {
+          const count = (primaryBlob[0] << 8) | primaryBlob[1];
+          return 'Sample count: ' + count + (headerLen >= 3 ? ', exponent: ' + primaryBlob[2] : '') + (headerLen >= 4 ? ', factor: ' + primaryBlob[3] : '');
+        }
+        return 'Header bytes';
+      }
+    });
+    regions.push({
+      name: 'ALP Encoded Values', cls: 'values', start: headerLen, end: valBytes,
+      decode: function() {
+        const dataLen = valBytes - headerLen;
+        return dataLen + ' bytes encoding ' + sampleCount + ' float64 values\n' + (dataLen * 8 / sampleCount).toFixed(1) + ' bits/value';
+      }
+    });
+    if (amortizedTsLen > 0) {
+      regions.push({
+        name: 'Shared Timestamps (\u00f7' + sharedCount + ')', cls: 'timestamps', start: valBytes, end: totalDisplay,
+        decode: function() {
+          return formatBytes(tsLen) + ' total shared across ' + sharedCount + ' series\nAmortized: ' + formatBytes(amortizedTsLen) + ' per series';
+        }
+      });
+    }
+  } else {
+    bytes = primaryBlob;
+    const totalBytes = bytes.byteLength;
+    const headerLen = Math.min(16, totalBytes);
+    const remainingBytes = totalBytes - headerLen;
+    const tsDeltaBytes = Math.round(remainingBytes * 0.25);
+    const valXorBytes = remainingBytes - tsDeltaBytes;
+
+    regions.push({
+      name: 'Header (ts\u2080 + v\u2080)', cls: 'header', start: 0, end: headerLen,
+      decode: function() {
+        if (headerLen >= 2) {
+          var count = (bytes[0] << 8) | bytes[1];
+          var info = 'Sample count: ' + count;
+          if (headerLen >= 10) info += '\nBase timestamp: first 8 bytes after count';
+          if (headerLen >= 16) info += '\nBase value: IEEE-754 float64 (8 bytes)';
+          return info;
+        }
+        return 'Header bytes';
+      }
+    });
+    regions.push({
+      name: 'Timestamp Deltas', cls: 'timestamps', start: headerLen, end: headerLen + tsDeltaBytes,
+      decode: function() {
+        return '~' + tsDeltaBytes + ' bytes of delta-of-delta encoded timestamps\nGorilla-style variable-length bit packing\n' + (tsDeltaBytes * 8 / Math.max(1, sampleCount - 1)).toFixed(1) + ' bits/delta';
+      }
+    });
+    regions.push({
+      name: 'XOR-Encoded Values', cls: 'values', start: headerLen + tsDeltaBytes, end: totalBytes,
+      decode: function() {
+        return '~' + valXorBytes + ' bytes of XOR-delta compressed float64 values\nLeading/trailing zero optimization\n' + (valXorBytes * 8 / Math.max(1, sampleCount - 1)).toFixed(1) + ' bits/value';
+      }
+    });
+  }
+
+  // Region lookup per byte
+  const byteRegion = new Uint8Array(bytes.length);
+  for (var ri = 0; ri < regions.length; ri++) {
+    for (var i = regions[ri].start; i < regions[ri].end; i++) {
+      byteRegion[i] = ri;
+    }
+  }
+
+  var COLS = 32;
+  var totalRows = Math.ceil(bytes.length / COLS);
+  var viewId = 'hexView-' + Date.now();
+
+  explorer.innerHTML =
+    '<div class="byte-explorer-header">' +
+      '<h4>\uD83D\uDD2C Byte Explorer <span style="font-weight:400;color:#6b8a9e;font-size:11px">' + formatBytes(bytes.length) + ' \u00b7 ' + bytes.length.toLocaleString() + ' bytes</span></h4>' +
+      '<div class="byte-explorer-controls">' +
+        '<button class="active" data-view="hex">Hex</button>' +
+        '<button data-view="decimal">Dec</button>' +
+        '<button data-view="bits">Bits</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="byte-minimap" id="byteMinimap"></div>' +
+    '<div class="hex-grid-scroll" id="' + viewId + '">' +
+      '<div class="hex-grid" id="hexGrid" style="grid-template-columns: 56px repeat(' + COLS + ', 1fr) minmax(60px, auto);"></div>' +
+    '</div>' +
+    '<div id="regionDetail"></div>';
+
+  // Build minimap
+  var minimap = explorer.querySelector('#byteMinimap');
+  var totalLen = bytes.length;
+  regions.forEach(function(r) {
+    var seg = document.createElement('div');
+    seg.className = 'mm-seg';
+    seg.style.width = Math.max(1, ((r.end - r.start) / totalLen) * 100) + '%';
+    seg.style.background = r.cls === 'header' ? '#8b5cf6' : r.cls === 'timestamps' ? '#06b6d4' : '#10b981';
+    seg.title = r.name + ': ' + formatBytes(r.end - r.start);
+    seg.addEventListener('click', function() {
+      var targetRow = Math.floor(r.start / COLS);
+      var gridEl = explorer.querySelector('.hex-grid-scroll');
+      var rowEls = gridEl.querySelectorAll('.hex-offset');
+      if (rowEls[targetRow]) rowEls[targetRow].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      showRegionDetail(r);
+    });
+    minimap.appendChild(seg);
+  });
+
+  // Viewport indicator
+  var viewport = document.createElement('div');
+  viewport.className = 'mm-viewport';
+  minimap.appendChild(viewport);
+
+  // Build hex grid
+  var grid = explorer.querySelector('#hexGrid');
+  var scrollContainer = explorer.querySelector('.hex-grid-scroll');
+  var MAX_INITIAL_ROWS = Math.min(totalRows, 100);
+
+  for (var row = 0; row < MAX_INITIAL_ROWS; row++) {
+    renderHexRow(grid, row, COLS, bytes, byteRegion, regions, 'hex');
+  }
+
+  // Lazy render remaining rows on scroll
+  var renderedRows = MAX_INITIAL_ROWS;
+  if (totalRows > MAX_INITIAL_ROWS) {
+    var sentinel = document.createElement('div');
+    sentinel.style.height = '1px';
+    sentinel.style.gridColumn = '1 / -1';
+    grid.appendChild(sentinel);
+
+    scrollContainer.addEventListener('scroll', function lazyLoad() {
+      var sRect = sentinel.getBoundingClientRect();
+      var cRect = scrollContainer.getBoundingClientRect();
+      if (sRect.top < cRect.bottom + 200 && renderedRows < totalRows) {
+        var batch = Math.min(50, totalRows - renderedRows);
+        grid.removeChild(sentinel);
+        for (var r = renderedRows; r < renderedRows + batch; r++) {
+          renderHexRow(grid, r, COLS, bytes, byteRegion, regions, 'hex');
+        }
+        renderedRows += batch;
+        if (renderedRows < totalRows) grid.appendChild(sentinel);
+      }
+    });
+  }
+
+  // Update viewport indicator on scroll
+  scrollContainer.addEventListener('scroll', function() {
+    var scrollFraction = scrollContainer.scrollTop / Math.max(1, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+    var vf = scrollContainer.clientHeight / Math.max(1, scrollContainer.scrollHeight);
+    viewport.style.left = (scrollFraction * (1 - vf) * 100) + '%';
+    viewport.style.width = Math.max(3, vf * 100) + '%';
+  });
+  var initVF = scrollContainer.clientHeight / Math.max(1, scrollContainer.scrollHeight);
+  viewport.style.left = '0%';
+  viewport.style.width = Math.max(3, initVF * 100) + '%';
+
+  // View mode switcher
+  var buttons = explorer.querySelectorAll('.byte-explorer-controls button');
+  buttons.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      buttons.forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      var mode = btn.dataset.view;
+
+      if (mode === 'bits') {
+        renderBitView(explorer, bytes, byteRegion, regions, sampleCount, codec);
+      } else {
+        var bitView = explorer.querySelector('.bit-view');
+        if (bitView) bitView.remove();
+        scrollContainer.style.display = '';
+        grid.innerHTML = '';
+        renderedRows = 0;
+        var batchSize = Math.min(totalRows, 100);
+        for (var r = 0; r < batchSize; r++) {
+          renderHexRow(grid, r, COLS, bytes, byteRegion, regions, mode);
+        }
+        renderedRows = batchSize;
+      }
+    });
+  });
+
+  // Tooltip
+  var tooltip = document.querySelector('.byte-tooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.className = 'byte-tooltip';
+    document.body.appendChild(tooltip);
+  }
+
+  grid.addEventListener('mouseover', function(e) {
+    var cell = e.target.closest('.hex-cell');
+    if (!cell) { tooltip.classList.remove('visible'); return; }
+    var offset = parseInt(cell.dataset.offset);
+    if (isNaN(offset)) return;
+    var val = bytes[offset];
+    var rIdx = byteRegion[offset];
+    var region = regions[rIdx];
+    tooltip.innerHTML =
+      '<span class="bt-offset">offset ' + offset + '</span> &nbsp;' +
+      '<span class="bt-hex">0x' + val.toString(16).toUpperCase().padStart(2, '0') + '</span>' +
+      '<span style="color:#94a3b8"> = ' + val + '</span>' +
+      '<span class="bt-region ' + region.cls + '">' + region.name + '</span>' +
+      '<div class="bt-decoded">' + (region.cls === 'header' ? 'Metadata / encoding parameters' : region.cls === 'timestamps' ? 'Temporal encoding' : 'Value encoding') + '</div>';
+    tooltip.classList.add('visible');
+  });
+
+  grid.addEventListener('mousemove', function(e) {
+    tooltip.style.left = (e.clientX + 12) + 'px';
+    tooltip.style.top = (e.clientY - 40) + 'px';
+  });
+
+  grid.addEventListener('mouseleave', function() {
+    tooltip.classList.remove('visible');
+  });
+
+  // Click a cell to show region detail
+  grid.addEventListener('click', function(e) {
+    var cell = e.target.closest('.hex-cell');
+    if (!cell) return;
+    var offset = parseInt(cell.dataset.offset);
+    if (isNaN(offset)) return;
+    var rIdx = byteRegion[offset];
+    showRegionDetail(regions[rIdx]);
+    grid.querySelectorAll('.hex-cell.highlighted').forEach(function(c) { c.classList.remove('highlighted'); });
+    grid.querySelectorAll('.hex-cell[data-region="' + rIdx + '"]').forEach(function(c) { c.classList.add('highlighted'); });
+  });
+
+  function showRegionDetail(region) {
+    var detail = explorer.querySelector('#regionDetail');
+    detail.innerHTML =
+      '<div class="region-detail-card">' +
+        '<h5><span class="region-badge ' + region.cls + '">' + region.name + '</span> ' + formatBytes(region.end - region.start) + ' \u00b7 bytes ' + region.start + '\u2013' + (region.end - 1) + '</h5>' +
+        '<div class="region-detail-grid">' +
+          '<div class="rd-item"><div class="rd-label">Offset</div><div class="rd-value">' + region.start + '</div></div>' +
+          '<div class="rd-item"><div class="rd-label">Length</div><div class="rd-value">' + (region.end - region.start) + '</div></div>' +
+          '<div class="rd-item"><div class="rd-label">% of total</div><div class="rd-value">' + ((region.end - region.start) / bytes.length * 100).toFixed(1) + '%</div></div>' +
+        '</div>' +
+        '<div style="margin-top:8px;font-size:11px;color:#6b8a9e;white-space:pre-line;line-height:1.5;font-family:\'IBM Plex Mono\',monospace">' + region.decode() + '</div>' +
+      '</div>';
+  }
+}
+
+function renderHexRow(grid, row, cols, bytes, byteRegion, regions, mode) {
+  var startOffset = row * cols;
+
+  var offsetEl = document.createElement('div');
+  offsetEl.className = 'hex-offset';
+  offsetEl.textContent = '0x' + startOffset.toString(16).toUpperCase().padStart(4, '0');
+  grid.appendChild(offsetEl);
+
+  var asciiStr = '';
+  for (var col = 0; col < cols; col++) {
+    var byteIdx = startOffset + col;
+    var cell = document.createElement('div');
+    cell.className = 'hex-cell';
+
+    if (byteIdx < bytes.length) {
+      var val = bytes[byteIdx];
+      var rIdx = byteRegion[byteIdx];
+      cell.classList.add('region-' + regions[rIdx].cls);
+      cell.dataset.offset = byteIdx;
+      cell.dataset.region = rIdx;
+
+      if (mode === 'hex') {
+        cell.textContent = val.toString(16).toUpperCase().padStart(2, '0');
+      } else {
+        cell.textContent = val.toString().padStart(3, ' ');
+        cell.style.fontSize = '8px';
+      }
+      asciiStr += (val >= 32 && val <= 126) ? String.fromCharCode(val) : '\u00b7';
+    } else {
+      cell.classList.add('region-padding');
+      cell.textContent = '  ';
+      asciiStr += ' ';
+    }
+
+    grid.appendChild(cell);
+  }
+
+  var asciiEl = document.createElement('div');
+  asciiEl.className = 'hex-ascii';
+  asciiEl.textContent = asciiStr;
+  grid.appendChild(asciiEl);
+}
+
+function renderBitView(explorer, bytes, byteRegion, regions, sampleCount, codec) {
+  var scrollContainer = explorer.querySelector('.hex-grid-scroll');
+  scrollContainer.style.display = 'none';
+
+  var existing = explorer.querySelector('.bit-view');
+  if (existing) existing.remove();
+
+  var container = document.createElement('div');
+  container.className = 'bit-view';
+
+  var maxBits = Math.min(bytes.length * 8, 2048);
+  var truncated = bytes.length * 8 > maxBits;
+
+  regions.forEach(function(region) {
+    var regionHeader = document.createElement('div');
+    regionHeader.style.cssText = 'margin:6px 0 4px;font-weight:700;font-size:11px;color:#f59e0b;';
+    regionHeader.textContent = '\u2500\u2500 ' + region.name + ' (bytes ' + region.start + '\u2013' + (region.end - 1) + ') \u2500\u2500';
+    container.appendChild(regionHeader);
+
+    var regionBytes = bytes.slice(region.start, Math.min(region.end, Math.ceil(maxBits / 8)));
+    var bitsPerRow = 64;
+
+    for (var rowStart = 0; rowStart < regionBytes.length * 8; rowStart += bitsPerRow) {
+      var rowEl = document.createElement('div');
+      rowEl.className = 'bit-row';
+
+      var label = document.createElement('span');
+      label.className = 'bit-sample-label';
+      label.textContent = 'b' + (region.start * 8 + rowStart);
+      rowEl.appendChild(label);
+
+      var rowEnd = Math.min(rowStart + bitsPerRow, regionBytes.length * 8);
+      for (var b = rowStart; b < rowEnd; b++) {
+        var byteOff = Math.floor(b / 8);
+        var bitOff = 7 - (b % 8);
+        var bitVal = (regionBytes[byteOff] >> bitOff) & 1;
+
+        var bitEl = document.createElement('span');
+        bitEl.className = 'bit ' + (bitVal ? 'b1' : 'b0');
+        bitEl.textContent = bitVal;
+        rowEl.appendChild(bitEl);
+
+        if ((b + 1) % 8 === 0 && b + 1 < rowEnd) {
+          var sep = document.createElement('span');
+          sep.style.cssText = 'width:4px;';
+          rowEl.appendChild(sep);
+        }
+      }
+
+      container.appendChild(rowEl);
+    }
+
+    if (region.end * 8 > maxBits) return;
+  });
+
+  if (truncated) {
+    var note = document.createElement('div');
+    note.style.cssText = 'margin-top:8px;color:#94a3b8;font-size:10px;';
+    note.textContent = 'Showing first ' + maxBits + ' of ' + (bytes.length * 8) + ' bits...';
+    container.appendChild(note);
+  }
+
+  explorer.querySelector('#regionDetail').before(container);
 }
 
 function renderSparkline(canvasId, decoded) {
