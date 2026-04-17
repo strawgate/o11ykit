@@ -178,7 +178,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   padding: 8px 10px;
-  scroll-behavior: smooth;
+  will-change: scroll-position;
 }
 
 .hex-grid {
@@ -187,6 +187,7 @@
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
   line-height: 1;
+  contain: layout style;
 }
 
 .hex-row {
@@ -214,7 +215,6 @@
   justify-content: center;
   border-radius: 3px;
   cursor: pointer;
-  transition: transform 100ms ease, box-shadow 100ms ease;
   font-weight: 500;
   color: white;
   user-select: none;
@@ -222,8 +222,7 @@
 }
 
 .hex-cell:hover {
-  transform: scale(1.3);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  outline: 1px solid rgba(255, 255, 255, 0.5);
   z-index: 5;
   position: relative;
 }
@@ -256,11 +255,12 @@
 }
 
 /* ── Hex-level sample mapping ── */
-.hex-cell.hex-mapped.hex-sample-even { filter: brightness(1.15); }
-.hex-cell.hex-mapped.hex-sample-odd  { filter: brightness(0.85); }
+/* Use opacity instead of filter:brightness — avoids per-cell compositing */
+.hex-cell.hex-mapped.hex-sample-even { opacity: 1; }
+.hex-cell.hex-mapped.hex-sample-odd  { opacity: 0.65; }
 
 .hex-cell.hex-boundary {
-  box-shadow: inset 3px 0 0 0 #f59e0b;
+  border-left: 2px solid #f59e0b;
 }
 
 .hex-cell.hex-highlight {
@@ -268,13 +268,12 @@
   outline-offset: -1px;
   z-index: 6;
   position: relative;
-  transform: scale(1.15);
 }
 .hex-cell.hex-highlight-ts {
-  box-shadow: 0 0 8px rgba(6, 182, 212, 0.7);
+  background: rgba(6, 182, 212, 0.25);
 }
 .hex-cell.hex-highlight-val {
-  box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+  background: rgba(16, 185, 129, 0.25);
 }
 
 /* Hex decode panel — reuses bit decode panel styles */

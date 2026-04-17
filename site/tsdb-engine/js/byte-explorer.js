@@ -284,62 +284,55 @@ function entryByteRange(entry, totalBytes) {
 }
 
 // ── Hex Row Renderer ─────────────────────────────────────────────────
+// Returns an HTML string for one row (no DOM operations).
 
-function renderHexRow(grid, row, cols, bytes, byteRegion, regions, mode, byteLookup) {
+function renderHexRowHTML(row, cols, bytes, byteRegion, regions, mode, byteLookup) {
   var startOffset = row * cols;
+  var parts = [];
 
-  var offsetEl = document.createElement('div');
-  offsetEl.className = 'hex-offset';
-  offsetEl.textContent = '0x' + startOffset.toString(16).toUpperCase().padStart(4, '0');
-  grid.appendChild(offsetEl);
+  parts.push('<div class="hex-offset">0x' + startOffset.toString(16).toUpperCase().padStart(4, '0') + '</div>');
 
   var asciiStr = '';
   for (var col = 0; col < cols; col++) {
     var byteIdx = startOffset + col;
-    var cell = document.createElement('div');
-    cell.className = 'hex-cell';
+    var cls = 'hex-cell';
 
     if (byteIdx < bytes.length) {
       var val = bytes[byteIdx];
       var rIdx = byteRegion[byteIdx];
-      cell.classList.add('region-' + regions[rIdx].cls);
-      cell.dataset.offset = byteIdx;
-      cell.dataset.region = rIdx;
+      cls += ' region-' + regions[rIdx].cls;
 
-      // Encoded-value overlay (alternating + boundary)
+      var dataAttrs = ' data-offset="' + byteIdx + '" data-region="' + rIdx + '"';
+
       if (byteLookup && byteLookup[byteIdx]) {
         var blEntry = byteLookup[byteIdx];
-        cell.classList.add('hex-mapped');
-        cell.classList.add(blEntry.type === 'timestamp' ? 'hex-ts' : 'hex-val');
-        cell.classList.add(blEntry.sampleIndex % 2 === 0 ? 'hex-sample-even' : 'hex-sample-odd');
-        // Boundary: previous byte belongs to a different entry
+        cls += ' hex-mapped';
+        cls += blEntry.type === 'timestamp' ? ' hex-ts' : ' hex-val';
+        cls += blEntry.sampleIndex % 2 === 0 ? ' hex-sample-even' : ' hex-sample-odd';
         if (byteIdx === 0 || !byteLookup[byteIdx - 1] || byteLookup[byteIdx - 1] !== blEntry) {
-          cell.classList.add('hex-boundary');
+          cls += ' hex-boundary';
         }
-        cell.dataset.sampleIndex = blEntry.sampleIndex;
-        cell.dataset.sampleType = blEntry.type;
+        dataAttrs += ' data-sample-index="' + blEntry.sampleIndex + '" data-sample-type="' + blEntry.type + '"';
       }
 
+      var content;
+      var style = '';
       if (mode === 'hex') {
-        cell.textContent = val.toString(16).toUpperCase().padStart(2, '0');
+        content = val.toString(16).toUpperCase().padStart(2, '0');
       } else {
-        cell.textContent = val.toString().padStart(3, ' ');
-        cell.style.fontSize = '8px';
+        content = val.toString().padStart(3, ' ');
+        style = ' style="font-size:8px"';
       }
+      parts.push('<div class="' + cls + '"' + dataAttrs + style + '>' + content + '</div>');
       asciiStr += (val >= 32 && val <= 126) ? String.fromCharCode(val) : '\u00b7';
     } else {
-      cell.classList.add('region-padding');
-      cell.textContent = '  ';
+      parts.push('<div class="' + cls + ' region-padding">  </div>');
       asciiStr += ' ';
     }
-
-    grid.appendChild(cell);
   }
 
-  var asciiEl = document.createElement('div');
-  asciiEl.className = 'hex-ascii';
-  asciiEl.textContent = asciiStr;
-  grid.appendChild(asciiEl);
+  parts.push('<div class="hex-ascii">' + asciiStr + '</div>');
+  return parts.join('');
 }
 
 // ── Interactive Bit View ─────────────────────────────────────────────
@@ -569,6 +562,12 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
   const explorer = $('#byteExplorer');
   if (!explorer) return;
 
+  // Clean up previous keydown listener to prevent leaks
+  if (renderByteExplorer._escHandler) {
+    document.removeEventListener('keydown', renderByteExplorer._escHandler);
+    renderByteExplorer._escHandler = null;
+  }
+
   const regions = [];
   let bytes;
   var insightHtml = '';
@@ -781,45 +780,77 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
   viewport.className = 'mm-viewport';
   minimap.appendChild(viewport);
 
-  // Build hex grid
+  // Build hex grid — batch via innerHTML (single DOM write)
   var grid = explorer.querySelector('#hexGrid');
   var scrollContainer = explorer.querySelector('.hex-grid-scroll');
   var MAX_INITIAL_ROWS = Math.min(totalRows, 100);
 
-  for (var row = 0; row < MAX_INITIAL_ROWS; row++) {
-    renderHexRow(grid, row, COLS, bytes, byteRegion, regions, 'hex', byteLookup);
+  // cellsByOffset: O(1) lookup for highlight instead of querySelector
+  var cellsByOffset = {};
+
+  function renderBatch(startRow, count, mode) {
+    var htmlParts = [];
+    for (var r = startRow; r < startRow + count; r++) {
+      htmlParts.push(renderHexRowHTML(r, COLS, bytes, byteRegion, regions, mode, byteLookup));
+    }
+    return htmlParts.join('');
   }
+
+  function indexCells() {
+    cellsByOffset = {};
+    var cells = grid.querySelectorAll('.hex-cell[data-offset]');
+    for (var i = 0; i < cells.length; i++) {
+      cellsByOffset[cells[i].dataset.offset] = cells[i];
+    }
+  }
+
+  grid.innerHTML = renderBatch(0, MAX_INITIAL_ROWS, 'hex');
+  indexCells();
 
   // Lazy render remaining rows
   var renderedRows = MAX_INITIAL_ROWS;
+  var currentMode = 'hex';
   if (totalRows > MAX_INITIAL_ROWS) {
     var sentinel = document.createElement('div');
     sentinel.style.height = '1px';
     sentinel.style.gridColumn = '1 / -1';
     grid.appendChild(sentinel);
-
-    scrollContainer.addEventListener('scroll', function lazyLoad() {
-      var sRect = sentinel.getBoundingClientRect();
-      var cRect = scrollContainer.getBoundingClientRect();
-      if (sRect.top < cRect.bottom + 200 && renderedRows < totalRows) {
-        var batch = Math.min(50, totalRows - renderedRows);
-        grid.removeChild(sentinel);
-        for (var r = renderedRows; r < renderedRows + batch; r++) {
-          renderHexRow(grid, r, COLS, bytes, byteRegion, regions, 'hex', byteLookup);
-        }
-        renderedRows += batch;
-        if (renderedRows < totalRows) grid.appendChild(sentinel);
-      }
-    });
   }
 
-  // Viewport indicator on scroll
+  // Throttled scroll handler (combines lazy-load + viewport indicator)
+  var scrollRAF = 0;
   scrollContainer.addEventListener('scroll', function() {
-    var scrollFraction = scrollContainer.scrollTop / Math.max(1, scrollContainer.scrollHeight - scrollContainer.clientHeight);
-    var vf = scrollContainer.clientHeight / Math.max(1, scrollContainer.scrollHeight);
-    viewport.style.left = (scrollFraction * (1 - vf) * 100) + '%';
-    viewport.style.width = Math.max(3, vf * 100) + '%';
+    if (scrollRAF) return;
+    scrollRAF = requestAnimationFrame(function() {
+      scrollRAF = 0;
+
+      // Viewport indicator
+      var scrollFraction = scrollContainer.scrollTop / Math.max(1, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+      var vf = scrollContainer.clientHeight / Math.max(1, scrollContainer.scrollHeight);
+      viewport.style.left = (scrollFraction * (1 - vf) * 100) + '%';
+      viewport.style.width = Math.max(3, vf * 100) + '%';
+
+      // Lazy load
+      if (renderedRows < totalRows && sentinel && sentinel.parentNode) {
+        var sRect = sentinel.getBoundingClientRect();
+        var cRect = scrollContainer.getBoundingClientRect();
+        if (sRect.top < cRect.bottom + 200) {
+          var batch = Math.min(50, totalRows - renderedRows);
+          grid.removeChild(sentinel);
+          grid.insertAdjacentHTML('beforeend', renderBatch(renderedRows, batch, currentMode));
+          // Index new cells
+          var newCells = grid.querySelectorAll('.hex-cell[data-offset]');
+          for (var i = 0; i < newCells.length; i++) {
+            var off = newCells[i].dataset.offset;
+            if (!cellsByOffset[off]) cellsByOffset[off] = newCells[i];
+          }
+          renderedRows += batch;
+          if (renderedRows < totalRows) grid.appendChild(sentinel);
+        }
+      }
+    });
   });
+
   var initVF = scrollContainer.clientHeight / Math.max(1, scrollContainer.scrollHeight);
   viewport.style.left = '0%';
   viewport.style.width = Math.max(3, initVF * 100) + '%';
@@ -842,13 +873,18 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
         if (dp) dp.remove();
         highlightHexSample(null);
         scrollContainer.style.display = '';
-        grid.innerHTML = '';
-        renderedRows = 0;
-        var batchSize = Math.min(totalRows, 100);
-        for (var r = 0; r < batchSize; r++) {
-          renderHexRow(grid, r, COLS, bytes, byteRegion, regions, mode, byteLookup);
+        currentMode = mode;
+        renderedRows = Math.min(totalRows, 100);
+        grid.innerHTML = renderBatch(0, renderedRows, mode);
+        indexCells();
+        if (renderedRows < totalRows) {
+          if (!sentinel) {
+            sentinel = document.createElement('div');
+            sentinel.style.height = '1px';
+            sentinel.style.gridColumn = '1 / -1';
+          }
+          grid.appendChild(sentinel);
         }
-        renderedRows = batchSize;
       }
     });
   });
@@ -858,10 +894,13 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
   var activeHexEntry = null;
 
   function highlightHexSample(entry) {
-    // Clear previous
-    grid.querySelectorAll('.hex-cell.hex-highlight').forEach(function(c) {
-      c.classList.remove('hex-highlight', 'hex-highlight-ts', 'hex-highlight-val');
-    });
+    // Clear previous — track highlighted cells for O(1) clear
+    if (highlightHexSample._prev) {
+      highlightHexSample._prev.forEach(function(c) {
+        c.classList.remove('hex-highlight', 'hex-highlight-ts', 'hex-highlight-val');
+      });
+      highlightHexSample._prev = null;
+    }
     if (!entry) {
       hexDecodePanel.style.display = 'none';
       activeHexEntry = null;
@@ -869,15 +908,18 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     }
     activeHexEntry = entry;
 
-    // Highlight all bytes that belong to this entry
+    // Highlight all bytes that belong to this entry — O(1) lookup per byte
     var range = entryByteRange(entry, bytes.length);
+    var highlighted = [];
     for (var bi = range.startByte; bi < range.endByte; bi++) {
-      var cell = grid.querySelector('.hex-cell[data-offset="' + bi + '"]');
+      var cell = cellsByOffset[bi];
       if (cell) {
         cell.classList.add('hex-highlight');
         cell.classList.add(entry.type === 'timestamp' ? 'hex-highlight-ts' : 'hex-highlight-val');
+        highlighted.push(cell);
       }
     }
+    highlightHexSample._prev = highlighted;
 
     // Show decode info
     hexDecodePanel.style.display = '';
@@ -930,19 +972,25 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
       (entry.xor !== undefined && entry.xor !== 0n ? '<div class="bdp-detail">XOR = 0x' + entry.xor.toString(16).padStart(16, '0') + '</div>' : '');
   }
 
-  // Tooltip
+  // Tooltip — pre-build structure, update via textContent where possible
   var tooltip = document.querySelector('.byte-tooltip');
   if (!tooltip) {
     tooltip = document.createElement('div');
     tooltip.className = 'byte-tooltip';
     document.body.appendChild(tooltip);
   }
+  var lastTooltipOffset = -1;
 
   grid.addEventListener('mouseover', function(e) {
-    var cell = e.target.closest('.hex-cell');
-    if (!cell) { tooltip.classList.remove('visible'); return; }
-    var offset = parseInt(cell.dataset.offset);
-    if (isNaN(offset)) return;
+    var cell = e.target;
+    if (!cell.classList || !cell.classList.contains('hex-cell')) {
+      tooltip.classList.remove('visible');
+      lastTooltipOffset = -1;
+      return;
+    }
+    var offset = cell.dataset.offset | 0;
+    if (offset === lastTooltipOffset) return;
+    lastTooltipOffset = offset;
     var val = bytes[offset];
     var rIdx = byteRegion[offset];
     var region = regions[rIdx];
@@ -961,21 +1009,27 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     tooltip.classList.add('visible');
   });
 
+  // Throttle mousemove for tooltip positioning
+  var moveRAF = 0;
   grid.addEventListener('mousemove', function(e) {
-    tooltip.style.left = (e.clientX + 12) + 'px';
-    tooltip.style.top = (e.clientY - 40) + 'px';
+    if (moveRAF) return;
+    moveRAF = requestAnimationFrame(function() {
+      moveRAF = 0;
+      tooltip.style.left = (e.clientX + 12) + 'px';
+      tooltip.style.top = (e.clientY - 40) + 'px';
+    });
   });
 
   grid.addEventListener('mouseleave', function() {
     tooltip.classList.remove('visible');
+    lastTooltipOffset = -1;
   });
 
   // Click handler: sample-aware for mapped bytes, region fallback otherwise
   grid.addEventListener('click', function(e) {
-    var cell = e.target.closest('.hex-cell');
-    if (!cell) { highlightHexSample(null); return; }
-    var offset = parseInt(cell.dataset.offset);
-    if (isNaN(offset)) return;
+    var cell = e.target;
+    if (!cell.classList || !cell.classList.contains('hex-cell')) { highlightHexSample(null); return; }
+    var offset = cell.dataset.offset | 0;
 
     // Try sample-level highlight first
     if (byteLookup && byteLookup[offset]) {
@@ -987,14 +1041,13 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     highlightHexSample(null);
     var rIdx = byteRegion[offset];
     showRegionDetail(regions[rIdx]);
-    grid.querySelectorAll('.hex-cell.highlighted').forEach(function(c) { c.classList.remove('highlighted'); });
-    grid.querySelectorAll('.hex-cell[data-region="' + rIdx + '"]').forEach(function(c) { c.classList.add('highlighted'); });
   });
 
-  // Escape to clear hex highlights
-  document.addEventListener('keydown', function(e) {
+  // Escape to clear hex highlights (tracked for cleanup on re-render)
+  renderByteExplorer._escHandler = function(e) {
     if (e.key === 'Escape') highlightHexSample(null);
-  });
+  };
+  document.addEventListener('keydown', renderByteExplorer._escHandler);
 
   function showRegionDetail(region) {
     var detail = explorer.querySelector('#regionDetail');
