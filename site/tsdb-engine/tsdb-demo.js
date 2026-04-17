@@ -537,10 +537,8 @@ const REGIONS = ['us-east', 'us-west', 'eu-west', 'ap-south', 'ap-east'];
 const INSTANCES = ['web-01', 'web-02', 'web-03', 'api-01', 'api-02', 'worker-01', 'worker-02', 'cache-01', 'db-01', 'db-02'];
 const METRICS = [
   'http_requests_total',
-  'http_request_duration_ms',
   'cpu_usage_percent',
   'memory_usage_bytes',
-  'active_connections',
 ];
 
 function generateValue(pattern, i, seriesIdx, total) {
@@ -552,9 +550,11 @@ function generateValue(pattern, i, seriesIdx, total) {
     case 'sawtooth':
       return ((i + seriesIdx * 100) % 200) + Math.random() * 5;
     case 'random-walk': {
-      // Produce walk from scratch for each point (deterministic-ish)
-      let v = 50 + seriesIdx * 10;
-      for (let j = 0; j < Math.min(i, 500); j++) v += (Math.sin(j * 0.1 + seriesIdx) * 2 + (Math.random() - 0.5) * 3);
+      const seed = seriesIdx * 7919 + 1;
+      const v = 50 + seriesIdx * 10
+        + Math.sin(i * 0.01 + seed) * 30
+        + Math.sin(i * 0.003 + seed * 1.7) * 20
+        + Math.cos(i * 0.0007 + seed * 2.3) * 15;
       return Math.max(0, v);
     }
     case 'spiky': {
@@ -719,6 +719,9 @@ function renderChart(canvas, seriesData, title) {
   ctx.lineTo(pad.left, h - pad.bottom);
   ctx.lineTo(w - pad.right, h - pad.bottom);
   ctx.stroke();
+
+  // Save state for tooltip
+  lastChartState = { seriesData, minT, maxT, minV, maxV, pad, w, h, plotW, plotH, tRange, vRange };
 }
 
 function formatNum(n) {
@@ -732,6 +735,109 @@ function formatBytes(b) {
   if (b >= 1024 * 1024) return (b / (1024 * 1024)).toFixed(2) + ' MB';
   if (b >= 1024) return (b / 1024).toFixed(1) + ' KB';
   return b + ' B';
+}
+
+// ── Chart Tooltip ─────────────────────────────────────────────────
+
+let lastChartState = null;
+let tooltipEl = null;
+let crosshairEl = null;
+
+function setupChartTooltip() {
+  const canvas = $('#chartCanvas');
+  const container = canvas.closest('.chart-container');
+  container.style.position = 'relative';
+
+  if (!crosshairEl) {
+    crosshairEl = document.createElement('div');
+    crosshairEl.className = 'chart-crosshair';
+    container.appendChild(crosshairEl);
+  }
+  if (!tooltipEl) {
+    tooltipEl = document.createElement('div');
+    tooltipEl.className = 'chart-tooltip';
+    container.appendChild(tooltipEl);
+  }
+
+  canvas.addEventListener('mousemove', handleChartHover);
+  canvas.addEventListener('mouseleave', () => {
+    if (crosshairEl) crosshairEl.style.display = 'none';
+    if (tooltipEl) tooltipEl.style.display = 'none';
+  });
+}
+
+function handleChartHover(e) {
+  if (!lastChartState || !tooltipEl || !crosshairEl) return;
+  const { seriesData, minT, maxT, pad, w, h, plotW, plotH, tRange, vRange, minV, maxV } = lastChartState;
+  const canvas = e.target;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.clientWidth / lastChartState.w;
+  const scaleY = canvas.clientHeight / lastChartState.h;
+  const mx = (e.clientX - rect.left) / scaleX;
+  const my = (e.clientY - rect.top) / scaleY;
+
+  if (mx < pad.left || mx > w - pad.right || my < pad.top || my > h - pad.bottom) {
+    crosshairEl.style.display = 'none';
+    tooltipEl.style.display = 'none';
+    return;
+  }
+
+  const mouseT = minT + ((mx - pad.left) / plotW) * tRange;
+  const points = [];
+
+  for (let si = 0; si < seriesData.length; si++) {
+    const s = seriesData[si];
+    if (s.timestamps.length === 0) continue;
+    // Binary search for nearest timestamp
+    let lo = 0, hi = s.timestamps.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (Number(s.timestamps[mid]) < mouseT) lo = mid + 1; else hi = mid;
+    }
+    // Check neighbors for closest
+    let nearest = lo;
+    if (lo > 0 && Math.abs(Number(s.timestamps[lo - 1]) - mouseT) < Math.abs(Number(s.timestamps[lo]) - mouseT)) {
+      nearest = lo - 1;
+    }
+    const labelStr = s.labels
+      ? [...s.labels].filter(([k]) => k !== '__name__').map(([k, v]) => `${k}="${v}"`).join(', ')
+      : `series ${si}`;
+    points.push({
+      value: s.values[nearest],
+      label: labelStr || 'all',
+      color: CHART_COLORS[si % CHART_COLORS.length],
+      timestamp: Number(s.timestamps[nearest]),
+      y: pad.top + ((maxV - s.values[nearest]) / vRange) * plotH,
+    });
+  }
+
+  if (points.length === 0) return;
+
+  // Position crosshair (in CSS coordinates)
+  const cssLeft = mx * scaleX;
+  const cssTop = pad.top * scaleY;
+  const cssHeight = plotH * scaleY;
+  crosshairEl.style.display = 'block';
+  crosshairEl.style.left = cssLeft + 'px';
+  crosshairEl.style.top = cssTop + 'px';
+  crosshairEl.style.height = cssHeight + 'px';
+
+  // Build tooltip
+  const time = new Date(points[0].timestamp / 1_000_000);
+  let html = `<div class="tooltip-time">${time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</div>`;
+  for (const p of points) {
+    html += `<div class="tooltip-row"><span class="tooltip-swatch" style="background:${p.color}"></span><span class="tooltip-label">${p.label}</span><strong>${p.value.toFixed(2)}</strong></div>`;
+  }
+  tooltipEl.innerHTML = html;
+  tooltipEl.style.display = 'block';
+
+  // Position tooltip
+  const tooltipW = tooltipEl.offsetWidth;
+  const containerW = canvas.closest('.chart-container').offsetWidth;
+  const left = cssLeft + 20 + tooltipW > containerW ? cssLeft - tooltipW - 12 : cssLeft + 20;
+  const top = Math.max(4, (e.clientY - canvas.closest('.chart-container').getBoundingClientRect().top) - 30);
+  tooltipEl.style.left = left + 'px';
+  tooltipEl.style.top = top + 'px';
 }
 
 // ── UI Wiring ────────────────────────────────────────────────────────
@@ -777,7 +883,7 @@ function generateData(numSeries, numPoints, pattern, backendType) {
 
   for (let si = 0; si < numSeries; si++) {
     const metricName = METRICS[si % METRICS.length];
-    const region = REGIONS[si % REGIONS.length];
+    const region = REGIONS[Math.floor(si / METRICS.length) % REGIONS.length];
     const instance = INSTANCES[si % INSTANCES.length];
 
     metricsUsed.add(metricName);
@@ -892,6 +998,7 @@ function runQuery() {
 
   // Render chart
   renderChart($('#chartCanvas'), result.series, chartTitle);
+  setupChartTooltip();
 
   // Build legend
   const legendEl = $('#chartLegend');
@@ -939,4 +1046,16 @@ for (const id of ['queryMetric', 'queryAgg', 'queryGroupBy', 'queryStep']) {
 // Handle canvas resize
 window.addEventListener('resize', () => {
   if (currentStore && $('#queryResults').style.display !== 'none') runQuery();
+});
+
+// Auto-generate demo data on page load for instant gratification
+requestAnimationFrame(() => {
+  setTimeout(() => {
+    generateData(
+      parseInt($('#numSeries').value),
+      parseInt($('#numPoints').value),
+      $('#dataPattern').value,
+      $('#backend').value,
+    );
+  }, 100);
 });

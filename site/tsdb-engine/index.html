@@ -50,6 +50,144 @@
         </div>
       </section>
 
+
+      <!-- ─── LIVE DEMO ──────────────────────────────────────── -->
+      <section class="panel demo-panel" id="live-demo">
+        <h2>🚀 Live Demo: Generate &amp; Query</h2>
+        <p class="section-intro">This runs entirely in your browser. Generate up to 1M data points across multiple series, then query with aggregation — watch compression ratios and query performance in real&nbsp;time.</p>
+
+        <div class="demo-controls">
+          <div class="control-group">
+            <label for="numSeries">Series</label>
+            <select id="numSeries">
+              <option value="5">5 series</option>
+              <option value="10" selected>10 series</option>
+              <option value="25">25 series</option>
+              <option value="50">50 series</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="numPoints">Points per series</label>
+            <select id="numPoints">
+              <option value="1000">1,000</option>
+              <option value="10000" selected>10,000</option>
+              <option value="50000">50,000</option>
+              <option value="100000">100,000</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="dataPattern">Data pattern</label>
+            <select id="dataPattern">
+              <option value="sine">Sine wave</option>
+              <option value="sawtooth">Sawtooth</option>
+              <option value="random-walk">Random walk</option>
+              <option value="spiky">Spiky traffic</option>
+              <option value="constant">Constant (best compression)</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="backend">Storage backend</label>
+            <select id="backend">
+              <option value="flat">FlatStore (no compression)</option>
+              <option value="chunked" selected>ChunkedStore (XOR-delta)</option>
+            </select>
+          </div>
+          <button id="btnGenerate" class="cta cta-primary demo-btn">Generate Data</button>
+        </div>
+
+        <!-- Stats dashboard -->
+        <div class="stats-grid" id="statsGrid" style="display:none;">
+          <div class="stat-card">
+            <div class="stat-big" id="statTotalPoints">—</div>
+            <div class="stat-desc">Total data points</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big" id="statSeries">—</div>
+            <div class="stat-desc">Time series</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big" id="statMemory">—</div>
+            <div class="stat-desc">Memory used</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big" id="statCompression">—</div>
+            <div class="stat-desc">Compression ratio</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big" id="statIngestTime">—</div>
+            <div class="stat-desc">Ingest time</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big" id="statIngestRate">—</div>
+            <div class="stat-desc">Ingest rate</div>
+          </div>
+        </div>
+
+        <!-- Query controls -->
+        <div class="query-controls" id="queryControls" style="display:none;">
+          <h3>Query the Data</h3>
+          <div class="demo-controls">
+            <div class="control-group">
+              <label for="queryMetric">Metric</label>
+              <select id="queryMetric"></select>
+            </div>
+            <div class="control-group">
+              <label for="queryAgg">Aggregation</label>
+              <select id="queryAgg">
+                <option value="">None (raw series)</option>
+                <option value="avg" selected>avg</option>
+                <option value="sum">sum</option>
+                <option value="min">min</option>
+                <option value="max">max</option>
+                <option value="count">count</option>
+                <option value="rate">rate</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="queryGroupBy">Group by</label>
+              <select id="queryGroupBy">
+                <option value="">No grouping</option>
+                <option value="region" selected>region</option>
+                <option value="instance">instance</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="queryStep">Step (ms)</label>
+              <select id="queryStep">
+                <option value="0">No step (raw)</option>
+                <option value="1000">1 s</option>
+                <option value="5000">5 s</option>
+                <option value="10000" selected>10 s</option>
+                <option value="30000">30 s</option>
+                <option value="60000">1 min</option>
+              </select>
+            </div>
+            <button id="btnQuery" class="cta cta-primary demo-btn">Run Query</button>
+          </div>
+
+          <!-- Query results -->
+          <div id="queryResults" style="display:none;">
+            <div class="query-stats">
+              <span id="qStatScannedSeries">—</span>
+              <span id="qStatScannedSamples">—</span>
+              <span id="qStatResultSeries">—</span>
+              <span id="qStatQueryTime">—</span>
+            </div>
+            <div class="chart-container">
+              <canvas id="chartCanvas" width="1100" height="400"></canvas>
+            </div>
+            <div class="chart-legend" id="chartLegend"></div>
+          </div>
+        </div>
+
+        <!-- Compression benchmark -->
+        <div class="compression-bench" id="compressionBench" style="display:none;">
+          <h3>Compression Breakdown</h3>
+          <div class="compression-bars" id="compressionBars"></div>
+        </div>
+      </section>
+
+
       <!-- ─── Architecture ────────────────────────────────────── -->
       <section class="panel" id="architecture">
         <h2>Engine Architecture</h2>
@@ -234,142 +372,6 @@ New window       → '11' + 6L + 6M   (14 + N bits)</code></pre>
   groupBy?: string[];
 }</code></pre>
           </div>
-        </div>
-      </section>
-
-      <!-- ─── LIVE DEMO ──────────────────────────────────────── -->
-      <section class="panel demo-panel" id="live-demo">
-        <h2>🚀 Live Demo: Generate &amp; Query</h2>
-        <p class="section-intro">This runs entirely in your browser. Generate up to 1M data points across multiple series, then query with aggregation — watch compression ratios and query performance in real&nbsp;time.</p>
-
-        <div class="demo-controls">
-          <div class="control-group">
-            <label for="numSeries">Series</label>
-            <select id="numSeries">
-              <option value="5">5 series</option>
-              <option value="10" selected>10 series</option>
-              <option value="25">25 series</option>
-              <option value="50">50 series</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="numPoints">Points per series</label>
-            <select id="numPoints">
-              <option value="1000">1,000</option>
-              <option value="10000" selected>10,000</option>
-              <option value="50000">50,000</option>
-              <option value="100000">100,000</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="dataPattern">Data pattern</label>
-            <select id="dataPattern">
-              <option value="sine">Sine wave</option>
-              <option value="sawtooth">Sawtooth</option>
-              <option value="random-walk">Random walk</option>
-              <option value="spiky">Spiky traffic</option>
-              <option value="constant">Constant (best compression)</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="backend">Storage backend</label>
-            <select id="backend">
-              <option value="flat">FlatStore (no compression)</option>
-              <option value="chunked" selected>ChunkedStore (XOR-delta)</option>
-            </select>
-          </div>
-          <button id="btnGenerate" class="cta cta-primary demo-btn">Generate Data</button>
-        </div>
-
-        <!-- Stats dashboard -->
-        <div class="stats-grid" id="statsGrid" style="display:none;">
-          <div class="stat-card">
-            <div class="stat-big" id="statTotalPoints">—</div>
-            <div class="stat-desc">Total data points</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-big" id="statSeries">—</div>
-            <div class="stat-desc">Time series</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-big" id="statMemory">—</div>
-            <div class="stat-desc">Memory used</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-big" id="statCompression">—</div>
-            <div class="stat-desc">Compression ratio</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-big" id="statIngestTime">—</div>
-            <div class="stat-desc">Ingest time</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-big" id="statIngestRate">—</div>
-            <div class="stat-desc">Ingest rate</div>
-          </div>
-        </div>
-
-        <!-- Query controls -->
-        <div class="query-controls" id="queryControls" style="display:none;">
-          <h3>Query the Data</h3>
-          <div class="demo-controls">
-            <div class="control-group">
-              <label for="queryMetric">Metric</label>
-              <select id="queryMetric"></select>
-            </div>
-            <div class="control-group">
-              <label for="queryAgg">Aggregation</label>
-              <select id="queryAgg">
-                <option value="">None (raw series)</option>
-                <option value="avg" selected>avg</option>
-                <option value="sum">sum</option>
-                <option value="min">min</option>
-                <option value="max">max</option>
-                <option value="count">count</option>
-                <option value="rate">rate</option>
-              </select>
-            </div>
-            <div class="control-group">
-              <label for="queryGroupBy">Group by</label>
-              <select id="queryGroupBy">
-                <option value="">No grouping</option>
-                <option value="region" selected>region</option>
-                <option value="instance">instance</option>
-              </select>
-            </div>
-            <div class="control-group">
-              <label for="queryStep">Step (ms)</label>
-              <select id="queryStep">
-                <option value="0">No step (raw)</option>
-                <option value="1000">1 s</option>
-                <option value="5000">5 s</option>
-                <option value="10000" selected>10 s</option>
-                <option value="30000">30 s</option>
-                <option value="60000">1 min</option>
-              </select>
-            </div>
-            <button id="btnQuery" class="cta cta-primary demo-btn">Run Query</button>
-          </div>
-
-          <!-- Query results -->
-          <div id="queryResults" style="display:none;">
-            <div class="query-stats">
-              <span id="qStatScannedSeries">—</span>
-              <span id="qStatScannedSamples">—</span>
-              <span id="qStatResultSeries">—</span>
-              <span id="qStatQueryTime">—</span>
-            </div>
-            <div class="chart-container">
-              <canvas id="chartCanvas" width="1100" height="400"></canvas>
-            </div>
-            <div class="chart-legend" id="chartLegend"></div>
-          </div>
-        </div>
-
-        <!-- Compression benchmark -->
-        <div class="compression-bench" id="compressionBench" style="display:none;">
-          <h3>Compression Breakdown</h3>
-          <div class="compression-bars" id="compressionBars"></div>
         </div>
       </section>
 
