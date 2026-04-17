@@ -1,0 +1,66 @@
+version: "3.9"
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tsdb-bench-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--enable-feature=otlp-write-receiver"
+      - "--enable-feature=native-histograms"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=24h"
+      - "--web.enable-lifecycle"
+      - "--log.level=warn"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: tsdb-bench-victoria
+    ports:
+      - "8428:8428"
+    volumes:
+      - victoria-data:/victoria-metrics-data
+    command:
+      - "-storageDataPath=/victoria-metrics-data"
+      - "-httpListenAddr=:8428"
+      - "-retentionPeriod=24h"
+      - "-search.maxQueryDuration=5m"
+      - "-opentelemetry.usePrometheusNaming"
+      - "-loggerLevel=WARN"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8428/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mimir:
+    image: grafana/mimir:latest
+    container_name: tsdb-bench-mimir
+    ports:
+      - "9009:9009"
+    volumes:
+      - ./configs/mimir.yaml:/etc/mimir/mimir.yaml:ro
+      - mimir-data:/data
+    command:
+      - "-config.file=/etc/mimir/mimir.yaml"
+      - "-log.level=warn"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9009/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  prometheus-data:
+  victoria-data:
+  mimir-data:

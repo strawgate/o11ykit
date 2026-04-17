@@ -1,0 +1,23 @@
+{
+  "name": "@benchkit/tsdb-comparison",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "bench": "tsx src/index.ts",
+    "generate": "tsx src/index.ts --phase generate",
+    "ingest": "tsx src/index.ts --phase ingest",
+    "storage": "tsx src/index.ts --phase storage",
+    "query": "tsx src/index.ts --phase query",
+    "report": "tsx src/index.ts --phase report"
+  },
+  "dependencies": {
+    "protobufjs": "^7.4.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}
