@@ -923,3 +923,56 @@
     transition: none;
   }
 }
+
+/* ─── WASM Status Badge ──────────────────────────────────────────── */
+
+.wasm-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+  font-family: var(--font-mono, monospace);
+}
+
+.wasm-ok {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.wasm-err {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+/* ─── Codec Tag ──────────────────────────────────────────────────── */
+
+.tag-codec {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-left: 8px;
+  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+  color: #fff;
+}
+
+/* ─── ColumnStore Stats (purple accent) ──────────────────────────── */
+
+.explorer-stat.column-stat {
+  border-left: 3px solid #a855f7;
+}
+
+.explorer-stat.column-stat .explorer-stat-value {
+  color: #7c3aed;
+}
+
+/* ─── ColumnStore frozen chunks (green gradient) ─────────────────── */
+
+.chunk-block.frozen.column-store {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}

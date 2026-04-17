@@ -104,7 +104,9 @@
             <select id="backend">
               <option value="flat">FlatStore (no compression)</option>
               <option value="chunked" selected>ChunkedStore (XOR-delta)</option>
+              <option value="column">ColumnStore (ALP + shared timestamps)</option>
             </select>
+            <div id="wasmStatus" class="wasm-status" style="display:none"></div>
           </div>
           <button id="btnGenerate" class="cta cta-primary demo-btn">Generate Data</button>
         </div>

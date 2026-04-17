@@ -443,6 +443,346 @@ class ChunkedStore {
   }
 }
 
+// ── WASM ALP Codec Loader ────────────────────────────────────────────
+
+let wasmExports = null;
+let wasmReady = false;
+let wasmLoadError = null;
+
+async function loadWasm() {
+  try {
+    const resp = await fetch('./o11ytsdb.wasm');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const { instance } = await WebAssembly.instantiate(await resp.arrayBuffer(), { env: {} });
+    wasmExports = instance.exports;
+    wasmReady = true;
+    return true;
+  } catch (e) {
+    wasmLoadError = e;
+    console.warn('WASM load failed:', e);
+    return false;
+  }
+}
+
+function wasmMem() { return new Uint8Array(wasmExports.memory.buffer); }
+
+function wasmEncodeValuesALP(values) {
+  const n = values.length;
+  wasmExports.resetScratch();
+  const valPtr = wasmExports.allocScratch(n * 8);
+  const outCap = n * 20;
+  const outPtr = wasmExports.allocScratch(outCap);
+  wasmMem().set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), valPtr);
+  const bytesWritten = wasmExports.encodeValuesALP(valPtr, n, outPtr, outCap);
+  return new Uint8Array(wasmExports.memory.buffer.slice(outPtr, outPtr + bytesWritten));
+}
+
+function wasmDecodeValuesALP(buf) {
+  wasmExports.resetScratch();
+  const inPtr = wasmExports.allocScratch(buf.length);
+  wasmMem().set(buf, inPtr);
+  const maxSamples = (buf[0] << 8) | buf[1];
+  const valPtr = wasmExports.allocScratch(maxSamples * 8);
+  const n = wasmExports.decodeValuesALP(inPtr, buf.length, valPtr, maxSamples);
+  return new Float64Array(wasmExports.memory.buffer.slice(valPtr, valPtr + n * 8));
+}
+
+function wasmEncodeTimestamps(timestamps) {
+  const n = timestamps.length;
+  wasmExports.resetScratch();
+  const tsPtr = wasmExports.allocScratch(n * 8);
+  const outCap = n * 20;
+  const outPtr = wasmExports.allocScratch(outCap);
+  wasmMem().set(new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength), tsPtr);
+  const bytesWritten = wasmExports.encodeTimestamps(tsPtr, n, outPtr, outCap);
+  return new Uint8Array(wasmExports.memory.buffer.slice(outPtr, outPtr + bytesWritten));
+}
+
+function wasmDecodeTimestamps(buf) {
+  wasmExports.resetScratch();
+  const inPtr = wasmExports.allocScratch(buf.length);
+  wasmMem().set(buf, inPtr);
+  const maxSamples = (buf[0] << 8) | buf[1];
+  const tsPtr = wasmExports.allocScratch(maxSamples * 8);
+  const n = wasmExports.decodeTimestamps(inPtr, buf.length, tsPtr, maxSamples);
+  return new BigInt64Array(wasmExports.memory.buffer.slice(tsPtr, tsPtr + n * 8));
+}
+
+// ── ColumnStore (ALP + shared timestamps) ────────────────────────────
+//
+// The key insight: co-scraped series share the same timestamps.
+// Instead of N copies of timestamps, we store ONE shared timestamp
+// column per group and only compress values per series with ALP.
+
+class ColumnStore {
+  constructor(chunkSize = 640) {
+    this.name = 'ColumnStore (ALP)';
+    this.chunkSize = chunkSize;
+    this._allSeries = [];
+    this._groups = [];
+    this._labels = [];
+    this._postings = new Map();
+    this._sampleCount = 0;
+  }
+
+  get seriesCount() { return this._allSeries.length; }
+  get sampleCount() { return this._sampleCount; }
+
+  getOrCreateSeries(labels) {
+    const key = [...labels].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
+    for (let i = 0; i < this._labels.length; i++) {
+      const lkey = [...this._labels[i]].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
+      if (lkey === key) return i;
+    }
+    const id = this._allSeries.length;
+
+    // All series in one group (maximum timestamp sharing)
+    const groupId = 0;
+    while (this._groups.length <= groupId) {
+      this._groups.push({
+        hotTimestamps: new BigInt64Array(this.chunkSize),
+        hotCount: 0,
+        frozenTimestamps: [],
+        members: [],
+      });
+    }
+    const group = this._groups[groupId];
+    group.members.push(id);
+
+    this._allSeries.push({
+      groupId,
+      hot: { values: new Float64Array(this.chunkSize), count: 0 },
+      frozen: [],
+    });
+
+    this._labels.push(new Map(labels));
+    for (const [k, v] of labels) {
+      const pk = `${k}\0${v}`;
+      if (!this._postings.has(pk)) this._postings.set(pk, []);
+      this._postings.get(pk).push(id);
+    }
+    return id;
+  }
+
+  appendBatch(id, timestamps, values) {
+    const s = this._allSeries[id];
+    const group = this._groups[s.groupId];
+    let offset = 0;
+
+    while (offset < timestamps.length) {
+      let space = s.hot.values.length - s.hot.count;
+
+      if (space === 0) {
+        const countBefore = s.hot.count;
+        this._maybeFreeze(group);
+        if (s.hot.count < countBefore) {
+          space = s.hot.values.length - s.hot.count;
+        } else {
+          // Group can't freeze yet — expand buffer
+          const newSize = s.hot.values.length + this.chunkSize;
+          const newVals = new Float64Array(newSize);
+          newVals.set(s.hot.values);
+          s.hot.values = newVals;
+          if (group.hotTimestamps.length < newSize) {
+            const newTs = new BigInt64Array(newSize);
+            newTs.set(group.hotTimestamps);
+            group.hotTimestamps = newTs;
+          }
+          space = newSize - s.hot.count;
+        }
+      }
+
+      const batch = Math.min(space, timestamps.length - offset);
+
+      // Write timestamps to shared group buffer
+      const tsSlice = timestamps.subarray(offset, offset + batch);
+      if (s.hot.count <= group.hotCount) {
+        group.hotTimestamps.set(tsSlice, s.hot.count);
+      }
+
+      s.hot.values.set(values.subarray(offset, offset + batch), s.hot.count);
+      s.hot.count += batch;
+      this._sampleCount += batch;
+      offset += batch;
+
+      if (s.hot.count > group.hotCount) {
+        group.hotCount = s.hot.count;
+      }
+
+      if (s.hot.count >= this.chunkSize) {
+        this._maybeFreeze(group);
+      }
+    }
+  }
+
+  _maybeFreeze(group) {
+    let minCount = Infinity;
+    for (const memberId of group.members) {
+      const c = this._allSeries[memberId].hot.count;
+      if (c < minCount) minCount = c;
+    }
+
+    const chunksToFreeze = Math.floor(minCount / this.chunkSize);
+    if (chunksToFreeze === 0) return;
+
+    for (let c = 0; c < chunksToFreeze; c++) {
+      const chunkStart = c * this.chunkSize;
+
+      // Freeze shared timestamps for this chunk
+      const ts = group.hotTimestamps.slice(chunkStart, chunkStart + this.chunkSize);
+      const tsChunkIndex = group.frozenTimestamps.length;
+      const compressedTs = wasmEncodeTimestamps(ts);
+      group.frozenTimestamps.push({
+        compressed: compressedTs,
+        timestamps: null, // lazy decode cache
+        minT: ts[0],
+        maxT: ts[this.chunkSize - 1],
+        count: this.chunkSize,
+      });
+
+      // Freeze each member's values with ALP
+      for (const memberId of group.members) {
+        const s = this._allSeries[memberId];
+        const vals = s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
+        const compressedValues = wasmEncodeValuesALP(vals);
+        s.frozen.push({ compressedValues, tsChunkIndex, count: this.chunkSize });
+      }
+    }
+
+    // Shift remaining hot data
+    const frozenSamples = chunksToFreeze * this.chunkSize;
+    for (const memberId of group.members) {
+      const s = this._allSeries[memberId];
+      const remaining = s.hot.count - frozenSamples;
+      if (remaining > 0) {
+        s.hot.values.copyWithin(0, frozenSamples, s.hot.count);
+        s.hot.count = remaining;
+      } else {
+        s.hot.count = 0;
+      }
+    }
+    const tsRemaining = group.hotCount - frozenSamples;
+    if (tsRemaining > 0) {
+      group.hotTimestamps.copyWithin(0, frozenSamples, group.hotCount);
+      group.hotCount = tsRemaining;
+    } else {
+      group.hotCount = 0;
+    }
+  }
+
+  matchLabel(label, value) {
+    return this._postings.get(`${label}\0${value}`) ?? [];
+  }
+
+  read(id, start, end) {
+    const s = this._allSeries[id];
+    const group = this._groups[s.groupId];
+    const parts = [];
+
+    for (const chunk of s.frozen) {
+      const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex];
+      if (tsChunk.maxT < start || tsChunk.minT > end) continue;
+
+      // Decode timestamps (cached)
+      if (!tsChunk.timestamps) {
+        tsChunk.timestamps = wasmDecodeTimestamps(tsChunk.compressed);
+      }
+      const timestamps = tsChunk.timestamps;
+      const values = wasmDecodeValuesALP(chunk.compressedValues);
+
+      const lo = lowerBound(timestamps, start, 0, tsChunk.count);
+      const hi = upperBound(timestamps, end, lo, tsChunk.count);
+      if (hi > lo) {
+        parts.push({ timestamps: timestamps.slice(lo, hi), values: values.slice(lo, hi) });
+      }
+    }
+
+    // Scan hot buffer
+    if (s.hot.count > 0) {
+      const lo = lowerBound(group.hotTimestamps, start, 0, s.hot.count);
+      const hi = upperBound(group.hotTimestamps, end, lo, s.hot.count);
+      if (hi > lo) {
+        parts.push({
+          timestamps: group.hotTimestamps.slice(lo, hi),
+          values: s.hot.values.slice(lo, hi),
+        });
+      }
+    }
+
+    if (parts.length === 0) return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+    if (parts.length === 1) return parts[0];
+    const totalLen = parts.reduce((s, p) => s + p.timestamps.length, 0);
+    const ts = new BigInt64Array(totalLen);
+    const vs = new Float64Array(totalLen);
+    let off = 0;
+    for (const p of parts) { ts.set(p.timestamps, off); vs.set(p.values, off); off += p.timestamps.length; }
+    return { timestamps: ts, values: vs };
+  }
+
+  labels(id) { return this._labels[id]; }
+
+  memoryBytes() {
+    let bytes = 0;
+    for (const g of this._groups) {
+      bytes += g.hotCount * 8;
+      for (const tc of g.frozenTimestamps) {
+        bytes += tc.compressed.byteLength;
+      }
+    }
+    for (const s of this._allSeries) {
+      bytes += s.hot.count * 8;
+      for (const c of s.frozen) {
+        bytes += c.compressedValues.byteLength;
+      }
+    }
+    return bytes;
+  }
+
+  getChunkInfo(id) {
+    const s = this._allSeries[id];
+    const group = this._groups[s.groupId];
+    return {
+      frozen: s.frozen.map((c, i) => {
+        const tsChunk = group.frozenTimestamps[c.tsChunkIndex];
+        const valBytes = c.compressedValues.byteLength;
+        const tsBytes = tsChunk.compressed.byteLength;
+        const sharedTsSeries = group.members.length;
+        // Amortized timestamp cost: split equally among group members
+        const amortizedTsBytes = tsBytes / sharedTsSeries;
+        const totalCompressed = valBytes + amortizedTsBytes;
+        const rawBytes = c.count * 16;
+        return {
+          index: i,
+          compressedBytes: Math.round(totalCompressed),
+          valuesBytes: valBytes,
+          timestampBytes: tsBytes,
+          sharedTsSeries,
+          amortizedTsBytes: Math.round(amortizedTsBytes),
+          count: c.count,
+          minT: tsChunk.minT,
+          maxT: tsChunk.maxT,
+          rawBytes,
+          ratio: rawBytes / totalCompressed,
+          compressedValues: c.compressedValues,
+          tsChunkCompressed: tsChunk.compressed,
+        };
+      }),
+      hot: {
+        count: s.hot.count,
+        rawBytes: s.hot.count * 16,
+        allocatedBytes: (s.hot.values.byteLength) + (group.hotTimestamps.byteLength / Math.max(1, group.members.length)),
+        timestamps: group.hotTimestamps,
+        values: s.hot.values,
+      },
+      // Extra info for storage explorer
+      _isColumnStore: true,
+      _groupMembers: group.members.length,
+      _sharedTsChunks: group.frozenTimestamps.length,
+      _sharedTsTotalBytes: group.frozenTimestamps.reduce((s, tc) => s + tc.compressed.byteLength, 0),
+    };
+  }
+}
+
 // ── ScanEngine ───────────────────────────────────────────────────────
 
 function aggInit(fn) {
@@ -908,7 +1248,18 @@ $('#btnGenerate').addEventListener('click', () => {
 });
 
 function generateData(numSeries, numPoints, pattern, backendType, intervalMs = 10000) {
-  const store = backendType === 'chunked' ? new ChunkedStore(640) : new FlatStore();
+  let store;
+  if (backendType === 'column') {
+    if (!wasmReady) {
+      alert('WASM codec not loaded — ColumnStore requires WebAssembly. Try ChunkedStore instead.');
+      return;
+    }
+    store = new ColumnStore(640);
+  } else if (backendType === 'chunked') {
+    store = new ChunkedStore(640);
+  } else {
+    store = new FlatStore();
+  }
   const now = BigInt(Date.now()) * 1_000_000n; // nanoseconds
   const intervalNs = BigInt(intervalMs) * 1_000_000n;
 
@@ -917,11 +1268,12 @@ function generateData(numSeries, numPoints, pattern, backendType, intervalMs = 1
   generatedMetrics = [];
   const metricsUsed = new Set();
 
+  // Pre-generate series metadata and data
+  const allSeriesData = [];
   for (let si = 0; si < numSeries; si++) {
     const metricName = METRICS[si % METRICS.length];
     const region = REGIONS[Math.floor(si / METRICS.length) % REGIONS.length];
     const instance = INSTANCES[si % INSTANCES.length];
-
     metricsUsed.add(metricName);
 
     const labels = new Map([
@@ -934,14 +1286,28 @@ function generateData(numSeries, numPoints, pattern, backendType, intervalMs = 1
     const id = store.getOrCreateSeries(labels);
     const timestamps = new BigInt64Array(numPoints);
     const values = new Float64Array(numPoints);
-
     const startT = now - BigInt(numPoints) * intervalNs;
     for (let i = 0; i < numPoints; i++) {
       timestamps[i] = startT + BigInt(i) * intervalNs;
       values[i] = generateValue(pattern, i, si, numPoints);
     }
+    allSeriesData.push({ id, timestamps, values });
+  }
 
-    store.appendBatch(id, timestamps, values);
+  // ColumnStore needs interleaved ingestion (co-scraped timestamps).
+  // Append in chunk-sized rounds across all series so freeze triggers.
+  if (backendType === 'column') {
+    const chunkSize = 640;
+    for (let offset = 0; offset < numPoints; offset += chunkSize) {
+      const end = Math.min(offset + chunkSize, numPoints);
+      for (const sd of allSeriesData) {
+        store.appendBatch(sd.id, sd.timestamps.subarray(offset, end), sd.values.subarray(offset, end));
+      }
+    }
+  } else {
+    for (const sd of allSeriesData) {
+      store.appendBatch(sd.id, sd.timestamps, sd.values);
+    }
   }
 
   const ingestTime = performance.now() - t0;
@@ -1064,7 +1430,7 @@ function showCompressionBreakdown(rawBytes, compressedBytes) {
 
   const rows = [
     { label: 'Raw (16 B/pt)', bytes: rawBytes, cls: 'raw' },
-    { label: 'XOR-Delta', bytes: compressedBytes, cls: 'compressed' },
+    { label: currentStore instanceof ColumnStore ? 'ALP + shared ts' : 'XOR-Delta', bytes: compressedBytes, cls: 'compressed' },
   ];
 
   bars.innerHTML = rows.map(r => {
@@ -1153,6 +1519,23 @@ function buildStorageExplorer(store) {
     seriesInfos.push({ id, labels, info, frozenSamples, frozenBytes, frozenRaw });
   }
 
+  // Extra stats for ColumnStore
+  const firstInfo = seriesInfos.length > 0 ? seriesInfos[0].info : null;
+  const isColumnStore = firstInfo && firstInfo._isColumnStore;
+  const columnStatsHtml = isColumnStore ? `
+      <div class="explorer-stat column-stat">
+        <span class="explorer-stat-value">${firstInfo._groupMembers}</span>
+        <span class="explorer-stat-label">Series sharing timestamps</span>
+      </div>
+      <div class="explorer-stat column-stat">
+        <span class="explorer-stat-value">${firstInfo._sharedTsChunks}</span>
+        <span class="explorer-stat-label">Shared ts chunks</span>
+      </div>
+      <div class="explorer-stat column-stat">
+        <span class="explorer-stat-value">${formatBytes(firstInfo._sharedTsTotalBytes)}</span>
+        <span class="explorer-stat-label">Shared ts storage</span>
+      </div>` : '';
+
   overview.innerHTML = `
     <div class="explorer-stats">
       <div class="explorer-stat">
@@ -1175,6 +1558,7 @@ function buildStorageExplorer(store) {
         <span class="explorer-stat-value">${totalRawBytes > 0 ? (totalRawBytes / totalCompressedBytes).toFixed(1) + '×' : '—'}</span>
         <span class="explorer-stat-label">Avg compression</span>
       </div>
+      ${columnStatsHtml}
     </div>`;
 
   // Build series rows
@@ -1204,11 +1588,12 @@ function buildStorageExplorer(store) {
     const barContainer = row.querySelector('.chunk-bar-container');
     const maxSamples = Math.max(...seriesInfos.map(s => s.frozenSamples + s.info.hot.count));
 
+    const isCol = si.info._isColumnStore;
     for (let ci = 0; ci < si.info.frozen.length; ci++) {
       const chunk = si.info.frozen[ci];
       const widthPct = Math.max(2, (chunk.count / maxSamples) * 100);
       const block = document.createElement('div');
-      block.className = 'chunk-block frozen';
+      block.className = isCol ? 'chunk-block frozen column-store' : 'chunk-block frozen';
       block.style.width = widthPct + '%';
       block.title = `Chunk ${ci}: ${chunk.count} pts, ${formatBytes(chunk.compressedBytes)}, ${chunk.ratio.toFixed(1)}× compression`;
       block.innerHTML = `<span class="chunk-label">${chunk.count}</span>`;
@@ -1244,16 +1629,49 @@ function showChunkDetail(seriesInfo, chunkIndex, type, store) {
 
   if (type === 'frozen') {
     const chunk = seriesInfo.info.frozen[chunkIndex];
-    const decoded = decodeChunk(chunk.compressed);
+    const isColumn = !!chunk.compressedValues; // ColumnStore chunks have compressedValues
+    const isChunked = !!chunk.compressed; // ChunkedStore chunks have compressed
 
-    // Build mini sparkline
+    let decoded;
+    if (isColumn) {
+      const values = wasmDecodeValuesALP(chunk.compressedValues);
+      const timestamps = wasmDecodeTimestamps(chunk.tsChunkCompressed);
+      decoded = { timestamps, values };
+    } else {
+      decoded = decodeChunk(chunk.compressed);
+    }
+
     const sparkId = 'sparkline-' + Date.now();
+    const codecName = isColumn ? 'ALP' : 'XOR-Delta';
+
+    // Extra stats for ColumnStore
+    const columnExtra = isColumn ? `
+        <div class="detail-stat">
+          <div class="detail-stat-label">Values (ALP)</div>
+          <div class="detail-stat-value">${formatBytes(chunk.valuesBytes)}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Timestamps (shared)</div>
+          <div class="detail-stat-value">${formatBytes(chunk.timestampBytes)} ÷ ${chunk.sharedTsSeries} = ${formatBytes(chunk.amortizedTsBytes)}</div>
+        </div>` : '';
+
+    // Byte layout segments differ by codec
+    const byteLayoutLegend = isColumn ? `
+          <span class="byte-legend-item"><span class="byte-swatch header"></span>ALP header</span>
+          <span class="byte-legend-item"><span class="byte-swatch values"></span>ALP-encoded values</span>
+          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Shared timestamps (amortized)</span>
+        ` : `
+          <span class="byte-legend-item"><span class="byte-swatch header"></span>Header (ts₀+v₀)</span>
+          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Timestamp deltas</span>
+          <span class="byte-legend-item"><span class="byte-swatch values"></span>XOR values</span>
+        `;
 
     panel.innerHTML = `
       <div class="chunk-detail-header">
         <div class="chunk-detail-title">
           <span class="tag-frozen">Frozen</span> Chunk ${chunkIndex} — ${metricName}
           <span class="chunk-detail-labels">{${labelStr}}</span>
+          <span class="tag-codec">${codecName}</span>
         </div>
         <button class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
       </div>
@@ -1282,14 +1700,13 @@ function showChunkDetail(seriesInfo, chunkIndex, type, store) {
           <div class="detail-stat-label">Bits/sample</div>
           <div class="detail-stat-value">${((chunk.compressedBytes * 8) / chunk.count).toFixed(1)}</div>
         </div>
+        ${columnExtra}
       </div>
       <div class="chunk-byte-layout">
         <h4>Byte Layout</h4>
         <div class="byte-map" id="byteMap"></div>
         <div class="byte-legend">
-          <span class="byte-legend-item"><span class="byte-swatch header"></span>Header (ts₀+v₀)</span>
-          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Timestamp deltas</span>
-          <span class="byte-legend-item"><span class="byte-swatch values"></span>XOR values</span>
+          ${byteLayoutLegend}
         </div>
       </div>
       <div class="chunk-sparkline-container">
@@ -1298,7 +1715,11 @@ function showChunkDetail(seriesInfo, chunkIndex, type, store) {
       </div>`;
 
     // Render byte map
-    renderByteMap(chunk.compressed, chunk.count);
+    if (isColumn) {
+      renderByteMapALP(chunk.compressedValues, chunk.tsChunkCompressed, chunk.sharedTsSeries);
+    } else {
+      renderByteMap(chunk.compressed, chunk.count);
+    }
 
     // Render sparkline
     requestAnimationFrame(() => renderSparkline(sparkId, decoded));
@@ -1381,6 +1802,30 @@ function renderByteMap(compressed, sampleCount) {
   }).join('');
 }
 
+function renderByteMapALP(compressedValues, compressedTs, sharedCount) {
+  const container = $('#byteMap');
+  if (!container) return;
+
+  const valBytes = compressedValues.byteLength;
+  const tsBytes = compressedTs.byteLength;
+  const amortizedTs = Math.round(tsBytes / sharedCount);
+  // ALP header is first 4 bytes (count + exponent + factor)
+  const headerBytes = Math.min(4, valBytes);
+  const alpDataBytes = valBytes - headerBytes;
+  const totalBytes = headerBytes + alpDataBytes + amortizedTs;
+
+  const segments = [
+    { label: 'ALP Header', bytes: headerBytes, cls: 'header' },
+    { label: 'ALP Values', bytes: alpDataBytes, cls: 'values' },
+    { label: `Shared Timestamps (÷${sharedCount})`, bytes: amortizedTs, cls: 'timestamps' },
+  ];
+
+  container.innerHTML = segments.map(seg => {
+    const pct = Math.max(1, (seg.bytes / totalBytes) * 100);
+    return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ''}</div>`;
+  }).join('');
+}
+
 function renderSparkline(canvasId, decoded) {
   const canvas = document.getElementById(canvasId);
   if (!canvas || decoded.values.length === 0) return;
@@ -1447,15 +1892,32 @@ function renderSparkline(canvasId, decoded) {
   ctx.stroke();
 }
 
-// Auto-generate demo data on page load for instant gratification
-requestAnimationFrame(() => {
-  setTimeout(() => {
-    generateData(
-      parseInt($('#numSeries').value),
-      parseInt($('#numPoints').value),
-      $('#dataPattern').value,
-      $('#backend').value,
-      parseInt($('#sampleInterval').value),
-    );
-  }, 100);
+// Load WASM codec eagerly, then auto-generate demo data
+loadWasm().then(ok => {
+  const statusEl = $('#wasmStatus');
+  if (ok) {
+    statusEl.style.display = 'inline-block';
+    statusEl.className = 'wasm-status wasm-ok';
+    statusEl.textContent = '✓ WASM loaded (26 KB)';
+  } else {
+    statusEl.style.display = 'inline-block';
+    statusEl.className = 'wasm-status wasm-err';
+    statusEl.textContent = '✗ WASM unavailable';
+    // Disable ColumnStore option
+    const colOpt = document.querySelector('#backend option[value="column"]');
+    if (colOpt) { colOpt.disabled = true; colOpt.textContent += ' (WASM required)'; }
+  }
+
+  // Auto-generate demo data
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      generateData(
+        parseInt($('#numSeries').value),
+        parseInt($('#numPoints').value),
+        $('#dataPattern').value,
+        $('#backend').value,
+        parseInt($('#sampleInterval').value),
+      );
+    }, 100);
+  });
 });
