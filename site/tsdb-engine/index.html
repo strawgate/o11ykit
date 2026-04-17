@@ -87,6 +87,19 @@
             </select>
           </div>
           <div class="control-group">
+            <label for="sampleInterval">Sample interval</label>
+            <select id="sampleInterval">
+              <option value="1000">1 s</option>
+              <option value="10000" selected>10 s</option>
+              <option value="60000">1 min</option>
+              <option value="300000">5 min</option>
+              <option value="900000">15 min</option>
+              <option value="3600000">1 hr</option>
+              <option value="21600000">6 hr</option>
+              <option value="43200000">12 hr</option>
+            </select>
+          </div>
+          <div class="control-group">
             <label for="backend">Storage backend</label>
             <select id="backend">
               <option value="flat">FlatStore (no compression)</option>
@@ -153,14 +166,20 @@
               </select>
             </div>
             <div class="control-group">
-              <label for="queryStep">Step (ms)</label>
+              <label for="queryStep">Step</label>
               <select id="queryStep">
                 <option value="0">No step (raw)</option>
                 <option value="1000">1 s</option>
                 <option value="5000">5 s</option>
-                <option value="10000" selected>10 s</option>
+                <option value="10000">10 s</option>
                 <option value="30000">30 s</option>
-                <option value="60000">1 min</option>
+                <option value="60000" selected>1 min</option>
+                <option value="300000">5 min</option>
+                <option value="900000">15 min</option>
+                <option value="3600000">1 hr</option>
+                <option value="21600000">6 hr</option>
+                <option value="43200000">12 hr</option>
+                <option value="86400000">1 day</option>
               </select>
             </div>
             <button id="btnQuery" class="cta cta-primary demo-btn">Run Query</button>
@@ -185,6 +204,15 @@
         <div class="compression-bench" id="compressionBench" style="display:none;">
           <h3>Compression Breakdown</h3>
           <div class="compression-bars" id="compressionBars"></div>
+        </div>
+
+        <!-- Storage Explorer -->
+        <div class="storage-explorer" id="storageExplorer" style="display:none;">
+          <h3>💾 Storage Explorer</h3>
+          <p class="storage-intro">Explore the internal chunk layout of the storage backend. Each series is a row; frozen compressed chunks are <span class="tag-frozen">frozen</span> and the active write buffer is <span class="tag-hot">hot</span>. Click any chunk to inspect it.</p>
+          <div class="storage-overview" id="storageOverview"></div>
+          <div class="storage-series-list" id="storageSeriesList"></div>
+          <div class="chunk-detail-panel" id="chunkDetailPanel" style="display:none;"></div>
         </div>
       </section>
 

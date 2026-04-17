@@ -303,6 +303,18 @@ class FlatStore {
     for (const s of this._series) bytes += s.timestamps.byteLength + s.values.byteLength;
     return bytes;
   }
+
+  getChunkInfo(id) {
+    const s = this._series[id];
+    return {
+      frozen: [],
+      hot: {
+        count: s.count,
+        rawBytes: s.count * 16,
+        allocatedBytes: s.timestamps.byteLength + s.values.byteLength,
+      },
+    };
+  }
 }
 
 // ── ChunkedStore ─────────────────────────────────────────────────────
@@ -405,6 +417,29 @@ class ChunkedStore {
       for (const c of s.frozen) bytes += c.compressed.byteLength + 32;
     }
     return bytes;
+  }
+
+  getChunkInfo(id) {
+    const s = this._series[id];
+    return {
+      frozen: s.frozen.map((c, i) => ({
+        index: i,
+        compressedBytes: c.compressed.byteLength,
+        count: c.count,
+        minT: c.minT,
+        maxT: c.maxT,
+        rawBytes: c.count * 16,
+        ratio: (c.count * 16) / c.compressed.byteLength,
+        compressed: c.compressed,
+      })),
+      hot: {
+        count: s.hot.count,
+        rawBytes: s.hot.count * 16,
+        allocatedBytes: s.hot.timestamps.byteLength + s.hot.values.byteLength,
+        timestamps: s.hot.timestamps,
+        values: s.hot.values,
+      },
+    };
   }
 }
 
@@ -853,6 +888,7 @@ $('#btnGenerate').addEventListener('click', () => {
   const numPoints = parseInt($('#numPoints').value);
   const pattern = $('#dataPattern').value;
   const backendType = $('#backend').value;
+  const intervalMs = parseInt($('#sampleInterval').value);
 
   const btn = $('#btnGenerate');
   btn.disabled = true;
@@ -862,7 +898,7 @@ $('#btnGenerate').addEventListener('click', () => {
   requestAnimationFrame(() => {
     setTimeout(() => {
       try {
-        generateData(numSeries, numPoints, pattern, backendType);
+        generateData(numSeries, numPoints, pattern, backendType, intervalMs);
       } finally {
         btn.disabled = false;
         btn.textContent = 'Generate Data';
@@ -871,10 +907,10 @@ $('#btnGenerate').addEventListener('click', () => {
   });
 });
 
-function generateData(numSeries, numPoints, pattern, backendType) {
+function generateData(numSeries, numPoints, pattern, backendType, intervalMs = 10000) {
   const store = backendType === 'chunked' ? new ChunkedStore(640) : new FlatStore();
   const now = BigInt(Date.now()) * 1_000_000n; // nanoseconds
-  const intervalNs = 1_000_000_000n; // 1 second between points
+  const intervalNs = BigInt(intervalMs) * 1_000_000n;
 
   const t0 = performance.now();
 
@@ -943,6 +979,12 @@ function generateData(numSeries, numPoints, pattern, backendType) {
   // Show compression breakdown
   showCompressionBreakdown(rawBytes, memBytes);
 
+  // Auto-select a sensible query step based on interval & point count
+  autoSelectQueryStep(intervalMs, numPoints);
+
+  // Build storage explorer
+  buildStorageExplorer(store);
+
   // Auto-run a query
   runQuery();
 }
@@ -993,7 +1035,7 @@ function runQuery() {
   // Build chart title
   const aggLabel = agg ? `${agg}(${metric})` : metric;
   const groupLabel = groupBy ? ` by ${groupBy.join(', ')}` : '';
-  const stepLabel = step ? ` [${stepMs / 1000}s step]` : '';
+  const stepLabel = step ? ` [${formatDuration(stepMs)} step]` : '';
   const chartTitle = `${aggLabel}${groupLabel}${stepLabel}`;
 
   // Render chart
@@ -1048,6 +1090,363 @@ window.addEventListener('resize', () => {
   if (currentStore && $('#queryResults').style.display !== 'none') runQuery();
 });
 
+// ── Duration Formatting ──────────────────────────────────────────────
+
+function formatDuration(ms) {
+  if (ms >= 86400000) return (ms / 86400000) + 'd';
+  if (ms >= 3600000) return (ms / 3600000) + 'h';
+  if (ms >= 60000) return (ms / 60000) + 'm';
+  return (ms / 1000) + 's';
+}
+
+function formatTimeRange(nsStart, nsEnd) {
+  const start = new Date(Number(nsStart) / 1_000_000);
+  const end = new Date(Number(nsEnd) / 1_000_000);
+  const opts = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+  return `${start.toLocaleString([], opts)} → ${end.toLocaleString([], opts)}`;
+}
+
+// ── Auto Query Step Selection ────────────────────────────────────────
+
+function autoSelectQueryStep(intervalMs, numPoints) {
+  const totalMs = intervalMs * numPoints;
+  const stepSelect = $('#queryStep');
+  // Pick a step that yields ~50-200 buckets for good chart resolution
+  const targetBuckets = 100;
+  const idealStepMs = totalMs / targetBuckets;
+  const stepOptions = [...stepSelect.options].map(o => parseInt(o.value)).filter(v => v > 0);
+  let bestStep = stepOptions[0];
+  let bestDiff = Infinity;
+  for (const s of stepOptions) {
+    const diff = Math.abs(s - idealStepMs);
+    if (diff < bestDiff) { bestDiff = diff; bestStep = s; }
+  }
+  stepSelect.value = String(bestStep);
+}
+
+// ── Storage Explorer ─────────────────────────────────────────────────
+
+function buildStorageExplorer(store) {
+  const explorer = $('#storageExplorer');
+  const overview = $('#storageOverview');
+  const seriesList = $('#storageSeriesList');
+  const detailPanel = $('#chunkDetailPanel');
+  explorer.style.display = '';
+  detailPanel.style.display = 'none';
+
+  // Overview stats
+  let totalChunks = 0, totalFrozen = 0, totalHotSamples = 0, totalCompressedBytes = 0, totalRawBytes = 0;
+  const seriesInfos = [];
+
+  for (let id = 0; id < store.seriesCount; id++) {
+    const labels = store.labels(id);
+    const info = store.getChunkInfo(id);
+    const frozenSamples = info.frozen.reduce((s, c) => s + c.count, 0);
+    const frozenBytes = info.frozen.reduce((s, c) => s + c.compressedBytes, 0);
+    const frozenRaw = info.frozen.reduce((s, c) => s + c.rawBytes, 0);
+    totalFrozen += info.frozen.length;
+    totalChunks += info.frozen.length + (info.hot.count > 0 ? 1 : 0);
+    totalHotSamples += info.hot.count;
+    totalCompressedBytes += frozenBytes + (info.hot.count > 0 ? info.hot.rawBytes : 0);
+    totalRawBytes += frozenRaw + info.hot.rawBytes;
+
+    seriesInfos.push({ id, labels, info, frozenSamples, frozenBytes, frozenRaw });
+  }
+
+  overview.innerHTML = `
+    <div class="explorer-stats">
+      <div class="explorer-stat">
+        <span class="explorer-stat-value">${store.seriesCount}</span>
+        <span class="explorer-stat-label">Series</span>
+      </div>
+      <div class="explorer-stat">
+        <span class="explorer-stat-value">${totalChunks}</span>
+        <span class="explorer-stat-label">Total chunks</span>
+      </div>
+      <div class="explorer-stat">
+        <span class="explorer-stat-value">${totalFrozen}</span>
+        <span class="explorer-stat-label">Frozen (compressed)</span>
+      </div>
+      <div class="explorer-stat">
+        <span class="explorer-stat-value">${formatBytes(totalCompressedBytes)}</span>
+        <span class="explorer-stat-label">Total storage</span>
+      </div>
+      <div class="explorer-stat">
+        <span class="explorer-stat-value">${totalRawBytes > 0 ? (totalRawBytes / totalCompressedBytes).toFixed(1) + '×' : '—'}</span>
+        <span class="explorer-stat-label">Avg compression</span>
+      </div>
+    </div>`;
+
+  // Build series rows
+  seriesList.innerHTML = '';
+  for (const si of seriesInfos) {
+    const row = document.createElement('div');
+    row.className = 'storage-series-row';
+
+    const labelStr = [...si.labels]
+      .filter(([k]) => k !== '__name__')
+      .map(([k, v]) => `<span class="label-pair"><span class="label-key">${k}</span>=<span class="label-val">${v}</span></span>`)
+      .join(' ');
+    const metricName = si.labels.get('__name__') || 'unknown';
+
+    const totalSamples = si.frozenSamples + si.info.hot.count;
+    const totalBytes = si.frozenBytes + (si.info.hot.count > 0 ? si.info.hot.rawBytes : 0);
+
+    row.innerHTML = `
+      <div class="series-header">
+        <span class="series-metric">${metricName}</span>
+        <span class="series-labels">${labelStr}</span>
+        <span class="series-summary">${totalSamples.toLocaleString()} pts · ${formatBytes(totalBytes)} · ${si.info.frozen.length} chunks${si.info.hot.count > 0 ? ' + hot' : ''}</span>
+      </div>
+      <div class="chunk-bar-container"></div>`;
+
+    // Render chunk blocks
+    const barContainer = row.querySelector('.chunk-bar-container');
+    const maxSamples = Math.max(...seriesInfos.map(s => s.frozenSamples + s.info.hot.count));
+
+    for (let ci = 0; ci < si.info.frozen.length; ci++) {
+      const chunk = si.info.frozen[ci];
+      const widthPct = Math.max(2, (chunk.count / maxSamples) * 100);
+      const block = document.createElement('div');
+      block.className = 'chunk-block frozen';
+      block.style.width = widthPct + '%';
+      block.title = `Chunk ${ci}: ${chunk.count} pts, ${formatBytes(chunk.compressedBytes)}, ${chunk.ratio.toFixed(1)}× compression`;
+      block.innerHTML = `<span class="chunk-label">${chunk.count}</span>`;
+      block.addEventListener('click', () => showChunkDetail(si, ci, 'frozen', store));
+      barContainer.appendChild(block);
+    }
+
+    if (si.info.hot.count > 0) {
+      const widthPct = Math.max(2, (si.info.hot.count / maxSamples) * 100);
+      const block = document.createElement('div');
+      block.className = 'chunk-block hot';
+      block.style.width = widthPct + '%';
+      block.title = `Hot buffer: ${si.info.hot.count} pts, ${formatBytes(si.info.hot.rawBytes)} (uncompressed)`;
+      block.innerHTML = `<span class="chunk-label">${si.info.hot.count}</span>`;
+      block.addEventListener('click', () => showChunkDetail(si, -1, 'hot', store));
+      barContainer.appendChild(block);
+    }
+
+    seriesList.appendChild(row);
+  }
+}
+
+function showChunkDetail(seriesInfo, chunkIndex, type, store) {
+  const panel = $('#chunkDetailPanel');
+  panel.style.display = '';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  const metricName = seriesInfo.labels.get('__name__') || 'unknown';
+  const labelStr = [...seriesInfo.labels]
+    .filter(([k]) => k !== '__name__')
+    .map(([k, v]) => `${k}="${v}"`)
+    .join(', ');
+
+  if (type === 'frozen') {
+    const chunk = seriesInfo.info.frozen[chunkIndex];
+    const decoded = decodeChunk(chunk.compressed);
+
+    // Build mini sparkline
+    const sparkId = 'sparkline-' + Date.now();
+
+    panel.innerHTML = `
+      <div class="chunk-detail-header">
+        <div class="chunk-detail-title">
+          <span class="tag-frozen">Frozen</span> Chunk ${chunkIndex} — ${metricName}
+          <span class="chunk-detail-labels">{${labelStr}}</span>
+        </div>
+        <button class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
+      </div>
+      <div class="chunk-detail-grid">
+        <div class="detail-stat">
+          <div class="detail-stat-label">Samples</div>
+          <div class="detail-stat-value">${chunk.count.toLocaleString()}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Time range</div>
+          <div class="detail-stat-value detail-stat-small">${formatTimeRange(chunk.minT, chunk.maxT)}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Raw size</div>
+          <div class="detail-stat-value">${formatBytes(chunk.rawBytes)}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Compressed</div>
+          <div class="detail-stat-value">${formatBytes(chunk.compressedBytes)}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Ratio</div>
+          <div class="detail-stat-value ratio-highlight">${chunk.ratio.toFixed(1)}×</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Bits/sample</div>
+          <div class="detail-stat-value">${((chunk.compressedBytes * 8) / chunk.count).toFixed(1)}</div>
+        </div>
+      </div>
+      <div class="chunk-byte-layout">
+        <h4>Byte Layout</h4>
+        <div class="byte-map" id="byteMap"></div>
+        <div class="byte-legend">
+          <span class="byte-legend-item"><span class="byte-swatch header"></span>Header (ts₀+v₀)</span>
+          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Timestamp deltas</span>
+          <span class="byte-legend-item"><span class="byte-swatch values"></span>XOR values</span>
+        </div>
+      </div>
+      <div class="chunk-sparkline-container">
+        <h4>Decoded Values</h4>
+        <canvas id="${sparkId}" width="600" height="120"></canvas>
+      </div>`;
+
+    // Render byte map
+    renderByteMap(chunk.compressed, chunk.count);
+
+    // Render sparkline
+    requestAnimationFrame(() => renderSparkline(sparkId, decoded));
+  } else {
+    // Hot chunk
+    const hot = seriesInfo.info.hot;
+    const sparkId = 'sparkline-' + Date.now();
+    const minT = hot.count > 0 ? hot.timestamps[0] : 0n;
+    const maxT = hot.count > 0 ? hot.timestamps[hot.count - 1] : 0n;
+
+    panel.innerHTML = `
+      <div class="chunk-detail-header">
+        <div class="chunk-detail-title">
+          <span class="tag-hot">Hot Buffer</span> — ${metricName}
+          <span class="chunk-detail-labels">{${labelStr}}</span>
+        </div>
+        <button class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
+      </div>
+      <div class="chunk-detail-grid">
+        <div class="detail-stat">
+          <div class="detail-stat-label">Samples</div>
+          <div class="detail-stat-value">${hot.count.toLocaleString()}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Time range</div>
+          <div class="detail-stat-value detail-stat-small">${hot.count > 0 ? formatTimeRange(minT, maxT) : '—'}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Raw size</div>
+          <div class="detail-stat-value">${formatBytes(hot.rawBytes)}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Allocated</div>
+          <div class="detail-stat-value">${formatBytes(hot.allocatedBytes)}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Compression</div>
+          <div class="detail-stat-value">None (raw)</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Status</div>
+          <div class="detail-stat-value">🔥 Active write</div>
+        </div>
+      </div>
+      <div class="chunk-sparkline-container">
+        <h4>Raw Values</h4>
+        <canvas id="${sparkId}" width="600" height="120"></canvas>
+      </div>`;
+
+    requestAnimationFrame(() => {
+      renderSparkline(sparkId, {
+        timestamps: hot.timestamps.slice(0, hot.count),
+        values: hot.values.slice(0, hot.count),
+      });
+    });
+  }
+}
+
+function renderByteMap(compressed, sampleCount) {
+  const container = $('#byteMap');
+  if (!container) return;
+
+  const totalBytes = compressed.byteLength;
+  // Approximate: first 16 bytes = header (ts₀ + v₀), rest alternates ts/val bits
+  const headerBytes = Math.min(16, totalBytes);
+  const remainingBytes = totalBytes - headerBytes;
+  // Rough estimate: timestamps tend to be ~1/4, values ~3/4 of remaining bytes
+  const tsDeltaBytes = Math.round(remainingBytes * 0.25);
+  const valXorBytes = remainingBytes - tsDeltaBytes;
+
+  const segments = [
+    { label: 'Header', bytes: headerBytes, cls: 'header' },
+    { label: 'Timestamps', bytes: tsDeltaBytes, cls: 'timestamps' },
+    { label: 'XOR Values', bytes: valXorBytes, cls: 'values' },
+  ];
+
+  container.innerHTML = segments.map(seg => {
+    const pct = Math.max(1, (seg.bytes / totalBytes) * 100);
+    return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ''}</div>`;
+  }).join('');
+}
+
+function renderSparkline(canvasId, decoded) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || decoded.values.length === 0) return;
+
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const w = Math.min(rect.width - 32, 600);
+  const h = 100;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.scale(dpr, dpr);
+
+  const vals = decoded.values;
+  let minV = Infinity, maxV = -Infinity;
+  for (let i = 0; i < vals.length; i++) {
+    if (vals[i] < minV) minV = vals[i];
+    if (vals[i] > maxV) maxV = vals[i];
+  }
+  if (minV === maxV) { minV -= 1; maxV += 1; }
+  const vRange = maxV - minV;
+
+  const pad = { left: 4, right: 4, top: 8, bottom: 8 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+
+  // Background
+  ctx.fillStyle = '#f8fcff';
+  ctx.fillRect(0, 0, w, h);
+
+  // Gradient area
+  const gradient = ctx.createLinearGradient(0, pad.top, 0, h - pad.bottom);
+  gradient.addColorStop(0, 'rgba(59, 130, 246, 0.15)');
+  gradient.addColorStop(1, 'rgba(59, 130, 246, 0.02)');
+
+  ctx.beginPath();
+  const step = Math.max(1, Math.floor(vals.length / plotW));
+  let firstX;
+  for (let i = 0; i < vals.length; i += step) {
+    const x = pad.left + (i / (vals.length - 1)) * plotW;
+    const y = pad.top + ((maxV - vals[i]) / vRange) * plotH;
+    if (i === 0) { ctx.moveTo(x, y); firstX = x; }
+    else ctx.lineTo(x, y);
+  }
+  const lastI = vals.length - 1;
+  const lastX = pad.left + plotW;
+  ctx.lineTo(lastX, pad.top + plotH);
+  ctx.lineTo(firstX, pad.top + plotH);
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  for (let i = 0; i < vals.length; i += step) {
+    const x = pad.left + (i / (vals.length - 1)) * plotW;
+    const y = pad.top + ((maxV - vals[i]) / vRange) * plotH;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
 // Auto-generate demo data on page load for instant gratification
 requestAnimationFrame(() => {
   setTimeout(() => {
@@ -1056,6 +1455,7 @@ requestAnimationFrame(() => {
       parseInt($('#numPoints').value),
       $('#dataPattern').value,
       $('#backend').value,
+      parseInt($('#sampleInterval').value),
     );
   }, 100);
 });
