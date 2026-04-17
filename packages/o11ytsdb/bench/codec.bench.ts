@@ -54,7 +54,7 @@ try {
     encode: ts.encodeChunk,
     decode: ts.decodeChunk,
   });
-} catch (e) {
+} catch (_e) {
   console.log("  ⚠ TS codec not built — skipping. Run `npm run build` first.");
 }
 
