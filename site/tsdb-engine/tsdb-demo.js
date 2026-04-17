@@ -1,0 +1,942 @@
+/**
+ * o11ytsdb interactive demo — self-contained TSDB engine running in the browser.
+ *
+ * Implements:
+ *  - FlatStore & ChunkedStore with XOR-delta (Gorilla) compression
+ *  - Label index with inverted postings
+ *  - ScanEngine with aggregation, groupBy, step bucketing, and rate
+ *  - Canvas-based chart renderer
+ *
+ * All code runs client-side with zero dependencies.
+ */
+
+// ── XOR-Delta Codec ──────────────────────────────────────────────────
+
+const f64Buf = new ArrayBuffer(8);
+const f64View = new DataView(f64Buf);
+
+function floatToBits(f) {
+  f64View.setFloat64(0, f, false);
+  const hi = f64View.getUint32(0, false);
+  const lo = f64View.getUint32(4, false);
+  return (BigInt(hi) << 32n) | BigInt(lo >>> 0);
+}
+
+function bitsToFloat(bits) {
+  f64View.setUint32(0, Number((bits >> 32n) & 0xFFFFFFFFn), false);
+  f64View.setUint32(4, Number(bits & 0xFFFFFFFFn), false);
+  return f64View.getFloat64(0, false);
+}
+
+function clz64(x) {
+  if (x === 0n) return 64;
+  let n = 0;
+  if ((x & 0xFFFFFFFF00000000n) === 0n) { n += 32; x <<= 32n; }
+  if ((x & 0xFFFF000000000000n) === 0n) { n += 16; x <<= 16n; }
+  if ((x & 0xFF00000000000000n) === 0n) { n += 8; x <<= 8n; }
+  if ((x & 0xF000000000000000n) === 0n) { n += 4; x <<= 4n; }
+  if ((x & 0xC000000000000000n) === 0n) { n += 2; x <<= 2n; }
+  if ((x & 0x8000000000000000n) === 0n) { n += 1; }
+  return n;
+}
+
+function ctz64(x) {
+  if (x === 0n) return 64;
+  let n = 0;
+  if ((x & 0xFFFFFFFFn) === 0n) { n += 32; x >>= 32n; }
+  if ((x & 0xFFFFn) === 0n) { n += 16; x >>= 16n; }
+  if ((x & 0xFFn) === 0n) { n += 8; x >>= 8n; }
+  if ((x & 0xFn) === 0n) { n += 4; x >>= 4n; }
+  if ((x & 0x3n) === 0n) { n += 2; x >>= 2n; }
+  if ((x & 0x1n) === 0n) { n += 1; }
+  return n;
+}
+
+class BitWriter {
+  constructor(capacity = 256) {
+    this.buf = new Uint8Array(capacity);
+    this.bytePos = 0;
+    this.bitPos = 0;
+  }
+  writeBit(bit) {
+    if (this.bytePos >= this.buf.length) {
+      const next = new Uint8Array(this.buf.length * 2);
+      next.set(this.buf);
+      this.buf = next;
+    }
+    if (bit) this.buf[this.bytePos] |= 0x80 >>> this.bitPos;
+    this.bitPos++;
+    if (this.bitPos === 8) { this.bitPos = 0; this.bytePos++; }
+  }
+  writeBits(value, count) {
+    for (let i = count - 1; i >= 0; i--) this.writeBit(Number((value >> BigInt(i)) & 1n));
+  }
+  writeBitsNum(value, count) {
+    for (let i = count - 1; i >= 0; i--) this.writeBit((value >>> i) & 1);
+  }
+  finish() {
+    const len = this.bitPos > 0 ? this.bytePos + 1 : this.bytePos;
+    return this.buf.slice(0, len);
+  }
+}
+
+class BitReader {
+  constructor(buf) { this.buf = buf; this.bytePos = 0; this.bitPos = 0; }
+  readBit() {
+    const bit = (this.buf[this.bytePos] >>> (7 - this.bitPos)) & 1;
+    this.bitPos++;
+    if (this.bitPos === 8) { this.bitPos = 0; this.bytePos++; }
+    return bit;
+  }
+  readBits(count) {
+    let v = 0n;
+    for (let i = 0; i < count; i++) v = (v << 1n) | BigInt(this.readBit());
+    return v;
+  }
+  readBitsNum(count) {
+    let v = 0;
+    for (let i = 0; i < count; i++) v = (v << 1) | this.readBit();
+    return v;
+  }
+}
+
+function encodeChunk(timestamps, values) {
+  const n = timestamps.length;
+  if (n === 0) return new Uint8Array(0);
+  const w = new BitWriter(n * 2);
+  w.writeBitsNum(n, 16);
+  w.writeBits(BigInt(timestamps[0]) & 0xFFFFFFFFFFFFFFFFn, 64);
+  w.writeBits(floatToBits(values[0]), 64);
+  if (n === 1) return w.finish();
+
+  let prevTs = timestamps[0], prevDelta = 0n;
+  let prevValBits = floatToBits(values[0]), prevLeading = 64, prevTrailing = 0;
+
+  for (let i = 1; i < n; i++) {
+    const ts = timestamps[i];
+    const delta = ts - prevTs;
+    const dod = delta - prevDelta;
+
+    if (dod === 0n) {
+      w.writeBit(0);
+    } else {
+      const absDod = dod < 0n ? -dod : dod;
+      if (absDod <= 64n) {
+        w.writeBit(1); w.writeBit(0);
+        w.writeBitsNum(Number((dod << 1n) ^ (dod >> 63n)) & 0x7F, 7);
+      } else if (absDod <= 256n) {
+        w.writeBit(1); w.writeBit(1); w.writeBit(0);
+        w.writeBitsNum(Number((dod << 1n) ^ (dod >> 63n)) & 0x1FF, 9);
+      } else if (absDod <= 2048n) {
+        w.writeBit(1); w.writeBit(1); w.writeBit(1); w.writeBit(0);
+        w.writeBitsNum(Number((dod << 1n) ^ (dod >> 63n)) & 0xFFF, 12);
+      } else {
+        w.writeBit(1); w.writeBit(1); w.writeBit(1); w.writeBit(1);
+        w.writeBits(BigInt.asUintN(64, dod), 64);
+      }
+    }
+    prevDelta = delta;
+    prevTs = ts;
+
+    const valBits = floatToBits(values[i]);
+    const xor = prevValBits ^ valBits;
+    if (xor === 0n) {
+      w.writeBit(0);
+    } else {
+      const leading = clz64(xor);
+      const trailing = ctz64(xor);
+      const meaningful = 64 - leading - trailing;
+      if (leading >= prevLeading && trailing >= prevTrailing) {
+        w.writeBit(1); w.writeBit(0);
+        const prevMeaningful = 64 - prevLeading - prevTrailing;
+        w.writeBits(xor >> BigInt(prevTrailing), prevMeaningful);
+      } else {
+        w.writeBit(1); w.writeBit(1);
+        w.writeBitsNum(leading, 6);
+        w.writeBitsNum(meaningful - 1, 6);
+        w.writeBits(xor >> BigInt(trailing), meaningful);
+        prevLeading = leading;
+        prevTrailing = trailing;
+      }
+    }
+    prevValBits = valBits;
+  }
+  return w.finish();
+}
+
+function decodeChunk(buf) {
+  if (buf.length === 0) return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+  const r = new BitReader(buf);
+  const n = r.readBitsNum(16);
+  const timestamps = new BigInt64Array(n);
+  const values = new Float64Array(n);
+  timestamps[0] = BigInt.asIntN(64, r.readBits(64));
+  values[0] = bitsToFloat(r.readBits(64));
+  if (n === 1) return { timestamps, values };
+
+  let prevTs = timestamps[0], prevDelta = 0n;
+  let prevValBits = floatToBits(values[0]), prevLeading = 0, prevTrailing = 0;
+
+  for (let i = 1; i < n; i++) {
+    let dod;
+    if (r.readBit() === 0) {
+      dod = 0n;
+    } else if (r.readBit() === 0) {
+      const zz = r.readBitsNum(7);
+      dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
+    } else if (r.readBit() === 0) {
+      const zz = r.readBitsNum(9);
+      dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
+    } else if (r.readBit() === 0) {
+      const zz = r.readBitsNum(12);
+      dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
+    } else {
+      dod = BigInt.asIntN(64, r.readBits(64));
+    }
+    const delta = prevDelta + dod;
+    timestamps[i] = prevTs + delta;
+    prevDelta = delta;
+    prevTs = timestamps[i];
+
+    if (r.readBit() === 0) {
+      values[i] = bitsToFloat(prevValBits);
+    } else if (r.readBit() === 0) {
+      const meaningful = 64 - prevLeading - prevTrailing;
+      const xor = r.readBits(meaningful) << BigInt(prevTrailing);
+      prevValBits ^= xor;
+      values[i] = bitsToFloat(prevValBits);
+    } else {
+      const leading = r.readBitsNum(6);
+      const meaningful = r.readBitsNum(6) + 1;
+      const trailing = 64 - leading - meaningful;
+      const xor = r.readBits(meaningful) << BigInt(trailing);
+      prevValBits ^= xor;
+      values[i] = bitsToFloat(prevValBits);
+      prevLeading = leading;
+      prevTrailing = trailing;
+    }
+  }
+  return { timestamps, values };
+}
+
+// ── Binary search helpers ────────────────────────────────────────────
+
+function lowerBound(arr, target, lo, hi) {
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (arr[mid] < target) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+function upperBound(arr, target, lo, hi) {
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (arr[mid] <= target) lo = mid + 1; else hi = mid;
+  }
+  return lo;
+}
+
+// ── FlatStore ────────────────────────────────────────────────────────
+
+class FlatStore {
+  constructor() {
+    this.name = 'FlatStore';
+    this._series = [];
+    this._labels = [];
+    this._postings = new Map();
+    this._sampleCount = 0;
+  }
+  get seriesCount() { return this._series.length; }
+  get sampleCount() { return this._sampleCount; }
+
+  getOrCreateSeries(labels) {
+    const key = [...labels].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
+    for (let i = 0; i < this._labels.length; i++) {
+      const lkey = [...this._labels[i]].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
+      if (lkey === key) return i;
+    }
+    const id = this._series.length;
+    this._series.push({ timestamps: new BigInt64Array(128), values: new Float64Array(128), count: 0 });
+    this._labels.push(new Map(labels));
+    for (const [k, v] of labels) {
+      const pk = `${k}\0${v}`;
+      if (!this._postings.has(pk)) this._postings.set(pk, []);
+      this._postings.get(pk).push(id);
+    }
+    return id;
+  }
+
+  appendBatch(id, timestamps, values) {
+    const s = this._series[id];
+    let need = s.count + timestamps.length;
+    while (need > s.timestamps.length) {
+      const newLen = s.timestamps.length * 2;
+      const newTs = new BigInt64Array(newLen);
+      const newVals = new Float64Array(newLen);
+      newTs.set(s.timestamps.subarray(0, s.count));
+      newVals.set(s.values.subarray(0, s.count));
+      s.timestamps = newTs;
+      s.values = newVals;
+    }
+    s.timestamps.set(timestamps, s.count);
+    s.values.set(values, s.count);
+    s.count += timestamps.length;
+    this._sampleCount += timestamps.length;
+  }
+
+  matchLabel(label, value) {
+    return this._postings.get(`${label}\0${value}`) ?? [];
+  }
+
+  read(id, start, end) {
+    const s = this._series[id];
+    const lo = lowerBound(s.timestamps, start, 0, s.count);
+    const hi = upperBound(s.timestamps, end, lo, s.count);
+    return { timestamps: s.timestamps.slice(lo, hi), values: s.values.slice(lo, hi) };
+  }
+
+  labels(id) { return this._labels[id]; }
+
+  memoryBytes() {
+    let bytes = 0;
+    for (const s of this._series) bytes += s.timestamps.byteLength + s.values.byteLength;
+    return bytes;
+  }
+}
+
+// ── ChunkedStore ─────────────────────────────────────────────────────
+
+class ChunkedStore {
+  constructor(chunkSize = 640) {
+    this.name = 'ChunkedStore';
+    this.chunkSize = chunkSize;
+    this._series = [];
+    this._labels = [];
+    this._postings = new Map();
+    this._sampleCount = 0;
+  }
+  get seriesCount() { return this._series.length; }
+  get sampleCount() { return this._sampleCount; }
+
+  getOrCreateSeries(labels) {
+    const key = [...labels].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
+    for (let i = 0; i < this._labels.length; i++) {
+      const lkey = [...this._labels[i]].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
+      if (lkey === key) return i;
+    }
+    const id = this._series.length;
+    this._series.push({
+      hot: { timestamps: new BigInt64Array(this.chunkSize), values: new Float64Array(this.chunkSize), count: 0 },
+      frozen: [],
+    });
+    this._labels.push(new Map(labels));
+    for (const [k, v] of labels) {
+      const pk = `${k}\0${v}`;
+      if (!this._postings.has(pk)) this._postings.set(pk, []);
+      this._postings.get(pk).push(id);
+    }
+    return id;
+  }
+
+  appendBatch(id, timestamps, values) {
+    const s = this._series[id];
+    let offset = 0;
+    while (offset < timestamps.length) {
+      const space = this.chunkSize - s.hot.count;
+      const take = Math.min(space, timestamps.length - offset);
+      s.hot.timestamps.set(timestamps.subarray(offset, offset + take), s.hot.count);
+      s.hot.values.set(values.subarray(offset, offset + take), s.hot.count);
+      s.hot.count += take;
+      offset += take;
+      this._sampleCount += take;
+      if (s.hot.count >= this.chunkSize) this._freeze(s);
+    }
+  }
+
+  _freeze(s) {
+    const ts = s.hot.timestamps.slice(0, s.hot.count);
+    const vals = s.hot.values.slice(0, s.hot.count);
+    const compressed = encodeChunk(ts, vals);
+    s.frozen.push({
+      compressed,
+      minT: ts[0],
+      maxT: ts[ts.length - 1],
+      count: ts.length,
+    });
+    s.hot.count = 0;
+  }
+
+  matchLabel(label, value) {
+    return this._postings.get(`${label}\0${value}`) ?? [];
+  }
+
+  read(id, start, end) {
+    const s = this._series[id];
+    const parts = [];
+    for (const chunk of s.frozen) {
+      if (chunk.maxT < start || chunk.minT > end) continue;
+      const decoded = decodeChunk(chunk.compressed);
+      const lo = lowerBound(decoded.timestamps, start, 0, decoded.timestamps.length);
+      const hi = upperBound(decoded.timestamps, end, lo, decoded.timestamps.length);
+      if (hi > lo) parts.push({ timestamps: decoded.timestamps.slice(lo, hi), values: decoded.values.slice(lo, hi) });
+    }
+    if (s.hot.count > 0) {
+      const lo = lowerBound(s.hot.timestamps, start, 0, s.hot.count);
+      const hi = upperBound(s.hot.timestamps, end, lo, s.hot.count);
+      if (hi > lo) parts.push({ timestamps: s.hot.timestamps.slice(lo, hi), values: s.hot.values.slice(lo, hi) });
+    }
+    if (parts.length === 0) return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+    if (parts.length === 1) return parts[0];
+    const totalLen = parts.reduce((s, p) => s + p.timestamps.length, 0);
+    const ts = new BigInt64Array(totalLen);
+    const vs = new Float64Array(totalLen);
+    let off = 0;
+    for (const p of parts) { ts.set(p.timestamps, off); vs.set(p.values, off); off += p.timestamps.length; }
+    return { timestamps: ts, values: vs };
+  }
+
+  labels(id) { return this._labels[id]; }
+
+  memoryBytes() {
+    let bytes = 0;
+    for (const s of this._series) {
+      bytes += s.hot.timestamps.byteLength + s.hot.values.byteLength;
+      for (const c of s.frozen) bytes += c.compressed.byteLength + 32;
+    }
+    return bytes;
+  }
+}
+
+// ── ScanEngine ───────────────────────────────────────────────────────
+
+function aggInit(fn) {
+  if (fn === 'min') return Infinity;
+  if (fn === 'max') return -Infinity;
+  return 0;
+}
+
+function aggAccum(acc, v, fn) {
+  switch (fn) {
+    case 'sum': case 'avg': return acc + v;
+    case 'min': return v < acc ? v : acc;
+    case 'max': return v > acc ? v : acc;
+    case 'count': return acc + 1;
+    case 'last': return v;
+    default: return acc;
+  }
+}
+
+function aggFinalize(vals, counts, fn) {
+  if (fn === 'avg') for (let i = 0; i < vals.length; i++) if (counts[i] > 0) vals[i] /= counts[i];
+}
+
+class ScanEngine {
+  query(storage, opts) {
+    let ids = storage.matchLabel('__name__', opts.metric);
+    if (opts.matchers) {
+      for (const m of opts.matchers) {
+        const s = new Set(storage.matchLabel(m.label, m.value));
+        ids = ids.filter(id => s.has(id));
+      }
+    }
+    let scannedSamples = 0;
+    if (!opts.agg) {
+      const series = [];
+      for (const id of ids) {
+        const data = storage.read(id, opts.start, opts.end);
+        scannedSamples += data.timestamps.length;
+        series.push({ labels: storage.labels(id) ?? new Map(), timestamps: data.timestamps, values: data.values });
+      }
+      return { series, scannedSeries: ids.length, scannedSamples };
+    }
+
+    const groups = new Map();
+    for (const id of ids) {
+      const data = storage.read(id, opts.start, opts.end);
+      scannedSamples += data.timestamps.length;
+      const labels = storage.labels(id) ?? new Map();
+      const groupKey = opts.groupBy ? opts.groupBy.map(k => labels.get(k) ?? '').join('\0') : '__all__';
+      let group = groups.get(groupKey);
+      if (!group) {
+        const gl = new Map(); gl.set('__name__', opts.metric);
+        if (opts.groupBy) for (const k of opts.groupBy) { const v = labels.get(k); if (v) gl.set(k, v); }
+        group = { labels: gl, ranges: [] };
+        groups.set(groupKey, group);
+      }
+      group.ranges.push(data);
+    }
+
+    const series = [];
+    for (const [, group] of groups) {
+      const result = this._aggregate(group.ranges, opts.agg, opts.step);
+      series.push({ labels: group.labels, timestamps: result.timestamps, values: result.values });
+    }
+    return { series, scannedSeries: ids.length, scannedSamples };
+  }
+
+  _aggregate(ranges, fn, step) {
+    if (ranges.length === 0) return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+    if (!step) return this._pointAggregate(ranges, fn);
+    return this._stepAggregate(ranges, fn, step);
+  }
+
+  _pointAggregate(ranges, fn) {
+    let longest = ranges[0];
+    for (const r of ranges) if (r.timestamps.length > longest.timestamps.length) longest = r;
+    const timestamps = longest.timestamps;
+    const values = new Float64Array(timestamps.length);
+    if (fn === 'rate') {
+      const src = ranges[0];
+      for (let i = 1; i < src.timestamps.length; i++) {
+        const dt = Number(src.timestamps[i] - src.timestamps[i - 1]) / 1_000_000; // ns → ms → s
+        values[i] = dt > 0 ? (src.values[i] - src.values[i - 1]) / (dt / 1000) : 0;
+      }
+      return { timestamps, values };
+    }
+    values.fill(aggInit(fn));
+    const counts = new Float64Array(timestamps.length);
+    for (const r of ranges) {
+      const len = Math.min(r.values.length, timestamps.length);
+      for (let i = 0; i < len; i++) { values[i] = aggAccum(values[i], r.values[i], fn); counts[i]++; }
+    }
+    aggFinalize(values, counts, fn);
+    return { timestamps, values };
+  }
+
+  _stepAggregate(ranges, fn, step) {
+    let minT = BigInt('9223372036854775807');
+    let maxT = -minT;
+    for (const r of ranges) {
+      if (r.timestamps.length === 0) continue;
+      if (r.timestamps[0] < minT) minT = r.timestamps[0];
+      if (r.timestamps[r.timestamps.length - 1] > maxT) maxT = r.timestamps[r.timestamps.length - 1];
+    }
+    const bucketCount = Number((maxT - minT) / step) + 1;
+    const timestamps = new BigInt64Array(bucketCount);
+    const values = new Float64Array(bucketCount);
+    const counts = new Float64Array(bucketCount);
+    for (let i = 0; i < bucketCount; i++) timestamps[i] = minT + BigInt(i) * step;
+    values.fill(aggInit(fn));
+    for (const r of ranges) {
+      for (let i = 0; i < r.timestamps.length; i++) {
+        const bucket = Number((r.timestamps[i] - minT) / step);
+        if (bucket < 0 || bucket >= bucketCount) continue;
+        values[bucket] = aggAccum(values[bucket], r.values[i], fn);
+        counts[bucket]++;
+      }
+    }
+    aggFinalize(values, counts, fn);
+    return { timestamps, values };
+  }
+}
+
+// ── Data Generators ──────────────────────────────────────────────────
+
+const REGIONS = ['us-east', 'us-west', 'eu-west', 'ap-south', 'ap-east'];
+const INSTANCES = ['web-01', 'web-02', 'web-03', 'api-01', 'api-02', 'worker-01', 'worker-02', 'cache-01', 'db-01', 'db-02'];
+const METRICS = [
+  'http_requests_total',
+  'http_request_duration_ms',
+  'cpu_usage_percent',
+  'memory_usage_bytes',
+  'active_connections',
+];
+
+function generateValue(pattern, i, seriesIdx, total) {
+  const phase = (seriesIdx * 0.7);
+  const t = i / total;
+  switch (pattern) {
+    case 'sine':
+      return 100 + Math.sin((i / 50) + phase) * 40 + Math.sin((i / 200) + phase) * 20 + (Math.random() - 0.5) * 8;
+    case 'sawtooth':
+      return ((i + seriesIdx * 100) % 200) + Math.random() * 5;
+    case 'random-walk': {
+      // Produce walk from scratch for each point (deterministic-ish)
+      let v = 50 + seriesIdx * 10;
+      for (let j = 0; j < Math.min(i, 500); j++) v += (Math.sin(j * 0.1 + seriesIdx) * 2 + (Math.random() - 0.5) * 3);
+      return Math.max(0, v);
+    }
+    case 'spiky': {
+      const base = 20 + seriesIdx * 5;
+      const spike = (i % 100 < 5) ? 200 + Math.random() * 100 : 0;
+      return base + Math.random() * 10 + spike;
+    }
+    case 'constant':
+      return 42.0 + seriesIdx * 0.001;
+    default:
+      return Math.random() * 100;
+  }
+}
+
+// ── Chart Renderer ───────────────────────────────────────────────────
+
+const CHART_COLORS = [
+  '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
+  '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
+  '#14b8a6', '#e11d48', '#a855f7', '#0ea5e9', '#eab308',
+];
+
+function renderChart(canvas, seriesData, title) {
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const w = Math.min(rect.width - 32, 1100);
+  const h = 380;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.scale(dpr, dpr);
+
+  const pad = { top: 40, right: 20, bottom: 50, left: 70 };
+  const plotW = w - pad.left - pad.right;
+  const plotH = h - pad.top - pad.bottom;
+
+  // Find global min/max
+  let minT = Infinity, maxT = -Infinity, minV = Infinity, maxV = -Infinity;
+  for (const s of seriesData) {
+    for (let i = 0; i < s.timestamps.length; i++) {
+      const t = Number(s.timestamps[i]);
+      const v = s.values[i];
+      if (t < minT) minT = t;
+      if (t > maxT) maxT = t;
+      if (v < minV) minV = v;
+      if (v > maxV) maxV = v;
+    }
+  }
+
+  if (minV === maxV) { minV -= 1; maxV += 1; }
+  const vPad = (maxV - minV) * 0.08;
+  minV -= vPad;
+  maxV += vPad;
+
+  const tRange = maxT - minT || 1;
+  const vRange = maxV - minV || 1;
+
+  // Background
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+  ctx.lineWidth = 1;
+  const yTicks = 6;
+  for (let i = 0; i <= yTicks; i++) {
+    const y = pad.top + (plotH * i / yTicks);
+    ctx.beginPath();
+    ctx.moveTo(pad.left, y);
+    ctx.lineTo(w - pad.right, y);
+    ctx.stroke();
+  }
+
+  const xTicks = Math.min(8, seriesData[0]?.timestamps.length || 8);
+  for (let i = 0; i <= xTicks; i++) {
+    const x = pad.left + (plotW * i / xTicks);
+    ctx.beginPath();
+    ctx.moveTo(x, pad.top);
+    ctx.lineTo(x, h - pad.bottom);
+    ctx.stroke();
+  }
+
+  // Y-axis labels
+  ctx.fillStyle = '#6b8a9e';
+  ctx.font = '11px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i <= yTicks; i++) {
+    const y = pad.top + (plotH * i / yTicks);
+    const val = maxV - (i / yTicks) * vRange;
+    ctx.fillText(formatNum(val), pad.left - 8, y);
+  }
+
+  // X-axis labels
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (let i = 0; i <= xTicks; i++) {
+    const x = pad.left + (plotW * i / xTicks);
+    const tNs = minT + (i / xTicks) * tRange;
+    const tMs = tNs / 1_000_000;
+    const d = new Date(tMs);
+    ctx.fillText(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), x, h - pad.bottom + 8);
+  }
+
+  // Title
+  ctx.fillStyle = '#0f3a5e';
+  ctx.font = '600 14px "Space Grotesk", sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(title || 'Query Results', pad.left, 10);
+
+  // Point count
+  const totalPoints = seriesData.reduce((s, d) => s + d.timestamps.length, 0);
+  ctx.fillStyle = '#6b8a9e';
+  ctx.font = '11px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(`${totalPoints.toLocaleString()} points rendered`, w - pad.right, 12);
+
+  // Draw series
+  for (let si = 0; si < seriesData.length; si++) {
+    const s = seriesData[si];
+    const color = CHART_COLORS[si % CHART_COLORS.length];
+
+    // Area fill
+    ctx.beginPath();
+    let firstX, firstY;
+    for (let i = 0; i < s.timestamps.length; i++) {
+      const x = pad.left + ((Number(s.timestamps[i]) - minT) / tRange) * plotW;
+      const y = pad.top + ((maxV - s.values[i]) / vRange) * plotH;
+      if (i === 0) { ctx.moveTo(x, y); firstX = x; firstY = y; }
+      else ctx.lineTo(x, y);
+    }
+    if (s.timestamps.length > 0) {
+      const lastX = pad.left + ((Number(s.timestamps[s.timestamps.length - 1]) - minT) / tRange) * plotW;
+      ctx.lineTo(lastX, pad.top + plotH);
+      ctx.lineTo(firstX, pad.top + plotH);
+      ctx.closePath();
+      ctx.fillStyle = color + '12';
+      ctx.fill();
+    }
+
+    // Line
+    ctx.beginPath();
+    for (let i = 0; i < s.timestamps.length; i++) {
+      const x = pad.left + ((Number(s.timestamps[i]) - minT) / tRange) * plotW;
+      const y = pad.top + ((maxV - s.values[i]) / vRange) * plotH;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
+
+  // Axes border
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top);
+  ctx.lineTo(pad.left, h - pad.bottom);
+  ctx.lineTo(w - pad.right, h - pad.bottom);
+  ctx.stroke();
+}
+
+function formatNum(n) {
+  if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (Math.abs(n) >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  if (Math.abs(n) < 0.01 && n !== 0) return n.toExponential(1);
+  return n.toFixed(1);
+}
+
+function formatBytes(b) {
+  if (b >= 1024 * 1024) return (b / (1024 * 1024)).toFixed(2) + ' MB';
+  if (b >= 1024) return (b / 1024).toFixed(1) + ' KB';
+  return b + ' B';
+}
+
+// ── UI Wiring ────────────────────────────────────────────────────────
+
+let currentStore = null;
+let currentEngine = new ScanEngine();
+let generatedMetrics = [];
+
+const $ = (sel) => document.querySelector(sel);
+
+$('#btnGenerate').addEventListener('click', () => {
+  const numSeries = parseInt($('#numSeries').value);
+  const numPoints = parseInt($('#numPoints').value);
+  const pattern = $('#dataPattern').value;
+  const backendType = $('#backend').value;
+
+  const btn = $('#btnGenerate');
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+
+  // Use requestAnimationFrame to let the UI update before heavy computation
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      try {
+        generateData(numSeries, numPoints, pattern, backendType);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Generate Data';
+      }
+    }, 50);
+  });
+});
+
+function generateData(numSeries, numPoints, pattern, backendType) {
+  const store = backendType === 'chunked' ? new ChunkedStore(640) : new FlatStore();
+  const now = BigInt(Date.now()) * 1_000_000n; // nanoseconds
+  const intervalNs = 1_000_000_000n; // 1 second between points
+
+  const t0 = performance.now();
+
+  generatedMetrics = [];
+  const metricsUsed = new Set();
+
+  for (let si = 0; si < numSeries; si++) {
+    const metricName = METRICS[si % METRICS.length];
+    const region = REGIONS[si % REGIONS.length];
+    const instance = INSTANCES[si % INSTANCES.length];
+
+    metricsUsed.add(metricName);
+
+    const labels = new Map([
+      ['__name__', metricName],
+      ['region', region],
+      ['instance', instance],
+      ['job', 'demo'],
+    ]);
+
+    const id = store.getOrCreateSeries(labels);
+    const timestamps = new BigInt64Array(numPoints);
+    const values = new Float64Array(numPoints);
+
+    const startT = now - BigInt(numPoints) * intervalNs;
+    for (let i = 0; i < numPoints; i++) {
+      timestamps[i] = startT + BigInt(i) * intervalNs;
+      values[i] = generateValue(pattern, i, si, numPoints);
+    }
+
+    store.appendBatch(id, timestamps, values);
+  }
+
+  const ingestTime = performance.now() - t0;
+  currentStore = store;
+  generatedMetrics = [...metricsUsed];
+
+  // Compute stats
+  const totalPoints = store.sampleCount;
+  const memBytes = store.memoryBytes();
+  const rawBytes = totalPoints * 16; // 8 bytes ts + 8 bytes val
+  const compressionRatio = rawBytes / memBytes;
+
+  // Update stats UI
+  $('#statsGrid').style.display = '';
+  $('#statTotalPoints').textContent = totalPoints.toLocaleString();
+  $('#statSeries').textContent = store.seriesCount.toLocaleString();
+  $('#statMemory').textContent = formatBytes(memBytes);
+  $('#statCompression').textContent = compressionRatio.toFixed(1) + '×';
+  $('#statIngestTime').textContent = ingestTime.toFixed(0) + ' ms';
+  $('#statIngestRate').textContent = formatNum(totalPoints / (ingestTime / 1000)) + ' pts/s';
+
+  // Populate metric selector
+  const metricSelect = $('#queryMetric');
+  metricSelect.innerHTML = '';
+  for (const m of generatedMetrics) {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    metricSelect.appendChild(opt);
+  }
+
+  // Show query controls
+  $('#queryControls').style.display = '';
+
+  // Show compression breakdown
+  showCompressionBreakdown(rawBytes, memBytes);
+
+  // Auto-run a query
+  runQuery();
+}
+
+$('#btnQuery').addEventListener('click', runQuery);
+
+function runQuery() {
+  if (!currentStore) return;
+
+  const metric = $('#queryMetric').value;
+  const agg = $('#queryAgg').value || undefined;
+  const groupBy = $('#queryGroupBy').value ? [$('#queryGroupBy').value] : undefined;
+  const stepMs = parseInt($('#queryStep').value);
+  const step = stepMs > 0 ? BigInt(stepMs) * 1_000_000n : undefined;
+
+  // Find time range from all data
+  const ids = currentStore.matchLabel('__name__', metric);
+  if (ids.length === 0) return;
+
+  let minT = BigInt('9223372036854775807');
+  let maxT = -minT;
+  for (const id of ids) {
+    const data = currentStore.read(id, -minT, minT);
+    if (data.timestamps.length > 0) {
+      if (data.timestamps[0] < minT) minT = data.timestamps[0];
+      if (data.timestamps[data.timestamps.length - 1] > maxT) maxT = data.timestamps[data.timestamps.length - 1];
+    }
+  }
+
+  const t0 = performance.now();
+  const result = currentEngine.query(currentStore, {
+    metric,
+    start: minT,
+    end: maxT,
+    agg,
+    groupBy,
+    step,
+  });
+  const queryTime = performance.now() - t0;
+
+  // Update query stats
+  $('#queryResults').style.display = '';
+  $('#qStatScannedSeries').innerHTML = `Scanned: <strong>${result.scannedSeries}</strong> series`;
+  $('#qStatScannedSamples').innerHTML = `Samples: <strong>${result.scannedSamples.toLocaleString()}</strong>`;
+  $('#qStatResultSeries').innerHTML = `Result: <strong>${result.series.length}</strong> series`;
+  $('#qStatQueryTime').innerHTML = `Time: <strong>${queryTime.toFixed(1)} ms</strong>`;
+
+  // Build chart title
+  const aggLabel = agg ? `${agg}(${metric})` : metric;
+  const groupLabel = groupBy ? ` by ${groupBy.join(', ')}` : '';
+  const stepLabel = step ? ` [${stepMs / 1000}s step]` : '';
+  const chartTitle = `${aggLabel}${groupLabel}${stepLabel}`;
+
+  // Render chart
+  renderChart($('#chartCanvas'), result.series, chartTitle);
+
+  // Build legend
+  const legendEl = $('#chartLegend');
+  legendEl.innerHTML = '';
+  for (let i = 0; i < result.series.length; i++) {
+    const s = result.series[i];
+    const color = CHART_COLORS[i % CHART_COLORS.length];
+    const labelStr = [...s.labels].filter(([k]) => k !== '__name__').map(([k, v]) => `${k}="${v}"`).join(', ') || 'all';
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<span class="legend-swatch" style="background:${color}"></span>${labelStr} (${s.timestamps.length.toLocaleString()} pts)`;
+    legendEl.appendChild(item);
+  }
+}
+
+function showCompressionBreakdown(rawBytes, compressedBytes) {
+  const el = $('#compressionBench');
+  el.style.display = '';
+  const bars = $('#compressionBars');
+  const maxVal = rawBytes;
+
+  const rows = [
+    { label: 'Raw (16 B/pt)', bytes: rawBytes, cls: 'raw' },
+    { label: 'XOR-Delta', bytes: compressedBytes, cls: 'compressed' },
+  ];
+
+  bars.innerHTML = rows.map(r => {
+    const pct = Math.max(2, (r.bytes / maxVal) * 100);
+    return `
+      <div class="comp-bar-row">
+        <span class="comp-bar-label">${r.label}</span>
+        <div class="comp-bar-track">
+          <div class="comp-bar-fill ${r.cls}" style="width:${pct}%">${formatBytes(r.bytes)}</div>
+        </div>
+        <span class="comp-bar-value">${(rawBytes / r.bytes).toFixed(1)}×</span>
+      </div>`;
+  }).join('');
+}
+
+// Re-run query when controls change
+for (const id of ['queryMetric', 'queryAgg', 'queryGroupBy', 'queryStep']) {
+  $(`#${id}`).addEventListener('change', () => { if (currentStore) runQuery(); });
+}
+
+// Handle canvas resize
+window.addEventListener('resize', () => {
+  if (currentStore && $('#queryResults').style.display !== 'none') runQuery();
+});
