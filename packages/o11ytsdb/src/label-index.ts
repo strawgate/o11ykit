@@ -82,9 +82,9 @@ function internLabels(labels: Labels, interner: Interner): Uint32Array {
 }
 
 function seriesKeyFromPairs(labelPairs: Uint32Array): string {
-  let out = '';
+  const parts: string[] = [];
   for (let i = 0; i < labelPairs.length; i += 2) {
-    out += `${labelPairs[i]}:${labelPairs[i + 1]},`;
+    parts.push(`${labelPairs[i]}:${labelPairs[i + 1]}`);
   }
-  return out;
+  return parts.join(',');
 }
