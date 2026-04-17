@@ -1674,13 +1674,13 @@ function showChunkDetail(seriesInfo, chunkIndex, type, store) {
 
     // Byte layout segments differ by codec
     const byteLayoutLegend = isColumn ? `
-          <span class="byte-legend-item"><span class="byte-swatch header"></span>ALP header</span>
-          <span class="byte-legend-item"><span class="byte-swatch values"></span>ALP-encoded values</span>
-          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Shared timestamps (amortized)</span>
+          <span class="byte-legend-item"><span class="byte-swatch header"></span>ALP header (14 B)</span>
+          <span class="byte-legend-item"><span class="byte-swatch values"></span>Bit-packed offsets</span>
+          <span class="byte-legend-item"><span class="byte-swatch exceptions"></span>Exceptions</span>
+          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Shared timestamps</span>
         ` : `
-          <span class="byte-legend-item"><span class="byte-swatch header"></span>Header (ts₀+v₀)</span>
-          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Timestamp deltas</span>
-          <span class="byte-legend-item"><span class="byte-swatch values"></span>XOR values</span>
+          <span class="byte-legend-item"><span class="byte-swatch header"></span>Header (18 B: count + ts₀ + v₀)</span>
+          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Interleaved Δ²ts + XOR values</span>
         `;
 
     panel.innerHTML = `
@@ -1829,21 +1829,152 @@ function renderByteMapALP(compressedValues, compressedTs, sharedCount) {
   const valBytes = compressedValues.byteLength;
   const tsBytes = compressedTs.byteLength;
   const amortizedTs = Math.round(tsBytes / sharedCount);
-  // ALP header is first 4 bytes (count + exponent + factor)
-  const headerBytes = Math.min(4, valBytes);
-  const alpDataBytes = valBytes - headerBytes;
-  const totalBytes = headerBytes + alpDataBytes + amortizedTs;
 
+  // Parse ALP header for accurate segment sizes
+  var alpBW = valBytes >= 4 ? compressedValues[3] : 0;
+  var alpCount = valBytes >= 2 ? (compressedValues[0] << 8) | compressedValues[1] : 0;
+  var alpExc = valBytes >= 14 ? (compressedValues[12] << 8) | compressedValues[13] : 0;
+  var headerBytes = Math.min(14, valBytes);
+  var bpBytes = Math.ceil(alpCount * alpBW / 8);
+  var excBytes = alpExc * 10; // 2 pos + 8 val each
+
+  const totalBytes = headerBytes + bpBytes + excBytes + amortizedTs;
   const segments = [
-    { label: 'ALP Header', bytes: headerBytes, cls: 'header' },
-    { label: 'ALP Values', bytes: alpDataBytes, cls: 'values' },
-    { label: `Shared Timestamps (÷${sharedCount})`, bytes: amortizedTs, cls: 'timestamps' },
+    { label: 'Header', bytes: headerBytes, cls: 'header' },
+    { label: 'Offsets', bytes: bpBytes, cls: 'values' },
   ];
+  if (excBytes > 0) segments.push({ label: 'Exceptions', bytes: excBytes, cls: 'exceptions' });
+  segments.push({ label: `Timestamps (÷${sharedCount})`, bytes: amortizedTs, cls: 'timestamps' });
 
   container.innerHTML = segments.map(seg => {
     const pct = Math.max(1, (seg.bytes / totalBytes) * 100);
     return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ''}</div>`;
   }).join('');
+}
+
+// ── Byte Explorer Helpers ──────────────────────────────────────────
+
+function readI64BE(buf, offset) {
+  var v = 0n;
+  for (var i = 0; i < 8; i++) v = (v << 8n) | BigInt(buf[offset + i]);
+  if (v >= (1n << 63n)) v -= (1n << 64n);
+  return v;
+}
+
+function readF64BE(buf, offset) {
+  var ab = new ArrayBuffer(8);
+  var dv = new DataView(ab);
+  for (var i = 0; i < 8; i++) dv.setUint8(i, buf[offset + i]);
+  return dv.getFloat64(0, false);
+}
+
+function formatEpochNs(ns) {
+  if (ns === 0n) return '(epoch 0)';
+  try {
+    return new Date(Number(ns / 1_000_000n)).toISOString();
+  } catch(e) { return 'epoch ' + ns.toString(); }
+}
+
+var SUPERSCRIPTS = '\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079';
+function superNum(n) {
+  return String(n).split('').map(function(d) { return SUPERSCRIPTS[parseInt(d)] || d; }).join('');
+}
+
+function buildALPInsightHtml(p) {
+  var factor = '10' + superNum(p.exponent);
+  var excPct = p.count > 0 ? ((p.excCount / p.count) * 100).toFixed(1) : '0';
+  var rawValBits = p.count * 64;
+  var compValBits = p.bitpackedBytes * 8;
+  var valRatio = rawValBits > 0 ? (rawValBits / Math.max(1, compValBits)).toFixed(1) : '-';
+
+  var html =
+    '<div class="codec-insight">' +
+      '<div class="ci-title">\uD83E\uDDEC ALP \u00b7 Adaptive Lossless floating-Point <span class="ci-ref">(CWI Amsterdam, SIGMOD 2024)</span></div>' +
+      '<div class="ci-pipeline">' +
+        '<div class="ci-step">' +
+          '<div class="ci-num">1</div>' +
+          '<div class="ci-body">' +
+            '<div class="ci-step-title">Decimal Scaling</div>' +
+            '<div class="ci-detail">Multiply by ' + factor + ' \u2192 float64 becomes lossless int64</div>' +
+            '<div class="ci-example">e.g. 42.150 \u00d7 ' + factor + ' = ' + (42.15 * Math.pow(10, p.exponent)).toFixed(0) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="ci-step">' +
+          '<div class="ci-num">2</div>' +
+          '<div class="ci-body">' +
+            '<div class="ci-step-title">Frame of Reference</div>' +
+            '<div class="ci-detail">min = ' + p.minInt.toString() + ', offsets need only ' + p.bitWidth + ' bits</div>' +
+            '<div class="ci-example">Each value stored as (int \u2212 min) in ' + p.bitWidth + ' bits vs 64 raw</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="ci-step">' +
+          '<div class="ci-num">3</div>' +
+          '<div class="ci-body">' +
+            '<div class="ci-step-title">Bit-Packing</div>' +
+            '<div class="ci-detail">' + p.count + ' \u00d7 ' + p.bitWidth + 'b = ' + formatBytes(p.bitpackedBytes) + '</div>' +
+            '<div class="ci-example">' + valRatio + '\u00d7 compression on values alone</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="ci-exceptions">' +
+        (p.excCount === 0
+          ? '\u2705 0 exceptions \u2014 100% of values fit ALP perfectly'
+          : '\u26a0\ufe0f ' + p.excCount + ' exceptions (' + excPct + '%) stored as raw f64') +
+      '</div>' +
+    '</div>';
+
+  if (p.tsCount > 0) {
+    html +=
+      '<div class="codec-insight ts">' +
+        '<div class="ci-title">\uD83D\uDD70\uFE0F Delta-of-Delta Timestamps <span class="ci-ref">(shared across ' + p.sharedCount + ' series)</span></div>' +
+        '<div class="ci-pipeline">' +
+          '<div class="ci-step">' +
+            '<div class="ci-num">\u23F1</div>' +
+            '<div class="ci-body">' +
+              '<div class="ci-step-title">Base: ' + formatEpochNs(p.firstTs) + '</div>' +
+              '<div class="ci-detail">' + formatBytes(p.tsLen) + ' total \u00f7 ' + p.sharedCount + ' series = ' + formatBytes(p.amortizedTsLen) + ' amortized</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="ci-step">' +
+            '<div class="ci-num">\u0394</div>' +
+            '<div class="ci-body">' +
+              '<div class="ci-step-title">Gorilla-style prefix coding</div>' +
+              '<div class="ci-detail">0 = same \u0394 (1 bit) \u2502 10+7b \u2502 110+9b \u2502 1110+12b \u2502 1111+64b</div>' +
+              '<div class="ci-example">Regular intervals \u2192 most timestamps encode as a single 0 bit</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+  return html;
+}
+
+function buildXORInsightHtml(p) {
+  var totalBits = (p.totalBytes - 18) * 8;
+  var bitsPerSample = p.count > 1 ? (totalBits / (p.count - 1)).toFixed(1) : '-';
+
+  return '<div class="codec-insight">' +
+    '<div class="ci-title">\uD83E\uDDEC XOR-Delta \u00b7 Gorilla-style Compression <span class="ci-ref">(Facebook/Meta, VLDB 2015)</span></div>' +
+    '<div class="ci-pipeline">' +
+      '<div class="ci-step">' +
+        '<div class="ci-num">\u23F1</div>' +
+        '<div class="ci-body">' +
+          '<div class="ci-step-title">Timestamps: Delta-of-Delta</div>' +
+          '<div class="ci-detail">Base: ' + formatEpochNs(p.firstTs) + '</div>' +
+          '<div class="ci-example">0 = same \u0394 (1 bit) \u2502 10+7b \u2502 110+9b \u2502 1110+12b \u2502 1111+64b</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="ci-step">' +
+        '<div class="ci-num">\u2295</div>' +
+        '<div class="ci-body">' +
+          '<div class="ci-step-title">Values: XOR of IEEE-754 bits</div>' +
+          '<div class="ci-detail">Base value: ' + p.firstVal.toPrecision(6) + '</div>' +
+          '<div class="ci-example">Similar floats share leading/trailing bits \u2192 only meaningful XOR bits stored</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="ci-exceptions">\uD83D\uDCCA Interleaved stream: ~' + bitsPerSample + ' bits/sample (timestamps + values combined)</div>' +
+  '</div>';
 }
 
 // ── Interactive Byte Explorer ──────────────────────────────────────
@@ -1855,77 +1986,152 @@ function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount, codec
   // Build a unified byte array with region annotations
   const regions = [];
   let bytes;
+  var insightHtml = '';
 
   if (codec === 'alp') {
-    const valBytes = primaryBlob.byteLength;
-    const headerLen = Math.min(4, valBytes);
-    const tsLen = tsBlob ? tsBlob.byteLength : 0;
-    const amortizedTsLen = sharedCount > 0 ? Math.round(tsLen / sharedCount) : tsLen;
+    var valBlobLen = primaryBlob.byteLength;
+    var tsLen = tsBlob ? tsBlob.byteLength : 0;
+    var amortizedTsLen = sharedCount > 0 ? Math.round(tsLen / sharedCount) : tsLen;
 
-    const totalDisplay = valBytes + amortizedTsLen;
+    // Parse 14-byte ALP header
+    var ALP_HDR = Math.min(14, valBlobLen);
+    var alpCount = valBlobLen >= 2 ? (primaryBlob[0] << 8) | primaryBlob[1] : 0;
+    var alpExp = valBlobLen >= 3 ? primaryBlob[2] : 0;
+    var alpBW = valBlobLen >= 4 ? primaryBlob[3] : 0;
+    var alpMin = valBlobLen >= 12 ? readI64BE(primaryBlob, 4) : 0n;
+    var alpExc = valBlobLen >= 14 ? (primaryBlob[12] << 8) | primaryBlob[13] : 0;
+
+    var bpBytes = Math.ceil(alpCount * alpBW / 8);
+    var excPosBytes = alpExc * 2;
+    var excValBytes = alpExc * 8;
+
+    // Parse timestamp header
+    var tsCount = 0, firstTs = 0n;
+    if (tsBlob && tsBlob.byteLength >= 10) {
+      tsCount = (tsBlob[0] << 8) | tsBlob[1];
+      firstTs = readI64BE(tsBlob, 2);
+    }
+
+    // Build display buffer
+    var totalDisplay = valBlobLen + amortizedTsLen;
     bytes = new Uint8Array(totalDisplay);
     bytes.set(primaryBlob, 0);
     if (tsBlob && amortizedTsLen > 0) {
-      bytes.set(tsBlob.slice(0, amortizedTsLen), valBytes);
+      bytes.set(tsBlob.slice(0, amortizedTsLen), valBlobLen);
     }
 
+    // ── ALP value regions (granular) ──
+    var factor10 = '10' + superNum(alpExp);
     regions.push({
-      name: 'ALP Header', cls: 'header', start: 0, end: headerLen,
+      name: 'ALP Header (14 B)', cls: 'header', start: 0, end: ALP_HDR,
       decode: function() {
-        if (headerLen >= 2) {
-          const count = (primaryBlob[0] << 8) | primaryBlob[1];
-          return 'Sample count: ' + count + (headerLen >= 3 ? ', exponent: ' + primaryBlob[2] : '') + (headerLen >= 4 ? ', factor: ' + primaryBlob[3] : '');
-        }
-        return 'Header bytes';
+        return 'bytes 0\u20111: sample count = ' + alpCount +
+               '\nbyte 2: exponent = ' + alpExp + '  (\u00d7' + factor10 + ' to convert float\u2192int)' +
+               '\nbyte 3: bit width = ' + alpBW + '  (bits per FoR offset)' +
+               '\nbytes 4\u201311: min int = ' + alpMin.toString() + '  (frame-of-reference base)' +
+               '\nbytes 12\u201313: exceptions = ' + alpExc;
       }
     });
-    regions.push({
-      name: 'ALP Encoded Values', cls: 'values', start: headerLen, end: valBytes,
-      decode: function() {
-        const dataLen = valBytes - headerLen;
-        return dataLen + ' bytes encoding ' + sampleCount + ' float64 values\n' + (dataLen * 8 / sampleCount).toFixed(1) + ' bits/value';
-      }
-    });
-    if (amortizedTsLen > 0) {
+
+    if (bpBytes > 0) {
+      var bpEnd = Math.min(ALP_HDR + bpBytes, valBlobLen);
       regions.push({
-        name: 'Shared Timestamps (\u00f7' + sharedCount + ')', cls: 'timestamps', start: valBytes, end: totalDisplay,
+        name: 'Bit-Packed Offsets', cls: 'values', start: ALP_HDR, end: bpEnd,
         decode: function() {
-          return formatBytes(tsLen) + ' total shared across ' + sharedCount + ' series\nAmortized: ' + formatBytes(amortizedTsLen) + ' per series';
+          return alpCount + ' offsets \u00d7 ' + alpBW + ' bits = ' + bpBytes + ' bytes' +
+                 '\nEach offset = (scaled_integer \u2212 ' + alpMin.toString() + ')' +
+                 '\nReconstruct: (offset + min) \u00f7 ' + factor10 + ' \u2192 original float64';
         }
       });
     }
+
+    if (alpExc > 0) {
+      var epStart = ALP_HDR + bpBytes;
+      var epEnd = Math.min(epStart + excPosBytes, valBlobLen);
+      var evEnd = Math.min(epEnd + excValBytes, valBlobLen);
+      regions.push({
+        name: 'Exception Positions', cls: 'exceptions', start: epStart, end: epEnd,
+        decode: function() {
+          return alpExc + ' \u00d7 u16 BE indices of non-roundtrippable values' +
+                 '\nThese values couldn\u2019t survive \u00d7' + factor10 + ' \u2192 int \u2192 \u00f7' + factor10;
+        }
+      });
+      regions.push({
+        name: 'Exception Raw Values', cls: 'exceptions', start: epEnd, end: evEnd,
+        decode: function() {
+          return alpExc + ' \u00d7 f64 BE (raw IEEE-754, 8 bytes each)' +
+                 '\nStored verbatim for lossless reconstruction';
+        }
+      });
+    }
+
+    // ── Shared timestamp regions ──
+    if (amortizedTsLen > 0) {
+      var tsHdrEnd = Math.min(10, amortizedTsLen);
+      regions.push({
+        name: 'Timestamp Header', cls: 'timestamps', start: valBlobLen, end: valBlobLen + tsHdrEnd,
+        decode: function() {
+          return 'bytes 0\u20111: count = ' + tsCount +
+                 '\nbytes 2\u20119: first timestamp' +
+                 '\n  ' + formatEpochNs(firstTs) +
+                 '\n  epoch ns: ' + firstTs.toString();
+        }
+      });
+      if (amortizedTsLen > 10) {
+        regions.push({
+          name: 'Timestamp \u0394\u0394 Body', cls: 'timestamps', start: valBlobLen + 10, end: valBlobLen + amortizedTsLen,
+          decode: function() {
+            var body = amortizedTsLen - 10;
+            return body + ' bytes of delta-of-delta encoded timestamps' +
+                   '\nGorilla: 0=same\u0394 | 10+7b | 110+9b | 1110+12b | 1111+64b' +
+                   '\nFull blob: ' + formatBytes(tsLen) + ' shared \u00f7 ' + sharedCount + ' = ' + formatBytes(amortizedTsLen) + '/series';
+          }
+        });
+      }
+    }
+
+    insightHtml = buildALPInsightHtml({
+      count: alpCount, exponent: alpExp, bitWidth: alpBW, minInt: alpMin,
+      excCount: alpExc, bitpackedBytes: bpBytes, valBlobLen: valBlobLen,
+      tsLen: tsLen, amortizedTsLen: amortizedTsLen, sharedCount: sharedCount,
+      tsCount: tsCount, firstTs: firstTs
+    });
   } else {
     bytes = primaryBlob;
-    const totalBytes = bytes.byteLength;
-    const headerLen = Math.min(16, totalBytes);
-    const remainingBytes = totalBytes - headerLen;
-    const tsDeltaBytes = Math.round(remainingBytes * 0.25);
-    const valXorBytes = remainingBytes - tsDeltaBytes;
+    var totalBytes = bytes.byteLength;
+    // XOR header: 2 (count) + 8 (first ts) + 8 (first value) = 18 bytes
+    var hdrLen = Math.min(18, totalBytes);
+    var xorCount = totalBytes >= 2 ? (bytes[0] << 8) | bytes[1] : 0;
+    var xorFirstTs = totalBytes >= 10 ? readI64BE(bytes, 2) : 0n;
+    var xorFirstVal = totalBytes >= 18 ? readF64BE(bytes, 10) : 0;
+    var streamBytes = totalBytes - hdrLen;
 
     regions.push({
-      name: 'Header (ts\u2080 + v\u2080)', cls: 'header', start: 0, end: headerLen,
+      name: 'Header (18 B)', cls: 'header', start: 0, end: hdrLen,
       decode: function() {
-        if (headerLen >= 2) {
-          var count = (bytes[0] << 8) | bytes[1];
-          var info = 'Sample count: ' + count;
-          if (headerLen >= 10) info += '\nBase timestamp: first 8 bytes after count';
-          if (headerLen >= 16) info += '\nBase value: IEEE-754 float64 (8 bytes)';
-          return info;
-        }
-        return 'Header bytes';
+        return 'bytes 0\u20111: sample count = ' + xorCount +
+               '\nbytes 2\u20119: first timestamp (i64 BE)' +
+               '\n  ' + formatEpochNs(xorFirstTs) +
+               '\nbytes 10\u201317: first value (f64 BE)' +
+               '\n  ' + xorFirstVal.toPrecision(8);
       }
     });
+    // Interleaved ts+val bits can't be precisely separated without decoding
+    // Show as one stream with rich explanation
     regions.push({
-      name: 'Timestamp Deltas', cls: 'timestamps', start: headerLen, end: headerLen + tsDeltaBytes,
+      name: 'Interleaved \u0394\u0394ts + XOR values', cls: 'timestamps', start: hdrLen, end: totalBytes,
       decode: function() {
-        return '~' + tsDeltaBytes + ' bytes of delta-of-delta encoded timestamps\nGorilla-style variable-length bit packing\n' + (tsDeltaBytes * 8 / Math.max(1, sampleCount - 1)).toFixed(1) + ' bits/delta';
+        var bps = xorCount > 1 ? (streamBytes * 8 / (xorCount - 1)).toFixed(1) : '-';
+        return streamBytes + ' bytes (' + (streamBytes * 8) + ' bits) for ' + (xorCount - 1) + ' samples' +
+               '\n\nPer sample, interleaved:' +
+               '\n  \u23f1 Timestamp \u0394\u0394: 0=same | 10+7b | 110+9b | 1110+12b | 1111+64b' +
+               '\n  \u2295 Value XOR: 0=same | 10=reuse window | 11+6b+6b=new window' +
+               '\n\n~' + bps + ' bits/sample total';
       }
     });
-    regions.push({
-      name: 'XOR-Encoded Values', cls: 'values', start: headerLen + tsDeltaBytes, end: totalBytes,
-      decode: function() {
-        return '~' + valXorBytes + ' bytes of XOR-delta compressed float64 values\nLeading/trailing zero optimization\n' + (valXorBytes * 8 / Math.max(1, sampleCount - 1)).toFixed(1) + ' bits/value';
-      }
+
+    insightHtml = buildXORInsightHtml({
+      count: xorCount, firstTs: xorFirstTs, firstVal: xorFirstVal, totalBytes: totalBytes
     });
   }
 
@@ -1950,6 +2156,7 @@ function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount, codec
         '<button data-view="bits">Bits</button>' +
       '</div>' +
     '</div>' +
+    '<div id="codecInsight">' + insightHtml + '</div>' +
     '<div class="byte-minimap" id="byteMinimap"></div>' +
     '<div class="hex-grid-scroll" id="' + viewId + '">' +
       '<div class="hex-grid" id="hexGrid" style="grid-template-columns: 56px repeat(' + COLS + ', 1fr) minmax(60px, auto);"></div>' +
@@ -1963,7 +2170,7 @@ function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount, codec
     var seg = document.createElement('div');
     seg.className = 'mm-seg';
     seg.style.width = Math.max(1, ((r.end - r.start) / totalLen) * 100) + '%';
-    seg.style.background = r.cls === 'header' ? '#8b5cf6' : r.cls === 'timestamps' ? '#06b6d4' : '#10b981';
+    seg.style.background = r.cls === 'header' ? '#8b5cf6' : r.cls === 'timestamps' ? '#06b6d4' : r.cls === 'exceptions' ? '#f59e0b' : '#10b981';
     seg.title = r.name + ': ' + formatBytes(r.end - r.start);
     seg.addEventListener('click', function() {
       var targetRow = Math.floor(r.start / COLS);
@@ -2068,8 +2275,7 @@ function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount, codec
       '<span class="bt-offset">offset ' + offset + '</span> &nbsp;' +
       '<span class="bt-hex">0x' + val.toString(16).toUpperCase().padStart(2, '0') + '</span>' +
       '<span style="color:#94a3b8"> = ' + val + '</span>' +
-      '<span class="bt-region ' + region.cls + '">' + region.name + '</span>' +
-      '<div class="bt-decoded">' + (region.cls === 'header' ? 'Metadata / encoding parameters' : region.cls === 'timestamps' ? 'Temporal encoding' : 'Value encoding') + '</div>';
+      '<span class="bt-region ' + region.cls + '">' + region.name + '</span>';
     tooltip.classList.add('visible');
   });
 
