@@ -3,6 +3,7 @@
  *
  * Two methods:
  * 1. `docker exec du` on the data directory inside each container
+ *    (falls back to `find` + `stat` for distroless images like Mimir)
  * 2. Internal metrics APIs (TSDB-specific)
  */
 
@@ -23,21 +24,59 @@ export interface StorageResult {
 
 function dockerExec(container: string, cmd: string): string {
   try {
-    return execSync(`docker exec ${container} ${cmd}`, {
+    const raw = execSync(`docker exec ${container} ${cmd}`, {
       encoding: "utf-8",
       timeout: 15_000,
-    }).trim();
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return raw.trim();
   } catch {
     return "";
   }
 }
 
-function parseDuBytes(output: string): number {
-  const lines = output.trim().split("\n");
-  if (lines.length === 0) return 0;
-  const lastLine = lines[lines.length - 1];
-  const bytes = parseInt(lastLine.split("\t")[0], 10);
-  return isNaN(bytes) ? 0 : bytes;
+/**
+ * Measure directory size - tries `du` inside the container first,
+ * then `find`+`stat`, then falls back to host-side volume measurement
+ * for distroless containers (like Mimir).
+ */
+function measureDirBytes(container: string, dir: string, volumeName: string): number {
+  // Try du first (works for Prometheus, VictoriaMetrics)
+  const duOutput = dockerExec(container, `du -sb ${dir}`);
+  if (duOutput) {
+    const bytes = parseInt(duOutput.split("\t")[0], 10);
+    if (!isNaN(bytes) && bytes > 0) return bytes;
+  }
+
+  // Fallback: use find + stat (works in some distroless images)
+  const findOutput = dockerExec(container, `find ${dir} -type f -exec stat -c '%s' {} +`);
+  if (findOutput) {
+    let total = 0;
+    for (const line of findOutput.split("\n")) {
+      const n = parseInt(line.trim(), 10);
+      if (!isNaN(n)) total += n;
+    }
+    if (total > 0) return total;
+  }
+
+  // Last resort: measure from host side using podman volume inspect
+  try {
+    const raw = execSync(
+      `podman volume inspect ${volumeName} --format '{{.Mountpoint}}'`,
+      { encoding: "utf-8", timeout: 5_000, stdio: ["pipe", "pipe", "pipe"] }
+    ).trim();
+    if (raw) {
+      const duHost = execSync(`du -sb ${raw} 2>/dev/null`, {
+        encoding: "utf-8", timeout: 10_000, stdio: ["pipe", "pipe", "pipe"]
+      }).trim();
+      const bytes = parseInt(duHost.split("\t")[0], 10);
+      if (!isNaN(bytes) && bytes > 0) return bytes;
+    }
+  } catch {
+    // volume inspect may fail
+  }
+
+  return 0;
 }
 
 function parseDuBreakdown(output: string): Record<string, number> {
@@ -64,14 +103,12 @@ async function queryInternalMetrics(target: TsdbTarget): Promise<Record<string, 
 
   try {
     if (target.name === "Prometheus") {
-      // Prometheus exposes TSDB stats
       const resp = await fetch("http://localhost:9090/api/v1/status/tsdb");
       if (resp.ok) {
         const data = await resp.json() as Record<string, unknown>;
         metrics["tsdb_status"] = JSON.stringify(data, null, 2).slice(0, 500);
       }
 
-      // Series count
       const countResp = await fetch(
         'http://localhost:9090/api/v1/query?query=count({__name__=~".+"})'
       );
@@ -144,8 +181,16 @@ async function flushTsdbs(): Promise<void> {
     // Older versions may not have this
   }
 
-  // Mimir: no explicit flush API — data is in memory until block cut
-  // Wait a bit for any pending writes to settle
+  // Mimir: flush ingester to force block creation
+  try {
+    await fetch("http://localhost:9009/ingester/flush", {
+      method: "POST",
+    });
+  } catch {
+    // May not be available
+  }
+
+  // Wait for flushes to complete
   await new Promise((r) => setTimeout(r, 5000));
 }
 
@@ -164,21 +209,15 @@ export async function measureStorage(
   for (const target of targets) {
     console.log(`\n  ${target.name}:`);
 
-    // Total du -sb (bytes)
-    const totalOutput = dockerExec(
-      target.containerName,
-      `du -sb ${target.dataDir}`
-    );
-    const diskBytes = parseDuBytes(totalOutput);
+    const diskBytes = measureDirBytes(target.containerName, target.dataDir, target.volumeName);
 
-    // Breakdown by top-level subdirectories
+    // Breakdown by top-level subdirectories (best-effort)
     const breakdownOutput = dockerExec(
       target.containerName,
       `du -sb ${target.dataDir}/* 2>/dev/null`
     );
     const breakdown = parseDuBreakdown(breakdownOutput);
 
-    // Internal metrics
     const internalMetrics = await queryInternalMetrics(target);
 
     const diskHuman = formatBytes(diskBytes);

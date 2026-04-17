@@ -1,15 +1,14 @@
 /**
  * Ingest loader — sends identical OTLP payloads to all three TSDBs.
  *
- * Uses JSON encoding for Prometheus and Mimir (they accept application/json),
- * and protobuf for VictoriaMetrics (protobuf only). We also send protobuf to
- * Prometheus and Mimir when possible for consistency, but fall back to JSON
- * if protobuf encoding has issues.
+ * Uses protobuf encoding for all targets:
+ * - VictoriaMetrics requires protobuf (rejects JSON for OTLP)
+ * - Prometheus and Mimir accept both, but protobuf is more efficient
  */
 
 import type { BenchConfig, TsdbTarget } from "./config.js";
 import type { OtlpExportRequest } from "./generator.js";
-import { encodeJson } from "./proto-encode.js";
+import { encodeProtobuf } from "./proto-encode.js";
 
 export interface IngestResult {
   target: string;
@@ -22,7 +21,7 @@ export interface IngestResult {
 
 /**
  * Send all generated OTLP requests to a single TSDB target.
- * Uses JSON encoding (all three TSDBs support it for OTLP).
+ * Uses protobuf encoding (required by VictoriaMetrics, optimal for all).
  */
 async function ingestToTarget(
   target: TsdbTarget,
@@ -34,9 +33,9 @@ async function ingestToTarget(
   const errors: string[] = [];
 
   for (let i = 0; i < requests.length; i++) {
-    const body = encodeJson(requests[i]);
+    const body = encodeProtobuf(requests[i]);
     const headers: Record<string, string> = {
-      "Content-Type": "application/json",
+      "Content-Type": "application/x-protobuf",
       ...target.otlpHeaders,
     };
 
@@ -61,7 +60,6 @@ async function ingestToTarget(
       errorCount++;
     }
 
-    // Progress indicator every 10 requests
     if ((i + 1) % 10 === 0 || i === requests.length - 1) {
       process.stdout.write(
         `\r  ${target.name}: ${i + 1}/${requests.length} requests sent`
@@ -123,7 +121,7 @@ export async function waitForData(
     let ready = false;
     while (Date.now() < deadline) {
       try {
-        const url = `${target.queryUrl}?query=count(bench_cpu_usage_percent)`;
+        const url = `${target.queryUrl}?query=count(bench_cpu_usage_percent_ratio)`;
         const headers: Record<string, string> = { ...target.otlpHeaders };
         const resp = await fetch(url, { headers });
         if (resp.ok) {

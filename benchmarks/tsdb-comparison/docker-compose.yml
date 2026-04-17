@@ -11,7 +11,7 @@ services:
       - prometheus-data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--enable-feature=otlp-write-receiver"
+      - "--web.enable-otlp-receiver"
       - "--enable-feature=native-histograms"
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=24h"

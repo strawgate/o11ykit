@@ -43,6 +43,10 @@ ruler_storage:
 
 limits:
   native_histograms_ingestion_enabled: true
+  ingestion_burst_size: 5000000
+  ingestion_rate: 1000000
+  max_global_series_per_user: 0
+  max_global_series_per_metric: 0
 
 activity_tracker:
   filepath: /data/activity.log

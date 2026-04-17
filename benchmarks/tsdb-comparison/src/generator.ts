@@ -189,10 +189,18 @@ export function generateOtlpRequests(config: BenchConfig): OtlpExportRequest[] {
       const histPoints: OtlpHistogramDataPoint[] = [];
       for (let s = 0; s < config.seriesCount; s++) {
         const count = Math.floor(50 + rand() * 200);
-        const bucketCounts = HISTOGRAM_BOUNDS.map(() =>
-          Math.floor(rand() * count).toString()
-        );
-        bucketCounts.push(count.toString()); // +Inf bucket
+        // Generate bucket counts that sum to count
+        // OTLP has len(bounds)+1 buckets (last is the overflow/+Inf bucket)
+        const numBuckets = HISTOGRAM_BOUNDS.length + 1;
+        const rawBuckets: number[] = [];
+        let remaining = count;
+        for (let b = 0; b < numBuckets - 1; b++) {
+          const val = Math.floor(rand() * (remaining / (numBuckets - b)));
+          rawBuckets.push(val);
+          remaining -= val;
+        }
+        rawBuckets.push(remaining); // last bucket gets the remainder
+        const bucketCounts = rawBuckets.map((v) => v.toString());
         histPoints.push({
           attributes: [
             attr("host", `host-${s}`),
@@ -221,9 +229,16 @@ export function generateOtlpRequests(config: BenchConfig): OtlpExportRequest[] {
       for (let s = 0; s < config.seriesCount; s++) {
         const count = Math.floor(100 + rand() * 300);
         const numBuckets = 8;
-        const posBuckets = Array.from({ length: numBuckets }, () =>
-          Math.floor(rand() * (count / numBuckets)).toString()
-        );
+        const zeroCount = Math.floor(rand() * 5);
+        // Distribute (count - zeroCount) across positive buckets
+        let remaining = count - zeroCount;
+        const posBuckets: string[] = [];
+        for (let b = 0; b < numBuckets - 1; b++) {
+          const val = Math.floor(rand() * (remaining / (numBuckets - b)));
+          posBuckets.push(val.toString());
+          remaining -= val;
+        }
+        posBuckets.push(remaining.toString());
         expHistPoints.push({
           attributes: [
             attr("host", `host-${s}`),
@@ -234,7 +249,7 @@ export function generateOtlpRequests(config: BenchConfig): OtlpExportRequest[] {
           count: count.toString(),
           sum: count * (0.001 + rand() * 0.1),
           scale: 3,
-          zeroCount: Math.floor(rand() * 5).toString(),
+          zeroCount: zeroCount.toString(),
           positive: { offset: 0, bucketCounts: posBuckets },
           negative: { offset: 0, bucketCounts: [] },
         });
