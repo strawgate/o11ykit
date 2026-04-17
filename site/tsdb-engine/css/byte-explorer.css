@@ -448,12 +448,36 @@
   position: relative;
 }
 
-.bit-row .bit.bit-ts {
+/* Alternating sample shading — timestamps */
+.bit-row .bit.bit-ts.bit-sample-even {
+  background: rgba(6, 182, 212, 0.18);
+  color: #67e8f9;
   border-bottom: 1px solid rgba(6, 182, 212, 0.4);
 }
 
-.bit-row .bit.bit-val {
+.bit-row .bit.bit-ts.bit-sample-odd {
+  background: rgba(6, 182, 212, 0.08);
+  color: #67e8f9;
+  border-bottom: 1px solid rgba(6, 182, 212, 0.25);
+}
+
+/* Alternating sample shading — values */
+.bit-row .bit.bit-val.bit-sample-even {
+  background: rgba(16, 185, 129, 0.18);
+  color: #6ee7b7;
   border-bottom: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.bit-row .bit.bit-val.bit-sample-odd {
+  background: rgba(16, 185, 129, 0.08);
+  color: #6ee7b7;
+  border-bottom: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+/* Boundary separator between encoded values */
+.bit-row .bit.bit-boundary {
+  border-left: 2px solid rgba(245, 158, 11, 0.7);
+  margin-left: 1px;
 }
 
 /* Bit highlight (active selection) */

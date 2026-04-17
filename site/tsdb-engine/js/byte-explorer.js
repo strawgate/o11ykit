@@ -401,6 +401,7 @@ function renderBitView(explorer, bytes, byteRegion, regions, sampleCount, codec,
 
     var regionBytes = bytes.slice(region.start, Math.min(region.end, Math.ceil(maxBits / 8)));
     var bitsPerRow = 64;
+    var prevEntry = null;
 
     for (var rowStart = 0; rowStart < regionBytes.length * 8; rowStart += bitsPerRow) {
       var rowEl = document.createElement('div');
@@ -428,7 +429,18 @@ function renderBitView(explorer, bytes, byteRegion, regions, sampleCount, codec,
         if (mapEntry) {
           bitEl.classList.add('bit-mapped');
           bitEl.classList.add(mapEntry.type === 'timestamp' ? 'bit-ts' : 'bit-val');
+          // Alternating sample shade
+          bitEl.classList.add(mapEntry.sampleIndex % 2 === 0 ? 'bit-sample-even' : 'bit-sample-odd');
+          // Boundary: first bit of a new encoding entry
+          if (mapEntry !== prevEntry && prevEntry !== null) {
+            bitEl.classList.add('bit-boundary');
+          }
+          // First mapped bit of the region also gets a boundary
+          if (prevEntry === null) {
+            bitEl.classList.add('bit-boundary');
+          }
           bitEl.title = (mapEntry.type === 'timestamp' ? '⏱ ' : '📊 ') + 'Sample #' + mapEntry.sampleIndex;
+          prevEntry = mapEntry;
         }
 
         rowEl.appendChild(bitEl);
