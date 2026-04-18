@@ -235,6 +235,18 @@ export class ColumnStore implements StorageBackend {
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
+    const parts = this.readParts(id, start, end);
+    // Resolve stats-only parts so concatRanges gets full sample data.
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]!;
+      if (p.timestamps.length === 0 && p.decode) {
+        parts[i] = p.decode();
+      }
+    }
+    return concatRanges(parts);
+  }
+
+  readParts(id: SeriesId, start: bigint, end: bigint): TimeRange[] {
     const s = this.allSeries[id]!;
     const group = this.groups[s.groupId]!;
     const parts: TimeRange[] = [];
@@ -244,6 +256,26 @@ export class ColumnStore implements StorageBackend {
       for (const chunk of s.frozen) {
         const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex]!;
         if (tsChunk.maxT < start || tsChunk.minT > end) continue;
+
+        // Stats-skip: when the entire chunk is within the query range,
+        // emit a stats-only part so the query engine can fold pre-computed
+        // aggregates instead of decoding + iterating every sample.
+        // Includes a lazy decode() callback for cases where the chunk
+        // spans multiple aggregation buckets and needs sample iteration.
+        if (tsChunk.minT >= start && tsChunk.maxT <= end) {
+          const rc = this.rangeCodec;
+          const tc = tsChunk.compressed!;
+          const cv = chunk.compressedValues;
+          parts.push({
+            timestamps: new BigInt64Array(0),
+            values: new Float64Array(0),
+            stats: chunk.stats,
+            chunkMinT: tsChunk.minT,
+            chunkMaxT: tsChunk.maxT,
+            decode: () => rc.rangeDecodeValues(tc, cv, tsChunk.minT, tsChunk.maxT),
+          });
+          continue;
+        }
 
         const result = this.rangeCodec.rangeDecodeValues(
           tsChunk.compressed!, chunk.compressedValues, start, end,
@@ -262,6 +294,30 @@ export class ColumnStore implements StorageBackend {
       for (const chunk of s.frozen) {
         const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex]!;
         if (tsChunk.maxT < start || tsChunk.minT > end) continue;
+
+        // Stats-skip: entire chunk within query range.
+        if (tsChunk.minT >= start && tsChunk.maxT <= end) {
+          const vc = this.valuesCodec;
+          const cv = chunk.compressedValues;
+          const tsc = this.tsCodec;
+          const tcc = tsChunk.compressed;
+          parts.push({
+            timestamps: new BigInt64Array(0),
+            values: new Float64Array(0),
+            stats: chunk.stats,
+            chunkMinT: tsChunk.minT,
+            chunkMaxT: tsChunk.maxT,
+            decode: () => {
+              if (!tsChunk.timestamps && tsc) {
+                tsChunk.timestamps = tsc.decodeTimestamps(tcc!);
+              }
+              const ts = tsChunk.timestamps!;
+              const vs = vc.decodeValues(cv);
+              return { timestamps: ts, values: vs };
+            },
+          });
+          continue;
+        }
 
         // Decompress timestamps if needed.
         const timestamps = tsChunk.timestamps
@@ -291,7 +347,7 @@ export class ColumnStore implements StorageBackend {
       }
     }
 
-    return concatRanges(parts);
+    return parts;
   }
 
   labels(id: SeriesId): Labels | undefined {
