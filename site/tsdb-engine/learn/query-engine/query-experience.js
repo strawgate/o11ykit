@@ -6,7 +6,7 @@
  * Stats Check → Decode → Step-Aligned Aggregation
  */
 
-import { $, $$, buildBreadcrumb, drawSparkline, el, fmt, Stepper } from "../shared.js";
+import { $, $$, buildBreadcrumb, drawSparkline, el, fmt, revealSection, Stepper } from "../shared.js";
 
 /* ═══════════════════════════════════════════════════════════════════════
    A. DATASET GENERATION
@@ -748,7 +748,7 @@ function showResults(aggResults, matchedCount, pruneStats, aggFn, stepMinutes, q
   tableContainer.innerHTML = "";
   tableContainer.appendChild(table);
 
-  section.scrollIntoView({ behavior: "smooth", block: "start" });
+  revealSection(section);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -789,13 +789,13 @@ async function executeQuery() {
 
   const { intersection } = resolvePostings(metric, filters);
   await animateLabelMatch(metric, filters);
-  $("#stage-match-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  revealSection($("#stage-match-section"));
   await sleep(600);
 
   // Stage 2: Chunk Pruning
   stepper.goto(2);
   const pruneStats = await animateChunkPruning(intersection, queryRangeHours);
-  $("#stage-prune-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  revealSection($("#stage-prune-section"));
   await sleep(600);
 
   // Stage 3: Stats Check (brief pause — conceptual)
@@ -809,7 +809,7 @@ async function executeQuery() {
   // Stage 5: Aggregation
   stepper.goto(5);
   const aggResults = await animateAggregation(intersection, queryRangeHours, stepMinutes, aggFn);
-  $("#stage-agg-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  revealSection($("#stage-agg-section"));
   await sleep(400);
 
   // Show results
