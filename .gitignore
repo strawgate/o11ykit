@@ -12,6 +12,8 @@ packages/*/.tsbuildinfo
 
 .codex/
 .DS_Store
+in-memory-ideas*
+in-memory\ ideas*
 playwright-report/
 test-results/
 

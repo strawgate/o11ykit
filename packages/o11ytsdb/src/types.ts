@@ -17,6 +17,16 @@ export type SeriesId = number;
 export interface TimeRange {
   timestamps: BigInt64Array;
   values: Float64Array;
+  /** Pre-computed chunk statistics (when available, query engine may skip sample iteration). */
+  stats?: ChunkStats;
+  /** Minimum timestamp in the original chunk (for bucket-fit checks). */
+  chunkMinT?: bigint;
+  /** Maximum timestamp in the original chunk (for bucket-fit checks). */
+  chunkMaxT?: bigint;
+  /** Lazy decode callback for stats-only parts.
+   *  When a stats-only part can't be folded (spans multiple buckets),
+   *  the query engine calls this to retrieve the full sample data. */
+  decode?: () => TimeRange;
 }
 
 // ── Codec (encode/decode strategy) ───────────────────────────────────
@@ -103,6 +113,9 @@ export interface StorageBackend {
 
   /** Read decoded samples in [start, end] for a series. */
   read(id: SeriesId, start: bigint, end: bigint): TimeRange;
+
+  /** Read decoded samples as individual chunk parts (avoids concatenation). */
+  readParts?(id: SeriesId, start: bigint, end: bigint): TimeRange[];
 
   /** Retrieve the label set for a series. */
   labels(id: SeriesId): Labels | undefined;
