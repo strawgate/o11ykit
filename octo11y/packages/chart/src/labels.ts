@@ -1,5 +1,8 @@
 import { MONITOR_METRIC_PREFIX } from "@benchkit/format";
 
+/** Prefix used in aggregated series files (after the aggregate action normalises OTLP names). */
+const SERIES_MONITOR_PREFIX = "_monitor/";
+
 const MONITOR_METRIC_LABELS: Record<string, string> = {
   cpu_system_ms: "CPU system time (ms)",
   cpu_system_pct: "CPU system %",
@@ -21,7 +24,7 @@ function titleCase(input: string): string {
 }
 
 export function defaultMetricLabel(metric: string): string {
-  if (metric.startsWith(MONITOR_METRIC_PREFIX)) {
+  if (metric.startsWith(SERIES_MONITOR_PREFIX) || metric.startsWith(MONITOR_METRIC_PREFIX)) {
     return defaultMonitorMetricLabel(metric);
   }
 
@@ -30,13 +33,16 @@ export function defaultMetricLabel(metric: string): string {
     .replace(/_/g, " ");
 }
 
-/** Returns true when the metric name belongs to the monitor action's output. */
+/** Returns true when the metric name belongs to the monitor action's output.
+ *  Handles both the raw OTLP format (`_monitor.`) and the aggregated series format (`_monitor/`). */
 export function isMonitorMetric(metric: string): boolean {
-  return metric.startsWith(MONITOR_METRIC_PREFIX);
+  return metric.startsWith(SERIES_MONITOR_PREFIX) || metric.startsWith(MONITOR_METRIC_PREFIX);
 }
 
 export function defaultMonitorMetricLabel(metric: string): string {
-  const raw = metric.replace(new RegExp(`^${MONITOR_METRIC_PREFIX.replace(".", "\\.")}`), "");
+  const raw = metric
+    .replace(new RegExp(`^${SERIES_MONITOR_PREFIX.replace("/", "\\/")}`), "")
+    .replace(new RegExp(`^${MONITOR_METRIC_PREFIX.replace(".", "\\.")}`), "");
   if (MONITOR_METRIC_LABELS[raw]) {
     return MONITOR_METRIC_LABELS[raw];
   }
