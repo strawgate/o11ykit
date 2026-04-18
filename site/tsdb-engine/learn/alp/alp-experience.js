@@ -5,7 +5,7 @@
  *   Exponent Scan → Quantize → Frame-of-Reference → Bit-Width → Pack
  */
 
-import { $, $$, buildBreadcrumb, el, fmt, fmtBytes, Stepper } from "../shared.js";
+import { $, $$, buildBreadcrumb, el, fmt, fmtBytes, initGlossary, Stepper } from "../shared.js";
 
 /* ─── Sample Data Presets ─────────────────────────────────────────── */
 
@@ -146,11 +146,11 @@ function init() {
   $("#breadcrumb-nav").innerHTML = buildBreadcrumb("ALP Compression");
 
   const stages = [
-    { icon: "🔍", label: "Scan" },
-    { icon: "×10ᵉ", label: "Quantize" },
-    { icon: "−min", label: "Frame-of-Ref" },
-    { icon: "🔢", label: "Bit-Width" },
-    { icon: "📦", label: "Pack" },
+    { icon: "🔍", label: "Scan", subtitle: "find the right multiplier" },
+    { icon: "×10ᵉ", label: "Quantize", subtitle: "multiply decimals to integers" },
+    { icon: "−min", label: "Frame-of-Ref", subtitle: "subtract minimum, shrink range" },
+    { icon: "🔢", label: "Bit-Width", subtitle: "calculate minimum bits needed" },
+    { icon: "📦", label: "Pack", subtitle: "write the compressed stream" },
   ];
 
   const pipelineBar = $("#pipeline-bar");
@@ -165,7 +165,8 @@ function init() {
         onClick: () => stepper.goto(i),
       },
       el("span", { class: "stage-icon" }, s.icon),
-      el("span", { class: "stage-label" }, s.label)
+      el("span", { class: "stage-label" }, s.label),
+      el("small", { class: "stage-subtitle" }, s.subtitle)
     );
     pipelineBar.appendChild(stageEl);
   });
@@ -183,6 +184,8 @@ function init() {
     stepper.reset();
   });
   $("#apply-custom").addEventListener("click", applyCustom);
+
+  initGlossary();
 }
 
 /* ─── Pattern Buttons ─────────────────────────────────────────────── */
@@ -277,6 +280,7 @@ function onStageChange(stage) {
 
   if (stage === -1) {
     $("#summary-section").hidden = true;
+    renderOrientationCard();
     return;
   }
 
@@ -312,6 +316,26 @@ function onStageChange(stage) {
   }
 }
 
+/* ─── Step –1: Orientation Card ──────────────────────────────────── */
+
+function renderOrientationCard() {
+  const panel = $("#panel-orient");
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="xp-card xp-card-raised">
+      <h3>How ALP Works</h3>
+      <p>ALP compresses decimal metrics in 5 stages:</p>
+      <ol style="margin: 12px 0 16px 20px; line-height: 2;">
+        <li><strong>Scan</strong> — try multipliers to find which power of 10 converts all values to exact integers</li>
+        <li><strong><span class="xp-term" data-term="quantize">Quantize</span></strong> — multiply every value by that power (e.g. 34.5 → 3450)</li>
+        <li><strong><span class="xp-term" data-term="frame-of-reference">Frame-of-Reference</span></strong> — subtract the minimum so all numbers are small offsets</li>
+        <li><strong>Bit-Width</strong> — calculate the minimum bits needed to store the largest offset</li>
+        <li><strong><span class="xp-term" data-term="bit-packing">Pack</span></strong> — write values using only those bits, back-to-back</li>
+      </ol>
+      <p style="color: var(--xp-text-muted);">Click <strong>Next →</strong> to begin</p>
+    </div>`;
+}
+
 /* ─── Stage 0: Exponent Scan ──────────────────────────────────────── */
 
 function renderExponentScan() {
@@ -322,9 +346,9 @@ function renderExponentScan() {
   let html = `
     <div class="xp-card xp-card-raised">
       <h3>Exponent Scan</h3>
-      <p>Try each exponent <code class="xp-code">e = 0…${scan.length - 1}</code>:
+      <p>Try each <span class="xp-term" data-term="exponent">exponent</span> <code class="xp-code">e = 0…${scan.length - 1}</code>:
         multiply by 10<sup>e</sup>, round, and check if the value round-trips exactly.
-        ${winExp >= 0 ? `Smallest working exponent: <strong class="alp-check">e = ${winExp}</strong>` : '<strong class="alp-cross">No exponent works — all values become exceptions</strong>'}
+        ${winExp >= 0 ? `Smallest working <span class="xp-term" data-term="exponent">exponent</span>: <strong class="alp-check">e = ${winExp}</strong>` : '<strong class="alp-cross">No exponent works — all values become exceptions</strong>'}
       </p>
       <div style="overflow-x:auto">
       <table class="alp-exp-table">
@@ -363,7 +387,7 @@ function renderQuantize() {
 
   let gridHTML = `
     <div class="alp-quant-grid">
-      <div class="hdr">Original (f64)</div>
+      <div class="hdr">Original (8-byte float)</div>
       <div class="hdr"></div>
       <div class="hdr">× 10<sup>${encoded.exp}</sup> → integer</div>`;
 
@@ -380,9 +404,9 @@ function renderQuantize() {
 
   panel.innerHTML = `
     <div class="xp-card xp-card-raised">
-      <h3>Integer Quantization</h3>
+      <h3>Integer <span class="xp-term" data-term="quantize">Quantization</span></h3>
       <p>Multiply every value by <code class="xp-code">10<sup>${encoded.exp}</sup> = ${fmt(POW10[encoded.exp])}</code> and round to get exact integers.
-        ${encoded.exceptions.length > 0 ? `<span class="alp-cross">${encoded.exceptions.length} value(s) don't round-trip — stored as exceptions.</span>` : ""}
+        ${encoded.exceptions.length > 0 ? `<span class="alp-cross">${encoded.exceptions.length} value(s) don't round-trip — stored as <span class="xp-term" data-term="exceptions">exceptions</span>.</span>` : ""}
       </p>
       ${gridHTML}
     </div>`;
@@ -413,7 +437,7 @@ function renderFrameOfRef() {
 
   panel.innerHTML = `
     <div class="xp-card xp-card-raised">
-      <h3>Frame-of-Reference</h3>
+      <h3><span class="xp-term" data-term="frame-of-reference">Frame-of-Reference</span></h3>
       <p>Subtract the minimum integer <code class="xp-code">${fmt(encoded.minInt)}</code>
          so all offsets start at 0. Range shrinks from
          <strong>${fmt(encoded.minInt)}–${fmt(maxInt)}</strong> to
@@ -470,7 +494,7 @@ function renderBitWidthPack() {
 
   panel.innerHTML = `
     <div class="xp-card xp-card-raised">
-      <h3>Bit-Width & Packing</h3>
+      <h3><span class="xp-term" data-term="bit-packing">Bit-Width &amp; Packing</span></h3>
       <p>Maximum offset is <code class="xp-code">${fmt(Math.max(...encoded.offsets))}</code>,
          which needs <code class="xp-code">${bw} bits</code> to represent.
          Each value is packed at exactly ${bw} bits — no wasted space.
@@ -527,14 +551,14 @@ function renderExceptionsInline() {
       <div class="alp-exc-item">
         <span class="pos">pos ${exc.idx}</span>
         <span class="raw">${formatNum(exc.value)}</span>
-        <span class="cost">8 bytes (raw f64)</span>
+        <span class="cost">8 bytes (8-byte float)</span>
       </div>`;
   }
 
   panel.innerHTML = `
     <div class="xp-card xp-card-raised" style="border-color: rgba(251,191,36,0.25);">
-      <h3>⚠ Exceptions</h3>
-      <p>${encoded.exceptions.length} value(s) didn't round-trip with exponent
+      <h3>⚠ <span class="xp-term" data-term="exceptions">Exceptions</span></h3>
+      <p>${encoded.exceptions.length} value(s) didn't round-trip with <span class="xp-term" data-term="exponent">exponent</span>
          <code class="xp-code">e = ${encoded.exp}</code>.
          Each is stored as a raw 64-bit float (8 bytes) plus a 2-byte position index.</p>
       <div class="alp-exc-list">${items}</div>

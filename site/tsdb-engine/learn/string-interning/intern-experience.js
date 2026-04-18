@@ -2,7 +2,7 @@
  * String Interning — Interactive Experience
  * Demonstrates how TSDB engines store label strings once and reference them by ID.
  */
-import { $, $$, buildBreadcrumb, buildStat, el, fmt, fmtBytes, Stepper } from "../shared.js";
+import { $, $$, buildBreadcrumb, buildStat, el, fmt, fmtBytes, initGlossary, Stepper } from "../shared.js";
 
 /* ─── Constants ──────────────────────────────────────────────────── */
 
@@ -211,8 +211,8 @@ function renderStats(stats) {
 /* ─── Render: Generator Summary ──────────────────────────────────── */
 
 function renderGenSummary(stats) {
-  $("#gen-summary").textContent =
-    `${fmt(stats.totalSeries)} series × ${Object.keys(LABEL_DEFS).length} labels = ${fmt(stats.totalRefs)} label references`;
+  $("#gen-summary").innerHTML =
+    `${fmt(stats.totalSeries)} <span class="xp-term" data-term="series">series</span> × ${Object.keys(LABEL_DEFS).length} <span class="xp-term" data-term="label">labels</span> = ${fmt(stats.totalRefs)} label references`;
 }
 
 /* ─── Render: Naive Panel ────────────────────────────────────────── */
@@ -508,7 +508,7 @@ function runInternAnimation() {
       }
       case 1: {
         // Step 1: Compute FNV-1a hash
-        let html = '<div class="anim-label">FNV-1a Hash</div>';
+        let html = '<div class="anim-label"><span class="xp-term" data-term="FNV-1a">FNV-1a</span> Hash</div>';
         html += '<div class="intern-char-grid">';
         for (let i = 0; i < str.length; i++) {
           html += `<span class="intern-char-cell active">${escHtml(str[i])}</span>`;
@@ -533,7 +533,7 @@ function runInternAnimation() {
       }
       case 3: {
         // Step 3: Probe
-        let html = '<div class="anim-label">Linear Probe</div>';
+        let html = '<div class="anim-label"><span class="xp-term" data-term="linear probing">Linear Probe</span></div>';
         if (probeSteps.length === 0 && isNew) {
           html += `<div>Bucket <span class="anim-highlight">${bucketIdx}</span> is <span class="anim-highlight">empty</span> — no collision!</div>`;
           const cell = $(`.intern-hash-cell[data-idx="${bucketIdx}"]`, $("#hash-grid"));
@@ -818,6 +818,8 @@ function init() {
 
   // Resize handler for canvas
   window.addEventListener("resize", () => renderCardinalityChart());
+
+  initGlossary();
 }
 
 document.addEventListener("DOMContentLoaded", init);

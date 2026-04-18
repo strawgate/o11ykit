@@ -6,7 +6,7 @@
  * Stats Check → Decode → Step-Aligned Aggregation
  */
 
-import { $, $$, buildBreadcrumb, drawSparkline, el, fmt, revealSection, sleep, Stepper } from "../shared.js";
+import { $, $$, buildBreadcrumb, drawSparkline, el, fmt, initGlossary, revealSection, sleep, Stepper } from "../shared.js";
 
 /* ═══════════════════════════════════════════════════════════════════════
    A. DATASET GENERATION
@@ -140,12 +140,12 @@ buildPostingsIndex();
    ═══════════════════════════════════════════════════════════════════════ */
 
 const STAGES = [
-  { icon: "🏷", label: "Label Match" },
-  { icon: "∩", label: "Postings" },
-  { icon: "✂", label: "Prune Chunks" },
-  { icon: "📊", label: "Stats Check" },
-  { icon: "📦", label: "Decode" },
-  { icon: "Σ", label: "Aggregate" },
+  { icon: "🏷", label: "Match Labels", subtitle: "find series matching all label filters" },
+  { icon: "∩", label: "∩ Postings", subtitle: "intersect sorted series ID lists" },
+  { icon: "✂", label: "✂ Prune Chunks", subtitle: "skip chunks outside the time range" },
+  { icon: "📊", label: "Stats Check", subtitle: "answer from min/max/sum/count if possible" },
+  { icon: "📦", label: "Decode", subtitle: "decompress remaining chunks" },
+  { icon: "Σ", label: "Σ Aggregate", subtitle: "compute result per time bucket" },
 ];
 
 let stepper;
@@ -162,7 +162,8 @@ function buildPipeline() {
       "div",
       { class: "xp-pipe-stage", "data-stage": String(i) },
       el("span", { class: "stage-icon" }, stage.icon),
-      el("span", { class: "stage-label" }, stage.label)
+      el("span", { class: "stage-label" }, stage.label),
+      el("small", { class: "stage-subtitle" }, stage.subtitle)
     );
     bar.appendChild(stageEl);
   });
@@ -323,7 +324,7 @@ async function animateLabelMatch(metric, labelFilters) {
 
   // Description
   const desc = $("#match-description");
-  desc.textContent = `Each label filter maps to a sorted postings list. We intersect them using galloping search.`;
+  desc.innerHTML = `Each <span class="xp-term" data-term="label">label</span> filter maps to a sorted <span class="xp-term" data-term="postings list">postings list</span>. We intersect them using <span class="xp-term" data-term="galloping search">galloping search</span>.`;
 
   // Render postings lists
   const postingsGroups = [];
@@ -332,9 +333,12 @@ async function animateLabelMatch(metric, labelFilters) {
     const label = el(
       "div",
       { class: "qe-postings-label" },
-      `Postings for `,
+      el("span", { class: "xp-term", "data-term": "postings" }, "Postings"),
+      " for ",
       el("span", { class: "filter-text" }, pl.key),
-      ` (${pl.ids.length} series)`
+      ` (${pl.ids.length} `,
+      el("span", { class: "xp-term", "data-term": "series" }, "series"),
+      ")"
     );
     group.appendChild(label);
 
@@ -491,7 +495,7 @@ async function animateChunkPruning(matchedSeriesIds, queryRangeHours) {
   const allEnd = Math.max(...matchedSeries.flatMap((s) => s.chunks.map((c) => c.endTime)));
 
   const desc = $("#prune-description");
-  desc.textContent = `Binary-search each series' chunk list to find chunks overlapping the query time range [${fmtHour(rangeStart)} – ${fmtHour(rangeEnd)}].`;
+  desc.innerHTML = `Binary-search each <span class="xp-term" data-term="series">series</span>' <span class="xp-term" data-term="chunk">chunk</span> list to find <span class="xp-term" data-term="chunk">chunks</span> overlapping the query time range [${fmtHour(rangeStart)} – ${fmtHour(rangeEnd)}]. Out-of-range <span class="xp-term" data-term="chunk pruning">chunk pruning</span> avoids unnecessary decoding.`;
 
   const timeline = el("div", { class: "qe-prune-timeline" });
 
@@ -547,7 +551,7 @@ async function animateChunkPruning(matchedSeriesIds, queryRangeHours) {
   const summary = $("#prune-summary");
   summary.innerHTML = "";
   summary.appendChild(
-    el("div", { class: "qe-summary-chip" }, el("strong", {}, String(totalChunks)), " chunks total")
+    el("div", { class: "qe-summary-chip" }, el("strong", {}, String(totalChunks)), " ", el("span", { class: "xp-term", "data-term": "chunk" }, "chunks"), " total")
   );
   summary.appendChild(
     el("div", { class: "qe-summary-chip" }, el("strong", {}, String(inRangeCount)), " in range")
@@ -577,7 +581,7 @@ async function animateAggregation(matchedSeriesIds, queryRangeHours, stepMinutes
   const numBuckets = Math.ceil((rangeEnd - rangeStart) / stepMs);
 
   const desc = $("#agg-description");
-  desc.textContent = `Dividing the ${queryRangeHours}h range into ${numBuckets} buckets of ${stepMinutes}min each. Folding samples with ${aggFn}().`;
+  desc.innerHTML = `Dividing the ${queryRangeHours}h range into ${numBuckets} buckets of ${stepMinutes}min each (<span class="xp-term" data-term="step-aligned aggregation">step-aligned aggregation</span>). Folding <span class="xp-term" data-term="sample">samples</span> with ${aggFn}().`;
 
   // Collect all samples in range from matched series
   const matchedSeries = matchedSeriesIds.map((id) => DATASET[id]);
@@ -841,9 +845,9 @@ function renderDatasetSummary() {
   const statsRow = $("#dataset-stats");
   statsRow.innerHTML = [
     { label: "Metrics", value: String(METRICS.length) },
-    { label: "Series", value: String(totalSeries) },
-    { label: "Chunks", value: fmt(totalChunks) },
-    { label: "Samples", value: fmt(totalSamples) },
+    { label: `<span class="xp-term" data-term="series">Series</span>`, value: String(totalSeries) },
+    { label: `<span class="xp-term" data-term="chunk">Chunks</span>`, value: fmt(totalChunks) },
+    { label: `<span class="xp-term" data-term="sample">Samples</span>`, value: fmt(totalSamples) },
   ]
     .map(
       (s) => `
@@ -875,7 +879,7 @@ function renderDatasetSummary() {
   detail.innerHTML = `
     <table class="qe-dataset-table">
       <thead>
-        <tr><th>Metric</th><th>Labels</th><th>ID</th><th>Chunks</th><th>Samples</th></tr>
+        <tr><th>Metric</th><th><span class="xp-term" data-term="label">Labels</span></th><th>ID</th><th><span class="xp-term" data-term="chunk">Chunks</span></th><th><span class="xp-term" data-term="sample">Samples</span></th></tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -914,6 +918,8 @@ function init() {
   }
 
   $("#btn-execute").addEventListener("click", executeQuery);
+
+  initGlossary();
 }
 
 init();
