@@ -548,3 +548,75 @@ body {
 .xp-skip-link:focus {
   left: 16px;
 }
+
+/* ─── Reveal pulse (gentle attention without forced scroll) ─────── */
+
+@keyframes xp-reveal-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+}
+.xp-reveal { animation: xp-reveal-pulse 0.6s ease-out; }
+
+/* ─── Scrollable Container Utilities ─────────────────────────────── */
+
+/* Horizontal scroll with thin themed scrollbar */
+.xp-scroll-x {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--xp-border-strong) transparent;
+}
+
+.xp-scroll-x::-webkit-scrollbar {
+  height: 6px;
+}
+
+.xp-scroll-x::-webkit-scrollbar-thumb {
+  background: var(--xp-border-strong);
+  border-radius: 3px;
+}
+
+/* Vertical scroll with thin themed scrollbar */
+.xp-scroll-y {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--xp-border-strong) transparent;
+}
+
+.xp-scroll-y::-webkit-scrollbar {
+  width: 4px;
+}
+
+.xp-scroll-y::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.xp-scroll-y::-webkit-scrollbar-thumb {
+  background: var(--xp-border-strong);
+  border-radius: 2px;
+}
+
+/* ─── Narrative Story Box ─────────────────────────────────────────── */
+
+.xp-story {
+  margin-top: 16px;
+  padding: 16px 20px;
+  background: var(--xp-surface);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--xp-text-muted);
+}
+
+/* ─── Pill Badge ──────────────────────────────────────────────────── */
+
+.xp-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--xp-mono);
+  letter-spacing: 0.04em;
+}

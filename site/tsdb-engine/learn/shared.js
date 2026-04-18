@@ -197,13 +197,24 @@ export function buildBreadcrumb(title) {
   return `
     <nav class="xp-topbar" aria-label="Breadcrumb">
       <div class="xp-breadcrumb">
-        <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+        <a href="../../">TSDB Engine</a>
         <span class="sep">›</span>
-        <a href="/o11ykit/tsdb-engine/learn/">Learn</a>
+        <a href="../">Learn</a>
         <span class="sep">›</span>
         <span class="current">${title}</span>
       </div>
     </nav>`;
+}
+
+/** Gently reveal a section — only scrolls if not already visible, adds a brief highlight pulse. */
+export function revealSection(el) {
+  const rect = el.getBoundingClientRect();
+  const inView = rect.top >= 0 && rect.bottom <= window.innerHeight;
+  if (!inView) {
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  el.classList.add("xp-reveal");
+  el.addEventListener("animationend", () => el.classList.remove("xp-reveal"), { once: true });
 }
 
 /** Render a sparkline to a canvas element. */
@@ -240,4 +251,33 @@ export function drawSparkline(canvas, values, opts = {}) {
   ctx.closePath();
   ctx.fillStyle = color.replace(')', `, ${fillAlpha})`).replace('rgb', 'rgba');
   ctx.fill();
+}
+
+/* ─── Stat Card Builder ───────────────────────────────────────────── */
+
+/**
+ * Build a standard `.xp-stat` card element.
+ * @param {string} label
+ * @param {string|number} value
+ * @param {string} [unit]
+ * @param {object} [opts]  – opts.cls (extra class on value), opts.color (inline color on value)
+ * @returns {HTMLElement}
+ */
+export function buildStat(label, value, unit = '', opts = {}) {
+  const valueEl = el('div', {
+    class: ['xp-stat-value', opts.cls].filter(Boolean).join(' '),
+    ...(opts.color ? { style: { color: opts.color } } : {}),
+  }, String(value));
+  return el('div', { class: 'xp-stat' },
+    el('div', { class: 'xp-stat-label' }, label),
+    valueEl,
+    unit ? el('div', { class: 'xp-stat-unit' }, unit) : null,
+  );
+}
+
+/* ─── Async Helpers ───────────────────────────────────────────────── */
+
+/** Promise-based sleep. */
+export function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }

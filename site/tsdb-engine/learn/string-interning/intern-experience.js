@@ -2,7 +2,7 @@
  * String Interning — Interactive Experience
  * Demonstrates how TSDB engines store label strings once and reference them by ID.
  */
-import { $, $$, buildBreadcrumb, el, fmt, fmtBytes, Stepper } from "../shared.js";
+import { $, $$, buildBreadcrumb, buildStat, el, fmt, fmtBytes, Stepper } from "../shared.js";
 
 /* ─── Constants ──────────────────────────────────────────────────── */
 
@@ -204,14 +204,7 @@ function renderStats(stats) {
     ["Savings", `${stats.ratio.toFixed(1)}×`, ""],
   ];
   for (const [label, value, unit] of items) {
-    row.appendChild(
-      el(
-        "div",
-        { class: "xp-stat" },
-        el("span", { class: "xp-stat-label" }, label),
-        el("span", { class: "xp-stat-value" }, value, el("span", { class: "xp-stat-unit" }, unit))
-      )
-    );
+    row.appendChild(buildStat(label, value, unit));
   }
 }
 
