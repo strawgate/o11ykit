@@ -298,17 +298,18 @@
 
 .chunk-detail-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px;
-  margin-bottom: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 .detail-stat {
   background: #f8fcff;
   border: 1px solid rgba(43, 80, 106, 0.1);
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   text-align: center;
+  min-width: 0;
 }
 
 .detail-stat-label {
@@ -317,20 +318,26 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: #6b8a9e;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .detail-stat-value {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: #0f3a5e;
   letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .detail-stat-small {
-  font-size: 12px;
+  font-size: 11px;
   font-family: "IBM Plex Mono", monospace;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .ratio-highlight {
@@ -412,7 +419,7 @@
 .byte-swatch.exceptions { background: var(--region-exceptions); }
 
 .chunk-sparkline-container {
-  margin-top: 12px;
+  margin-bottom: 16px;
 }
 
 .chunk-sparkline-container h4 {
@@ -426,4 +433,8 @@
   height: auto;
   border-radius: 8px;
   border: 1px solid rgba(43, 80, 106, 0.1);
+}
+
+#codecInsightOuter {
+  margin-bottom: 16px;
 }

@@ -204,6 +204,43 @@ export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
     });
   }
 
+  // Add byte-level entries for exception positions and raw values
+  // so they are clickable in hex/decimal views
+  excIdx = 0;
+  const excPosList = [...excPositions];
+  for (let e = 0; e < alpExc; e++) {
+    const posOff = excPosStart + e * 2;
+    const valOff = excValStart + e * 8;
+    const sampleIdx = excPosList[e] ?? e;
+    const excVal = excValues[e] ?? NaN;
+
+    // Exception position entry (2 bytes = 16 bits)
+    if (posOff + 1 < valBlobLen) {
+      bitMap.push({
+        sampleIndex: sampleIdx,
+        type: 'value',
+        startBit: posOff * 8,
+        endBit: (posOff + 2) * 8,
+        encoding: 'alp-exc-position',
+        decoded: excVal,
+        isException: true,
+      });
+    }
+
+    // Exception raw value entry (8 bytes = 64 bits)
+    if (valOff + 7 < valBlobLen) {
+      bitMap.push({
+        sampleIndex: sampleIdx,
+        type: 'value',
+        startBit: valOff * 8,
+        endBit: (valOff + 8) * 8,
+        encoding: 'alp-exc-rawvalue',
+        decoded: excVal,
+        isException: true,
+      });
+    }
+  }
+
   // Build timestamp entries using Gorilla delta-of-delta decoder
   if (tsBlob && tsBlob.byteLength >= TS_HEADER_SIZE) {
     const tsR = new BitReader(tsBlob);
@@ -395,5 +432,7 @@ export function encodingDescription(entry) {
   if (entry.encoding === 'xor-new') return 'XOR new window \u2192 prefix <code>11</code> + 6b leading(' + entry.leading + ') + 6b length(' + entry.meaningful + ') + ' + entry.meaningful + ' bits';
   if (entry.encoding === 'alp-bitpacked') return 'ALP bit-packed offset = ' + entry.offset + ' (' + entry.bitWidth + ' bits)';
   if (entry.encoding === 'alp-exception') return '\u26a0\ufe0f ALP exception \u2014 stored as raw f64';
+  if (entry.encoding === 'alp-exc-position') return '\u26a0\ufe0f Exception position (u16 BE index)';
+  if (entry.encoding === 'alp-exc-rawvalue') return '\u26a0\ufe0f Exception raw value (f64 BE IEEE-754)';
   return '';
 }

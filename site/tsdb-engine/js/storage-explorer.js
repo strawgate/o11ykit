@@ -179,6 +179,11 @@ function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, c
         </div>
         ${columnExtra}
       </div>
+      <div class="chunk-sparkline-container">
+        <h4>Decoded Values</h4>
+        <canvas id="${sparkId}" width="600" height="120"></canvas>
+      </div>
+      <div id="codecInsightOuter"></div>
       <div class="chunk-byte-layout">
         <h4>Byte Layout</h4>
         <div class="byte-map" id="byteMap"></div>
@@ -186,11 +191,7 @@ function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, c
           ${byteLayoutLegend}
         </div>
       </div>
-      <div class="byte-explorer" id="byteExplorer"></div>
-      <div class="chunk-sparkline-container">
-        <h4>Decoded Values</h4>
-        <canvas id="${sparkId}" width="600" height="120"></canvas>
-      </div>`;
+      <div class="byte-explorer" id="byteExplorer"></div>`;
 
   return { html, sparkId };
 }

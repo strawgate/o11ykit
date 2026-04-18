@@ -707,7 +707,10 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
       '</div>';
   }
 
-  _buildExplorerShell(explorer, bytes, insightHtml);
+  _buildExplorerShell(explorer, bytes, '');
+  // Place codec insight in outer container (above byte layout) if available, else inside explorer
+  var insightTarget = document.getElementById('codecInsightOuter') || explorer.querySelector('#codecInsight');
+  if (insightTarget) insightTarget.innerHTML = insightHtml;
   var viewport = _buildMinimap(explorer, bytes, regions, showRegionDetail);
   var hexContent = _renderHexContent(
     explorer.querySelector('#hexGrid'),

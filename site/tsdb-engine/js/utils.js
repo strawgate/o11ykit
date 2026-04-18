@@ -25,8 +25,14 @@ export function formatDuration(ms) {
 export function formatTimeRange(nsStart, nsEnd) {
   const start = new Date(Number(nsStart) / 1_000_000);
   const end = new Date(Number(nsEnd) / 1_000_000);
-  const opts = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
-  return `${start.toLocaleString([], opts)} → ${end.toLocaleString([], opts)}`;
+  const sameDay = start.toDateString() === end.toDateString();
+  const dateOpts = { month: 'short', day: 'numeric' };
+  const timeOpts = { hour: '2-digit', minute: '2-digit', hour12: false };
+  if (sameDay) {
+    return `${start.toLocaleDateString([], dateOpts)} ${start.toLocaleTimeString([], timeOpts)}–${end.toLocaleTimeString([], timeOpts)}`;
+  }
+  const fullOpts = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false };
+  return `${start.toLocaleString([], fullOpts)} → ${end.toLocaleString([], fullOpts)}`;
 }
 
 export function autoSelectQueryStep(intervalMs, numPoints) {
