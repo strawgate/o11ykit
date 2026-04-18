@@ -1,4 +1,0 @@
-[      72ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://agents-test-runner:3000/tsdb-engine/js/o11ytsdb.wasm:0
-[      72ms] [WARNING] WASM load failed: Error: HTTP 404
-    at loadWasm (http://agents-test-runner:3000/tsdb-engine/js/wasm.js:11:25) @ http://agents-test-runner:3000/tsdb-engine/js/wasm.js:17
-[     118ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://agents-test-runner:3000/favicon.ico:0

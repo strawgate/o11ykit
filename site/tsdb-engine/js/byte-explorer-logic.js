@@ -362,7 +362,14 @@ export function renderHexRowHTML(row, cols, bytes, byteRegion, regions, mode, by
         style = ' style="font-size:8px"';
       }
       parts.push('<div class="' + cls + '"' + dataAttrs + style + '>' + content + '</div>');
-      asciiStr += (val >= 32 && val <= 126) ? String.fromCharCode(val) : '\u00b7';
+      if (val >= 32 && val <= 126) {
+        if (val === 38) asciiStr += '&amp;';
+        else if (val === 60) asciiStr += '&lt;';
+        else if (val === 62) asciiStr += '&gt;';
+        else asciiStr += String.fromCharCode(val);
+      } else {
+        asciiStr += '\u00b7';
+      }
     } else {
       parts.push('<div class="' + cls + ' region-padding">  </div>');
       asciiStr += ' ';

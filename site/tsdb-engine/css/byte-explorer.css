@@ -184,6 +184,7 @@
 .hex-grid {
   display: grid;
   gap: 1px;
+  grid-auto-rows: minmax(18px, auto);
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
   line-height: 1;
@@ -209,7 +210,6 @@
 
 .hex-cell {
   width: 100%;
-  aspect-ratio: 1.6;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -219,6 +219,7 @@
   color: white;
   user-select: none;
   min-height: 18px;
+  padding: 2px 0;
 }
 
 .hex-cell:hover {

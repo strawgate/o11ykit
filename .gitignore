@@ -20,3 +20,4 @@ actions/*/lib/
 !actions/parse-results/dist/**
 !octo11y/actions/*/dist/
 !octo11y/actions/*/dist/**
+.playwright-cli/

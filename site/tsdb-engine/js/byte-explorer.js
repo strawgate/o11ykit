@@ -252,7 +252,7 @@ function _buildExplorerShell(explorer, bytes, insightHtml) {
     '<div id="codecInsight">' + insightHtml + '</div>' +
     '<div class="byte-minimap" id="byteMinimap"></div>' +
     '<div class="hex-grid-scroll" id="' + viewId + '">' +
-      '<div class="hex-grid" id="hexGrid" style="grid-template-columns: 56px repeat(' + HEX_COLS + ', minmax(0, 1fr)) minmax(60px, auto);"></div>' +
+      '<div class="hex-grid" id="hexGrid" style="grid-template-columns: 56px repeat(' + HEX_COLS + ', minmax(0, 1fr)) minmax(0, 220px);"></div>' +
     '</div>' +
     '<div class="hex-decode-panel" id="hexDecodePanel" style="display:none"></div>' +
     '<div id="regionDetail"></div>';

@@ -390,6 +390,20 @@ describe('renderHexRowHTML', () => {
     const html = renderHexRowHTML(1, 32, bytes, byteRegion, regions, 'hex', null);
     expect(html).toContain('0x0020'); // row 1 * 32 = 32 = 0x20
   });
+
+  it('HTML-escapes <, >, & in ASCII column', () => {
+    // bytes 0x3C = '<', 0x3E = '>', 0x26 = '&'
+    const bytes = new Uint8Array([0x41, 0x3C, 0x3E, 0x26]);
+    const byteRegion = [0, 0, 0, 0];
+    const regions = [{ name: 'test', cls: 'test' }];
+    const html = renderHexRowHTML(0, 4, bytes, byteRegion, regions, 'hex', null);
+    // ASCII column must use HTML entities, not raw characters
+    expect(html).toContain('&lt;');
+    expect(html).toContain('&gt;');
+    expect(html).toContain('&amp;');
+    // The ASCII div should contain escaped versions: A&lt;&gt;&amp;
+    expect(html).toContain('A&lt;&gt;&amp;');
+  });
 });
 
 describe('encodingDescription', () => {
