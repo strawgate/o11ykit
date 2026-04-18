@@ -45,8 +45,16 @@ export class ScanEngine implements QueryEngine {
     const groups = new Map<string, { labels: Labels; ranges: TimeRange[] }>();
 
     for (const id of ids) {
-      const data = storage.read(id, opts.start, opts.end);
-      scannedSamples += data.timestamps.length;
+      // For step queries, use readParts to skip the concatRanges allocation.
+      // stepAggregate only needs per-bucket folding, so individual chunk parts
+      // work just as well as one big concatenated array.
+      let parts: TimeRange[];
+      if (opts.step && storage.readParts) {
+        parts = storage.readParts(id, opts.start, opts.end);
+      } else {
+        parts = [storage.read(id, opts.start, opts.end)];
+      }
+      for (const p of parts) scannedSamples += p.timestamps.length || p.stats?.count || 0;
       const labels = storage.labels(id) ?? new Map();
       const groupKey = opts.groupBy
         ? opts.groupBy.map(k => labels.get(k) ?? '').join('\0')
@@ -65,7 +73,7 @@ export class ScanEngine implements QueryEngine {
         group = { labels: groupLabels, ranges: [] };
         groups.set(groupKey, group);
       }
-      group.ranges.push(data);
+      for (const p of parts) group.ranges.push(p);
     }
 
     // Aggregate each group.
@@ -163,15 +171,28 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
   return { timestamps, values };
 }
 
+/**
+ * Platform endianness flag for DataView reads.
+ */
+const _le = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
+
 function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange {
-  // Find time bounds.
+  // Find time bounds (account for both sample-bearing and stats-only parts).
   let minT = BigInt('9223372036854775807');
   let maxT = -minT;
   for (const r of ranges) {
-    if (r.timestamps.length === 0) continue;
-    if (r.timestamps[0]! < minT) minT = r.timestamps[0]!;
-    if (r.timestamps[r.timestamps.length - 1]! > maxT)
-      maxT = r.timestamps[r.timestamps.length - 1]!;
+    if (r.timestamps.length > 0) {
+      if (r.timestamps[0]! < minT) minT = r.timestamps[0]!;
+      if (r.timestamps[r.timestamps.length - 1]! > maxT)
+        maxT = r.timestamps[r.timestamps.length - 1]!;
+    } else if (r.stats && r.chunkMinT !== undefined && r.chunkMaxT !== undefined) {
+      if (r.chunkMinT < minT) minT = r.chunkMinT;
+      if (r.chunkMaxT > maxT) maxT = r.chunkMaxT;
+    }
+  }
+
+  if (minT > maxT) {
+    return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
   }
 
   const bucketCount = Number((maxT - minT) / step) + 1;
@@ -183,17 +204,175 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
     timestamps[i] = minT + BigInt(i) * step;
   }
 
+  const minTN = Number(minT);
+  const stepN = Number(step);
+
   values.fill(aggInit(fn));
 
-  for (const r of ranges) {
-    for (let i = 0; i < r.timestamps.length; i++) {
-      const bucket = Number((r.timestamps[i]! - minT) / step);
-      if (bucket < 0 || bucket >= bucketCount) continue;
-      values[bucket] = aggAccumulate(values[bucket]!, r.values[i]!, fn);
-      counts[bucket]!++;
+  // ── Stats-skip: fold pre-computed chunk stats when the chunk fits in one bucket ──
+  // Remaining ranges that need sample-level iteration.
+  let sampleRanges: TimeRange[];
+  if (fn !== 'rate') {
+    sampleRanges = [];
+    for (let ri = 0; ri < ranges.length; ri++) {
+      const r = ranges[ri]!;
+      if (r.stats && r.chunkMinT !== undefined && r.chunkMaxT !== undefined) {
+        const bucketLo = Number(r.chunkMinT - minT) / stepN | 0;
+        const bucketHi = Number(r.chunkMaxT - minT) / stepN | 0;
+        if (bucketLo === bucketHi) {
+          // Entire chunk maps to one bucket — fold stats directly.
+          const st = r.stats;
+          switch (fn) {
+            case 'min':
+              if (st.minV < values[bucketLo]!) values[bucketLo] = st.minV;
+              break;
+            case 'max':
+              if (st.maxV > values[bucketLo]!) values[bucketLo] = st.maxV;
+              break;
+            case 'sum': case 'avg':
+              values[bucketLo]! += st.sum;
+              break;
+            case 'count':
+              values[bucketLo]! += st.count;
+              break;
+            case 'last':
+              values[bucketLo] = st.lastV;
+              break;
+          }
+          counts[bucketLo]! += st.count;
+          continue;
+        }
+        // Chunk spans multiple buckets — lazy-decode to get actual samples.
+        if (r.decode) {
+          sampleRanges.push(r.decode());
+          continue;
+        }
+      }
+      sampleRanges.push(r);
     }
+  } else {
+    // Rate needs per-sample timestamps — always decode stats-only parts.
+    sampleRanges = ranges.map(r =>
+      r.timestamps.length === 0 && r.decode ? r.decode() : r,
+    );
+  }
+
+  // Fused DataView + bucket assignment: read BigInt64 timestamps directly
+  // via DataView in the accumulation loop, avoiding a separate Float64Array
+  // allocation per range.  Each range creates one lightweight DataView
+  // instead of a full Float64Array copy.
+  switch (fn) {
+    case 'min':
+      for (let ri = 0; ri < sampleRanges.length; ri++) {
+        const src = sampleRanges[ri]!.timestamps;
+        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+        const vs = sampleRanges[ri]!.values;
+        for (let i = 0, len = src.length; i < len; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          if (vs[i]! < values[bucket]!) values[bucket] = vs[i]!;
+          counts[bucket]!++;
+        }
+      }
+      break;
+    case 'max':
+      for (let ri = 0; ri < sampleRanges.length; ri++) {
+        const src = sampleRanges[ri]!.timestamps;
+        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+        const vs = sampleRanges[ri]!.values;
+        for (let i = 0, len = src.length; i < len; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          if (vs[i]! > values[bucket]!) values[bucket] = vs[i]!;
+          counts[bucket]!++;
+        }
+      }
+      break;
+    case 'sum': case 'avg':
+      for (let ri = 0; ri < sampleRanges.length; ri++) {
+        const src = sampleRanges[ri]!.timestamps;
+        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+        const vs = sampleRanges[ri]!.values;
+        for (let i = 0, len = src.length; i < len; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          values[bucket]! += vs[i]!;
+          counts[bucket]!++;
+        }
+      }
+      break;
+    case 'count':
+      for (let ri = 0; ri < sampleRanges.length; ri++) {
+        const src = sampleRanges[ri]!.timestamps;
+        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+        for (let i = 0, len = src.length; i < len; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          values[bucket]!++;
+          counts[bucket]!++;
+        }
+      }
+      break;
+    case 'last':
+      for (let ri = 0; ri < sampleRanges.length; ri++) {
+        const src = sampleRanges[ri]!.timestamps;
+        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+        const vs = sampleRanges[ri]!.values;
+        for (let i = 0, len = src.length; i < len; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          values[bucket] = vs[i]!;
+          counts[bucket]!++;
+        }
+      }
+      break;
+    case 'rate': {
+      const firstTs = new Float64Array(bucketCount).fill(Infinity);
+      const firstVal = new Float64Array(bucketCount);
+      const lastTs = new Float64Array(bucketCount).fill(-Infinity);
+      const lastVal = new Float64Array(bucketCount);
+      for (let ri = 0; ri < sampleRanges.length; ri++) {
+        const src = sampleRanges[ri]!.timestamps;
+        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+        const vs = sampleRanges[ri]!.values;
+        for (let i = 0, len = src.length; i < len; i++) {
+          const off = i << 3;
+          const t = dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
+          const bucket = (t - minTN) / stepN | 0;
+          counts[bucket]!++;
+          if (t < firstTs[bucket]!) { firstTs[bucket] = t; firstVal[bucket] = vs[i]!; }
+          if (t >= lastTs[bucket]!) { lastTs[bucket] = t; lastVal[bucket] = vs[i]!; }
+        }
+      }
+      for (let i = 0; i < bucketCount; i++) {
+        const dt = (lastTs[i]! - firstTs[i]!) / 1000;
+        values[i] = dt > 0 ? (lastVal[i]! - firstVal[i]!) / dt : 0;
+      }
+      break;
+    }
+    default:
+      for (let ri = 0; ri < sampleRanges.length; ri++) {
+        const src = sampleRanges[ri]!.timestamps;
+        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+        const vs = sampleRanges[ri]!.values;
+        for (let i = 0; i < src.length; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          values[bucket] = aggAccumulate(values[bucket]!, vs[i]!, fn);
+          counts[bucket]!++;
+        }
+      }
   }
 
   aggFinalize(values, counts, fn);
+
+  // Replace init-value sentinels with NaN in empty buckets so consumers
+  // see "no data" instead of Infinity / -Infinity / 0.
+  if (fn !== 'sum' && fn !== 'count') {
+    for (let i = 0; i < bucketCount; i++) {
+      if (counts[i]! === 0) values[i] = NaN;
+    }
+  }
+
   return { timestamps, values };
 }
