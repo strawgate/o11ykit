@@ -197,13 +197,24 @@ export function buildBreadcrumb(title) {
   return `
     <nav class="xp-topbar" aria-label="Breadcrumb">
       <div class="xp-breadcrumb">
-        <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+        <a href="../../">TSDB Engine</a>
         <span class="sep">›</span>
-        <a href="/o11ykit/tsdb-engine/learn/">Learn</a>
+        <a href="../">Learn</a>
         <span class="sep">›</span>
         <span class="current">${title}</span>
       </div>
     </nav>`;
+}
+
+/** Gently reveal a section — only scrolls if not already visible, adds a brief highlight pulse. */
+export function revealSection(el) {
+  const rect = el.getBoundingClientRect();
+  const inView = rect.top >= 0 && rect.bottom <= window.innerHeight;
+  if (!inView) {
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  el.classList.add("xp-reveal");
+  el.addEventListener("animationend", () => el.classList.remove("xp-reveal"), { once: true });
 }
 
 /** Render a sparkline to a canvas element. */
