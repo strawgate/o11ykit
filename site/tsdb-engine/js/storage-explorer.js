@@ -3,7 +3,7 @@
 import { $, formatBytes, formatTimeRange, setupCanvasDPR } from './utils.js';
 import { decodeChunk } from './codec.js';
 import { wasmDecodeValuesALP, wasmDecodeTimestamps } from './wasm.js';
-import { renderByteExplorer } from './byte-explorer.js';
+import { renderByteExplorer, renderByteExplorerTs } from './byte-explorer.js';
 import { ALP_HEADER_SIZE } from './byte-explorer-logic.js';
 
 function renderByteMap(compressed, sampleCount) {
@@ -33,8 +33,6 @@ function renderByteMapALP(compressedValues, compressedTs, sharedCount) {
   if (!container) return;
 
   const valBytes = compressedValues.byteLength;
-  const tsBytes = compressedTs.byteLength;
-  const amortizedTs = Math.round(tsBytes / sharedCount);
 
   const alpBW = valBytes >= 4 ? compressedValues[3] : 0;
   const alpCount = valBytes >= 2 ? (compressedValues[0] << 8) | compressedValues[1] : 0;
@@ -43,16 +41,31 @@ function renderByteMapALP(compressedValues, compressedTs, sharedCount) {
   const bpBytes = Math.ceil(alpCount * alpBW / 8);
   const excBytes = alpExc * 10;
 
-  const totalBytes = headerBytes + bpBytes + excBytes + amortizedTs;
+  const totalBytes = headerBytes + bpBytes + excBytes;
   const segments = [
     { label: 'Header', bytes: headerBytes, cls: 'header' },
     { label: 'Offsets', bytes: bpBytes, cls: 'values' },
   ];
   if (excBytes > 0) segments.push({ label: 'Exceptions', bytes: excBytes, cls: 'exceptions' });
-  segments.push({ label: `Timestamps (÷${sharedCount})`, bytes: amortizedTs, cls: 'timestamps' });
 
   container.innerHTML = segments.map(seg => {
     const pct = Math.max(1, (seg.bytes / totalBytes) * 100);
+    return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ''}</div>`;
+  }).join('');
+}
+
+function _renderTsByteMap(tsBlob, sharedCount) {
+  const container = document.getElementById('byteMapTs');
+  if (!container || !tsBlob) return;
+  const tsLen = tsBlob.byteLength;
+  const hdrBytes = Math.min(10, tsLen);
+  const bodyBytes = tsLen - hdrBytes;
+  const segments = [
+    { label: 'Header', bytes: hdrBytes, cls: 'timestamps' },
+    { label: 'Δ² Body', bytes: bodyBytes, cls: 'timestamps' },
+  ];
+  container.innerHTML = segments.map(seg => {
+    const pct = Math.max(1, (seg.bytes / tsLen) * 100);
     return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ''}</div>`;
   }).join('');
 }
@@ -119,9 +132,11 @@ function _decodeChunkData(chunk, isColumn) {
   return decodeChunk(chunk.compressed);
 }
 
-function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, chunkIndex) {
+function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, chunkIndex, totalFrozen) {
   const sparkId = 'sparkline-' + Date.now();
   const codecName = isColumn ? 'ALP' : 'XOR-Delta';
+  const hasPrev = chunkIndex > 0;
+  const hasNext = chunkIndex < totalFrozen - 1;
 
   const columnExtra = isColumn ? `
         <div class="detail-stat">
@@ -137,21 +152,41 @@ function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, c
           <span class="byte-legend-item"><span class="byte-swatch header"></span>ALP header (14 B)</span>
           <span class="byte-legend-item"><span class="byte-swatch values"></span>Bit-packed offsets</span>
           <span class="byte-legend-item"><span class="byte-swatch exceptions"></span>Exceptions</span>
-          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Shared timestamps</span>
         ` : `
           <span class="byte-legend-item"><span class="byte-swatch header"></span>Header (18 B: count + ts₀ + v₀)</span>
           <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Interleaved Δ²ts + XOR values</span>
         `;
 
+  const tsLegend = isColumn ? `
+      <div class="chunk-byte-layout">
+        <h4>Timestamps Store <span class="store-badge ts">Gorilla Δ² · shared ÷ ${chunk.sharedTsSeries}</span></h4>
+        <div class="byte-map" id="byteMapTs"></div>
+        <div class="byte-legend">
+          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Timestamp header (10 B)</span>
+          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Δ² body</span>
+        </div>
+      </div>
+      <div class="byte-explorer" id="byteExplorerTs"></div>` : '';
+
   const html = `
       <div class="chunk-detail-header">
+        <div class="chunk-nav">
+          <button class="chunk-nav-btn" id="chunkPrev" ${hasPrev ? '' : 'disabled'} title="Previous chunk">‹</button>
+          <span class="chunk-nav-label">Chunk ${chunkIndex} of ${totalFrozen}</span>
+          <button class="chunk-nav-btn" id="chunkNext" ${hasNext ? '' : 'disabled'} title="Next chunk">›</button>
+        </div>
         <div class="chunk-detail-title">
-          <span class="tag-frozen">Frozen</span> Chunk ${chunkIndex} — ${metricName}
+          <span class="tag-frozen">Frozen</span> ${metricName}
           <span class="chunk-detail-labels">{${labelStr}}</span>
           <span class="tag-codec">${codecName}</span>
         </div>
         <button class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
       </div>
+      <div class="chunk-sparkline-container">
+        <h4>Decoded Values</h4>
+        <canvas id="${sparkId}" width="600" height="120"></canvas>
+      </div>
+      <div id="codecInsightOuter"></div>
       <div class="chunk-detail-grid">
         <div class="detail-stat">
           <div class="detail-stat-label">Samples</div>
@@ -179,19 +214,15 @@ function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, c
         </div>
         ${columnExtra}
       </div>
-      <div class="chunk-sparkline-container">
-        <h4>Decoded Values</h4>
-        <canvas id="${sparkId}" width="600" height="120"></canvas>
-      </div>
-      <div id="codecInsightOuter"></div>
       <div class="chunk-byte-layout">
-        <h4>Byte Layout</h4>
+        <h4>${isColumn ? 'Values Store' : 'Byte Layout'} <span class="store-badge val">${isColumn ? 'ALP · ' + formatBytes(chunk.valuesBytes) : ''}</span></h4>
         <div class="byte-map" id="byteMap"></div>
         <div class="byte-legend">
           ${byteLayoutLegend}
         </div>
       </div>
-      <div class="byte-explorer" id="byteExplorer"></div>`;
+      <div class="byte-explorer" id="byteExplorer"></div>
+      ${tsLegend}`;
 
   return { html, sparkId };
 }
@@ -211,12 +242,24 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
     const chunk = seriesInfo.info.frozen[chunkIndex];
     const isColumn = !!chunk.compressedValues;
     const decoded = _decodeChunkData(chunk, isColumn);
-    const { html, sparkId } = _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, chunkIndex);
+    const totalFrozen = seriesInfo.info.frozen.length;
+    const { html, sparkId } = _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, chunkIndex, totalFrozen);
     panel.innerHTML = html;
 
+    // Prev/Next navigation
+    const prevBtn = panel.querySelector('#chunkPrev');
+    const nextBtn = panel.querySelector('#chunkNext');
+    if (prevBtn) prevBtn.addEventListener('click', () => showChunkDetail(seriesInfo, chunkIndex - 1, 'frozen', store));
+    if (nextBtn) nextBtn.addEventListener('click', () => showChunkDetail(seriesInfo, chunkIndex + 1, 'frozen', store));
+
     if (isColumn) {
+      // Values store — ALP blob only (no timestamp concatenation)
       renderByteMapALP(chunk.compressedValues, chunk.tsChunkCompressed, chunk.sharedTsSeries);
-      renderByteExplorer(chunk.compressedValues, chunk.tsChunkCompressed, chunk.sharedTsSeries, chunk.count, 'alp');
+      renderByteExplorer(chunk.compressedValues, null, 0, chunk.count, 'alp-values');
+
+      // Timestamp store — separate explorer
+      _renderTsByteMap(chunk.tsChunkCompressed, chunk.sharedTsSeries);
+      renderByteExplorerTs(chunk.tsChunkCompressed, chunk.count);
     } else {
       renderByteMap(chunk.compressed, chunk.count);
       renderByteExplorer(chunk.compressed, null, 0, chunk.count, 'xor');

@@ -260,6 +260,46 @@
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 16px;
+  gap: 12px;
+}
+
+.chunk-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.chunk-nav-btn {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #3b82f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease;
+}
+
+.chunk-nav-btn:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+.chunk-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.chunk-nav-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b8a9e;
+  white-space: nowrap;
 }
 
 .chunk-detail-title {
@@ -270,6 +310,8 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
 }
 
 .chunk-detail-labels {
@@ -277,6 +319,26 @@
   font-size: 12px;
   font-weight: 400;
   color: #6b8a9e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.store-badge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #6b8a9e;
+}
+
+.store-badge.val {
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
+}
+
+.store-badge.ts {
+  background: rgba(6, 182, 212, 0.1);
+  color: #0891b2;
 }
 
 .chunk-close {

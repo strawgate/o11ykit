@@ -379,7 +379,7 @@ function _renderHexContent(gridEl, scrollContainer, bytes, byteRegion, regions, 
 
 function _setupHexInteraction(explorer, bytes, byteRegion, regions, byteLookup, hexContent, showRegionDetail) {
   var grid = hexContent.grid;
-  var hexDecodePanel = explorer.querySelector('#hexDecodePanel');
+  var hexDecodePanel = explorer.querySelector('.hex-decode-panel');
   var activeHexEntry = null;
 
   function highlightHexSample(entry) {
@@ -495,7 +495,7 @@ function _setupHexInteraction(explorer, bytes, byteRegion, regions, byteLookup, 
 }
 
 function _setupViewModeButtons(explorer, bytes, byteRegion, regions, sampleCount, codec, bitMap, byteLookup, totalRows, hexContent, highlightHexSample) {
-  var hexDecodePanel = explorer.querySelector('#hexDecodePanel');
+  var hexDecodePanel = explorer.querySelector('.hex-decode-panel');
   var buttons = explorer.querySelectorAll('.byte-explorer-controls button');
 
   buttons.forEach(function(btn) {
@@ -537,10 +537,12 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
   var insightHtml = '';
   var bitMap = null;
 
-  if (codec === 'alp') {
+  if (codec === 'alp-values' || codec === 'alp') {
     var valBlobLen = primaryBlob.byteLength;
-    var tsLen = tsBlob ? tsBlob.byteLength : 0;
-    var amortizedTsLen = sharedCount > 0 ? Math.round(tsLen / sharedCount) : tsLen;
+    // For alp-values, we only render the value blob (no timestamp concatenation)
+    var includeTs = codec === 'alp' && tsBlob;
+    var tsLen = (includeTs && tsBlob) ? tsBlob.byteLength : 0;
+    var amortizedTsLen = includeTs ? (sharedCount > 0 ? Math.round(tsLen / sharedCount) : tsLen) : 0;
 
     var ALP_HDR = Math.min(ALP_HEADER_SIZE, valBlobLen);
     var alpHdr = parseALPHeader(primaryBlob);
@@ -552,7 +554,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     var excValBytes = alpExc * 8;
 
     var tsCount = 0, firstTs = 0n;
-    if (tsBlob && tsBlob.byteLength >= TS_HEADER_SIZE) {
+    if (includeTs && tsBlob && tsBlob.byteLength >= TS_HEADER_SIZE) {
       tsCount = (tsBlob[0] << 8) | tsBlob[1];
       firstTs = readI64BE(tsBlob, 2);
     }
@@ -560,7 +562,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     var totalDisplay = valBlobLen + amortizedTsLen;
     bytes = new Uint8Array(totalDisplay);
     bytes.set(primaryBlob, 0);
-    if (tsBlob && amortizedTsLen > 0) {
+    if (includeTs && tsBlob && amortizedTsLen > 0) {
       bytes.set(tsBlob.slice(0, amortizedTsLen), valBlobLen);
     }
 
@@ -608,7 +610,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
       });
     }
 
-    if (amortizedTsLen > 0) {
+    if (includeTs && amortizedTsLen > 0) {
       var tsHdrEnd = Math.min(TS_HEADER_SIZE, amortizedTsLen);
       regions.push({
         name: 'Timestamp Header', cls: 'timestamps', start: valBlobLen, end: valBlobLen + tsHdrEnd,
@@ -635,12 +637,12 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     insightHtml = buildALPInsightHtml({
       count: alpCount, exponent: alpExp, bitWidth: alpBW, minInt: alpMin,
       excCount: alpExc, bitpackedBytes: bpBytes, valBlobLen: valBlobLen,
-      tsLen: tsLen, amortizedTsLen: amortizedTsLen, sharedCount: sharedCount,
+      tsLen: includeTs ? tsLen : 0, amortizedTsLen: amortizedTsLen, sharedCount: includeTs ? sharedCount : 0,
       tsCount: tsCount, firstTs: firstTs
     });
 
-    // Build ALP bit map for interactive bit view
-    bitMap = buildALPBitMap(primaryBlob, tsBlob, sampleCount);
+    // Build ALP bit map for interactive bit view (values only for alp-values)
+    bitMap = buildALPBitMap(primaryBlob, includeTs ? tsBlob : null, sampleCount);
 
   } else {
     bytes = primaryBlob;
@@ -713,7 +715,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
   if (insightTarget) insightTarget.innerHTML = insightHtml;
   var viewport = _buildMinimap(explorer, bytes, regions, showRegionDetail);
   var hexContent = _renderHexContent(
-    explorer.querySelector('#hexGrid'),
+    explorer.querySelector('.hex-grid'),
     explorer.querySelector('.hex-grid-scroll'),
     bytes, byteRegion, regions, byteLookup, totalRows, viewport
   );
@@ -722,6 +724,131 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
   );
   _setupViewModeButtons(
     explorer, bytes, byteRegion, regions, sampleCount, codec, bitMap,
+    byteLookup, totalRows, hexContent, highlightHexSample
+  );
+}
+
+// ── Separate Timestamp Byte Explorer (for ALP column store) ──────────
+
+export function renderByteExplorerTs(tsBlob, sampleCount) {
+  var explorer = document.getElementById('byteExplorerTs');
+  if (!explorer || !tsBlob || tsBlob.byteLength === 0) return;
+
+  var bytes = new Uint8Array(tsBlob);
+  var totalBytes = bytes.byteLength;
+  var regions = [];
+  var bitMap = null;
+
+  var tsCount = 0, firstTs = 0n;
+  if (totalBytes >= TS_HEADER_SIZE) {
+    tsCount = (tsBlob[0] << 8) | tsBlob[1];
+    firstTs = readI64BE(tsBlob, 2);
+  }
+
+  var hdrEnd = Math.min(TS_HEADER_SIZE, totalBytes);
+  regions.push({
+    name: 'Timestamp Header (10 B)', cls: 'timestamps', start: 0, end: hdrEnd,
+    decode: function() {
+      return 'bytes 0\u20111: count = ' + tsCount +
+             '\nbytes 2\u20119: first timestamp' +
+             '\n  ' + formatEpochNs(firstTs) +
+             '\n  epoch ns: ' + firstTs.toString();
+    }
+  });
+  if (totalBytes > TS_HEADER_SIZE) {
+    regions.push({
+      name: 'Timestamp \u0394\u0394 Body', cls: 'timestamps', start: TS_HEADER_SIZE, end: totalBytes,
+      decode: function() {
+        var body = totalBytes - TS_HEADER_SIZE;
+        return body + ' bytes of delta-of-delta encoded timestamps' +
+               '\nGorilla: 0=same\u0394 | 10+7b | 110+9b | 1110+12b | 1111+64b';
+      }
+    });
+  }
+
+  // Build timestamp bit map
+  try {
+    var tsR = new BitReader(tsBlob);
+    var tsBitMap = [];
+    tsR.readBitsNum(16);
+    var firstTsVal = BigInt.asIntN(64, tsR.readBits(64));
+    tsBitMap.push({ sampleIndex: 0, type: 'timestamp', startBit: 0, endBit: 80, encoding: 'raw', decoded: firstTsVal });
+    var prevTs = firstTsVal, prevDelta = 0n;
+    for (var i = 1; i < tsCount && i < sampleCount; i++) {
+      var tsStart = tsR.totalBits;
+      var dod, enc;
+      if (tsR.readBit() === 0) { dod = 0n; enc = 'dod-zero'; }
+      else if (tsR.readBit() === 0) { var zz = tsR.readBitsNum(7); dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1))); enc = 'dod-7bit'; }
+      else if (tsR.readBit() === 0) { var zz2 = tsR.readBitsNum(9); dod = BigInt.asIntN(64, BigInt((zz2 >>> 1) ^ -(zz2 & 1))); enc = 'dod-9bit'; }
+      else if (tsR.readBit() === 0) { var zz3 = tsR.readBitsNum(12); dod = BigInt.asIntN(64, BigInt((zz3 >>> 1) ^ -(zz3 & 1))); enc = 'dod-12bit'; }
+      else { dod = BigInt.asIntN(64, tsR.readBits(64)); enc = 'dod-64bit'; }
+      var delta = prevDelta + dod;
+      var ts = prevTs + delta;
+      prevDelta = delta; prevTs = ts;
+      tsBitMap.push({ sampleIndex: i, type: 'timestamp', startBit: tsStart, endBit: tsR.totalBits, encoding: enc, decoded: ts, dod: dod, delta: delta });
+    }
+    bitMap = tsBitMap;
+  } catch (e) {
+    console.warn('Timestamp bit map failed:', e);
+  }
+
+  var byteRegion = buildByteRegionMap(regions, totalBytes);
+  var byteLookup = buildByteLookup(bitMap, totalBytes);
+  var totalRows = Math.ceil(totalBytes / HEX_COLS);
+
+  function showRegionDetail(region) {
+    var detail = explorer.querySelector('#regionDetailTs');
+    if (!detail) return;
+    detail.innerHTML =
+      '<div class="region-detail-card">' +
+        '<h5><span class="region-badge ' + region.cls + '">' + region.name + '</span> ' + formatBytes(region.end - region.start) + ' \u00b7 bytes ' + region.start + '\u2013' + (region.end - 1) + '</h5>' +
+        '<div style="margin-top:8px;font-size:11px;color:#6b8a9e;white-space:pre-line;line-height:1.5;font-family:\'IBM Plex Mono\',monospace">' + region.decode() + '</div>' +
+      '</div>';
+  }
+
+  // Build shell
+  var viewId = 'hexViewTs-' + Date.now();
+  explorer.innerHTML =
+    '<div class="byte-explorer-header">' +
+      '<h4>\uD83D\uDD2C Timestamp Explorer <span style="font-weight:400;color:#6b8a9e;font-size:11px">' + formatBytes(totalBytes) + ' \u00b7 ' + totalBytes.toLocaleString() + ' bytes</span></h4>' +
+      '<div class="byte-explorer-controls">' +
+        '<button class="active" data-view="hex">Hex</button>' +
+        '<button data-view="decimal">Dec</button>' +
+        '<button data-view="bits">Bits</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="byte-minimap" id="byteMinimapTs"></div>' +
+    '<div class="hex-grid-scroll" id="' + viewId + '">' +
+      '<div class="hex-grid" id="hexGridTs" style="grid-template-columns: 56px repeat(' + HEX_COLS + ', minmax(0, 1fr)) minmax(0, 220px);"></div>' +
+    '</div>' +
+    '<div class="hex-decode-panel" id="hexDecodePanelTs" style="display:none"></div>' +
+    '<div id="regionDetailTs"></div>';
+
+  // Build minimap
+  var minimap = explorer.querySelector('.byte-minimap');
+  regions.forEach(function(r) {
+    var seg = document.createElement('div');
+    seg.className = 'mm-seg';
+    seg.style.width = Math.max(1, ((r.end - r.start) / totalBytes) * 100) + '%';
+    seg.style.background = '#06b6d4';
+    seg.title = r.name + ': ' + formatBytes(r.end - r.start);
+    seg.addEventListener('click', function() { showRegionDetail(r); });
+    minimap.appendChild(seg);
+  });
+  var viewport = document.createElement('div');
+  viewport.className = 'mm-viewport';
+  minimap.appendChild(viewport);
+
+  var hexContent = _renderHexContent(
+    explorer.querySelector('.hex-grid'),
+    explorer.querySelector('.hex-grid-scroll'),
+    bytes, byteRegion, regions, byteLookup, totalRows, viewport
+  );
+  var highlightHexSample = _setupHexInteraction(
+    explorer, bytes, byteRegion, regions, byteLookup, hexContent, showRegionDetail
+  );
+  _setupViewModeButtons(
+    explorer, bytes, byteRegion, regions, sampleCount, 'xor', bitMap,
     byteLookup, totalRows, hexContent, highlightHexSample
   );
 }
