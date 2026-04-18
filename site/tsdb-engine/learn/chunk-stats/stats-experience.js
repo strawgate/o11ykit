@@ -14,6 +14,7 @@ import {
   el,
   fmt,
   generateSamples,
+  revealSection,
 } from "../shared.js";
 
 /* ─── Constants ───────────────────────────────────────────────────── */
@@ -243,7 +244,7 @@ function runQuery() {
 function showExecution(buckets, agg, _startChunk) {
   const execSection = $("#execution-section");
   execSection.hidden = false;
-  execSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  revealSection(execSection);
 
   const resultsSection = $("#results-section");
   resultsSection.hidden = true;
@@ -503,7 +504,7 @@ function showResults(bucketResults, agg, decoded, statsOnly, skipped) {
     resultsGrid.appendChild(cell);
   });
 
-  section.scrollIntoView({ behavior: "smooth", block: "start" });
+  revealSection(section);
 }
 
 /* ─── Init ────────────────────────────────────────────────────────── */

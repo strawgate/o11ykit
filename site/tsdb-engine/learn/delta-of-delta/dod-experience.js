@@ -6,7 +6,7 @@
  */
 
 import {
-  $, el, buildBreadcrumb, fmt, fmtBytes, zigzagEncode, generateSamples,
+  $, el, buildBreadcrumb, buildStat, fmt, fmtBytes, zigzagEncode, generateSamples,
 } from '../shared.js';
 
 /* ─── Constants ───────────────────────────────────────────────────── */
@@ -177,11 +177,11 @@ function renderTable() {
 
     // Tier badge
     if (row.tier >= 0) {
-      const badge = el('span', { class: `dod-tier-badge t${row.tier}` }, row.tierLabel);
+      const badge = el('span', { class: `xp-badge dod-tier-badge t${row.tier}` }, row.tierLabel);
       tr.appendChild(el('td', {}, badge));
     } else {
       const badge = el('span', {
-        class: 'dod-tier-badge',
+        class: 'xp-badge dod-tier-badge',
         style: { background: 'rgba(139, 92, 246, 0.15)', color: 'var(--region-header)' },
       }, row.tierLabel);
       tr.appendChild(el('td', {}, badge));
@@ -279,11 +279,7 @@ function renderSummary() {
   ];
 
   for (const s of stats) {
-    const stat = el('div', { class: 'xp-stat' },
-      el('div', { class: 'xp-stat-label' }, s.label),
-      el('div', { class: 'xp-stat-value' }, s.value),
-      el('div', { class: 'xp-stat-unit' }, s.unit),
-    );
+    const stat = buildStat(s.label, s.value, s.unit);
     if (s.label === 'Ratio') {
       stat.querySelector('.xp-stat-value').style.color = ratio >= 10 ? 'var(--xp-success)' : ratio >= 4 ? 'var(--xp-accent)' : 'var(--xp-warn)';
     }

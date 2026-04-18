@@ -24,17 +24,6 @@
 
 .dod-table-scroll {
   overflow-x: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--xp-border-strong) transparent;
-}
-
-.dod-table-scroll::-webkit-scrollbar {
-  height: 6px;
-}
-
-.dod-table-scroll::-webkit-scrollbar-thumb {
-  background: var(--xp-border-strong);
-  border-radius: 3px;
 }
 
 .dod-table {
@@ -83,17 +72,7 @@
 .dod-table tr.tier-row-0 td:first-child { border-left-width: 3px; }
 .dod-table tr.tier-row-1 td:first-child { border-left-width: 3px; }
 
-/* Tier badge */
-.dod-tier-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  font-family: var(--xp-mono);
-  letter-spacing: 0.04em;
-}
-
+/* Tier badge — base from .xp-badge in shared.css */
 .dod-tier-badge.t0 { background: rgba(52, 211, 153, 0.15); color: var(--tier-0); }
 .dod-tier-badge.t1 { background: rgba(96, 165, 250, 0.15); color: var(--tier-1); }
 .dod-tier-badge.t2 { background: rgba(167, 139, 250, 0.15); color: var(--tier-2); }
@@ -209,16 +188,7 @@
 }
 
 /* ─── Jitter Story ────────────────────────────────────────────────── */
-.dod-story {
-  margin-top: 16px;
-  padding: 16px 20px;
-  background: var(--xp-surface);
-  border: 1px solid var(--xp-border);
-  border-radius: var(--xp-radius-sm);
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--xp-text-muted);
-}
+/* base from .xp-story in shared.css */
 
 .dod-story strong {
   color: var(--xp-success);
