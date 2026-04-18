@@ -1,0 +1,222 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - link "o11ykit" [ref=e4] [cursor=pointer]:
+      - /url: /o11ykit/
+    - navigation "Primary" [ref=e5]:
+      - link "OtlpKit" [ref=e6] [cursor=pointer]:
+        - /url: /o11ykit/otlpkit-docs/
+      - link "TSDB Engine" [ref=e7] [cursor=pointer]:
+        - /url: /o11ykit/tsdb-engine/
+      - link "Octo11y" [ref=e8] [cursor=pointer]:
+        - /url: /o11ykit/octo11y/
+      - link "Benchkit" [ref=e9] [cursor=pointer]:
+        - /url: /o11ykit/benchkit/
+  - generic [ref=e10]:
+    - paragraph [ref=e11]: o11ytsdb engine
+    - heading "A time-series database that runs in your browser." [level=1] [ref=e12]:
+      - text: A time-series database
+      - text: that runs in your browser.
+    - paragraph [ref=e13]: Gorilla-style XOR-delta compression. Three pluggable storage backends. A scan query engine with aggregation, grouping, and rate computation. Generate a million data points below and query them in real time.
+    - generic [ref=e14]:
+      - link "Launch Live Demo ↓" [ref=e15] [cursor=pointer]:
+        - /url: "#live-demo"
+      - link "Browse Source" [ref=e16] [cursor=pointer]:
+        - /url: https://github.com/strawgate/o11ykit/tree/main/packages/o11ytsdb
+    - generic "Key stats" [ref=e17]:
+      - generic [ref=e18]: 57× compression on constant gauges
+      - generic [ref=e19]: 28–80× WASM encode speedup
+      - generic [ref=e20]: Zero external dependencies
+      - generic [ref=e21]: ~4 KB WASM binary
+  - generic [ref=e22]:
+    - 'heading "🚀 Live Demo: Generate & Query" [level=2] [ref=e23]'
+    - paragraph [ref=e24]: This runs entirely in your browser. Generate up to 1M data points across multiple series, then query with aggregation — watch compression ratios and query performance in real time.
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]: Series
+        - combobox "Series" [ref=e28] [cursor=pointer]:
+          - option "5 series"
+          - option "10 series" [selected]
+          - option "25 series"
+          - option "50 series"
+      - generic [ref=e29]:
+        - generic [ref=e30]: Points per series
+        - combobox "Points per series" [ref=e31] [cursor=pointer]:
+          - option "1,000"
+          - option "10,000" [selected]
+          - option "50,000"
+          - option "100,000"
+      - generic [ref=e32]:
+        - generic [ref=e33]: Data pattern
+        - combobox "Data pattern" [ref=e34] [cursor=pointer]:
+          - option "Sine wave" [selected]
+          - option "Sawtooth"
+          - option "Random walk"
+          - option "Spiky traffic"
+          - option "Constant (best compression)"
+      - generic [ref=e35]:
+        - generic [ref=e36]: Sample interval
+        - combobox "Sample interval" [ref=e37] [cursor=pointer]:
+          - option "1 s"
+          - option "10 s" [selected]
+          - option "1 min"
+          - option "5 min"
+          - option "15 min"
+          - option "1 hr"
+          - option "6 hr"
+          - option "12 hr"
+      - generic [ref=e38]:
+        - generic [ref=e39]: Storage backend
+        - combobox "Storage backend" [ref=e40] [cursor=pointer]:
+          - option "FlatStore (no compression)"
+          - option "ChunkedStore (XOR-delta)"
+          - option "ColumnStore (ALP + shared timestamps)" [selected]
+      - button "Generate Data" [ref=e41] [cursor=pointer]
+  - generic [ref=e42]:
+    - heading "Engine Architecture" [level=2] [ref=e43]
+    - paragraph [ref=e44]: Every component is a pluggable interface — swap codecs, storage backends, and query strategies independently.
+    - generic [ref=e45]:
+      - generic [ref=e46]:
+        - generic [ref=e47]:
+          - generic [ref=e48]: 📥
+          - heading "Ingest Pipeline" [level=4] [ref=e49]
+          - paragraph [ref=e50]: OTLP JSON → normalized samples with label interning & inverted index
+        - generic [ref=e51]: →
+        - generic [ref=e52]:
+          - generic [ref=e53]: 💾
+          - heading "Storage Backends" [level=4] [ref=e54]
+          - paragraph [ref=e55]: FlatStore · ChunkedStore · ColumnStore — hot chunks + frozen compressed blocks
+        - generic [ref=e56]: →
+        - generic [ref=e57]:
+          - generic [ref=e58]: 🔍
+          - heading "Query Engine" [level=4] [ref=e59]
+          - paragraph [ref=e60]: Label matching · time range scan · aggregation · groupBy · rate
+      - generic [ref=e61]:
+        - generic [ref=e62]:
+          - generic [ref=e63]: 🗜️
+          - heading "XOR-Delta Codec" [level=4] [ref=e64]
+          - paragraph [ref=e65]: "Gorilla-style: DoD timestamps + XOR float64 values. TS / Zig WASM / Rust WASM"
+        - generic [ref=e66]:
+          - generic [ref=e67]: 🏷️
+          - heading "Label Index" [level=4] [ref=e68]
+          - paragraph [ref=e69]: FNV-1a string interner + inverted postings lists with gallop search
+        - generic [ref=e70]:
+          - generic [ref=e71]: ⚡
+          - heading "Worker Isolation" [level=4] [ref=e72]
+          - paragraph [ref=e73]: Off-main-thread via Web Workers with transferable buffers
+  - generic [ref=e74]:
+    - heading "Three Storage Backends" [level=2] [ref=e75]
+    - generic [ref=e76]:
+      - article [ref=e77]:
+        - generic [ref=e78]: Baseline
+        - heading "FlatStore" [level=3] [ref=e79]
+        - paragraph [ref=e80]:
+          - text: Raw TypedArrays with exponential doubling. Zero encode/decode overhead.
+          - strong [ref=e81]: 16 bytes/sample.
+        - generic [ref=e82]:
+          - generic [ref=e83]: Memory
+          - generic [ref=e86]: 16 B/pt
+        - generic [ref=e87]:
+          - generic [ref=e88]: Write
+          - generic [ref=e91]: Fastest
+        - generic [ref=e92]:
+          - generic [ref=e93]: Read
+          - generic [ref=e96]: O(log n)
+      - article [ref=e97]:
+        - generic [ref=e98]: Compressed
+        - heading "ChunkedStore" [level=3] [ref=e99]
+        - paragraph [ref=e100]:
+          - text: Hot chunks → freeze → compress with pluggable codec. Amortized encode cost.
+          - strong [ref=e101]: ~2–4 bytes/sample.
+        - generic [ref=e102]:
+          - generic [ref=e103]: Memory
+          - generic [ref=e106]: ~3 B/pt
+        - generic [ref=e107]:
+          - generic [ref=e108]: Write
+          - generic [ref=e111]: Amortized
+        - generic [ref=e112]:
+          - generic [ref=e113]: Read
+          - generic [ref=e116]: Decode + scan
+      - article [ref=e117]:
+        - generic [ref=e118]: Optimal
+        - heading "ColumnStore" [level=3] [ref=e119]
+        - paragraph [ref=e120]:
+          - text: Shared timestamp columns for co-scraped metrics. Values-only compression per series.
+          - strong [ref=e121]: ~1–2 bytes/sample.
+        - generic [ref=e122]:
+          - generic [ref=e123]: Memory
+          - generic [ref=e126]: ~1.5 B/pt
+        - generic [ref=e127]:
+          - generic [ref=e128]: Write
+          - generic [ref=e131]: Batch freeze
+        - generic [ref=e132]:
+          - generic [ref=e133]: Read
+          - generic [ref=e136]: Fused range
+  - generic [ref=e137]:
+    - heading "XOR-Delta Compression" [level=2] [ref=e138]
+    - paragraph [ref=e139]: Based on Facebook's Gorilla paper (VLDB 2015). Timestamps use delta-of-delta with zigzag encoding. Values use XOR with leading/trailing zero tracking.
+    - generic [ref=e140]:
+      - generic [ref=e141]:
+        - generic [ref=e142]: "1"
+        - generic [ref=e143]:
+          - 'heading "Timestamp: Delta-of-Delta" [level=4] [ref=e144]'
+          - paragraph [ref=e145]:
+            - text: Regular intervals compress to
+            - strong [ref=e146]: 1 bit per sample
+            - text: . Irregular intervals use 9–68 bits with zigzag encoding.
+          - code [ref=e148]: DoD == 0 → '0' (1 bit) DoD in [-63, 64] → '10' + 7-bit zz (9 bits) DoD in [-255, 256] → '110' + 9-bit zz (12 bits) DoD in [-2047,2048] → '1110' + 12-bit (16 bits) Otherwise → '1111' + raw 64 (68 bits)
+      - generic [ref=e149]:
+        - generic [ref=e150]: "2"
+        - generic [ref=e151]:
+          - 'heading "Value: XOR Encoding" [level=4] [ref=e152]'
+          - paragraph [ref=e153]:
+            - text: "Identical values:"
+            - strong [ref=e154]: 1 bit
+            - text: . Similar values reuse the leading/trailing zero window from the previous sample.
+          - code [ref=e156]: XOR == 0 → '0' (1 bit) Reuse window → '10' + meaningful (2 + N bits) New window → '11' + 6L + 6M (14 + N bits)
+      - generic [ref=e157]:
+        - generic [ref=e158]: "3"
+        - generic [ref=e159]:
+          - 'heading "Result: Massive Compression" [level=4] [ref=e160]'
+          - paragraph [ref=e161]:
+            - text: Constant-interval gauges achieve
+            - strong [ref=e162]: 57× compression
+            - text: vs raw Float64. Even noisy data compresses 4–8×.
+  - generic [ref=e163]:
+    - heading "Query Engine" [level=2] [ref=e164]
+    - paragraph [ref=e165]: The scan engine supports label matching, time windowing, six aggregation functions, groupBy, and rate computation.
+    - generic [ref=e166]:
+      - generic [ref=e167]:
+        - heading "Aggregation Functions" [level=4] [ref=e168]
+        - generic [ref=e169]:
+          - generic [ref=e170]: sum
+          - generic [ref=e171]: avg
+          - generic [ref=e172]: min
+          - generic [ref=e173]: max
+          - generic [ref=e174]: count
+          - generic [ref=e175]: last
+          - generic [ref=e176]: rate
+      - generic [ref=e177]:
+        - heading "Query Options" [level=4] [ref=e178]
+        - code [ref=e180]: "interface QueryOpts { metric: string; matchers?: { label, value }[]; start: bigint; // ns epoch end: bigint; // ns epoch step?: bigint; // bucket size agg?: AggFn; groupBy?: string[]; }"
+  - generic [ref=e181]:
+    - heading "Quick Start" [level=2] [ref=e182]
+    - paragraph [ref=e183]: "Use the TSDB engine in three steps: create a store, ingest data, and query."
+    - code [ref=e185]: "import { FlatStore, ChunkedStore, ColumnStore, ScanEngine, encodeChunk, decodeChunk } from 'o11ytsdb'; // 1. Create a storage backend const store = new ChunkedStore({ name: 'xor-delta', encode: encodeChunk, decode: decodeChunk }); // 2. Ingest time-series data const labels = new Map([['__name__', 'http_requests'], ['method', 'GET'], ['region', 'us-east']]); const seriesId = store.getOrCreateSeries(labels); const timestamps = BigInt64Array.from({ length: 10000 }, (_, i) => BigInt(Date.now() - (10000 - i) * 1000) * 1_000_000n); const values = Float64Array.from({ length: 10000 }, (_, i) => 100 + Math.sin(i / 50) * 30 + Math.random() * 5); store.appendBatch(seriesId, timestamps, values); // 3. Query with aggregation const engine = new ScanEngine(); const result = engine.query(store, { metric: 'http_requests', start: timestamps[0], end: timestamps[timestamps.length - 1], agg: 'avg', groupBy: ['region'], step: 10_000_000_000n, // 10-second buckets }); console.log(`Found ${result.series.length} groups, scanned ${result.scannedSamples} samples`);"
+  - generic [ref=e186]:
+    - heading "OTLP Ingest Pipeline" [level=2] [ref=e187]
+    - paragraph [ref=e188]: Ingest OpenTelemetry JSON payloads directly. Supports gauge, sum, histogram, summary, and exponential histogram metric types.
+    - code [ref=e190]: "import { ingestOtlpJson, ChunkedStore, ScanEngine } from 'o11ytsdb'; const store = new ChunkedStore(codec); // Ingest raw OTLP metrics JSON const result = ingestOtlpJson(otlpPayload, store); console.log(`${result.pointsAccepted} points, ${result.seriesCreated} new series`); console.log(`Types: ${JSON.stringify(result.metricTypeCounts)}`); // → { gauge: 42, sum: 18, histogram: 6, summary: 2 } // Labels are auto-extracted: // resource.service.name, scope_attr.*, attr.*, __name__ // Histogram generates derived series: // metric_bucket, metric_count, metric_sum"
+  - generic [ref=e191]:
+    - heading "Web Worker Isolation" [level=2] [ref=e192]
+    - paragraph [ref=e193]: Move all TSDB operations off the main thread. The worker protocol supports structured clone, transferable buffers, and SharedArrayBuffer strategies.
+    - code [ref=e195]: "import { WorkerClient } from 'o11ytsdb'; const client = new WorkerClient(new Worker('./tsdb-worker.js')); await client.init({ chunkSize: 1024 }); // Ingest from main thread — data transfers automatically await client.ingest(labels, timestamps, values); // Query returns results back to main thread const result = await client.query({ metric: 'http_requests', start: 0n, end: BigInt(Date.now()) * 1_000_000n, agg: 'avg', step: 10_000_000_000n, }); const stats = await client.stats(); console.log(`${stats.seriesCount} series, ${stats.sampleCount} samples, ${stats.memoryBytes} bytes`);"
+  - paragraph [ref=e197]:
+    - text: Part of the
+    - link "o11ykit" [ref=e198] [cursor=pointer]:
+      - /url: /o11ykit/
+    - text: platform ·
+    - link "OtlpKit Docs" [ref=e199] [cursor=pointer]:
+      - /url: /o11ykit/otlpkit-docs/
+    - text: ·
+    - link "GitHub" [ref=e200] [cursor=pointer]:
+      - /url: https://github.com/strawgate/o11ykit
