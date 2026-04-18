@@ -6,7 +6,17 @@
  * Stats Check → Decode → Step-Aligned Aggregation
  */
 
-import { $, $$, buildBreadcrumb, drawSparkline, el, fmt, revealSection, sleep, Stepper } from "../shared.js";
+import {
+  $,
+  $$,
+  buildBreadcrumb,
+  drawSparkline,
+  el,
+  fmt,
+  revealSection,
+  Stepper,
+  sleep,
+} from "../shared.js";
 
 /* ═══════════════════════════════════════════════════════════════════════
    A. DATASET GENERATION

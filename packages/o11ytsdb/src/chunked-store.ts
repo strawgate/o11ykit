@@ -10,11 +10,9 @@
  * with. Smaller chunks = less decode work per query but more overhead.
  */
 
-import type {
-  Codec, Labels, SeriesId, StorageBackend, TimeRange,
-} from './types.js';
-import { LabelIndex } from './label-index.js';
-import { concatRanges, lowerBound, upperBound } from './binary-search.js';
+import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
+import { LabelIndex } from "./label-index.js";
+import type { Codec, Labels, SeriesId, StorageBackend, TimeRange } from "./types.js";
 
 interface FrozenChunk {
   compressed: Uint8Array;
@@ -67,6 +65,7 @@ export class ChunkedStore implements StorageBackend {
   }
 
   append(id: SeriesId, timestamp: bigint, value: number): void {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.series[id]!;
     const hot = s.hot;
     hot.timestamps[hot.count] = timestamp;
@@ -80,6 +79,7 @@ export class ChunkedStore implements StorageBackend {
   }
 
   appendBatch(id: SeriesId, timestamps: BigInt64Array, values: Float64Array): void {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.series[id]!;
     let offset = 0;
     const len = timestamps.length;
@@ -108,6 +108,7 @@ export class ChunkedStore implements StorageBackend {
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.series[id]!;
     const parts: TimeRange[] = [];
 
@@ -147,8 +148,12 @@ export class ChunkedStore implements StorageBackend {
 
   // ── Stats ──
 
-  get seriesCount(): number { return this.series.length; }
-  get sampleCount(): number { return this._sampleCount; }
+  get seriesCount(): number {
+    return this.series.length;
+  }
+  get sampleCount(): number {
+    return this._sampleCount;
+  }
 
   memoryBytes(): number {
     let bytes = 0;
@@ -171,7 +176,9 @@ export class ChunkedStore implements StorageBackend {
     const compressed = this.codec.encode(ts, vals);
     s.frozen.push({
       compressed,
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       minT: ts[0]!,
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       maxT: ts[hot.count - 1]!,
       count: hot.count,
     });

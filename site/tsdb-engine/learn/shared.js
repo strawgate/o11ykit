@@ -5,7 +5,7 @@
 
 /** Format a number with locale-aware thousands separators. */
 export function fmt(n, decimals = 0) {
-  return Number(n).toLocaleString('en-US', {
+  return Number(n).toLocaleString("en-US", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
@@ -30,9 +30,9 @@ export function float64ToBits(value) {
   const buf = new ArrayBuffer(8);
   new Float64Array(buf)[0] = value;
   const bytes = new Uint8Array(buf);
-  let bits = '';
+  let bits = "";
   for (let i = 7; i >= 0; i--) {
-    bits += bytes[i].toString(2).padStart(8, '0');
+    bits += bytes[i].toString(2).padStart(8, "0");
   }
   return bits;
 }
@@ -40,9 +40,9 @@ export function float64ToBits(value) {
 /** Convert a BigInt (int64) to its bit string (64 chars). */
 export function int64ToBits(value) {
   const big = BigInt(value);
-  let s = '';
+  let s = "";
   for (let i = 63; i >= 0; i--) {
-    s += (big >> BigInt(i)) & 1n ? '1' : '0';
+    s += (big >> BigInt(i)) & 1n ? "1" : "0";
   }
   return s;
 }
@@ -50,13 +50,13 @@ export function int64ToBits(value) {
 /** ZigZag encode a signed value. */
 export function zigzagEncode(n) {
   const big = BigInt(n);
-  return big >= 0n ? big * 2n : (-big) * 2n - 1n;
+  return big >= 0n ? big * 2n : -big * 2n - 1n;
 }
 
 /** ZigZag decode an unsigned value. */
 export function zigzagDecode(n) {
   const big = BigInt(n);
-  return (big & 1n) ? -(big >> 1n) - 1n : big >> 1n;
+  return big & 1n ? -(big >> 1n) - 1n : big >> 1n;
 }
 
 /** Count leading zero bits in a 64-bit value. */
@@ -101,22 +101,27 @@ export function generateSamples(pattern, count, opts = {}) {
     timestamps[i] = now - BigInt(count - i) * interval + jitterNs;
 
     switch (pattern) {
-      case 'gauge':
+      case "gauge":
         values[i] = base + Math.sin(i * 0.05) * 20 + (Math.random() - 0.5) * noise * base;
         break;
-      case 'counter':
+      case "counter":
         values[i] = i === 0 ? base : values[i - 1] + Math.random() * 5 + 1;
         break;
-      case 'percentage':
-        values[i] = Math.round(Math.max(0, Math.min(100, 50 + Math.sin(i * 0.08) * 30 + (Math.random() - 0.5) * 10)) * 10) / 10;
+      case "percentage":
+        values[i] =
+          Math.round(
+            Math.max(0, Math.min(100, 50 + Math.sin(i * 0.08) * 30 + (Math.random() - 0.5) * 10)) *
+              10
+          ) / 10;
         break;
-      case 'temperature':
-        values[i] = Math.round((20 + Math.sin(i * 0.03) * 8 + (Math.random() - 0.5) * 2) * 100) / 100;
+      case "temperature":
+        values[i] =
+          Math.round((20 + Math.sin(i * 0.03) * 8 + (Math.random() - 0.5) * 2) * 100) / 100;
         break;
-      case 'sine':
+      case "sine":
         values[i] = Math.sin(i * 0.1) * base;
         break;
-      case 'random':
+      case "random":
         values[i] = Math.random() * base * 2;
         break;
       default:
@@ -154,21 +159,33 @@ export class Stepper {
     this.onStep(this.current);
   }
 
-  next() { if (this.current < this.total - 1) this.goto(this.current + 1); }
-  prev() { if (this.current > -1) this.goto(this.current - 1); }
-  reset() { this.goto(-1); }
+  next() {
+    if (this.current < this.total - 1) this.goto(this.current + 1);
+  }
+  prev() {
+    if (this.current > -1) this.goto(this.current - 1);
+  }
+  reset() {
+    this.goto(-1);
+  }
 
   play(intervalMs = 1200) {
     this.stop();
     this.reset();
     this._timer = setInterval(() => {
-      if (this.current >= this.total - 1) { this.stop(); return; }
+      if (this.current >= this.total - 1) {
+        this.stop();
+        return;
+      }
       this.next();
     }, intervalMs);
   }
 
   stop() {
-    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
   }
 }
 
@@ -180,13 +197,13 @@ export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 export function el(tag, attrs = {}, ...children) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') e.className = v;
-    else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
-    else if (k.startsWith('on')) e.addEventListener(k.slice(2).toLowerCase(), v);
+    if (k === "class") e.className = v;
+    else if (k === "style" && typeof v === "object") Object.assign(e.style, v);
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(), v);
     else e.setAttribute(k, v);
   }
   for (const c of children) {
-    if (typeof c === 'string') e.appendChild(document.createTextNode(c));
+    if (typeof c === "string") e.appendChild(document.createTextNode(c));
     else if (c) e.appendChild(c);
   }
   return e;
@@ -209,7 +226,8 @@ export function buildBreadcrumb(title) {
 /** Gently reveal a section — only scrolls if not already visible, adds a brief highlight pulse. */
 export function revealSection(el) {
   const rect = el.getBoundingClientRect();
-  const inView = rect.top >= 0 && rect.bottom <= window.innerHeight;
+  const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+  const inView = visibleHeight / rect.height >= 0.5;
   if (!inView) {
     el.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
@@ -219,8 +237,8 @@ export function revealSection(el) {
 
 /** Render a sparkline to a canvas element. */
 export function drawSparkline(canvas, values, opts = {}) {
-  const { color = '#60a5fa', fillAlpha = 0.1, lineWidth = 1.5 } = opts;
-  const ctx = canvas.getContext('2d');
+  const { color = "#60a5fa", fillAlpha = 0.1, lineWidth = 1.5 } = opts;
+  const ctx = canvas.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
@@ -249,7 +267,7 @@ export function drawSparkline(canvas, values, opts = {}) {
   ctx.lineTo(w, h);
   ctx.lineTo(0, h);
   ctx.closePath();
-  ctx.fillStyle = color.replace(')', `, ${fillAlpha})`).replace('rgb', 'rgba');
+  ctx.fillStyle = color.replace(")", `, ${fillAlpha})`).replace("rgb", "rgba");
   ctx.fill();
 }
 
@@ -263,15 +281,21 @@ export function drawSparkline(canvas, values, opts = {}) {
  * @param {object} [opts]  – opts.cls (extra class on value), opts.color (inline color on value)
  * @returns {HTMLElement}
  */
-export function buildStat(label, value, unit = '', opts = {}) {
-  const valueEl = el('div', {
-    class: ['xp-stat-value', opts.cls].filter(Boolean).join(' '),
-    ...(opts.color ? { style: { color: opts.color } } : {}),
-  }, String(value));
-  return el('div', { class: 'xp-stat' },
-    el('div', { class: 'xp-stat-label' }, label),
+export function buildStat(label, value, unit = "", opts = {}) {
+  const valueEl = el(
+    "div",
+    {
+      class: ["xp-stat-value", opts.cls].filter(Boolean).join(" "),
+      ...(opts.color ? { style: { color: opts.color } } : {}),
+    },
+    String(value)
+  );
+  return el(
+    "div",
+    { class: "xp-stat" },
+    el("div", { class: "xp-stat-label" }, label),
     valueEl,
-    unit ? el('div', { class: 'xp-stat-unit' }, unit) : null,
+    unit ? el("div", { class: "xp-stat-unit" }, unit) : null
   );
 }
 
@@ -279,5 +303,5 @@ export function buildStat(label, value, unit = '', opts = {}) {
 
 /** Promise-based sleep. */
 export function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

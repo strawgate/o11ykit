@@ -11,100 +11,100 @@
     <link rel="stylesheet" href="shared.css" />
     <style>
       .hub-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 16px;
-        margin-top: 32px;
-      }
-      .hub-card {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        padding: 24px;
-        background: var(--xp-surface);
-        border: 1px solid var(--xp-border);
-        border-radius: var(--xp-radius);
-        text-decoration: none;
-        color: inherit;
-        transition: all 200ms;
-        position: relative;
-        overflow: hidden;
-      }
-      .hub-card:hover {
-        border-color: var(--xp-accent);
-        transform: translateY(-2px);
-        box-shadow: 0 8px 32px rgba(96, 165, 250, 0.08);
-      }
-      .hub-card::before {
-        content: '';
-        position: absolute;
-        top: 0; left: 0; right: 0;
-        height: 3px;
-        background: var(--card-accent, var(--xp-accent));
-        opacity: 0;
-        transition: opacity 200ms;
-      }
-      .hub-card:hover::before { opacity: 1; }
-      .hub-icon {
-        font-size: 28px;
-        width: 48px;
-        height: 48px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--card-glow, var(--xp-accent-glow));
-        border-radius: 12px;
-        flex-shrink: 0;
-      }
-      .hub-card h3 {
-        margin: 0;
-        font-size: 17px;
-        font-weight: 600;
-        color: #fff;
-      }
-      .hub-card p {
-        margin: 0;
-        font-size: 14px;
-        line-height: 1.5;
-        color: var(--xp-text-muted);
-      }
-      .hub-tag {
-        display: inline-block;
-        font-size: 10px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        padding: 3px 8px;
-        border-radius: 999px;
-        background: var(--card-glow, var(--xp-accent-glow));
-        color: var(--card-accent, var(--xp-accent));
-        border: 1px solid var(--card-accent, var(--xp-accent));
-        opacity: 0.8;
-      }
-      .hub-intro {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 32px;
-        align-items: center;
-      }
-      .hub-intro-diagram {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        font-family: var(--xp-mono);
-        font-size: 11px;
-        color: var(--xp-text-dim);
-        padding: 16px;
-        background: var(--xp-surface);
-        border: 1px solid var(--xp-border);
-        border-radius: var(--xp-radius-sm);
-        white-space: pre;
-        line-height: 1.4;
-      }
-      @media (max-width: 700px) {
-        .hub-intro { grid-template-columns: 1fr; }
-        .hub-intro-diagram { display: none; }
-      }
+                    display: grid;
+                    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+                    gap: 16px;
+                    margin-top: 32px;
+                  }
+                  .hub-card {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                    padding: 24px;
+                    background: var(--xp-surface);
+                    border: 1px solid var(--xp-border);
+                    border-radius: var(--xp-radius);
+                    text-decoration: none;
+                    color: inherit;
+                    transition: all 200ms;
+                    position: relative;
+                    overflow: hidden;
+                  }
+                  .hub-card:hover {
+                    border-color: var(--xp-accent);
+                    transform: translateY(-2px);
+                    box-shadow: 0 8px 32px rgba(96, 165, 250, 0.08);
+                  }
+                  .hub-card::before {
+                    content: '';
+                    position: absolute;
+                    top: 0; left: 0; right: 0;
+                    height: 3px;
+                    background: var(--card-accent, var(--xp-accent));
+                    opacity: 0;
+                    transition: opacity 200ms;
+                  }
+                  .hub-card:hover::before { opacity: 1; }
+                  .hub-icon {
+                    font-size: 28px;
+                    width: 48px;
+                    height: 48px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: var(--card-glow, var(--xp-accent-glow));
+                    border-radius: 12px;
+                    flex-shrink: 0;
+                  }
+                  .hub-card h3 {
+                    margin: 0;
+                    font-size: 17px;
+                    font-weight: 600;
+                    color: #fff;
+                  }
+                  .hub-card p {
+                    margin: 0;
+                    font-size: 14px;
+                    line-height: 1.5;
+                    color: var(--xp-text-muted);
+                  }
+                  .hub-tag {
+                    display: inline-block;
+                    font-size: 10px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.08em;
+                    padding: 3px 8px;
+                    border-radius: 999px;
+                    background: var(--card-glow, var(--xp-accent-glow));
+                    color: var(--card-accent, var(--xp-accent));
+                    border: 1px solid var(--card-accent, var(--xp-accent));
+                    opacity: 0.8;
+                  }
+                  .hub-intro {
+                    display: grid;
+                    grid-template-columns: 1fr auto;
+                    gap: 32px;
+                    align-items: center;
+                  }
+                  .hub-intro-diagram {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 6px;
+                    font-family: var(--xp-mono);
+                    font-size: 11px;
+                    color: var(--xp-text-dim);
+                    padding: 16px;
+                    background: var(--xp-surface);
+                    border: 1px solid var(--xp-border);
+                    border-radius: var(--xp-radius-sm);
+                    white-space: pre;
+                    line-height: 1.4;
+                  }
+                  @media (max-width: 700px) {
+                    .hub-intro { grid-template-columns: 1fr; }
+                    .hub-intro-diagram { display: none; }
+                  }
     </style>
   </head>
   <body>

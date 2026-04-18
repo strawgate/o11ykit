@@ -32,6 +32,7 @@ export class BitWriter {
   writeBit(bit: number): void {
     if (this.bytePos >= this.buf.length) this.grow();
     if (bit) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       this.buf[this.bytePos]! |= 0x80 >>> this.bitPos;
     }
     this.bitPos++;
@@ -86,6 +87,7 @@ export class BitReader {
 
   /** Read a single bit. */
   readBit(): number {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const byte = this.buf[this.bytePos]!;
     const bit = (byte >>> (7 - this.bitPos)) & 1;
     this.bitPos++;
@@ -128,8 +130,8 @@ function floatToBits(f: number): bigint {
 }
 
 function bitsToFloat(bits: bigint): number {
-  const hi = Number((bits >> 32n) & 0xFFFFFFFFn);
-  const lo = Number(bits & 0xFFFFFFFFn);
+  const hi = Number((bits >> 32n) & 0xffffffffn);
+  const lo = Number(bits & 0xffffffffn);
   f64View.setUint32(0, hi, false);
   f64View.setUint32(4, lo, false);
   return f64View.getFloat64(0, false);
@@ -139,12 +141,29 @@ function bitsToFloat(bits: bigint): number {
 function clz64(x: bigint): number {
   if (x === 0n) return 64;
   let n = 0;
-  if ((x & 0xFFFFFFFF00000000n) === 0n) { n += 32; x <<= 32n; }
-  if ((x & 0xFFFF000000000000n) === 0n) { n += 16; x <<= 16n; }
-  if ((x & 0xFF00000000000000n) === 0n) { n += 8; x <<= 8n; }
-  if ((x & 0xF000000000000000n) === 0n) { n += 4; x <<= 4n; }
-  if ((x & 0xC000000000000000n) === 0n) { n += 2; x <<= 2n; }
-  if ((x & 0x8000000000000000n) === 0n) { n += 1; }
+  if ((x & 0xffffffff00000000n) === 0n) {
+    n += 32;
+    x <<= 32n;
+  }
+  if ((x & 0xffff000000000000n) === 0n) {
+    n += 16;
+    x <<= 16n;
+  }
+  if ((x & 0xff00000000000000n) === 0n) {
+    n += 8;
+    x <<= 8n;
+  }
+  if ((x & 0xf000000000000000n) === 0n) {
+    n += 4;
+    x <<= 4n;
+  }
+  if ((x & 0xc000000000000000n) === 0n) {
+    n += 2;
+    x <<= 2n;
+  }
+  if ((x & 0x8000000000000000n) === 0n) {
+    n += 1;
+  }
   return n;
 }
 
@@ -152,12 +171,29 @@ function clz64(x: bigint): number {
 function ctz64(x: bigint): number {
   if (x === 0n) return 64;
   let n = 0;
-  if ((x & 0xFFFFFFFFn) === 0n) { n += 32; x >>= 32n; }
-  if ((x & 0xFFFFn) === 0n) { n += 16; x >>= 16n; }
-  if ((x & 0xFFn) === 0n) { n += 8; x >>= 8n; }
-  if ((x & 0xFn) === 0n) { n += 4; x >>= 4n; }
-  if ((x & 0x3n) === 0n) { n += 2; x >>= 2n; }
-  if ((x & 0x1n) === 0n) { n += 1; }
+  if ((x & 0xffffffffn) === 0n) {
+    n += 32;
+    x >>= 32n;
+  }
+  if ((x & 0xffffn) === 0n) {
+    n += 16;
+    x >>= 16n;
+  }
+  if ((x & 0xffn) === 0n) {
+    n += 8;
+    x >>= 8n;
+  }
+  if ((x & 0xfn) === 0n) {
+    n += 4;
+    x >>= 4n;
+  }
+  if ((x & 0x3n) === 0n) {
+    n += 2;
+    x >>= 2n;
+  }
+  if ((x & 0x1n) === 0n) {
+    n += 1;
+  }
   return n;
 }
 
@@ -187,36 +223,38 @@ function ctz64(x: bigint): number {
  *       - Otherwise:         write '11' + 6 bits leading + 6 bits
  *                            meaningful-length + meaningful bits
  */
-export function encodeChunk(
-  timestamps: BigInt64Array,
-  values: Float64Array,
-): Uint8Array {
+export function encodeChunk(timestamps: BigInt64Array, values: Float64Array): Uint8Array {
   const n = timestamps.length;
   if (n === 0) return new Uint8Array(0);
-  if (n > 65535) throw new RangeError('Chunk exceeds 65535 samples');
+  if (n > 65535) throw new RangeError("Chunk exceeds 65535 samples");
   if (timestamps.length !== values.length) {
-    throw new RangeError('timestamps and values must have the same length');
+    throw new RangeError("timestamps and values must have the same length");
   }
 
   const w = new BitWriter(n * 2); // rough estimate
 
   // Header: count + first sample.
   w.writeBitsNum(n, 16);
-  w.writeBits(BigInt(timestamps[0]!) & 0xFFFFFFFFFFFFFFFFn, 64);
+  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+  w.writeBits(BigInt(timestamps[0]!) & 0xffffffffffffffffn, 64);
+  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
   w.writeBits(floatToBits(values[0]!), 64);
 
   if (n === 1) return w.finish();
 
   // State for delta-of-delta timestamps.
+  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
   let prevTs = timestamps[0]!;
   let prevDelta = 0n;
 
   // State for XOR values.
+  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
   let prevValBits = floatToBits(values[0]!);
   let prevLeading = 64; // force full write on first XOR
   let prevTrailing = 0;
 
   for (let i = 1; i < n; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const ts = timestamps[i]!;
     const delta = ts - prevTs;
     const dod = delta - prevDelta;
@@ -228,20 +266,29 @@ export function encodeChunk(
       // Zigzag encode for signed values.
       const absDod = dod < 0n ? -dod : dod;
       if (absDod <= 64n) {
-        w.writeBit(1); w.writeBit(0);
+        w.writeBit(1);
+        w.writeBit(0);
         // 7-bit zigzag: (dod << 1) ^ (dod >> 63)
-        const zz = Number((dod << 1n) ^ (dod >> 63n)) & 0x7F;
+        const zz = Number((dod << 1n) ^ (dod >> 63n)) & 0x7f;
         w.writeBitsNum(zz, 7);
       } else if (absDod <= 256n) {
-        w.writeBit(1); w.writeBit(1); w.writeBit(0);
-        const zz = Number((dod << 1n) ^ (dod >> 63n)) & 0x1FF;
+        w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(0);
+        const zz = Number((dod << 1n) ^ (dod >> 63n)) & 0x1ff;
         w.writeBitsNum(zz, 9);
       } else if (absDod <= 2048n) {
-        w.writeBit(1); w.writeBit(1); w.writeBit(1); w.writeBit(0);
-        const zz = Number((dod << 1n) ^ (dod >> 63n)) & 0xFFF;
+        w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(0);
+        const zz = Number((dod << 1n) ^ (dod >> 63n)) & 0xfff;
         w.writeBitsNum(zz, 12);
       } else {
-        w.writeBit(1); w.writeBit(1); w.writeBit(1); w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(1);
         // Raw 64-bit BigInt.
         w.writeBits(BigInt.asUintN(64, dod), 64);
       }
@@ -251,6 +298,7 @@ export function encodeChunk(
     prevTs = ts;
 
     // ── Value: XOR encoding ──
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const valBits = floatToBits(values[i]!);
     const xor = prevValBits ^ valBits;
 
@@ -263,13 +311,15 @@ export function encodeChunk(
 
       if (leading >= prevLeading && trailing >= prevTrailing) {
         // Reuse previous window.
-        w.writeBit(1); w.writeBit(0);
+        w.writeBit(1);
+        w.writeBit(0);
         const prevMeaningful = 64 - prevLeading - prevTrailing;
         const shifted = xor >> BigInt(prevTrailing);
         w.writeBits(shifted, prevMeaningful);
       } else {
         // New window.
-        w.writeBit(1); w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(1);
         w.writeBitsNum(leading, 6);
         // meaningful length: 0 means 64 (can't have 0 meaningful bits
         // when xor != 0), so store (meaningful - 1) in 6 bits.
@@ -314,8 +364,10 @@ export function decodeChunk(buf: Uint8Array): DecodedChunk {
 
   if (n === 1) return { timestamps, values };
 
+  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
   let prevTs = timestamps[0]!;
   let prevDelta = 0n;
+  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
   let prevValBits = floatToBits(values[0]!);
   let prevLeading = 0;
   let prevTrailing = 0;
@@ -325,14 +377,17 @@ export function decodeChunk(buf: Uint8Array): DecodedChunk {
     let dod: bigint;
     if (r.readBit() === 0) {
       dod = 0n;
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       // 7-bit zigzag
       const zz = r.readBitsNum(7);
       dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       // 9-bit zigzag
       const zz = r.readBitsNum(9);
       dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       // 12-bit zigzag
       const zz = r.readBitsNum(12);
@@ -352,6 +407,7 @@ export function decodeChunk(buf: Uint8Array): DecodedChunk {
     if (r.readBit() === 0) {
       // Same as previous.
       values[i] = bitsToFloat(prevValBits);
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       // Reuse previous leading/trailing window.
       const meaningful = 64 - prevLeading - prevTrailing;

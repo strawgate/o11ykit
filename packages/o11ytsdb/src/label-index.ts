@@ -6,9 +6,9 @@
  * that was previously copied across FlatStore, ChunkedStore, and ColumnStore.
  */
 
-import { Interner } from './interner.js';
-import { MemPostings } from './postings.js';
-import type { Labels, SeriesId } from './types.js';
+import { Interner } from "./interner.js";
+import { MemPostings } from "./postings.js";
+import type { Labels, SeriesId } from "./types.js";
 
 export class LabelIndex {
   readonly interner: Interner;
@@ -50,6 +50,7 @@ export class LabelIndex {
     if (!pairs) return undefined;
     const out = new Map<string, string>();
     for (let i = 0; i < pairs.length; i += 2) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       out.set(this.interner.resolve(pairs[i]!), this.interner.resolve(pairs[i + 1]!));
     }
     return out;
@@ -71,9 +72,10 @@ function internLabels(labels: Labels, interner: Interner): Uint32Array {
   for (const [k, v] of labels) {
     pairs.push([interner.intern(k), interner.intern(v)]);
   }
-  pairs.sort((a, b) => (a[0] - b[0]) || (a[1] - b[1]));
+  pairs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const encoded = new Uint32Array(pairs.length * 2);
   for (let i = 0; i < pairs.length; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const [k, v] = pairs[i]!;
     encoded[i * 2] = k;
     encoded[i * 2 + 1] = v;
@@ -86,5 +88,5 @@ function seriesKeyFromPairs(labelPairs: Uint32Array): string {
   for (let i = 0; i < labelPairs.length; i += 2) {
     parts.push(`${labelPairs[i]}:${labelPairs[i + 1]}`);
   }
-  return parts.join(',');
+  return parts.join(",");
 }
