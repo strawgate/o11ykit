@@ -84,3 +84,22 @@ export function superNum(n) {
   const sup = '\u2070\u00B9\u00B2\u00B3\u2074\u2075\u2076\u2077\u2078\u2079';
   return String(n).split('').map(c => sup[parseInt(c)] || c).join('');
 }
+
+export function formatHexByte(val) {
+  return val.toString(16).toUpperCase().padStart(2, '0');
+}
+
+export function setupCanvasDPR(canvas, w, h) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+
+export function makeLabelKey(labels) {
+  return [...labels].sort((a, b) => a[0] < b[0] ? -1 : 1).map(([k, v]) => k + '=' + v).join(',');
+}

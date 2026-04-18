@@ -7,6 +7,7 @@ import {
   parseALPHeader, parseXORHeader,
   buildALPBitMap, buildByteLookup, entryByteRange,
   buildByteRegionMap, renderHexRowHTML, encodingDescription,
+  ALP_HEADER_SIZE, TS_HEADER_SIZE,
 } from './byte-explorer-logic.js';
 
 const HEX_COLS = 32;
@@ -258,7 +259,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     const tsLen = tsBlob ? tsBlob.byteLength : 0;
     const amortizedTsLen = sharedCount > 0 ? Math.round(tsLen / sharedCount) : tsLen;
 
-    const ALP_HDR = Math.min(14, valBlobLen);
+    const ALP_HDR = Math.min(ALP_HEADER_SIZE, valBlobLen);
     const alpHdr = parseALPHeader(primaryBlob);
     const alpCount = alpHdr.count, alpExp = alpHdr.exponent, alpBW = alpHdr.bitWidth;
     const alpMin = alpHdr.minInt, alpExc = alpHdr.excCount;
@@ -268,7 +269,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     const excValBytes = alpExc * 8;
 
     let tsCount = 0, firstTs = 0n;
-    if (tsBlob && tsBlob.byteLength >= 10) {
+    if (tsBlob && tsBlob.byteLength >= TS_HEADER_SIZE) {
       tsCount = (tsBlob[0] << 8) | tsBlob[1];
       firstTs = readI64BE(tsBlob, 2);
     }
@@ -325,7 +326,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     }
 
     if (amortizedTsLen > 0) {
-      const tsHdrEnd = Math.min(10, amortizedTsLen);
+      const tsHdrEnd = Math.min(TS_HEADER_SIZE, amortizedTsLen);
       regions.push({
         name: 'Timestamp Header', cls: 'timestamps', start: valBlobLen, end: valBlobLen + tsHdrEnd,
         decode: function() {
@@ -335,11 +336,11 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
                  '\n  epoch ns: ' + firstTs.toString();
         }
       });
-      if (amortizedTsLen > 10) {
+      if (amortizedTsLen > TS_HEADER_SIZE) {
         regions.push({
-          name: 'Timestamp \u0394\u0394 Body', cls: 'timestamps', start: valBlobLen + 10, end: valBlobLen + amortizedTsLen,
+          name: 'Timestamp \u0394\u0394 Body', cls: 'timestamps', start: valBlobLen + TS_HEADER_SIZE, end: valBlobLen + amortizedTsLen,
           decode: function() {
-            const body = amortizedTsLen - 10;
+            const body = amortizedTsLen - TS_HEADER_SIZE;
             return body + ' bytes of delta-of-delta encoded timestamps' +
                    '\nGorilla: 0=same\u0394 | 10+7b | 110+9b | 1110+12b | 1111+64b' +
                    '\nFull blob: ' + formatBytes(tsLen) + ' shared \u00f7 ' + sharedCount + ' = ' + formatBytes(amortizedTsLen) + '/series';

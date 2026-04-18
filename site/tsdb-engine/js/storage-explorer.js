@@ -1,9 +1,10 @@
 // ── Storage Explorer ─────────────────────────────────────────────────
 
-import { $, formatBytes, formatTimeRange } from './utils.js';
+import { $, formatBytes, formatTimeRange, setupCanvasDPR } from './utils.js';
 import { decodeChunk } from './codec.js';
 import { wasmDecodeValuesALP, wasmDecodeTimestamps } from './wasm.js';
 import { renderByteExplorer } from './byte-explorer.js';
+import { ALP_HEADER_SIZE } from './byte-explorer-logic.js';
 
 function renderByteMap(compressed, sampleCount) {
   const container = $('#byteMap');
@@ -35,12 +36,12 @@ function renderByteMapALP(compressedValues, compressedTs, sharedCount) {
   const tsBytes = compressedTs.byteLength;
   const amortizedTs = Math.round(tsBytes / sharedCount);
 
-  var alpBW = valBytes >= 4 ? compressedValues[3] : 0;
-  var alpCount = valBytes >= 2 ? (compressedValues[0] << 8) | compressedValues[1] : 0;
-  var alpExc = valBytes >= 14 ? (compressedValues[12] << 8) | compressedValues[13] : 0;
-  var headerBytes = Math.min(14, valBytes);
-  var bpBytes = Math.ceil(alpCount * alpBW / 8);
-  var excBytes = alpExc * 10;
+  const alpBW = valBytes >= 4 ? compressedValues[3] : 0;
+  const alpCount = valBytes >= 2 ? (compressedValues[0] << 8) | compressedValues[1] : 0;
+  const alpExc = valBytes >= ALP_HEADER_SIZE ? (compressedValues[12] << 8) | compressedValues[13] : 0;
+  const headerBytes = Math.min(ALP_HEADER_SIZE, valBytes);
+  const bpBytes = Math.ceil(alpCount * alpBW / 8);
+  const excBytes = alpExc * 10;
 
   const totalBytes = headerBytes + bpBytes + excBytes + amortizedTs;
   const segments = [
@@ -59,15 +60,10 @@ function renderByteMapALP(compressedValues, compressedTs, sharedCount) {
 function renderSparkline(canvasId, decoded) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
-  const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.width / dpr || 600;
   const h = canvas.height / dpr || 120;
-  canvas.width = w * dpr;
-  canvas.height = h * dpr;
-  canvas.style.width = w + 'px';
-  canvas.style.height = h + 'px';
-  ctx.scale(dpr, dpr);
+  const ctx = setupCanvasDPR(canvas, w, h);
 
   const values = decoded.values;
   const n = values.length;

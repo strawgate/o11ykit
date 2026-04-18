@@ -8,6 +8,9 @@ import { renderChart, setupChartTooltip, CHART_COLORS } from './chart.js';
 import { buildStorageExplorer } from './storage-explorer.js';
 import { generateValue, REGIONS, INSTANCES, METRICS } from './data-gen.js';
 
+const CHUNK_SIZE = 640;
+const NS_PER_MS = 1_000_000n;
+
 // ── UI State ─────────────────────────────────────────────────────────
 
 let currentStore = null;
@@ -46,14 +49,14 @@ function generateData(numSeries, numPoints, pattern, backendType, intervalMs = 1
       alert('WASM codec not loaded — ColumnStore requires WebAssembly. Try ChunkedStore instead.');
       return;
     }
-    store = new ColumnStore(640);
+    store = new ColumnStore(CHUNK_SIZE);
   } else if (backendType === 'chunked') {
-    store = new ChunkedStore(640);
+    store = new ChunkedStore(CHUNK_SIZE);
   } else {
     store = new FlatStore();
   }
-  const now = BigInt(Date.now()) * 1_000_000n;
-  const intervalNs = BigInt(intervalMs) * 1_000_000n;
+  const now = BigInt(Date.now()) * NS_PER_MS;
+  const intervalNs = BigInt(intervalMs) * NS_PER_MS;
 
   const t0 = performance.now();
 
@@ -86,7 +89,7 @@ function generateData(numSeries, numPoints, pattern, backendType, intervalMs = 1
   }
 
   if (backendType === 'column') {
-    const chunkSize = 640;
+    const chunkSize = CHUNK_SIZE;
     for (let offset = 0; offset < numPoints; offset += chunkSize) {
       const end = Math.min(offset + chunkSize, numPoints);
       for (const sd of allSeriesData) {
@@ -144,7 +147,7 @@ function runQuery() {
   const agg = $('#queryAgg').value || undefined;
   const groupBy = $('#queryGroupBy').value ? [$('#queryGroupBy').value] : undefined;
   const stepMs = parseInt($('#queryStep').value);
-  const step = stepMs > 0 ? BigInt(stepMs) * 1_000_000n : undefined;
+  const step = stepMs > 0 ? BigInt(stepMs) * NS_PER_MS : undefined;
 
   const ids = currentStore.matchLabel('__name__', metric);
   if (ids.length === 0) return;

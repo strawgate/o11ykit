@@ -1,6 +1,6 @@
 // ── Chart Renderer ───────────────────────────────────────────────────
 
-import { $, formatNum } from './utils.js';
+import { $, formatNum, setupCanvasDPR } from './utils.js';
 
 export const CHART_COLORS = [
   '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6',
@@ -13,16 +13,10 @@ let tooltipEl = null;
 let crosshairEl = null;
 
 export function renderChart(canvas, seriesData, title) {
-  const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
   const rect = canvas.parentElement.getBoundingClientRect();
   const w = Math.min(rect.width - 32, 1100);
   const h = 380;
-  canvas.width = w * dpr;
-  canvas.height = h * dpr;
-  canvas.style.width = w + 'px';
-  canvas.style.height = h + 'px';
-  ctx.scale(dpr, dpr);
+  const ctx = setupCanvasDPR(canvas, w, h);
 
   const pad = { top: 40, right: 20, bottom: 50, left: 70 };
   const plotW = w - pad.left - pad.right;

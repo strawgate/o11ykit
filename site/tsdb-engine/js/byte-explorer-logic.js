@@ -1,19 +1,22 @@
 // ── Pure logic for byte-level chunk exploration ──────────────────────
 // No DOM dependencies. Testable in isolation via vitest.
 
-import { readI64BE, readF64BE, formatEpochNs, formatBytes, superNum } from './utils.js';
+import { readI64BE, readF64BE, formatEpochNs, formatBytes, superNum, formatHexByte } from './utils.js';
 import { BitReader } from './codec.js';
+
+export const ALP_HEADER_SIZE = 14;
+export const TS_HEADER_SIZE = 10;
 
 // ── ALP Insight HTML ─────────────────────────────────────────────────
 
 export function buildALPInsightHtml(p) {
-  var factor = '10' + superNum(p.exponent);
-  var excPct = p.count > 0 ? ((p.excCount / p.count) * 100).toFixed(1) : '0';
-  var rawValBits = p.count * 64;
-  var compValBits = p.bitpackedBytes * 8;
-  var valRatio = rawValBits > 0 ? (rawValBits / Math.max(1, compValBits)).toFixed(1) : '-';
+  const factor = '10' + superNum(p.exponent);
+  const excPct = p.count > 0 ? ((p.excCount / p.count) * 100).toFixed(1) : '0';
+  const rawValBits = p.count * 64;
+  const compValBits = p.bitpackedBytes * 8;
+  const valRatio = rawValBits > 0 ? (rawValBits / Math.max(1, compValBits)).toFixed(1) : '-';
 
-  var html =
+  let html =
     '<div class="codec-insight">' +
       '<div class="ci-title">\uD83E\uDDEC ALP \u00b7 Adaptive Lossless floating-Point <span class="ci-ref">(CWI Amsterdam, SIGMOD 2024)</span></div>' +
       '<div class="ci-pipeline">' +
@@ -78,8 +81,8 @@ export function buildALPInsightHtml(p) {
 // ── XOR Insight HTML ─────────────────────────────────────────────────
 
 export function buildXORInsightHtml(p) {
-  var totalBits = (p.totalBytes - 18) * 8;
-  var bitsPerSample = p.count > 1 ? (totalBits / (p.count - 1)).toFixed(1) : '-';
+  const totalBits = (p.totalBytes - 18) * 8;
+  const bitsPerSample = p.count > 1 ? (totalBits / (p.count - 1)).toFixed(1) : '-';
 
   return '<div class="codec-insight">' +
     '<div class="ci-title">\uD83E\uDDEC XOR-Delta \u00b7 Gorilla-style Compression <span class="ci-ref">(Facebook/Meta, VLDB 2015)</span></div>' +
@@ -108,23 +111,23 @@ export function buildXORInsightHtml(p) {
 // ── ALP header parser ────────────────────────────────────────────────
 
 export function parseALPHeader(blob) {
-  var len = blob.byteLength;
+  const len = blob.byteLength;
   return {
     count: len >= 2 ? (blob[0] << 8) | blob[1] : 0,
     exponent: len >= 3 ? blob[2] : 0,
     bitWidth: len >= 4 ? blob[3] : 0,
     minInt: len >= 12 ? readI64BE(blob, 4) : 0n,
-    excCount: len >= 14 ? (blob[12] << 8) | blob[13] : 0,
+    excCount: len >= ALP_HEADER_SIZE ? (blob[12] << 8) | blob[13] : 0,
   };
 }
 
 // ── XOR header parser ────────────────────────────────────────────────
 
 export function parseXORHeader(blob) {
-  var len = blob.byteLength;
+  const len = blob.byteLength;
   return {
     count: len >= 2 ? (blob[0] << 8) | blob[1] : 0,
-    firstTs: len >= 10 ? readI64BE(blob, 2) : 0n,
+    firstTs: len >= TS_HEADER_SIZE ? readI64BE(blob, 2) : 0n,
     firstVal: len >= 18 ? readF64BE(blob, 10) : 0,
   };
 }
@@ -141,12 +144,12 @@ export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
   const { count: alpCount, exponent: alpExp, bitWidth: alpBW, minInt: alpMin, excCount: alpExc } = hdr;
 
   // Value bit positions (in the value blob)
-  const headerBits = 14 * 8; // 14-byte header
+  const headerBits = ALP_HEADER_SIZE * 8;
   const bpBytes = Math.ceil(alpCount * alpBW / 8);
 
   // Decode exception positions
   const excPositions = new Set();
-  const excPosStart = 14 + bpBytes;
+  const excPosStart = ALP_HEADER_SIZE + bpBytes;
   for (let e = 0; e < alpExc; e++) {
     const off = excPosStart + e * 2;
     if (off + 1 < valBlobLen) {
@@ -174,7 +177,7 @@ export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
     // Read the offset from the bit-packed region
     let offset = 0n;
     if (alpBW > 0) {
-      const bitStart = 14 * 8 + i * alpBW;
+      const bitStart = ALP_HEADER_SIZE * 8 + i * alpBW;
       for (let b = 0; b < alpBW; b++) {
         const globalBit = bitStart + b;
         const byteIdx = Math.floor(globalBit / 8);
@@ -202,7 +205,7 @@ export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
   }
 
   // Build timestamp entries using Gorilla delta-of-delta decoder
-  if (tsBlob && tsBlob.byteLength >= 10) {
+  if (tsBlob && tsBlob.byteLength >= TS_HEADER_SIZE) {
     const tsR = new BitReader(tsBlob);
     const tsCount = tsR.readBitsNum(16);
     const firstTs = BigInt.asIntN(64, tsR.readBits(64));
@@ -268,24 +271,24 @@ export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
 export function buildByteLookup(bitMap, totalBytes) {
   if (!bitMap || bitMap.length === 0) return null;
 
-  var ownership = new Array(totalBytes);
+  const ownership = new Array(totalBytes);
 
-  for (var ei = 0; ei < bitMap.length; ei++) {
-    var entry = bitMap[ei];
-    var baseOffset = (entry.blobOffset || 0) * 8;
-    for (var b = entry.startBit; b < entry.endBit; b++) {
-      var globalBit = baseOffset + b;
-      var byteIdx = Math.floor(globalBit / 8);
+  for (let ei = 0; ei < bitMap.length; ei++) {
+    const entry = bitMap[ei];
+    const baseOffset = (entry.blobOffset || 0) * 8;
+    for (let b = entry.startBit; b < entry.endBit; b++) {
+      const globalBit = baseOffset + b;
+      const byteIdx = Math.floor(globalBit / 8);
       if (byteIdx >= totalBytes) continue;
       if (!ownership[byteIdx]) ownership[byteIdx] = new Map();
       ownership[byteIdx].set(ei, (ownership[byteIdx].get(ei) || 0) + 1);
     }
   }
 
-  var lookup = new Array(totalBytes);
-  for (var i = 0; i < totalBytes; i++) {
+  const lookup = new Array(totalBytes);
+  for (let i = 0; i < totalBytes; i++) {
     if (!ownership[i]) continue;
-    var bestIdx = -1, bestCount = 0;
+    let bestIdx = -1, bestCount = 0;
     ownership[i].forEach(function(cnt, idx) {
       if (cnt > bestCount) { bestCount = cnt; bestIdx = idx; }
     });
@@ -299,9 +302,9 @@ export function buildByteLookup(bitMap, totalBytes) {
 // For a given bitMap entry, return the byte range it spans.
 
 export function entryByteRange(entry, totalBytes) {
-  var baseOffset = (entry.blobOffset || 0) * 8;
-  var startByte = Math.floor((baseOffset + entry.startBit) / 8);
-  var endByte = Math.ceil((baseOffset + entry.endBit) / 8);
+  const baseOffset = (entry.blobOffset || 0) * 8;
+  const startByte = Math.floor((baseOffset + entry.startBit) / 8);
+  const endByte = Math.ceil((baseOffset + entry.endBit) / 8);
   return { startByte: Math.max(0, startByte), endByte: Math.min(endByte, totalBytes) };
 }
 
@@ -309,9 +312,9 @@ export function entryByteRange(entry, totalBytes) {
 // Maps each byte index to its region index.
 
 export function buildByteRegionMap(regions, totalBytes) {
-  var byteRegion = new Uint8Array(totalBytes);
-  for (var ri = 0; ri < regions.length; ri++) {
-    for (var i = regions[ri].start; i < regions[ri].end; i++) {
+  const byteRegion = new Uint8Array(totalBytes);
+  for (let ri = 0; ri < regions.length; ri++) {
+    for (let i = regions[ri].start; i < regions[ri].end; i++) {
       if (i < totalBytes) byteRegion[i] = ri;
     }
   }
@@ -322,25 +325,25 @@ export function buildByteRegionMap(regions, totalBytes) {
 // Returns an HTML string for one row (no DOM operations).
 
 export function renderHexRowHTML(row, cols, bytes, byteRegion, regions, mode, byteLookup) {
-  var startOffset = row * cols;
-  var parts = [];
+  const startOffset = row * cols;
+  const parts = [];
 
   parts.push('<div class="hex-offset">0x' + startOffset.toString(16).toUpperCase().padStart(4, '0') + '</div>');
 
-  var asciiStr = '';
-  for (var col = 0; col < cols; col++) {
-    var byteIdx = startOffset + col;
-    var cls = 'hex-cell';
+  let asciiStr = '';
+  for (let col = 0; col < cols; col++) {
+    const byteIdx = startOffset + col;
+    let cls = 'hex-cell';
 
     if (byteIdx < bytes.length) {
-      var val = bytes[byteIdx];
-      var rIdx = byteRegion[byteIdx];
+      const val = bytes[byteIdx];
+      const rIdx = byteRegion[byteIdx];
       cls += ' region-' + regions[rIdx].cls;
 
-      var dataAttrs = ' data-offset="' + byteIdx + '" data-region="' + rIdx + '"';
+      let dataAttrs = ' data-offset="' + byteIdx + '" data-region="' + rIdx + '"';
 
       if (byteLookup && byteLookup[byteIdx]) {
-        var blEntry = byteLookup[byteIdx];
+        const blEntry = byteLookup[byteIdx];
         cls += ' hex-mapped';
         cls += blEntry.type === 'timestamp' ? ' hex-ts' : ' hex-val';
         cls += blEntry.sampleIndex % 2 === 0 ? ' hex-sample-even' : ' hex-sample-odd';
@@ -350,10 +353,10 @@ export function renderHexRowHTML(row, cols, bytes, byteRegion, regions, mode, by
         dataAttrs += ' data-sample-index="' + blEntry.sampleIndex + '" data-sample-type="' + blEntry.type + '"';
       }
 
-      var content;
-      var style = '';
+      let content;
+      let style = '';
       if (mode === 'hex') {
-        content = val.toString(16).toUpperCase().padStart(2, '0');
+        content = formatHexByte(val);
       } else {
         content = val.toString().padStart(3, ' ');
         style = ' style="font-size:8px"';

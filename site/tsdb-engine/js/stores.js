@@ -1,7 +1,7 @@
 // ── Storage Backends ─────────────────────────────────────────────────
 
 import { encodeChunk, decodeChunk } from './codec.js';
-import { lowerBound, upperBound } from './utils.js';
+import { lowerBound, upperBound, makeLabelKey } from './utils.js';
 import { wasmEncodeValuesALP, wasmDecodeValuesALP, wasmEncodeTimestamps, wasmDecodeTimestamps } from './wasm.js';
 
 // ── FlatStore ────────────────────────────────────────────────────────
@@ -18,10 +18,9 @@ export class FlatStore {
   get sampleCount() { return this._sampleCount; }
 
   getOrCreateSeries(labels) {
-    const key = [...labels].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
+    const key = makeLabelKey(labels);
     for (let i = 0; i < this._labels.length; i++) {
-      const lkey = [...this._labels[i]].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
-      if (lkey === key) return i;
+      if (makeLabelKey(this._labels[i]) === key) return i;
     }
     const id = this._series.length;
     this._series.push({ timestamps: new BigInt64Array(128), values: new Float64Array(128), count: 0 });
@@ -99,10 +98,9 @@ export class ChunkedStore {
   get sampleCount() { return this._sampleCount; }
 
   getOrCreateSeries(labels) {
-    const key = [...labels].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
+    const key = makeLabelKey(labels);
     for (let i = 0; i < this._labels.length; i++) {
-      const lkey = [...this._labels[i]].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
-      if (lkey === key) return i;
+      if (makeLabelKey(this._labels[i]) === key) return i;
     }
     const id = this._series.length;
     this._series.push({
@@ -227,10 +225,9 @@ export class ColumnStore {
   get sampleCount() { return this._sampleCount; }
 
   getOrCreateSeries(labels) {
-    const key = [...labels].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
+    const key = makeLabelKey(labels);
     for (let i = 0; i < this._labels.length; i++) {
-      const lkey = [...this._labels[i]].sort((a, b) => a[0].localeCompare(b[0])).map(([k, v]) => `${k}=${v}`).join(',');
-      if (lkey === key) return i;
+      if (makeLabelKey(this._labels[i]) === key) return i;
     }
     const id = this._allSeries.length;
 
