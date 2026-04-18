@@ -42,12 +42,77 @@ const ATTR_PREFIX_RESOURCE = 'resource.';
 const ATTR_PREFIX_SCOPE = 'scope_attr.';
 const ATTR_PREFIX_POINT = 'attr.';
 
-/**
- * Parse an OTLP metrics payload into pending samples without touching storage.
- * Use this when you need to inspect or transform parsed metrics before flushing.
- */
-export function parseOtlpToSamples(payload: unknown): ParsedOtlpResult {
-  const result: IngestResult = {
+// ── T3: Sanitize cache ──────────────────────────────────────────────
+const sanitizeCache = new Map<string, string>();
+
+function sanitizeLabelKey(key: string): string {
+  let cached = sanitizeCache.get(key);
+  if (cached !== undefined) return cached;
+  cached = key.replace(/[^a-zA-Z0-9_]/gu, '_');
+  sanitizeCache.set(key, cached);
+  return cached;
+}
+
+// ── T3: Prefixed-key cache ──────────────────────────────────────────
+const prefixedKeyCache = new Map<string, string>();
+
+function prefixedKey(prefix: string, key: string): string {
+  const cacheKey = prefix + key;
+  let cached = prefixedKeyCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  cached = `${prefix}${sanitizeLabelKey(key)}`;
+  prefixedKeyCache.set(cacheKey, cached);
+  return cached;
+}
+
+// ── T1: FNV-1a series fingerprint ───────────────────────────────────
+const FNV_OFFSET = 0x811c9dc5;
+const FNV_PRIME = 0x01000193;
+
+function fnvHashString(hash: number, s: string): number {
+  for (let i = 0; i < s.length; i++) {
+    hash ^= s.charCodeAt(i);
+    hash = Math.imul(hash, FNV_PRIME) >>> 0;
+  }
+  return hash;
+}
+
+function seriesFingerprint(labels: Map<string, string>): string {
+  // Hash all key=value pairs in insertion order. Since labels are built
+  // deterministically (scope, resource, __name__, attr.*), insertion
+  // order is stable for identical label sets. We sort label entries to
+  // guarantee consistency regardless of insertion order.
+  let hash = FNV_OFFSET >>> 0;
+  let size = 0;
+  for (const [k, v] of labels) {
+    hash = fnvHashString(hash, k);
+    hash ^= 0xFF;
+    hash = Math.imul(hash, FNV_PRIME) >>> 0;
+    hash = fnvHashString(hash, v);
+    hash ^= 0xFE;
+    hash = Math.imul(hash, FNV_PRIME) >>> 0;
+    size++;
+  }
+  // Encode hash + size to reduce collisions.
+  return `${hash.toString(36)}:${size}`;
+}
+
+// ── T5: flattenAttributes cache ─────────────────────────────────────
+let cachedAttrRef: readonly OtlpKeyValue[] | undefined;
+let cachedAttrResult: Record<string, unknown> = {};
+
+function cachedFlattenAttributes(attrs: readonly OtlpKeyValue[] | undefined): Record<string, unknown> {
+  if (attrs === undefined || attrs === null || attrs.length === 0) return {};
+  if (attrs === cachedAttrRef) return cachedAttrResult;
+  cachedAttrRef = attrs;
+  cachedAttrResult = flattenAttributes(attrs);
+  return cachedAttrResult;
+}
+
+// ── Core ingest functions ───────────────────────────────────────────
+
+function emptyResult(): IngestResult {
+  return {
     pointsSeen: 0,
     pointsAccepted: 0,
     samplesInserted: 0,
@@ -62,6 +127,14 @@ export function parseOtlpToSamples(payload: unknown): ParsedOtlpResult {
       exponentialHistogram: 0,
     },
   };
+}
+
+/**
+ * Parse an OTLP metrics payload into pending samples without touching storage.
+ * Use this when you need to inspect or transform parsed metrics before flushing.
+ */
+export function parseOtlpToSamples(payload: unknown): ParsedOtlpResult {
+  const result = emptyResult();
 
   let document: unknown = payload;
   if (typeof payload === 'string') {
@@ -80,7 +153,25 @@ export function parseOtlpToSamples(payload: unknown): ParsedOtlpResult {
     return { pending: new Map(), result };
   }
 
+  return ingestMetricsDocument(document, result);
+}
+
+/**
+ * Ingest a typed OTLP metrics document directly, skipping JSON.parse,
+ * detectSignal, and isMetricsDocument. Use when the caller has already
+ * validated the payload type (e.g. worker protocol).
+ */
+export function ingestOtlpObject(document: OtlpMetricsDocument, storage: StorageBackend): IngestResult {
+  const result = emptyResult();
+  const { pending } = ingestMetricsDocument(document, result);
+  flushSamplesToStorage(pending, storage, result);
+  return result;
+}
+
+function ingestMetricsDocument(document: OtlpMetricsDocument, result: IngestResult): ParsedOtlpResult {
   const pending = new Map<string, PendingSeriesSamples>();
+  // T2: Reusable mutable working map — avoids per-point Map cloning.
+  const workLabels = new Map<string, string>();
 
   for (const resourceMetrics of document.resourceMetrics) {
     const resourceAttrs = flattenAttributes(resourceMetrics.resource?.attributes);
@@ -89,31 +180,36 @@ export function parseOtlpToSamples(payload: unknown): ParsedOtlpResult {
       const scope = scopeMetrics.scope;
       const scopeAttrs = flattenAttributes(scope?.attributes);
 
-      for (const metric of scopeMetrics.metrics ?? []) {
-        const baseLabels = new Map<string, string>();
-        baseLabels.set(SCOPE_NAME_LABEL, scope?.name ?? '');
-        baseLabels.set(SCOPE_VERSION_LABEL, scope?.version ?? '');
-        addAttributeLabels(baseLabels, resourceAttrs, ATTR_PREFIX_RESOURCE);
-        addAttributeLabels(baseLabels, scopeAttrs, ATTR_PREFIX_SCOPE);
+      // Pre-compute base labels once per scope (T3: cached prefixed keys).
+      const baseEntries: Array<[string, string]> = [];
+      baseEntries.push([SCOPE_NAME_LABEL, scope?.name ?? '']);
+      baseEntries.push([SCOPE_VERSION_LABEL, scope?.version ?? '']);
+      for (const [key, value] of Object.entries(resourceAttrs)) {
+        baseEntries.push([prefixedKey(ATTR_PREFIX_RESOURCE, key), attributeValueToLabel(value)]);
+      }
+      for (const [key, value] of Object.entries(scopeAttrs)) {
+        baseEntries.push([prefixedKey(ATTR_PREFIX_SCOPE, key), attributeValueToLabel(value)]);
+      }
 
+      for (const metric of scopeMetrics.metrics ?? []) {
         if (metric.gauge?.dataPoints) {
           result.metricTypeCounts.gauge++;
-          ingestNumberPoints(metric.name, metric.gauge.dataPoints, baseLabels, pending, result);
+          ingestNumberPoints(metric.name, metric.gauge.dataPoints, baseEntries, workLabels, pending, result);
         }
 
         if (metric.sum?.dataPoints) {
           result.metricTypeCounts.sum++;
-          ingestNumberPoints(metric.name, metric.sum.dataPoints, baseLabels, pending, result);
+          ingestNumberPoints(metric.name, metric.sum.dataPoints, baseEntries, workLabels, pending, result);
         }
 
         if (metric.histogram?.dataPoints) {
           result.metricTypeCounts.histogram++;
-          ingestHistogramPoints(metric.name, metric.histogram.dataPoints, baseLabels, pending, result);
+          ingestHistogramPoints(metric.name, metric.histogram.dataPoints, baseEntries, workLabels, pending, result);
         }
 
         if (metric.summary?.dataPoints) {
           result.metricTypeCounts.summary++;
-          ingestSummaryPoints(metric.name, metric.summary.dataPoints, baseLabels, pending, result);
+          ingestSummaryPoints(metric.name, metric.summary.dataPoints, baseEntries, workLabels, pending, result);
         }
 
         if (metric.exponentialHistogram?.dataPoints) {
@@ -121,7 +217,8 @@ export function parseOtlpToSamples(payload: unknown): ParsedOtlpResult {
           ingestExponentialHistogramPoints(
             metric.name,
             metric.exponentialHistogram.dataPoints,
-            baseLabels,
+            baseEntries,
+            workLabels,
             pending,
             result,
           );
@@ -155,10 +252,31 @@ export function flushSamplesToStorage(pending: Map<string, PendingSeriesSamples>
   result.seriesCreated += Math.max(0, storage.seriesCount - beforeSeries);
 }
 
+// ── T2: Reset working labels to base + metric name + point attrs ────
+
+function resetWorkLabels(
+  workLabels: Map<string, string>,
+  baseEntries: Array<[string, string]>,
+  metricName: string,
+  pointAttributes: readonly OtlpKeyValue[] | undefined,
+): void {
+  workLabels.clear();
+  for (let i = 0; i < baseEntries.length; i++) {
+    const [k, v] = baseEntries[i]!;
+    workLabels.set(k, v);
+  }
+  workLabels.set('__name__', metricName);
+  const pointAttrs = cachedFlattenAttributes(pointAttributes);
+  for (const key of Object.keys(pointAttrs)) {
+    workLabels.set(prefixedKey(ATTR_PREFIX_POINT, key), attributeValueToLabel(pointAttrs[key]));
+  }
+}
+
 function ingestNumberPoints(
   metricName: string,
   points: readonly { timeUnixNano?: string | number; attributes?: readonly OtlpKeyValue[]; asDouble?: number; asInt?: string | number }[],
-  baseLabels: Map<string, string>,
+  baseEntries: Array<[string, string]>,
+  workLabels: Map<string, string>,
   pending: Map<string, PendingSeriesSamples>,
   result: IngestResult,
 ): void {
@@ -172,8 +290,8 @@ function ingestNumberPoints(
       continue;
     }
 
-    const labels = withPointLabels(metricName, baseLabels, point.attributes);
-    queueSample(pending, labels, ts, value);
+    resetWorkLabels(workLabels, baseEntries, metricName, point.attributes);
+    queueSample(pending, workLabels, ts, value);
     result.pointsAccepted++;
   }
 }
@@ -181,7 +299,8 @@ function ingestNumberPoints(
 function ingestHistogramPoints(
   metricName: string,
   points: readonly OtlpHistogramDataPoint[],
-  baseLabels: Map<string, string>,
+  baseEntries: Array<[string, string]>,
+  workLabels: Map<string, string>,
   pending: Map<string, PendingSeriesSamples>,
   result: IngestResult,
 ): void {
@@ -194,35 +313,37 @@ function ingestHistogramPoints(
       continue;
     }
 
-    const pointLabels = withPointLabels(metricName, baseLabels, point.attributes);
+    resetWorkLabels(workLabels, baseEntries, metricName, point.attributes);
+
     const bucketCounts = parseNumberArray(point.bucketCounts);
     const bounds = parseNumberArray(point.explicitBounds);
 
     let cumulative = 0;
-    const bucketLabels = new Map(pointLabels);
-    bucketLabels.set('__name__', `${metricName}_bucket`);
+    const bucketName = `${metricName}_bucket`;
+    workLabels.set('__name__', bucketName);
 
     const commonCount = Math.min(bucketCounts.length, bounds.length + 1);
     for (let i = 0; i < commonCount; i++) {
       cumulative += bucketCounts[i] ?? 0;
-      bucketLabels.set('le', i < bounds.length ? numericLabel(bounds[i]!) : '+Inf');
-      queueSample(pending, bucketLabels, ts, cumulative);
+      workLabels.set('le', i < bounds.length ? numericLabel(bounds[i]!) : '+Inf');
+      queueSample(pending, workLabels, ts, cumulative);
       result.pointsAccepted++;
     }
 
+    // Remove histogram-specific labels before count/sum.
+    workLabels.delete('le');
+
     const count = toNumber(point.count ?? null);
     if (count !== null) {
-      const countLabels = new Map(pointLabels);
-      countLabels.set('__name__', `${metricName}_count`);
-      queueSample(pending, countLabels, ts, count);
+      workLabels.set('__name__', `${metricName}_count`);
+      queueSample(pending, workLabels, ts, count);
       result.pointsAccepted++;
     }
 
     const sum = toNumber(point.sum ?? null);
     if (sum !== null) {
-      const sumLabels = new Map(pointLabels);
-      sumLabels.set('__name__', `${metricName}_sum`);
-      queueSample(pending, sumLabels, ts, sum);
+      workLabels.set('__name__', `${metricName}_sum`);
+      queueSample(pending, workLabels, ts, sum);
       result.pointsAccepted++;
     }
 
@@ -236,7 +357,8 @@ function ingestHistogramPoints(
 function ingestSummaryPoints(
   metricName: string,
   points: readonly OtlpSummaryDataPoint[],
-  baseLabels: Map<string, string>,
+  baseEntries: Array<[string, string]>,
+  workLabels: Map<string, string>,
   pending: Map<string, PendingSeriesSamples>,
   result: IngestResult,
 ): void {
@@ -249,32 +371,30 @@ function ingestSummaryPoints(
       continue;
     }
 
-    const pointLabels = withPointLabels(metricName, baseLabels, point.attributes);
+    resetWorkLabels(workLabels, baseEntries, metricName, point.attributes);
     let inserted = 0;
 
     for (const qv of point.quantileValues ?? []) {
       const quantile = toNumber(qv.quantile ?? null);
       const value = toNumber(qv.value ?? null);
       if (quantile === null || value === null) continue;
-      const qLabels = new Map(pointLabels);
-      qLabels.set('quantile', numericLabel(quantile));
-      queueSample(pending, qLabels, ts, value);
+      workLabels.set('quantile', numericLabel(quantile));
+      queueSample(pending, workLabels, ts, value);
       inserted++;
     }
+    workLabels.delete('quantile');
 
     const count = toNumber(point.count ?? null);
     if (count !== null) {
-      const countLabels = new Map(pointLabels);
-      countLabels.set('__name__', `${metricName}_count`);
-      queueSample(pending, countLabels, ts, count);
+      workLabels.set('__name__', `${metricName}_count`);
+      queueSample(pending, workLabels, ts, count);
       inserted++;
     }
 
     const sum = toNumber(point.sum ?? null);
     if (sum !== null) {
-      const sumLabels = new Map(pointLabels);
-      sumLabels.set('__name__', `${metricName}_sum`);
-      queueSample(pending, sumLabels, ts, sum);
+      workLabels.set('__name__', `${metricName}_sum`);
+      queueSample(pending, workLabels, ts, sum);
       inserted++;
     }
 
@@ -291,7 +411,8 @@ function ingestSummaryPoints(
 function ingestExponentialHistogramPoints(
   metricName: string,
   points: readonly OtlpExponentialHistogramDataPoint[],
-  baseLabels: Map<string, string>,
+  baseEntries: Array<[string, string]>,
+  workLabels: Map<string, string>,
   pending: Map<string, PendingSeriesSamples>,
   result: IngestResult,
 ): void {
@@ -305,34 +426,39 @@ function ingestExponentialHistogramPoints(
     }
 
     const scale = toNumber(point.scale ?? null);
-    const pointLabels = withPointLabels(metricName, baseLabels, point.attributes);
+    resetWorkLabels(workLabels, baseEntries, metricName, point.attributes);
     let inserted = 0;
 
-    inserted += ingestExpBuckets(metricName, pointLabels, ts, scale, 'positive', point.positive, pending);
-    inserted += ingestExpBuckets(metricName, pointLabels, ts, scale, 'negative', point.negative, pending);
+    inserted += ingestExpBuckets(metricName, workLabels, ts, scale, 'positive', point.positive, pending);
+    inserted += ingestExpBuckets(metricName, workLabels, ts, scale, 'negative', point.negative, pending);
+
+    // Clean up exp-specific labels from ingestExpBuckets before zero/count/sum.
+    workLabels.delete('exp_side');
+    workLabels.delete('exp_bucket');
+    workLabels.delete('exp_scale');
 
     const zeroCount = toNumber(point.zeroCount ?? null);
     if (zeroCount !== null) {
-      const zeroLabels = new Map(pointLabels);
-      zeroLabels.set('__name__', `${metricName}_bucket`);
-      zeroLabels.set('exp_bucket', 'zero');
-      queueSample(pending, zeroLabels, ts, zeroCount);
+      workLabels.set('__name__', `${metricName}_bucket`);
+      workLabels.set('exp_bucket', 'zero');
+      if (scale !== null) workLabels.set('exp_scale', numericLabel(scale));
+      queueSample(pending, workLabels, ts, zeroCount);
+      workLabels.delete('exp_bucket');
+      workLabels.delete('exp_scale');
       inserted++;
     }
 
     const count = toNumber(point.count ?? null);
     if (count !== null) {
-      const countLabels = new Map(pointLabels);
-      countLabels.set('__name__', `${metricName}_count`);
-      queueSample(pending, countLabels, ts, count);
+      workLabels.set('__name__', `${metricName}_count`);
+      queueSample(pending, workLabels, ts, count);
       inserted++;
     }
 
     const sum = toNumber(point.sum ?? null);
     if (sum !== null) {
-      const sumLabels = new Map(pointLabels);
-      sumLabels.set('__name__', `${metricName}_sum`);
-      queueSample(pending, sumLabels, ts, sum);
+      workLabels.set('__name__', `${metricName}_sum`);
+      queueSample(pending, workLabels, ts, sum);
       inserted++;
     }
 
@@ -348,7 +474,7 @@ function ingestExponentialHistogramPoints(
 
 function ingestExpBuckets(
   metricName: string,
-  labels: Map<string, string>,
+  workLabels: Map<string, string>,
   ts: bigint,
   scale: number | null,
   side: 'positive' | 'negative',
@@ -359,37 +485,38 @@ function ingestExpBuckets(
   const counts = parseNumberArray(buckets?.bucketCounts);
   if (counts.length === 0) return 0;
 
+  workLabels.set('__name__', `${metricName}_bucket`);
+  workLabels.set('exp_side', side);
+  if (scale !== null) workLabels.set('exp_scale', numericLabel(scale));
+
   let inserted = 0;
   for (let i = 0; i < counts.length; i++) {
     const value = counts[i] ?? 0;
-    const bucketIndex = offset + i;
-    const bucketLabels = new Map(labels);
-    bucketLabels.set('__name__', `${metricName}_bucket`);
-    bucketLabels.set('exp_side', side);
-    bucketLabels.set('exp_bucket', numericLabel(bucketIndex));
-    if (scale !== null) bucketLabels.set('exp_scale', numericLabel(scale));
-    queueSample(pending, bucketLabels, ts, value);
+    workLabels.set('exp_bucket', numericLabel(offset + i));
+    queueSample(pending, workLabels, ts, value);
     inserted++;
   }
   return inserted;
 }
 
-function withPointLabels(
-  metricName: string,
-  baseLabels: Map<string, string>,
-  pointAttributes: readonly OtlpKeyValue[] | undefined,
-): Map<string, string> {
-  const labels = new Map(baseLabels);
-  labels.set('__name__', metricName);
-  const point = flattenAttributes(pointAttributes);
-  addAttributeLabels(labels, point, ATTR_PREFIX_POINT);
-  return labels;
-}
+// ── T1: queueSample with fingerprint key ────────────────────────────
 
-function addAttributeLabels(labels: Map<string, string>, attrs: Record<string, unknown>, prefix: string): void {
-  for (const [key, value] of Object.entries(attrs)) {
-    labels.set(`${prefix}${sanitizeLabelKey(key)}`, attributeValueToLabel(value));
+function queueSample(
+  pending: Map<string, PendingSeriesSamples>,
+  labels: Map<string, string>,
+  timestamp: bigint,
+  value: number,
+): void {
+  const key = seriesFingerprint(labels);
+  let batch = pending.get(key);
+  if (!batch) {
+    // Snapshot the label map (it's mutated after this call).
+    batch = { labels: new Map(labels), timestamps: [], values: [] };
+    pending.set(key, batch);
   }
+
+  batch.timestamps.push(timestamp);
+  batch.values.push(value);
 }
 
 function attributeValueToLabel(value: unknown): string {
@@ -399,28 +526,6 @@ function attributeValueToLabel(value: unknown): string {
     return String(value);
   }
   return JSON.stringify(value);
-}
-
-function queueSample(
-  pending: Map<string, PendingSeriesSamples>,
-  labels: Labels,
-  timestamp: bigint,
-  value: number,
-): void {
-  const key = seriesKey(labels);
-  let batch = pending.get(key);
-  if (!batch) {
-    batch = { labels, timestamps: [], values: [] };
-    pending.set(key, batch);
-  }
-
-  batch.timestamps.push(timestamp);
-  batch.values.push(value);
-}
-
-function seriesKey(labels: Labels): string {
-  const entries = [...labels.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  return entries.map(([k, v]) => `${k}=${v}`).join(',');
 }
 
 function numericLabel(v: number): string {
@@ -437,8 +542,14 @@ function parseNumberArray(values: readonly (string | number)[] | readonly number
   return out;
 }
 
-function sanitizeLabelKey(key: string): string {
-  return key.replace(/[^a-zA-Z0-9_]/gu, '_');
+// ── T6: Fast-path timestamp normalization ───────────────────────────
+
+function isAllDigits(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 48 || c > 57) return false;
+  }
+  return true;
 }
 
 function normalizeTimestamp(value: unknown): bigint | null {
@@ -449,7 +560,7 @@ function normalizeTimestamp(value: unknown): bigint | null {
   }
   if (typeof value === 'string') {
     if (!value) return null;
-    if (/^\d+$/u.test(value)) return normalizeMagnitude(BigInt(value));
+    if (isAllDigits(value)) return normalizeMagnitude(BigInt(value));
     const ms = Date.parse(value);
     if (Number.isNaN(ms)) return null;
     return BigInt(ms) * 1_000_000n;

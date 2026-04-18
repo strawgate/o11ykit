@@ -39,7 +39,7 @@ export { MemPostings } from './postings.js';
 export { LabelIndex } from './label-index.js';
 
 // OTLP ingest pipeline
-export { ingestOtlpJson, parseOtlpToSamples, flushSamplesToStorage } from './ingest.js';
+export { ingestOtlpJson, ingestOtlpObject, parseOtlpToSamples, flushSamplesToStorage } from './ingest.js';
 export type { IngestResult, ParsedOtlpResult, PendingSeriesSamples, OtlpMetricsDocument } from './ingest.js';
 
 // Worker isolation + transfer protocol
