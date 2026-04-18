@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>o11ytsdb — Browser-Native Time-Series Database Engine</title>
+    <meta
+      name="description"
+      content="Interactive documentation for o11ytsdb: a browser-native TSDB with XOR-delta compression, pluggable storage backends, and real-time query engine. Generate millions of data points and query them live."
+    />
+    <meta name="theme-color" content="#0a1624" />
+    <meta property="og:title" content="o11ytsdb — Browser-Native Time-Series Database Engine" />
+    <meta property="og:description" content="Interactive documentation for o11ytsdb, a browser-native time-series database with ALP compression, Gorilla encoding, and real-time querying." />
+    <meta property="og:type" content="website" />
+    <base href="/tsdb-engine/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/architecture.css" />
+    <link rel="stylesheet" href="css/demo.css" />
+    <link rel="stylesheet" href="css/chart.css" />
+    <link rel="stylesheet" href="css/storage-explorer.css" />
+    <link rel="stylesheet" href="css/byte-explorer.css" />
+    <link rel="modulepreload" href="js/app.js" />
+    <link rel="modulepreload" href="js/stores.js" />
+    <link rel="modulepreload" href="js/codec.js" />
+  </head>
+  <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <div class="ambient" aria-hidden="true"></div>
+    <main id="main-content" class="page">
+
+      <!-- ─── Top Bar ─────────────────────────────────────────── -->
+      <header class="topbar panel">
+        <a class="brand" href="/o11ykit/">o11ykit</a>
+        <nav class="topnav" aria-label="Primary">
+          <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
+          <a href="/o11ykit/tsdb-engine/" aria-current="page">TSDB Engine</a>
+          <a href="/o11ykit/octo11y/">Octo11y</a>
+          <a href="/o11ykit/benchkit/">Benchkit</a>
+        </nav>
+      </header>
+
+      <!-- ─── Hero ────────────────────────────────────────────── -->
+      <section class="hero panel">
+        <p class="eyebrow">o11ytsdb engine</p>
+        <h1>A time-series database<br/>that runs in your browser.</h1>
+        <p class="lede">
+          Gorilla-style XOR-delta compression. Three pluggable storage backends.
+          A scan query engine with aggregation, grouping, and rate computation.
+          Generate a million data points below and query them in&nbsp;real&nbsp;time.
+        </p>
+        <div class="hero-actions">
+          <a class="cta cta-primary" href="#live-demo">Launch Live Demo ↓</a>
+          <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ytsdb" target="_blank" rel="noreferrer">
+            Browse Source
+          </a>
+        </div>
+        <div class="pill-row" aria-label="Key stats">
+          <span class="pill">57× compression on constant gauges</span>
+          <span class="pill">28–80× WASM encode speedup</span>
+          <span class="pill">Zero external dependencies</span>
+          <span class="pill">~4 KB WASM binary</span>
+        </div>
+      </section>
+
+
+      <!-- ─── LIVE DEMO ──────────────────────────────────────── -->
+      <section class="panel demo-panel" id="live-demo">
+        <h2>🚀 Live Demo: Generate &amp; Query</h2>
+        <p class="section-intro">This runs entirely in your browser. Generate up to 1M data points across multiple series, then query with aggregation — watch compression ratios and query performance in real&nbsp;time.</p>
+
+        <div class="demo-controls">
+          <div class="control-group">
+            <label for="numSeries">Series</label>
+            <select id="numSeries">
+              <option value="5">5 series</option>
+              <option value="10" selected>10 series</option>
+              <option value="25">25 series</option>
+              <option value="50">50 series</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="numPoints">Points per series</label>
+            <select id="numPoints">
+              <option value="1000">1,000</option>
+              <option value="10000" selected>10,000</option>
+              <option value="50000">50,000</option>
+              <option value="100000">100,000</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="dataPattern">Data pattern</label>
+            <select id="dataPattern">
+              <option value="sine">Sine wave</option>
+              <option value="sawtooth">Sawtooth</option>
+              <option value="random-walk">Random walk</option>
+              <option value="spiky">Spiky traffic</option>
+              <option value="constant">Constant (best compression)</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="sampleInterval">Sample interval</label>
+            <select id="sampleInterval">
+              <option value="1000">1 s</option>
+              <option value="10000" selected>10 s</option>
+              <option value="60000">1 min</option>
+              <option value="300000">5 min</option>
+              <option value="900000">15 min</option>
+              <option value="3600000">1 hr</option>
+              <option value="21600000">6 hr</option>
+              <option value="43200000">12 hr</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="backend">Storage backend</label>
+            <select id="backend">
+              <option value="flat">FlatStore (no compression)</option>
+              <option value="chunked">ChunkedStore (XOR-delta)</option>
+              <option value="column" selected>ColumnStore (ALP + shared timestamps)</option>
+            </select>
+            <div id="wasmStatus" class="wasm-status" style="display:none"></div>
+          </div>
+          <button id="btnGenerate" class="cta cta-primary demo-btn">Generate Data</button>
+        </div>
+
+        <!-- Stats dashboard -->
+        <div class="stats-grid" id="statsGrid" role="region" aria-label="Generation statistics" style="display:none;">
+          <div class="stat-card">
+            <div class="stat-big" id="statTotalPoints">—</div>
+            <div class="stat-desc">Total data points</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big" id="statSeries">—</div>
+            <div class="stat-desc">Time series</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big" id="statMemory">—</div>
+            <div class="stat-desc">Memory used</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big" id="statCompression">—</div>
+            <div class="stat-desc">Compression ratio</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big" id="statIngestTime">—</div>
+            <div class="stat-desc">Ingest time</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-big" id="statIngestRate">—</div>
+            <div class="stat-desc">Ingest rate</div>
+          </div>
+        </div>
+
+        <!-- Query controls -->
+        <div class="query-controls" id="queryControls" style="display:none;">
+          <h3>Query the Data</h3>
+          <div class="demo-controls">
+            <div class="control-group">
+              <label for="queryMetric">Metric</label>
+              <select id="queryMetric"></select>
+            </div>
+            <div class="control-group">
+              <label for="queryAgg">Aggregation</label>
+              <select id="queryAgg">
+                <option value="">None (raw series)</option>
+                <option value="avg" selected>avg</option>
+                <option value="sum">sum</option>
+                <option value="min">min</option>
+                <option value="max">max</option>
+                <option value="count">count</option>
+                <option value="rate">rate</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="queryGroupBy">Group by</label>
+              <select id="queryGroupBy">
+                <option value="">No grouping</option>
+                <option value="region" selected>region</option>
+                <option value="instance">instance</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="queryStep">Step</label>
+              <select id="queryStep">
+                <option value="0">No step (raw)</option>
+                <option value="1000">1 s</option>
+                <option value="5000">5 s</option>
+                <option value="10000">10 s</option>
+                <option value="30000">30 s</option>
+                <option value="60000" selected>1 min</option>
+                <option value="300000">5 min</option>
+                <option value="900000">15 min</option>
+                <option value="3600000">1 hr</option>
+                <option value="21600000">6 hr</option>
+                <option value="43200000">12 hr</option>
+                <option value="86400000">1 day</option>
+              </select>
+            </div>
+            <button id="btnQuery" class="cta cta-primary demo-btn">Run Query</button>
+          </div>
+
+          <!-- Query results -->
+          <div id="queryResults" role="status" aria-live="polite" aria-label="Query execution results" style="display:none;">
+            <div class="query-stats">
+              <span id="qStatScannedSeries">—</span>
+              <span id="qStatScannedSamples">—</span>
+              <span id="qStatResultSeries">—</span>
+              <span id="qStatQueryTime">—</span>
+            </div>
+            <div class="chart-container">
+              <canvas id="chartCanvas" width="1100" height="400"></canvas>
+            </div>
+            <div class="chart-legend" id="chartLegend"></div>
+          </div>
+        </div>
+
+        <!-- Compression benchmark -->
+        <div class="compression-bench" id="compressionBench" style="display:none;">
+          <h3>Compression Breakdown</h3>
+          <div class="compression-bars" id="compressionBars"></div>
+        </div>
+
+        <!-- Storage Explorer -->
+        <div class="storage-explorer" id="storageExplorer" role="region" aria-label="Storage explorer" style="display:none;">
+          <h3>💾 Storage Explorer</h3>
+          <p class="storage-intro">Explore the internal chunk layout of the storage backend. Each series is a row; frozen compressed chunks are <span class="tag-frozen">frozen</span> and the active write buffer is <span class="tag-hot">hot</span>. Click any chunk to inspect it.</p>
+          <div class="storage-overview" id="storageOverview"></div>
+          <div class="storage-series-list" id="storageSeriesList"></div>
+          <div class="chunk-detail-panel" id="chunkDetailPanel" style="display:none;"></div>
+        </div>
+      </section>
+
+
+      <!-- ─── Architecture ────────────────────────────────────── -->
+      <section class="panel" id="architecture">
+        <h2>Engine Architecture</h2>
+        <p class="section-intro">Every component is a pluggable interface — swap codecs, storage backends, and query strategies independently.</p>
+
+        <div class="arch-diagram">
+          <div class="arch-row">
+            <div class="arch-box arch-ingest">
+              <div class="arch-icon">📥</div>
+              <h4>Ingest Pipeline</h4>
+              <p>OTLP JSON → normalized samples with label interning &amp; inverted index</p>
+            </div>
+            <div class="arch-arrow">→</div>
+            <div class="arch-box arch-storage">
+              <div class="arch-icon">💾</div>
+              <h4>Storage Backends</h4>
+              <p>FlatStore · ChunkedStore · ColumnStore — hot chunks + frozen compressed blocks</p>
+            </div>
+            <div class="arch-arrow">→</div>
+            <div class="arch-box arch-query">
+              <div class="arch-icon">🔍</div>
+              <h4>Query Engine</h4>
+              <p>Label matching · time range scan · aggregation · groupBy · rate</p>
+            </div>
+          </div>
+          <div class="arch-row arch-bottom">
+            <div class="arch-box arch-codec">
+              <div class="arch-icon">🗜️</div>
+              <h4>XOR-Delta Codec</h4>
+              <p>Gorilla-style: DoD timestamps + XOR float64 values. TS / Zig WASM / Rust WASM</p>
+            </div>
+            <div class="arch-box arch-labels">
+              <div class="arch-icon">🏷️</div>
+              <h4>Label Index</h4>
+              <p>FNV-1a string interner + inverted postings lists with gallop search</p>
+            </div>
+            <div class="arch-box arch-worker">
+              <div class="arch-icon">⚡</div>
+              <h4>Worker Isolation</h4>
+              <p>Off-main-thread via Web Workers with transferable buffers</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── Storage Backends ────────────────────────────────── -->
+      <section class="panel" id="backends">
+        <h2>Three Storage Backends</h2>
+        <div class="grid grid-3">
+          <article class="feature-card backend-card">
+            <div class="backend-badge flat">Baseline</div>
+            <h3>FlatStore</h3>
+            <p>Raw TypedArrays with exponential doubling. Zero encode/decode overhead. <strong>16 bytes/sample.</strong></p>
+            <div class="backend-stat">
+              <span class="stat-label">Memory</span>
+              <div class="stat-bar"><div class="stat-fill" style="width:100%"></div></div>
+              <span class="stat-value">16 B/pt</span>
+            </div>
+            <div class="backend-stat">
+              <span class="stat-label">Write</span>
+              <div class="stat-bar"><div class="stat-fill fast" style="width:100%"></div></div>
+              <span class="stat-value">Fastest</span>
+            </div>
+            <div class="backend-stat">
+              <span class="stat-label">Read</span>
+              <div class="stat-bar"><div class="stat-fill fast" style="width:95%"></div></div>
+              <span class="stat-value">O(log n)</span>
+            </div>
+          </article>
+
+          <article class="feature-card backend-card">
+            <div class="backend-badge chunked">Compressed</div>
+            <h3>ChunkedStore</h3>
+            <p>Hot chunks → freeze → compress with pluggable codec. Amortized encode cost. <strong>~2–4 bytes/sample.</strong></p>
+            <div class="backend-stat">
+              <span class="stat-label">Memory</span>
+              <div class="stat-bar"><div class="stat-fill" style="width:22%"></div></div>
+              <span class="stat-value">~3 B/pt</span>
+            </div>
+            <div class="backend-stat">
+              <span class="stat-label">Write</span>
+              <div class="stat-bar"><div class="stat-fill fast" style="width:82%"></div></div>
+              <span class="stat-value">Amortized</span>
+            </div>
+            <div class="backend-stat">
+              <span class="stat-label">Read</span>
+              <div class="stat-bar"><div class="stat-fill fast" style="width:70%"></div></div>
+              <span class="stat-value">Decode + scan</span>
+            </div>
+          </article>
+
+          <article class="feature-card backend-card">
+            <div class="backend-badge column">Optimal</div>
+            <h3>ColumnStore</h3>
+            <p>Shared timestamp columns for co-scraped metrics. Values-only compression per series. <strong>~1–2 bytes/sample.</strong></p>
+            <div class="backend-stat">
+              <span class="stat-label">Memory</span>
+              <div class="stat-bar"><div class="stat-fill" style="width:10%"></div></div>
+              <span class="stat-value">~1.5 B/pt</span>
+            </div>
+            <div class="backend-stat">
+              <span class="stat-label">Write</span>
+              <div class="stat-bar"><div class="stat-fill fast" style="width:75%"></div></div>
+              <span class="stat-value">Batch freeze</span>
+            </div>
+            <div class="backend-stat">
+              <span class="stat-label">Read</span>
+              <div class="stat-bar"><div class="stat-fill fast" style="width:85%"></div></div>
+              <span class="stat-value">Fused range</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ─── Compression Deep Dive ───────────────────────────── -->
+      <section class="panel code-panel" id="compression">
+        <h2>XOR-Delta Compression</h2>
+        <p class="section-intro">Based on Facebook's Gorilla paper (VLDB 2015). Timestamps use delta-of-delta with zigzag encoding. Values use XOR with leading/trailing zero tracking.</p>
+
+        <div class="compression-explainer">
+          <div class="compression-step">
+            <div class="step-num">1</div>
+            <div class="step-content">
+              <h4>Timestamp: Delta-of-Delta</h4>
+              <p>Regular intervals compress to <strong>1 bit per sample</strong>. Irregular intervals use 9–68 bits with zigzag encoding.</p>
+<pre><code>DoD == 0            → '0'              (1 bit)
+DoD in [-63, 64]    → '10' + 7-bit zz  (9 bits)
+DoD in [-255, 256]  → '110' + 9-bit zz (12 bits)
+DoD in [-2047,2048] → '1110' + 12-bit  (16 bits)
+Otherwise           → '1111' + raw 64  (68 bits)</code></pre>
+            </div>
+          </div>
+
+          <div class="compression-step">
+            <div class="step-num">2</div>
+            <div class="step-content">
+              <h4>Value: XOR Encoding</h4>
+              <p>Identical values: <strong>1 bit</strong>. Similar values reuse the leading/trailing zero window from the previous sample.</p>
+<pre><code>XOR == 0         → '0'              (1 bit)
+Reuse window     → '10' + meaningful (2 + N bits)
+New window       → '11' + 6L + 6M   (14 + N bits)</code></pre>
+            </div>
+          </div>
+
+          <div class="compression-step">
+            <div class="step-num">3</div>
+            <div class="step-content">
+              <h4>Result: Massive Compression</h4>
+              <p>Constant-interval gauges achieve <strong>57× compression</strong> vs raw Float64. Even noisy data compresses 4–8×.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── Query Engine ────────────────────────────────────── -->
+      <section class="panel" id="query-engine">
+        <h2>Query Engine</h2>
+        <p class="section-intro">The scan engine supports label matching, time windowing, six aggregation functions, groupBy, and rate computation.</p>
+
+        <div class="grid grid-2">
+          <div class="query-feature">
+            <h4>Aggregation Functions</h4>
+            <div class="agg-pills">
+              <span class="agg-pill">sum</span>
+              <span class="agg-pill">avg</span>
+              <span class="agg-pill">min</span>
+              <span class="agg-pill">max</span>
+              <span class="agg-pill">count</span>
+              <span class="agg-pill">last</span>
+              <span class="agg-pill">rate</span>
+            </div>
+          </div>
+          <div class="query-feature">
+            <h4>Query Options</h4>
+<pre><code>interface QueryOpts {
+  metric: string;
+  matchers?: { label, value }[];
+  start: bigint;   // ns epoch
+  end: bigint;     // ns epoch
+  step?: bigint;   // bucket size
+  agg?: AggFn;
+  groupBy?: string[];
+}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── Code Examples ───────────────────────────────────── -->
+      <section class="panel code-panel" id="code-examples">
+        <h2>Quick Start</h2>
+        <p class="section-intro">Use the TSDB engine in three steps: create a store, ingest data, and query.</p>
+
+<pre><code>import { FlatStore, ChunkedStore, ColumnStore, ScanEngine, encodeChunk, decodeChunk } from 'o11ytsdb';
+
+// 1. Create a storage backend
+const store = new ChunkedStore({ name: 'xor-delta', encode: encodeChunk, decode: decodeChunk });
+
+// 2. Ingest time-series data
+const labels = new Map([['__name__', 'http_requests'], ['method', 'GET'], ['region', 'us-east']]);
+const seriesId = store.getOrCreateSeries(labels);
+
+const timestamps = BigInt64Array.from({ length: 10000 }, (_, i) =&gt; BigInt(Date.now() - (10000 - i) * 1000) * 1_000_000n);
+const values = Float64Array.from({ length: 10000 }, (_, i) =&gt; 100 + Math.sin(i / 50) * 30 + Math.random() * 5);
+store.appendBatch(seriesId, timestamps, values);
+
+// 3. Query with aggregation
+const engine = new ScanEngine();
+const result = engine.query(store, {
+  metric: 'http_requests',
+  start: timestamps[0],
+  end: timestamps[timestamps.length - 1],
+  agg: 'avg',
+  groupBy: ['region'],
+  step: 10_000_000_000n, // 10-second buckets
+});
+
+console.log(`Found ${result.series.length} groups, scanned ${result.scannedSamples} samples`);</code></pre>
+      </section>
+
+      <!-- ─── OTLP Ingest ─────────────────────────────────────── -->
+      <section class="panel code-panel">
+        <h2>OTLP Ingest Pipeline</h2>
+        <p class="section-intro">Ingest OpenTelemetry JSON payloads directly. Supports gauge, sum, histogram, summary, and exponential histogram metric types.</p>
+
+<pre><code>import { ingestOtlpJson, ChunkedStore, ScanEngine } from 'o11ytsdb';
+
+const store = new ChunkedStore(codec);
+
+// Ingest raw OTLP metrics JSON
+const result = ingestOtlpJson(otlpPayload, store);
+console.log(`${result.pointsAccepted} points, ${result.seriesCreated} new series`);
+console.log(`Types: ${JSON.stringify(result.metricTypeCounts)}`);
+// → { gauge: 42, sum: 18, histogram: 6, summary: 2 }
+
+// Labels are auto-extracted:
+//   resource.service.name, scope_attr.*, attr.*, __name__
+// Histogram generates derived series:
+//   metric_bucket, metric_count, metric_sum</code></pre>
+      </section>
+
+      <!-- ─── Worker Isolation ────────────────────────────────── -->
+      <section class="panel code-panel">
+        <h2>Web Worker Isolation</h2>
+        <p class="section-intro">Move all TSDB operations off the main thread. The worker protocol supports structured clone, transferable buffers, and SharedArrayBuffer strategies.</p>
+
+<pre><code>import { WorkerClient } from 'o11ytsdb';
+
+const client = new WorkerClient(new Worker('./tsdb-worker.js'));
+await client.init({ chunkSize: 1024 });
+
+// Ingest from main thread — data transfers automatically
+await client.ingest(labels, timestamps, values);
+
+// Query returns results back to main thread
+const result = await client.query({
+  metric: 'http_requests',
+  start: 0n,
+  end: BigInt(Date.now()) * 1_000_000n,
+  agg: 'avg',
+  step: 10_000_000_000n,
+});
+
+const stats = await client.stats();
+console.log(`${stats.seriesCount} series, ${stats.sampleCount} samples, ${stats.memoryBytes} bytes`);</code></pre>
+      </section>
+
+      <!-- ─── Footer ──────────────────────────────────────────── -->
+      <footer class="site-footer">
+        <p>
+          Part of the <a href="/o11ykit/">o11ykit</a> platform ·
+          <a href="/o11ykit/otlpkit-docs/">OtlpKit Docs</a> ·
+          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
+        </p>
+      </footer>
+    </main>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
