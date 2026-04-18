@@ -27,6 +27,10 @@ export interface TimeRange {
    *  When a stats-only part can't be folded (spans multiple buckets),
    *  the query engine calls this to retrieve the full sample data. */
   decode?: () => TimeRange;
+  /** Zero-copy lazy decode — returns views into codec scratch memory.
+   *  The returned arrays are only valid until the next decodeView/decode call.
+   *  Prefer this over decode() in tight loops (e.g., stepAggregate). */
+  decodeView?: () => TimeRange;
 }
 
 // ── Codec (encode/decode strategy) ───────────────────────────────────
@@ -43,6 +47,10 @@ export interface ValuesCodec {
   readonly name: string;
   encodeValues(values: Float64Array): Uint8Array;
   decodeValues(buf: Uint8Array): Float64Array;
+  /** Optional: decode values into codec-owned scratch memory and return a view.
+   *  The returned Float64Array is only valid until the next decode call on
+   *  the same codec instance — callers must consume the data immediately. */
+  decodeValuesView?(buf: Uint8Array): Float64Array;
   /** Optional: encode values and compute block stats in one pass (WASM fast-path). */
   encodeValuesWithStats?(values: Float64Array): { compressed: Uint8Array; stats: ChunkStats };
   /** Optional: batch-encode N arrays in a single WASM call, returning compressed blobs + stats. */

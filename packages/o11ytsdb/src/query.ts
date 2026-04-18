@@ -11,16 +11,54 @@ import type {
   SeriesResult, StorageBackend, TimeRange,
 } from './types.js';
 
+/** Galloping lower bound on a sorted number array. */
+function gallopLowerBound(arr: number[], target: number, from: number): number {
+  if (from >= arr.length) return arr.length;
+  if (arr[from]! >= target) return from;
+  let step = 1;
+  let lo = from + 1;
+  let hi = lo;
+  while (hi < arr.length && arr[hi]! < target) {
+    lo = hi + 1;
+    step <<= 1;
+    hi = from + step;
+  }
+  if (hi >= arr.length) hi = arr.length - 1;
+  let left = lo;
+  let right = hi;
+  while (left <= right) {
+    const mid = (left + right) >>> 1;
+    if (arr[mid]! < target) left = mid + 1;
+    else right = mid - 1;
+  }
+  return left;
+}
+
+/** Intersect two sorted arrays using galloping search. */
+function sortedIntersect(a: number[], b: number[]): number[] {
+  if (a.length === 0 || b.length === 0) return [];
+  const small = a.length <= b.length ? a : b;
+  const big = a.length <= b.length ? b : a;
+  const out: number[] = [];
+  let j = 0;
+  for (let i = 0; i < small.length; i++) {
+    const v = small[i]!;
+    j = gallopLowerBound(big, v, j);
+    if (j >= big.length) break;
+    if (big[j] === v) out.push(v);
+  }
+  return out;
+}
+
 export class ScanEngine implements QueryEngine {
   readonly name = 'scan';
 
   query(storage: StorageBackend, opts: QueryOpts): QueryResult {
-    // Find matching series.
+    // Find matching series using sorted-array intersection (no Set allocation).
     let ids = storage.matchLabel('__name__', opts.metric);
     if (opts.matchers) {
       for (const m of opts.matchers) {
-        const mIds = new Set(storage.matchLabel(m.label, m.value));
-        ids = ids.filter(id => mIds.has(id));
+        ids = sortedIntersect(ids, storage.matchLabel(m.label, m.value));
       }
     }
 
@@ -209,11 +247,17 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
 
   values.fill(aggInit(fn));
 
-  // ── Stats-skip: fold pre-computed chunk stats when the chunk fits in one bucket ──
-  // Remaining ranges that need sample-level iteration.
-  let sampleRanges: TimeRange[];
-  if (fn !== 'rate') {
-    sampleRanges = [];
+  // ── Fused stats-skip + decode + bucket accumulation ──
+  //
+  // Process each range inline: either fold pre-computed chunk stats when the
+  // chunk fits in one bucket, or decode and immediately accumulate into
+  // buckets.  This avoids collecting all decoded ranges into a temporary
+  // array, reducing peak memory from O(total_chunks × chunk_size) to
+  // O(chunk_size) and cutting GC pressure substantially.
+  if (fn === 'rate') {
+    _stepAggregateRate(ranges, values, counts, bucketCount, minT, minTN, stepN);
+  } else {
+    const accumulate = _makeAccumulator(fn, values, counts, minTN, stepN);
     for (let ri = 0; ri < ranges.length; ri++) {
       const r = ranges[ri]!;
       if (r.stats && r.chunkMinT !== undefined && r.chunkMaxT !== undefined) {
@@ -221,147 +265,21 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
         const bucketHi = Number(r.chunkMaxT - minT) / stepN | 0;
         if (bucketLo === bucketHi) {
           // Entire chunk maps to one bucket — fold stats directly.
-          const st = r.stats;
-          switch (fn) {
-            case 'min':
-              if (st.minV < values[bucketLo]!) values[bucketLo] = st.minV;
-              break;
-            case 'max':
-              if (st.maxV > values[bucketLo]!) values[bucketLo] = st.maxV;
-              break;
-            case 'sum': case 'avg':
-              values[bucketLo]! += st.sum;
-              break;
-            case 'count':
-              values[bucketLo]! += st.count;
-              break;
-            case 'last':
-              values[bucketLo] = st.lastV;
-              break;
-          }
-          counts[bucketLo]! += st.count;
+          _foldStats(fn, r.stats, values, counts, bucketLo);
           continue;
         }
-        // Chunk spans multiple buckets — lazy-decode to get actual samples.
+        // Chunk spans multiple buckets — decode and accumulate inline.
         if (r.decode) {
-          sampleRanges.push(r.decode());
+          const decoded = r.decodeView ? r.decodeView() : r.decode();
+          accumulate(decoded.timestamps, decoded.values);
           continue;
         }
       }
-      sampleRanges.push(r);
+      // Already-decoded range (hot chunk or pre-filtered).
+      if (r.timestamps.length > 0) {
+        accumulate(r.timestamps, r.values);
+      }
     }
-  } else {
-    // Rate needs per-sample timestamps — always decode stats-only parts.
-    sampleRanges = ranges.map(r =>
-      r.timestamps.length === 0 && r.decode ? r.decode() : r,
-    );
-  }
-
-  // Fused DataView + bucket assignment: read BigInt64 timestamps directly
-  // via DataView in the accumulation loop, avoiding a separate Float64Array
-  // allocation per range.  Each range creates one lightweight DataView
-  // instead of a full Float64Array copy.
-  switch (fn) {
-    case 'min':
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          if (vs[i]! < values[bucket]!) values[bucket] = vs[i]!;
-          counts[bucket]!++;
-        }
-      }
-      break;
-    case 'max':
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          if (vs[i]! > values[bucket]!) values[bucket] = vs[i]!;
-          counts[bucket]!++;
-        }
-      }
-      break;
-    case 'sum': case 'avg':
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          values[bucket]! += vs[i]!;
-          counts[bucket]!++;
-        }
-      }
-      break;
-    case 'count':
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          values[bucket]!++;
-          counts[bucket]!++;
-        }
-      }
-      break;
-    case 'last':
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          values[bucket] = vs[i]!;
-          counts[bucket]!++;
-        }
-      }
-      break;
-    case 'rate': {
-      const firstTs = new Float64Array(bucketCount).fill(Infinity);
-      const firstVal = new Float64Array(bucketCount);
-      const lastTs = new Float64Array(bucketCount).fill(-Infinity);
-      const lastVal = new Float64Array(bucketCount);
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const t = dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
-          const bucket = (t - minTN) / stepN | 0;
-          counts[bucket]!++;
-          if (t < firstTs[bucket]!) { firstTs[bucket] = t; firstVal[bucket] = vs[i]!; }
-          if (t >= lastTs[bucket]!) { lastTs[bucket] = t; lastVal[bucket] = vs[i]!; }
-        }
-      }
-      for (let i = 0; i < bucketCount; i++) {
-        const dt = (lastTs[i]! - firstTs[i]!) / 1000;
-        values[i] = dt > 0 ? (lastVal[i]! - firstVal[i]!) / dt : 0;
-      }
-      break;
-    }
-    default:
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0; i < src.length; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          values[bucket] = aggAccumulate(values[bucket]!, vs[i]!, fn);
-          counts[bucket]!++;
-        }
-      }
   }
 
   aggFinalize(values, counts, fn);
@@ -375,4 +293,142 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   }
 
   return { timestamps, values };
+}
+
+/** Fold pre-computed chunk stats into a single bucket. */
+function _foldStats(
+  fn: AggFn, st: NonNullable<TimeRange['stats']>,
+  values: Float64Array, counts: Float64Array, bucket: number,
+): void {
+  switch (fn) {
+    case 'min':
+      if (st.minV < values[bucket]!) values[bucket] = st.minV;
+      break;
+    case 'max':
+      if (st.maxV > values[bucket]!) values[bucket] = st.maxV;
+      break;
+    case 'sum': case 'avg':
+      values[bucket]! += st.sum;
+      break;
+    case 'count':
+      values[bucket]! += st.count;
+      break;
+    case 'last':
+      values[bucket] = st.lastV;
+      break;
+  }
+  counts[bucket]! += st.count;
+}
+
+/**
+ * Return a closure that accumulates a decoded range into buckets.
+ * The switch on `fn` happens once at construction time (not per-sample).
+ */
+function _makeAccumulator(
+  fn: AggFn,
+  values: Float64Array, counts: Float64Array,
+  minTN: number, stepN: number,
+): (ts: BigInt64Array, vs: Float64Array) => void {
+  switch (fn) {
+    case 'min':
+      return (ts, vs) => {
+        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
+        for (let i = 0, len = ts.length; i < len; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          if (vs[i]! < values[bucket]!) values[bucket] = vs[i]!;
+          counts[bucket]!++;
+        }
+      };
+    case 'max':
+      return (ts, vs) => {
+        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
+        for (let i = 0, len = ts.length; i < len; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          if (vs[i]! > values[bucket]!) values[bucket] = vs[i]!;
+          counts[bucket]!++;
+        }
+      };
+    case 'sum': case 'avg':
+      return (ts, vs) => {
+        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
+        for (let i = 0, len = ts.length; i < len; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          values[bucket]! += vs[i]!;
+          counts[bucket]!++;
+        }
+      };
+    case 'count':
+      return (ts, _vs) => {
+        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
+        for (let i = 0, len = ts.length; i < len; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          values[bucket]!++;
+          counts[bucket]!++;
+        }
+      };
+    case 'last':
+      return (ts, vs) => {
+        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
+        for (let i = 0, len = ts.length; i < len; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          values[bucket] = vs[i]!;
+          counts[bucket]!++;
+        }
+      };
+    default:
+      return (ts, vs) => {
+        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
+        for (let i = 0; i < ts.length; i++) {
+          const off = i << 3;
+          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          values[bucket] = aggAccumulate(values[bucket]!, vs[i]!, fn);
+          counts[bucket]!++;
+        }
+      };
+  }
+}
+
+/**
+ * Rate aggregation — needs per-bucket first/last tracking.
+ * Handles stats-only parts by decoding them inline.
+ */
+function _stepAggregateRate(
+  ranges: TimeRange[],
+  values: Float64Array, counts: Float64Array,
+  bucketCount: number, minT: bigint,
+  minTN: number, stepN: number,
+): void {
+  const firstTs = new Float64Array(bucketCount).fill(Infinity);
+  const firstVal = new Float64Array(bucketCount);
+  const lastTs = new Float64Array(bucketCount).fill(-Infinity);
+  const lastVal = new Float64Array(bucketCount);
+
+  for (let ri = 0; ri < ranges.length; ri++) {
+    const r = ranges[ri]!;
+    // Rate needs per-sample timestamps — always decode stats-only parts.
+    const decoded = r.timestamps.length === 0 && r.decode
+      ? (r.decodeView ? r.decodeView() : r.decode())
+      : r;
+    const src = decoded.timestamps;
+    if (src.length === 0) continue;
+    const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+    const vs = decoded.values;
+    for (let i = 0, len = src.length; i < len; i++) {
+      const off = i << 3;
+      const t = dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
+      const bucket = (t - minTN) / stepN | 0;
+      counts[bucket]!++;
+      if (t < firstTs[bucket]!) { firstTs[bucket] = t; firstVal[bucket] = vs[i]!; }
+      if (t >= lastTs[bucket]!) { lastTs[bucket] = t; lastVal[bucket] = vs[i]!; }
+    }
+  }
+  for (let i = 0; i < bucketCount; i++) {
+    const dt = (lastTs[i]! - firstTs[i]!) / 1000;
+    values[i] = dt > 0 ? (lastVal[i]! - firstVal[i]!) / dt : 0;
+  }
 }
