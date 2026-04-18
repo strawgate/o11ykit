@@ -1,3 +1,47 @@
+/* ─── TSDB Engine Docs — CSS Variable Palette ────────────────────── */
+
+:root {
+  /* Byte explorer region colors */
+  --region-header: #8b5cf6;
+  --region-timestamps: #06b6d4;
+  --region-values: #10b981;
+  --region-exceptions: #f59e0b;
+
+  /* Dark theme (byte explorer, codec insight) */
+  --dark-bg: #0a1929;
+  --dark-bg-alt: #0d2137;
+  --dark-text: #e2e8f0;
+  --dark-text-muted: #94a3b8;
+  --dark-text-dim: #64748b;
+  --dark-accent: #60a5fa;
+  --dark-accent-light: #93c5fd;
+
+  /* Highlight */
+  --highlight-primary: #3b82f6;
+  --highlight-bg: rgba(59, 130, 246, 0.15);
+
+  /* Bit states */
+  --bit-0-bg: #1e293b;
+  --bit-1-bg: #334155;
+  --bit-0-text: #64748b;
+  --bit-1-text: #e2e8f0;
+
+  /* Backend badges */
+  --badge-flat-bg: #fef3c7;
+  --badge-flat-text: #92400e;
+  --badge-chunked-bg: #dbeafe;
+  --badge-chunked-text: #1e40af;
+  --badge-column-bg: #d1fae5;
+  --badge-column-text: #065f46;
+
+  /* Z-index scale */
+  --z-cell: 1;
+  --z-highlight: 2;
+  --z-hover: 3;
+  --z-decode-panel: 10;
+  --z-tooltip: 50;
+}
+
 /* ─── TSDB Engine Docs — Base Styles ──────────────────────────────── */
 
 .section-intro {

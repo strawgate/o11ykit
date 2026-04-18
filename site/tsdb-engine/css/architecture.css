@@ -65,9 +65,9 @@
 .arch-ingest { border-top: 3px solid var(--otlp); }
 .arch-storage { border-top: 3px solid var(--octo); }
 .arch-query { border-top: 3px solid var(--bench); }
-.arch-codec { border-top: 3px solid #8b5cf6; }
+.arch-codec { border-top: 3px solid var(--region-header); }
 .arch-labels { border-top: 3px solid #ec4899; }
-.arch-worker { border-top: 3px solid #f59e0b; }
+.arch-worker { border-top: 3px solid var(--region-exceptions); }
 
 /* ─── Backend Cards ───────────────────────────────────────────────── */
 
@@ -87,9 +87,9 @@
   margin-bottom: 8px;
 }
 
-.backend-badge.flat { background: #fef3c7; color: #92400e; }
-.backend-badge.chunked { background: #dbeafe; color: #1e40af; }
-.backend-badge.column { background: #d1fae5; color: #065f46; }
+.backend-badge.flat { background: var(--badge-flat-bg); color: var(--badge-flat-text); }
+.backend-badge.chunked { background: var(--badge-chunked-bg); color: var(--badge-chunked-text); }
+.backend-badge.column { background: var(--badge-column-bg); color: var(--badge-column-text); }
 
 .backend-stat {
   display: grid;
@@ -120,7 +120,7 @@
 }
 
 .stat-fill.fast {
-  background: linear-gradient(90deg, #10b981, #059669);
+  background: linear-gradient(90deg, var(--region-values), #059669);
 }
 
 .stat-value {

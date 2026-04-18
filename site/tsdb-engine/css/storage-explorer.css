@@ -27,8 +27,8 @@
   letter-spacing: 0.08em;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--badge-chunked-bg);
+  color: var(--badge-chunked-text);
 }
 
 .tag-hot {
@@ -39,8 +39,8 @@
   letter-spacing: 0.08em;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--badge-flat-bg);
+  color: var(--badge-flat-text);
 }
 
 .explorer-stats {
@@ -87,13 +87,13 @@
   border: 1px solid rgba(43, 80, 106, 0.12);
   border-radius: 12px;
   padding: 12px 14px;
-  transition: box-shadow 200ms ease;
+  transition: border-color 200ms ease;
   overflow: hidden;
   min-width: 0;
 }
 
 .storage-series-row:hover {
-  box-shadow: 0 4px 16px rgba(10, 36, 56, 0.08);
+  border-color: rgba(10, 36, 56, 0.2);
 }
 
 .series-header {
@@ -172,15 +172,13 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: transform 150ms ease, box-shadow 150ms ease;
   min-width: 20px;
   position: relative;
   overflow: hidden;
 }
 
 .chunk-block:hover {
-  transform: scaleY(1.15);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  opacity: 0.85;
   z-index: 2;
 }
 
@@ -189,7 +187,7 @@
 }
 
 .chunk-block.hot {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
+  background: linear-gradient(135deg, var(--region-exceptions), #d97706);
 }
 
 .chunk-label {
@@ -213,7 +211,7 @@
 /* ─── ColumnStore frozen chunks (green gradient) ─────────────────── */
 
 .chunk-block.frozen.column-store {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: linear-gradient(135deg, var(--region-values) 0%, #059669 100%);
 }
 
 /* ─── Series Chunk Summary (compact mode) ────────────────────────── */
@@ -372,19 +370,19 @@
 }
 
 .byte-segment.header {
-  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  background: linear-gradient(135deg, var(--region-header), #7c3aed);
 }
 
 .byte-segment.timestamps {
-  background: linear-gradient(135deg, #06b6d4, #0891b2);
+  background: linear-gradient(135deg, var(--region-timestamps), #0891b2);
 }
 
 .byte-segment.values {
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: linear-gradient(135deg, var(--region-values), #059669);
 }
 
 .byte-segment.exceptions {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
+  background: linear-gradient(135deg, var(--region-exceptions), #d97706);
 }
 
 .byte-legend {
@@ -408,10 +406,10 @@
   border-radius: 3px;
 }
 
-.byte-swatch.header { background: #8b5cf6; }
-.byte-swatch.timestamps { background: #06b6d4; }
-.byte-swatch.values { background: #10b981; }
-.byte-swatch.exceptions { background: #f59e0b; }
+.byte-swatch.header { background: var(--region-header); }
+.byte-swatch.timestamps { background: var(--region-timestamps); }
+.byte-swatch.values { background: var(--region-values); }
+.byte-swatch.exceptions { background: var(--region-exceptions); }
 
 .chunk-sparkline-container {
   margin-top: 12px;
