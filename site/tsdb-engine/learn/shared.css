@@ -22,11 +22,11 @@
   --xp-error-glow: rgba(248, 113, 113, 0.12);
 
   /* Tier colors for encoding */
-  --tier-0: #34d399;   /* best compression */
-  --tier-1: #60a5fa;   /* good */
-  --tier-2: #a78bfa;   /* moderate */
-  --tier-3: #fbbf24;   /* poor */
-  --tier-4: #f87171;   /* worst / raw */
+  --tier-0: #34d399; /* best compression */
+  --tier-1: #60a5fa; /* good */
+  --tier-2: #a78bfa; /* moderate */
+  --tier-3: #fbbf24; /* poor */
+  --tier-4: #f87171; /* worst / raw */
 
   /* Region colors (from byte explorer) */
   --region-header: #8b5cf6;
@@ -45,7 +45,9 @@
   --xp-radius-xs: 4px;
 }
 
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 body {
   margin: 0;
@@ -224,7 +226,8 @@ body {
   border-color: var(--xp-accent);
 }
 
-.xp-btn.active, .xp-btn[aria-pressed="true"] {
+.xp-btn.active,
+.xp-btn[aria-pressed="true"] {
   background: var(--xp-accent-glow);
   border-color: var(--xp-accent);
   color: var(--xp-accent-light);
@@ -502,37 +505,86 @@ body {
 }
 
 /* ─── Tier Color Utilities ────────────────────────────────────────── */
-.tier-0 { color: var(--tier-0); }
-.tier-1 { color: var(--tier-1); }
-.tier-2 { color: var(--tier-2); }
-.tier-3 { color: var(--tier-3); }
-.tier-4 { color: var(--tier-4); }
+.tier-0 {
+  color: var(--tier-0);
+}
+.tier-1 {
+  color: var(--tier-1);
+}
+.tier-2 {
+  color: var(--tier-2);
+}
+.tier-3 {
+  color: var(--tier-3);
+}
+.tier-4 {
+  color: var(--tier-4);
+}
 
-.tier-0-bg { background: rgba(52, 211, 153, 0.12); border-color: rgba(52, 211, 153, 0.3); }
-.tier-1-bg { background: rgba(96, 165, 250, 0.12); border-color: rgba(96, 165, 250, 0.3); }
-.tier-2-bg { background: rgba(167, 139, 250, 0.12); border-color: rgba(167, 139, 250, 0.3); }
-.tier-3-bg { background: rgba(251, 191, 36, 0.12); border-color: rgba(251, 191, 36, 0.3); }
-.tier-4-bg { background: rgba(248, 113, 113, 0.12); border-color: rgba(248, 113, 113, 0.3); }
+.tier-0-bg {
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+.tier-1-bg {
+  background: rgba(96, 165, 250, 0.12);
+  border-color: rgba(96, 165, 250, 0.3);
+}
+.tier-2-bg {
+  background: rgba(167, 139, 250, 0.12);
+  border-color: rgba(167, 139, 250, 0.3);
+}
+.tier-3-bg {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+.tier-4-bg {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.3);
+}
 
 /* ─── Responsive ──────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .xp-page { padding: 0 14px 40px; }
-  .xp-card { padding: 16px; }
-  .xp-hero h1 { font-size: 26px; }
-  .xp-pipeline { gap: 0; }
-  .xp-stats-row { gap: 8px; }
-  .xp-stat { min-width: 80px; padding: 10px 12px; }
+  .xp-page {
+    padding: 0 14px 40px;
+  }
+  .xp-card {
+    padding: 16px;
+  }
+  .xp-hero h1 {
+    font-size: 26px;
+  }
+  .xp-pipeline {
+    gap: 0;
+  }
+  .xp-stats-row {
+    gap: 8px;
+  }
+  .xp-stat {
+    min-width: 80px;
+    padding: 10px 12px;
+  }
 }
 
 /* ─── Animations ──────────────────────────────────────────────────── */
 @keyframes xp-fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes xp-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .xp-animate-in {
@@ -559,12 +611,27 @@ body {
 
 /* ─── Reveal pulse (gentle attention without forced scroll) ─────── */
 
-@keyframes xp-reveal-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); }
-  70% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes xp-reveal-pulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
+    }
+    70% {
+      box-shadow: 0 0 0 8px rgba(99, 102, 241, 0);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+    }
+  }
+  .xp-reveal {
+    animation: xp-reveal-pulse 0.6s ease-out;
+  }
 }
-.xp-reveal { animation: xp-reveal-pulse 0.6s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .xp-reveal {
+    animation: none;
+  }
+}
 
 /* ─── Scrollable Container Utilities ─────────────────────────────── */
 

@@ -16,13 +16,15 @@
  */
 
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 import {
-  deflateRawSync, inflateRawSync,
-  zstdCompressSync, zstdDecompressSync,
   constants,
+  deflateRawSync,
+  inflateRawSync,
+  zstdCompressSync,
+  zstdDecompressSync,
 } from "node:zlib";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -39,14 +41,21 @@ const NUM_CHUNKS = 200; // 200 chunks of 512 = 102,400 samples per pattern
 let _counterVal = 0;
 let _gaugeVal = 50;
 const PATTERNS = {
-  constant:    (i) => 42.0,
-  counter:     (i) => { _counterVal += 1 + Math.floor(Math.random() * 10); return _counterVal; },
-  gauge_cpu:   (i) => { _gaugeVal += (Math.random() - 0.48) * 5; _gaugeVal = Math.max(0, Math.min(100, _gaugeVal)); return Math.round(_gaugeVal * 100) / 100; },
-  sine:        (i) => Math.sin(i * 0.01) * 100,
-  random:      (i) => Math.random() * 1000,
-  step:        (i) => Math.floor(i / 100) * 10.0,
-  latency_ms:  (i) => Math.round(Math.random() * 500 * 100) / 100,
-  req_rate:    (i) => Math.max(0, 1000 + Math.sin(i * 0.001) * 200 + (Math.random() - 0.5) * 100), // ~1000 rps with daily wave + noise
+  constant: (_i) => 42.0,
+  counter: (_i) => {
+    _counterVal += 1 + Math.floor(Math.random() * 10);
+    return _counterVal;
+  },
+  gauge_cpu: (_i) => {
+    _gaugeVal += (Math.random() - 0.48) * 5;
+    _gaugeVal = Math.max(0, Math.min(100, _gaugeVal));
+    return Math.round(_gaugeVal * 100) / 100;
+  },
+  sine: (i) => Math.sin(i * 0.01) * 100,
+  random: (_i) => Math.random() * 1000,
+  step: (i) => Math.floor(i / 100) * 10.0,
+  latency_ms: (_i) => Math.round(Math.random() * 500 * 100) / 100,
+  req_rate: (i) => Math.max(0, 1000 + Math.sin(i * 0.001) * 200 + (Math.random() - 0.5) * 100), // ~1000 rps with daily wave + noise
 };
 
 // ── WASM loader ──────────────────────────────────────────────────────
@@ -205,7 +214,8 @@ function makeConfigs(wasm) {
     // Raw float64 + secondary (no codec)
     {
       name: "raw+deflate1",
-      encode: (vals) => deflateCompress(Buffer.from(vals.buffer, vals.byteOffset, vals.byteLength), 1),
+      encode: (vals) =>
+        deflateCompress(Buffer.from(vals.buffer, vals.byteOffset, vals.byteLength), 1),
       decode: (buf) => new Float64Array(deflateDecompress(buf).buffer),
       group: 1,
     },
@@ -288,7 +298,10 @@ function concatBufs(bufs) {
   const total = bufs.reduce((s, b) => s + b.length, 0);
   const out = Buffer.alloc(total);
   let off = 0;
-  for (const b of bufs) { out.set(b, off); off += b.length; }
+  for (const b of bufs) {
+    out.set(b, off);
+    off += b.length;
+  }
   return out;
 }
 
@@ -311,7 +324,7 @@ function runConfig(config, rawChunks) {
 
   // Encode all chunks.
   const t0 = performance.now();
-  const encodedChunks = rawChunks.map(c => config.encode(c));
+  const encodedChunks = rawChunks.map((c) => config.encode(c));
   const encodeMs = performance.now() - t0;
 
   let totalCompressedBytes;
@@ -336,7 +349,7 @@ function runConfig(config, rawChunks) {
     const tg0 = performance.now();
     for (let i = 0; i < encodedChunks.length; i += groupSize) {
       const batch = encodedChunks.slice(i, i + groupSize);
-      const sizes = batch.map(b => b.length);
+      const sizes = batch.map((b) => b.length);
       const compressed = config.groupCompress(batch);
       groups.push(compressed);
       groupSizes.push(sizes);
@@ -364,8 +377,8 @@ function runConfig(config, rawChunks) {
     // Return combined.
     return {
       bPerPt: totalCompressedBytes / totalSamples,
-      encodeUs: (encodeMs + groupEncodeMs) / numChunks * 1000,
-      decodeUs: decodeMs / numChunks * 1000,
+      encodeUs: ((encodeMs + groupEncodeMs) / numChunks) * 1000,
+      decodeUs: (decodeMs / numChunks) * 1000,
       totalEncode: encodeMs + groupEncodeMs,
       totalDecode: decodeMs,
       totalBytes: totalCompressedBytes,
@@ -374,8 +387,8 @@ function runConfig(config, rawChunks) {
 
   return {
     bPerPt: totalCompressedBytes / totalSamples,
-    encodeUs: encodeMs / numChunks * 1000,
-    decodeUs: decodeMs / numChunks * 1000,
+    encodeUs: (encodeMs / numChunks) * 1000,
+    decodeUs: (decodeMs / numChunks) * 1000,
     totalEncode: encodeMs,
     totalDecode: decodeMs,
     totalBytes: totalCompressedBytes,
@@ -389,7 +402,9 @@ async function main() {
   const configs = makeConfigs(wasm);
   const patternNames = Object.keys(PATTERNS);
 
-  console.log(`\n  Secondary compression experiment: ${NUM_CHUNKS} chunks × ${CHUNK_SIZE} samples = ${(NUM_CHUNKS * CHUNK_SIZE).toLocaleString()} pts/pattern\n`);
+  console.log(
+    `\n  Secondary compression experiment: ${NUM_CHUNKS} chunks × ${CHUNK_SIZE} samples = ${(NUM_CHUNKS * CHUNK_SIZE).toLocaleString()} pts/pattern\n`
+  );
 
   // Pre-generate all pattern data once for consistency across configs.
   const patternChunks = generateAllPatternChunks(NUM_CHUNKS, CHUNK_SIZE);
@@ -429,15 +444,25 @@ async function main() {
 
   // ── Per-pattern B/pt breakdown for selected configs ──
 
-  const showConfigs = ["ALP only", "ALP+zstd1", "ALP+zstd3", "ALP+zstd1×8", "ALP+zstd3×16", "XOR only", "XOR+zstd1", "raw+zstd3", "raw+zstd3×8"];
+  const showConfigs = [
+    "ALP only",
+    "ALP+zstd1",
+    "ALP+zstd3",
+    "ALP+zstd1×8",
+    "ALP+zstd3×16",
+    "XOR only",
+    "XOR+zstd1",
+    "raw+zstd3",
+    "raw+zstd3×8",
+  ];
 
   console.log(`\n  Per-pattern B/pt (selected configs):\n`);
-  const hdr = "  " + "Pattern".padEnd(12) + showConfigs.map(n => n.padStart(14)).join("");
+  const hdr = `  ${"Pattern".padEnd(12)}${showConfigs.map((n) => n.padStart(14)).join("")}`;
   console.log(hdr);
-  console.log("  " + "─".repeat(12 + showConfigs.length * 14));
+  console.log(`  ${"─".repeat(12 + showConfigs.length * 14)}`);
 
   for (const pname of patternNames) {
-    let line = "  " + pname.padEnd(12);
+    let line = `  ${pname.padEnd(12)}`;
     for (const cname of showConfigs) {
       const r = allResults[cname]?.[pname];
       line += r ? r.bPerPt.toFixed(2).padStart(14) : "N/A".padStart(14);
@@ -448,21 +473,34 @@ async function main() {
   // ── Best overall ──
 
   console.log();
-  let bestBpt = Infinity, bestName = "";
+  let bestBpt = Infinity,
+    bestName = "";
   for (const cfg of configs) {
-    const avg = Object.values(allResults[cfg.name]).reduce((s, r) => s + r.bPerPt, 0) / patternNames.length;
-    if (avg < bestBpt) { bestBpt = avg; bestName = cfg.name; }
+    const avg =
+      Object.values(allResults[cfg.name]).reduce((s, r) => s + r.bPerPt, 0) / patternNames.length;
+    if (avg < bestBpt) {
+      bestBpt = avg;
+      bestName = cfg.name;
+    }
   }
   console.log(`  Best avg compression: ${bestName} → ${bestBpt.toFixed(2)} B/pt`);
 
-  let bestDec = Infinity, bestDecName = "";
+  let bestDec = Infinity,
+    bestDecName = "";
   for (const cfg of configs) {
-    const avg = Object.values(allResults[cfg.name]).reduce((s, r) => s + r.decodeUs, 0) / patternNames.length;
-    if (avg < bestDec) { bestDec = avg; bestDecName = cfg.name; }
+    const avg =
+      Object.values(allResults[cfg.name]).reduce((s, r) => s + r.decodeUs, 0) / patternNames.length;
+    if (avg < bestDec) {
+      bestDec = avg;
+      bestDecName = cfg.name;
+    }
   }
   console.log(`  Fastest decode:       ${bestDecName} → ${bestDec.toFixed(0)} µs/chunk`);
 
   console.log();
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

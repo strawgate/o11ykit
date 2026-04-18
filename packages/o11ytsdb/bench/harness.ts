@@ -132,7 +132,7 @@ export class Suite {
     runtime: Runtime,
     inputSamples: number,
     rawBytes: number,
-    compressedBytes: number,
+    compressedBytes: number
   ): void {
     this.compressions.push({
       name,
@@ -147,13 +147,7 @@ export class Suite {
   }
 
   /** Record a cross-validation result between two implementations. */
-  addValidation(
-    implA: Runtime,
-    implB: Runtime,
-    vector: string,
-    ok: boolean,
-    detail: string,
-  ): void {
+  addValidation(implA: Runtime, implB: Runtime, vector: string, ok: boolean, detail: string): void {
     this.validations.push({ implA, implB, vector, ok, detail });
   }
 
@@ -169,7 +163,7 @@ export class Suite {
     return {
       module: this.module,
       timestamp: new Date().toISOString(),
-      commit: process.env['GIT_SHA'] ?? 'local',
+      commit: process.env.GIT_SHA ?? "local",
       runtimes: [...this.runtimes],
       results,
       compression: this.compressions,
@@ -186,13 +180,13 @@ export class Suite {
 
 // ── Legacy API (for simple single-runtime benchmarks) ────────────────
 
-const legacySuite = new Suite('_legacy');
+const legacySuite = new Suite("_legacy");
 
 export function bench(name: string, fn: () => void, opts: BenchOptions = {}): void {
-  legacySuite.add(name, 'ts', fn, opts);
+  legacySuite.add(name, "ts", fn, opts);
 }
 
-export function runAll(module: string, runtime: Runtime = 'ts'): BenchReport {
+export function runAll(module: string, runtime: Runtime = "ts"): BenchReport {
   const report = legacySuite.run();
   report.module = module;
   // Override runtimes tag for legacy callers.
@@ -206,7 +200,7 @@ export function runAll(module: string, runtime: Runtime = 'ts'): BenchReport {
 function runOne(name: string, runtime: Runtime, fn: () => void, opts: BenchOptions): BenchResult {
   const warmup = opts.warmup ?? DEFAULT_WARMUP;
   const iterations = opts.iterations ?? DEFAULT_ITERATIONS;
-  const unit = opts.unit ?? 'ops/sec';
+  const unit = opts.unit ?? "ops/sec";
 
   // Warmup — let V8 JIT optimize.
   for (let i = 0; i < warmup; i++) fn();
@@ -277,15 +271,17 @@ function runOne(name: string, runtime: Runtime, fn: () => void, opts: BenchOptio
  */
 export function printReport(report: BenchReport): void {
   const w = 72;
-  console.log(`\n╔${'═'.repeat(w)}╗`);
-  console.log(`║  o11ytsdb bench — ${report.module} [${report.runtimes.join(', ')}]`.padEnd(w + 1) + '║');
-  console.log(`╚${'═'.repeat(w)}╝\n`);
+  console.log(`\n╔${"═".repeat(w)}╗`);
+  console.log(
+    `${`║  o11ytsdb bench — ${report.module} [${report.runtimes.join(", ")}]`.padEnd(w + 1)}║`
+  );
+  console.log(`╚${"═".repeat(w)}╝\n`);
 
   // ── Cross-validation ──
   if (report.crossValidation.length > 0) {
-    console.log('  ── Cross-validation ──\n');
+    console.log("  ── Cross-validation ──\n");
     for (const v of report.crossValidation) {
-      const mark = v.ok ? '✓' : '✗';
+      const mark = v.ok ? "✓" : "✗";
       console.log(`    ${mark} ${v.vector}: ${v.implA} ↔ ${v.implB} — ${v.detail}`);
     }
     console.log();
@@ -293,26 +289,26 @@ export function printReport(report: BenchReport): void {
 
   // ── Compression ──
   if (report.compression.length > 0) {
-    console.log('  ── Compression ──\n');
+    console.log("  ── Compression ──\n");
 
     // Group by vector name to show runtimes side by side.
-    const vectors = [...new Set(report.compression.map(c => c.name))];
+    const vectors = [...new Set(report.compression.map((c) => c.name))];
     const rts = report.runtimes;
 
     // Header.
-    let hdr = '    Vector'.padEnd(28);
+    let hdr = "    Vector".padEnd(28);
     for (const rt of rts) hdr += `  ${rt} bytes/pt`.padStart(14) + `  ${rt} ratio`.padStart(12);
     console.log(hdr);
-    console.log('    ' + '─'.repeat(hdr.length - 4));
+    console.log(`    ${"─".repeat(hdr.length - 4)}`);
 
     for (const vec of vectors) {
       let line = `    ${vec}`.padEnd(28);
       for (const rt of rts) {
-        const c = report.compression.find(x => x.name === vec && x.runtime === rt);
+        const c = report.compression.find((x) => x.name === vec && x.runtime === rt);
         if (c) {
           line += c.bytesPerPoint.toFixed(2).padStart(14) + `${c.ratio.toFixed(1)}x`.padStart(12);
         } else {
-          line += '—'.padStart(14) + '—'.padStart(12);
+          line += "—".padStart(14) + "—".padStart(12);
         }
       }
       console.log(line);
@@ -322,28 +318,28 @@ export function printReport(report: BenchReport): void {
 
   // ── Throughput ──
   if (report.results.length > 0) {
-    console.log('  ── Throughput ──\n');
+    console.log("  ── Throughput ──\n");
 
     // Group by bench name to show runtimes side by side.
-    const names = [...new Set(report.results.map(r => r.name))];
+    const names = [...new Set(report.results.map((r) => r.name))];
     const rts = report.runtimes;
 
-    let hdr = '    Benchmark'.padEnd(32);
+    let hdr = "    Benchmark".padEnd(32);
     for (const rt of rts) hdr += `  ${rt} p50`.padStart(14) + `  ${rt} p99`.padStart(14);
-    hdr += '  unit';
+    hdr += "  unit";
     console.log(hdr);
-    console.log('    ' + '─'.repeat(hdr.length - 4));
+    console.log(`    ${"─".repeat(hdr.length - 4)}`);
 
     for (const name of names) {
       let line = `    ${name}`.padEnd(32);
-      let unit = '';
+      let unit = "";
       for (const rt of rts) {
-        const r = report.results.find(x => x.name === name && x.runtime === rt);
+        const r = report.results.find((x) => x.name === name && x.runtime === rt);
         if (r) {
           line += fmt(r.p50).padStart(14) + fmt(r.p99).padStart(14);
           unit = r.unit;
         } else {
-          line += '—'.padStart(14) + '—'.padStart(14);
+          line += "—".padStart(14) + "—".padStart(14);
         }
       }
       line += `  ${unit}`;
@@ -353,24 +349,31 @@ export function printReport(report: BenchReport): void {
   }
 
   // ── Memory per benchmark ──
-  const withMem = report.results.filter(r => r.heapDeltaBytes > 0 || r.arrayBufferDeltaBytes > 0);
+  const withMem = report.results.filter((r) => r.heapDeltaBytes > 0 || r.arrayBufferDeltaBytes > 0);
   if (withMem.length > 0) {
-    console.log('  ── Memory (heap delta during benchmark) ──\n');
-    console.log('    Benchmark'.padEnd(32) + '  runtime'.padEnd(10) + '  heap Δ'.padStart(14) + '  arrayBuf Δ'.padStart(14));
-    console.log('    ' + '─'.repeat(66));
+    console.log("  ── Memory (heap delta during benchmark) ──\n");
+    console.log(
+      "    Benchmark".padEnd(32) +
+        "  runtime".padEnd(10) +
+        "  heap Δ".padStart(14) +
+        "  arrayBuf Δ".padStart(14)
+    );
+    console.log(`    ${"─".repeat(66)}`);
     for (const r of withMem) {
       console.log(
         `    ${r.name}`.padEnd(32) +
-        `  ${r.runtime}`.padEnd(10) +
-        fmtBytes(r.heapDeltaBytes).padStart(14) +
-        fmtBytes(r.arrayBufferDeltaBytes).padStart(14),
+          `  ${r.runtime}`.padEnd(10) +
+          fmtBytes(r.heapDeltaBytes).padStart(14) +
+          fmtBytes(r.arrayBufferDeltaBytes).padStart(14)
       );
     }
     console.log();
   }
 
   // ── Final snapshot ──
-  console.log(`  Memory snapshot: heap=${fmtBytes(report.memory.heapUsed)} / ${fmtBytes(report.memory.heapTotal)}`);
+  console.log(
+    `  Memory snapshot: heap=${fmtBytes(report.memory.heapUsed)} / ${fmtBytes(report.memory.heapTotal)}`
+  );
   console.log(`                   arrayBuffers=${fmtBytes(report.memory.arrayBuffers)}\n`);
 }
 
@@ -394,11 +397,11 @@ export function fmtBytes(n: number): string {
 export function compareReports(
   baseline: BenchReport,
   current: BenchReport,
-  threshold = 0.05,
+  threshold = 0.05
 ): { passed: boolean; regressions: string[] } {
   const regressions: string[] = [];
   const key = (r: BenchResult) => `${r.name}:${r.runtime}`;
-  const baseMap = new Map(baseline.results.map(r => [key(r), r]));
+  const baseMap = new Map(baseline.results.map((r) => [key(r), r]));
 
   for (const cur of current.results) {
     const base = baseMap.get(key(cur));
@@ -407,7 +410,7 @@ export function compareReports(
     if (delta > threshold) {
       regressions.push(
         `${cur.name} (${cur.runtime}): p50 regressed ${(delta * 100).toFixed(1)}% ` +
-        `(${fmt(base.p50)} → ${fmt(cur.p50)} ${cur.unit})`,
+          `(${fmt(base.p50)} → ${fmt(cur.p50)} ${cur.unit})`
       );
     }
   }

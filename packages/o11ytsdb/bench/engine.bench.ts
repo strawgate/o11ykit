@@ -10,23 +10,23 @@
  * Codec, it automatically gets benchmarked against all others.
  */
 
-import { Suite, printReport, fmt, fmtBytes } from './harness.js';
-import type { BenchReport } from './harness.js';
-import { Rng, generateLabelSets } from './vectors.js';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { BenchReport } from "./harness.js";
+import { fmt, fmtBytes, printReport, Suite } from "./harness.js";
+import { generateLabelSets, Rng } from "./vectors.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 function pkgPath(rel: string): string {
-  return join(__dirname, '..', '..', rel);
+  return join(__dirname, "..", "..", rel);
 }
 
 // ── Types (import from compiled src) ─────────────────────────────────
 
-type StorageBackend = import('../dist/types.js').StorageBackend;
-type Codec = import('../dist/types.js').Codec;
-type Labels = import('../dist/types.js').Labels;
-type QueryEngine = import('../dist/types.js').QueryEngine;
+type StorageBackend = import("../dist/types.js").StorageBackend;
+type Codec = import("../dist/types.js").Codec;
+type Labels = import("../dist/types.js").Labels;
+type QueryEngine = import("../dist/types.js").QueryEngine;
 
 // ── Configuration ────────────────────────────────────────────────────
 
@@ -44,21 +44,21 @@ async function loadBackends(): Promise<StorageBackend[]> {
 
   // FlatStore (baseline — no compression).
   try {
-    const { FlatStore } = await import(pkgPath('dist/flat-store.js'));
+    const { FlatStore } = await import(pkgPath("dist/flat-store.js"));
     backends.push(new FlatStore());
-  } catch (e) {
-    console.log('  ⚠ FlatStore not built — skipping');
+  } catch (_e) {
+    console.log("  ⚠ FlatStore not built — skipping");
   }
 
   // ChunkedStore with XOR-delta (Gorilla) codec.
   try {
-    const { ChunkedStore } = await import(pkgPath('dist/chunked-store.js'));
-    const { loadWasm, makeCodecImpl } = await import('./wasm-loader.js');
-    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const { ChunkedStore } = await import(pkgPath("dist/chunked-store.js"));
+    const { loadWasm, makeCodecImpl } = await import("./wasm-loader.js");
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
-    const rustImpl = makeCodecImpl(wasm, 'rust', 'Rust→WASM');
+    const rustImpl = makeCodecImpl(wasm, "rust", "Rust→WASM");
     const rustCodec: Codec = {
-      name: 'rust-wasm',
+      name: "rust-wasm",
       encode: rustImpl.encode,
       decode: rustImpl.decode,
     };
@@ -69,125 +69,227 @@ async function loadBackends(): Promise<StorageBackend[]> {
 
   // ColumnStore with XOR-delta values (shared timestamps, uncompressed ts).
   try {
-    const { ColumnStore } = await import(pkgPath('dist/column-store.js'));
-    const { loadWasm, makeValuesCodec } = await import('./wasm-loader.js');
-    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { loadWasm, makeValuesCodec } = await import("./wasm-loader.js");
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
     const wasmVals = makeValuesCodec(wasm);
-    backends.push(new ColumnStore(
-      { name: 'rust-wasm-values', encodeValues: wasmVals.encodeValues, decodeValues: wasmVals.decodeValues, encodeValuesWithStats: wasmVals.encodeValuesWithStats },
-      CHUNK_SIZE, () => 0,
-    ));
+    backends.push(
+      new ColumnStore(
+        {
+          name: "rust-wasm-values",
+          encodeValues: wasmVals.encodeValues,
+          decodeValues: wasmVals.decodeValues,
+          encodeValuesWithStats: wasmVals.encodeValuesWithStats,
+        },
+        CHUNK_SIZE,
+        () => 0
+      )
+    );
   } catch (e) {
     console.log(`  ⚠ ColumnStore/XOR not available — skipping (${(e as Error).message})`);
   }
 
   // ColumnStore with XOR values + delta-of-delta timestamp compression.
   try {
-    const { ColumnStore } = await import(pkgPath('dist/column-store.js'));
-    const { loadWasm, makeValuesCodec, makeTimestampCodec } = await import('./wasm-loader.js');
-    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { loadWasm, makeValuesCodec, makeTimestampCodec } = await import("./wasm-loader.js");
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
     const wasmVals = makeValuesCodec(wasm);
     const wasmTs = makeTimestampCodec(wasm);
-    backends.push(new ColumnStore(
-      { name: 'rust-wasm-full', encodeValues: wasmVals.encodeValues, decodeValues: wasmVals.decodeValues, encodeValuesWithStats: wasmVals.encodeValuesWithStats },
-      CHUNK_SIZE, () => 0, undefined,
-      { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
-    ));
+    backends.push(
+      new ColumnStore(
+        {
+          name: "rust-wasm-full",
+          encodeValues: wasmVals.encodeValues,
+          decodeValues: wasmVals.decodeValues,
+          encodeValuesWithStats: wasmVals.encodeValuesWithStats,
+        },
+        CHUNK_SIZE,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        }
+      )
+    );
   } catch (e) {
     console.log(`  ⚠ ColumnStore/XOR+TS not available — skipping (${(e as Error).message})`);
   }
 
   // ColumnStore with ALP values + delta-of-delta timestamps (no range-decode).
   try {
-    const { ColumnStore } = await import(pkgPath('dist/column-store.js'));
-    const { loadWasm, makeALPValuesCodec, makeTimestampCodec } = await import('./wasm-loader.js');
-    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { loadWasm, makeALPValuesCodec, makeTimestampCodec } = await import("./wasm-loader.js");
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
     const alpVals = makeALPValuesCodec(wasm);
     const wasmTs = makeTimestampCodec(wasm);
-    backends.push(new ColumnStore(
-      { name: 'alp-full', encodeValues: alpVals.encodeValues, decodeValues: alpVals.decodeValues, encodeValuesWithStats: alpVals.encodeValuesWithStats, encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats, decodeBatchValues: alpVals.decodeBatchValues },
-      CHUNK_SIZE, () => 0, undefined,
-      { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
-    ));
+    backends.push(
+      new ColumnStore(
+        {
+          name: "alp-full",
+          encodeValues: alpVals.encodeValues,
+          decodeValues: alpVals.decodeValues,
+          encodeValuesWithStats: alpVals.encodeValuesWithStats,
+          encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats,
+          decodeBatchValues: alpVals.decodeBatchValues,
+        },
+        CHUNK_SIZE,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        }
+      )
+    );
   } catch (e) {
     console.log(`  ⚠ ColumnStore/ALP not available — skipping (${(e as Error).message})`);
   }
 
   // ColumnStore with ALP values + timestamps + fused range-decode (best config).
   try {
-    const { ColumnStore } = await import(pkgPath('dist/column-store.js'));
-    const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import('./wasm-loader.js');
-    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(
+      "./wasm-loader.js"
+    );
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
     const alpVals = makeALPValuesCodec(wasm);
     const wasmTs = makeTimestampCodec(wasm);
     const rangeCodec = makeALPRangeCodec(wasm);
-    backends.push(new ColumnStore(
-      { name: 'alp-range', encodeValues: alpVals.encodeValues, decodeValues: alpVals.decodeValues, encodeValuesWithStats: alpVals.encodeValuesWithStats, encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats, decodeBatchValues: alpVals.decodeBatchValues },
-      CHUNK_SIZE, () => 0, undefined,
-      { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
-      rangeCodec,
-    ));
+    backends.push(
+      new ColumnStore(
+        {
+          name: "alp-range",
+          encodeValues: alpVals.encodeValues,
+          decodeValues: alpVals.decodeValues,
+          encodeValuesWithStats: alpVals.encodeValuesWithStats,
+          encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats,
+          decodeBatchValues: alpVals.decodeBatchValues,
+        },
+        CHUNK_SIZE,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        },
+        rangeCodec
+      )
+    );
   } catch (e) {
     console.log(`  ⚠ ColumnStore/ALP+range not available — skipping (${(e as Error).message})`);
   }
 
   // RowGroupStore with ALP values + timestamps (row-group packing, no range-decode).
   try {
-    const { RowGroupStore } = await import(pkgPath('dist/row-group-store.js'));
-    const { loadWasm, makeALPValuesCodec, makeTimestampCodec } = await import('./wasm-loader.js');
-    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const { RowGroupStore } = await import(pkgPath("dist/row-group-store.js"));
+    const { loadWasm, makeALPValuesCodec, makeTimestampCodec } = await import("./wasm-loader.js");
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
     const alpVals = makeALPValuesCodec(wasm);
     const wasmTs = makeTimestampCodec(wasm);
-    backends.push(new RowGroupStore(
-      { name: 'rg-alp-full', encodeValues: alpVals.encodeValues, decodeValues: alpVals.decodeValues, encodeValuesWithStats: alpVals.encodeValuesWithStats, encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats, decodeBatchValues: alpVals.decodeBatchValues },
-      CHUNK_SIZE, () => 0, undefined,
-      { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
-    ));
+    backends.push(
+      new RowGroupStore(
+        {
+          name: "rg-alp-full",
+          encodeValues: alpVals.encodeValues,
+          decodeValues: alpVals.decodeValues,
+          encodeValuesWithStats: alpVals.encodeValuesWithStats,
+          encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats,
+          decodeBatchValues: alpVals.decodeBatchValues,
+        },
+        CHUNK_SIZE,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        }
+      )
+    );
   } catch (e) {
     console.log(`  ⚠ RowGroupStore/ALP not available — skipping (${(e as Error).message})`);
   }
 
   // RowGroupStore with ALP values + timestamps + fused range-decode.
   try {
-    const { RowGroupStore } = await import(pkgPath('dist/row-group-store.js'));
-    const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import('./wasm-loader.js');
-    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const { RowGroupStore } = await import(pkgPath("dist/row-group-store.js"));
+    const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(
+      "./wasm-loader.js"
+    );
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
     const alpVals = makeALPValuesCodec(wasm);
     const wasmTs = makeTimestampCodec(wasm);
     const rangeCodec = makeALPRangeCodec(wasm);
-    backends.push(new RowGroupStore(
-      { name: 'rg-alp-range', encodeValues: alpVals.encodeValues, decodeValues: alpVals.decodeValues, encodeValuesWithStats: alpVals.encodeValuesWithStats, encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats, decodeBatchValues: alpVals.decodeBatchValues },
-      CHUNK_SIZE, () => 0, undefined,
-      { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
-      rangeCodec,
-    ));
+    backends.push(
+      new RowGroupStore(
+        {
+          name: "rg-alp-range",
+          encodeValues: alpVals.encodeValues,
+          decodeValues: alpVals.decodeValues,
+          encodeValuesWithStats: alpVals.encodeValuesWithStats,
+          encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats,
+          decodeBatchValues: alpVals.decodeBatchValues,
+        },
+        CHUNK_SIZE,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        },
+        rangeCodec
+      )
+    );
   } catch (e) {
     console.log(`  ⚠ RowGroupStore/ALP+range not available — skipping (${(e as Error).message})`);
   }
 
   // ColumnStore with ALP + precision=3 (decimal quantization on ingest, eliminates exceptions).
   try {
-    const { ColumnStore } = await import(pkgPath('dist/column-store.js'));
-    const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import('./wasm-loader.js');
-    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(
+      "./wasm-loader.js"
+    );
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
     const alpVals = makeALPValuesCodec(wasm);
     const wasmTs = makeTimestampCodec(wasm);
     const rangeCodec = makeALPRangeCodec(wasm);
-    backends.push(new ColumnStore(
-      { name: 'alp-p3', encodeValues: alpVals.encodeValues, decodeValues: alpVals.decodeValues, encodeValuesWithStats: alpVals.encodeValuesWithStats, encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats, decodeBatchValues: alpVals.decodeBatchValues },
-      CHUNK_SIZE, () => 0, undefined,
-      { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
-      rangeCodec,
-      undefined, // labelIndex
-      3,         // precision — round to 3 decimal places
-    ));
+    backends.push(
+      new ColumnStore(
+        {
+          name: "alp-p3",
+          encodeValues: alpVals.encodeValues,
+          decodeValues: alpVals.decodeValues,
+          encodeValuesWithStats: alpVals.encodeValuesWithStats,
+          encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats,
+          decodeBatchValues: alpVals.decodeBatchValues,
+        },
+        CHUNK_SIZE,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        },
+        rangeCodec,
+        undefined, // labelIndex
+        3 // precision — round to 3 decimal places
+      )
+    );
   } catch (e) {
     console.log(`  ⚠ ColumnStore/ALP+p3 not available — skipping (${(e as Error).message})`);
   }
@@ -196,7 +298,7 @@ async function loadBackends(): Promise<StorageBackend[]> {
 }
 
 async function loadQueryEngine(): Promise<QueryEngine> {
-  const { ScanEngine } = await import(pkgPath('dist/query.js'));
+  const { ScanEngine } = await import(pkgPath("dist/query.js"));
   return new ScanEngine();
 }
 
@@ -218,7 +320,7 @@ function generateData(): IngestData {
   for (let s = 0; s < NUM_SERIES; s++) {
     const ls = labelSets[s]!;
     const m = new Map<string, string>();
-    m.set('__name__', `metric_${s % 10}`); // 10 distinct metric names
+    m.set("__name__", `metric_${s % 10}`); // 10 distinct metric names
     for (const [k, v] of ls.labels) m.set(k, v);
     labels.push(m);
 
@@ -337,20 +439,22 @@ function generateData(): IngestData {
 
 // ── Benchmark ────────────────────────────────────────────────────────
 
-export default async function(): Promise<BenchReport> {
-  const suite = new Suite('engine');
+export default async function (): Promise<BenchReport> {
+  const suite = new Suite("engine");
   const backends = await loadBackends();
   const qe = await loadQueryEngine();
   const data = generateData();
 
-  console.log(`  Configuration: ${NUM_SERIES} series × ${POINTS_PER_SERIES.toLocaleString()} pts = ${TOTAL_SAMPLES.toLocaleString()} total`);
-  console.log(`  Backends: ${backends.map(b => b.name).join(', ')}`);
+  console.log(
+    `  Configuration: ${NUM_SERIES} series × ${POINTS_PER_SERIES.toLocaleString()} pts = ${TOTAL_SAMPLES.toLocaleString()} total`
+  );
+  console.log(`  Backends: ${backends.map((b) => b.name).join(", ")}`);
   console.log(`  Query engine: ${qe.name}`);
   console.log();
 
   // ── Ingest benchmark ──
 
-  console.log('  ── Ingest ──\n');
+  console.log("  ── Ingest ──\n");
 
   // Populate all backends (measured).
   const populated: StorageBackend[] = [];
@@ -371,38 +475,49 @@ export default async function(): Promise<BenchReport> {
     for (let offset = 0; offset < POINTS_PER_SERIES; offset += CHUNK_SIZE) {
       const end = Math.min(offset + CHUNK_SIZE, POINTS_PER_SERIES);
       for (let s = 0; s < NUM_SERIES; s++) {
-        fresh.appendBatch(ids[s]!, data.timestamps[s]!.subarray(offset, end), data.values[s]!.subarray(offset, end));
+        fresh.appendBatch(
+          ids[s]!,
+          data.timestamps[s]?.subarray(offset, end),
+          data.values[s]?.subarray(offset, end)
+        );
       }
     }
 
     const elapsed = performance.now() - start;
     const throughput = TOTAL_SAMPLES / (elapsed / 1000);
 
-    suite.add(`ingest_batch`, fresh.name, () => {
-      // Already measured above — this is a no-op placeholder.
-      // We recorded the real measurement manually.
-    }, { iterations: 1, itemsPerCall: TOTAL_SAMPLES, unit: 'samples/sec' });
+    suite.add(
+      `ingest_batch`,
+      fresh.name,
+      () => {
+        // Already measured above — this is a no-op placeholder.
+        // We recorded the real measurement manually.
+      },
+      { iterations: 1, itemsPerCall: TOTAL_SAMPLES, unit: "samples/sec" }
+    );
 
     // Record as a compression result for the memory table.
     suite.addCompression(
-      'at_rest',
+      "at_rest",
       fresh.name,
       TOTAL_SAMPLES,
       TOTAL_SAMPLES * 16, // raw = 16 bytes/sample
-      fresh.memoryBytes(),
+      fresh.memoryBytes()
     );
 
     populated.push(fresh);
 
     const mem = fresh.memoryBytes();
-    console.log(`    ${fresh.name.padEnd(28)} ${fmt(throughput).padStart(10)} samples/sec    ${fmtBytes(mem).padStart(10)}    ${(mem / TOTAL_SAMPLES).toFixed(1)} B/pt`);
+    console.log(
+      `    ${fresh.name.padEnd(28)} ${fmt(throughput).padStart(10)} samples/sec    ${fmtBytes(mem).padStart(10)}    ${(mem / TOTAL_SAMPLES).toFixed(1)} B/pt`
+    );
   }
 
   console.log();
 
   // ── Query benchmarks ──
 
-  console.log('  ── Query: single series (full range) ──\n');
+  console.log("  ── Query: single series (full range) ──\n");
 
   for (const store of populated) {
     // Pick series 0, full range.
@@ -410,45 +525,65 @@ export default async function(): Promise<BenchReport> {
     const start = T0;
     const end = T0 + BigInt(POINTS_PER_SERIES) * INTERVAL;
 
-    suite.add('query_single', store.name, () => {
-      store.read(sid, start, end);
-    }, { warmup: 10, iterations: 50, itemsPerCall: POINTS_PER_SERIES, unit: 'samples/sec' });
+    suite.add(
+      "query_single",
+      store.name,
+      () => {
+        store.read(sid, start, end);
+      },
+      { warmup: 10, iterations: 50, itemsPerCall: POINTS_PER_SERIES, unit: "samples/sec" }
+    );
   }
 
-  console.log('  ── Query: multi-series select (10 series, full range) ──\n');
+  console.log("  ── Query: multi-series select (10 series, full range) ──\n");
 
   for (const store of populated) {
-    const metric = 'metric_0'; // 10 series match
+    const metric = "metric_0"; // 10 series match
     const start = T0;
     const end = T0 + BigInt(POINTS_PER_SERIES) * INTERVAL;
 
-    suite.add('query_select_10', store.name, () => {
-      qe.query(store, { metric, start, end });
-    }, { warmup: 5, iterations: 20, itemsPerCall: 10 * POINTS_PER_SERIES, unit: 'samples/sec' });
+    suite.add(
+      "query_select_10",
+      store.name,
+      () => {
+        qe.query(store, { metric, start, end });
+      },
+      { warmup: 5, iterations: 20, itemsPerCall: 10 * POINTS_PER_SERIES, unit: "samples/sec" }
+    );
   }
 
-  console.log('  ── Query: aggregated sum (10 series → 1) ──\n');
+  console.log("  ── Query: aggregated sum (10 series → 1) ──\n");
 
   for (const store of populated) {
-    const metric = 'metric_0';
+    const metric = "metric_0";
     const start = T0;
     const end = T0 + BigInt(POINTS_PER_SERIES) * INTERVAL;
 
-    suite.add('query_sum_10', store.name, () => {
-      qe.query(store, { metric, start, end, agg: 'sum' });
-    }, { warmup: 5, iterations: 20, itemsPerCall: 10 * POINTS_PER_SERIES, unit: 'samples/sec' });
+    suite.add(
+      "query_sum_10",
+      store.name,
+      () => {
+        qe.query(store, { metric, start, end, agg: "sum" });
+      },
+      { warmup: 5, iterations: 20, itemsPerCall: 10 * POINTS_PER_SERIES, unit: "samples/sec" }
+    );
   }
 
-  console.log('  ── Query: time range (last 10%) ──\n');
+  console.log("  ── Query: time range (last 10%) ──\n");
 
   for (const store of populated) {
     const rangeLen = BigInt(POINTS_PER_SERIES) * INTERVAL;
-    const start = T0 + rangeLen * 9n / 10n;
+    const start = T0 + (rangeLen * 9n) / 10n;
     const end = T0 + rangeLen;
 
-    suite.add('query_timerange', store.name, () => {
-      store.read(0, start, end);
-    }, { warmup: 10, iterations: 50, itemsPerCall: POINTS_PER_SERIES / 10, unit: 'samples/sec' });
+    suite.add(
+      "query_timerange",
+      store.name,
+      () => {
+        store.read(0, start, end);
+      },
+      { warmup: 10, iterations: 50, itemsPerCall: POINTS_PER_SERIES / 10, unit: "samples/sec" }
+    );
   }
 
   // ── Correctness check ──
@@ -465,14 +600,20 @@ export default async function(): Promise<BenchReport> {
       const otherData = other.read(0, start, end);
       // Precision-quantized backends legitimately differ from the baseline.
       // Skip cross-validation when comparing lossy vs lossless backends.
-      const isLossy = other.name.includes('-p');
-      const ok = refData.timestamps.length === otherData.timestamps.length &&
+      const isLossy = other.name.includes("-p");
+      const ok =
+        refData.timestamps.length === otherData.timestamps.length &&
         (isLossy
           ? refData.values.every((v, j) => Math.abs(v - otherData.values[j]!) < 0.01)
           : refData.values.every((v, j) => v === otherData.values[j]));
-      const detail = isLossy ? 'approx (precision-quantized)' : 'bit-exact';
-      suite.addValidation(ref.name, other.name, 'series_0_full', ok,
-        ok ? detail : `length ${refData.timestamps.length} vs ${otherData.timestamps.length}`);
+      const detail = isLossy ? "approx (precision-quantized)" : "bit-exact";
+      suite.addValidation(
+        ref.name,
+        other.name,
+        "series_0_full",
+        ok,
+        ok ? detail : `length ${refData.timestamps.length} vs ${otherData.timestamps.length}`
+      );
     }
   }
 
@@ -486,8 +627,8 @@ export default async function(): Promise<BenchReport> {
 // ── Helper: create a fresh backend by name ───────────────────────────
 
 async function freshBackend(name: string): Promise<StorageBackend> {
-  if (name === 'flat') {
-    const { FlatStore } = await import(pkgPath('dist/flat-store.js'));
+  if (name === "flat") {
+    const { FlatStore } = await import(pkgPath("dist/flat-store.js"));
     return new FlatStore();
   }
 
@@ -496,24 +637,24 @@ async function freshBackend(name: string): Promise<StorageBackend> {
   if (chunkedMatch) {
     const [, codecName, sizeStr] = chunkedMatch;
     const size = parseInt(sizeStr!, 10);
-    const { ChunkedStore } = await import(pkgPath('dist/chunked-store.js'));
+    const { ChunkedStore } = await import(pkgPath("dist/chunked-store.js"));
 
-    if (codecName === 'ts') {
-      const codec = await import(pkgPath('dist/codec.js'));
+    if (codecName === "ts") {
+      const codec = await import(pkgPath("dist/codec.js"));
       return new ChunkedStore(
-        { name: 'ts', encode: codec.encodeChunk, decode: codec.decodeChunk },
-        size,
+        { name: "ts", encode: codec.encodeChunk, decode: codec.decodeChunk },
+        size
       );
     }
 
-    if (codecName === 'rust-wasm') {
-      const { loadWasm, makeCodecImpl } = await import('./wasm-loader.js');
-      const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    if (codecName === "rust-wasm") {
+      const { loadWasm, makeCodecImpl } = await import("./wasm-loader.js");
+      const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
       const wasm = await loadWasm(wasmPath);
-      const impl = makeCodecImpl(wasm, 'rust', 'Rust→WASM');
+      const impl = makeCodecImpl(wasm, "rust", "Rust→WASM");
       return new ChunkedStore(
-        { name: 'rust-wasm', encode: impl.encode, decode: impl.decode },
-        size,
+        { name: "rust-wasm", encode: impl.encode, decode: impl.decode },
+        size
       );
     }
   }
@@ -523,65 +664,122 @@ async function freshBackend(name: string): Promise<StorageBackend> {
   if (columnMatch) {
     const [, codecName, sizeStr] = columnMatch;
     const size = parseInt(sizeStr!, 10);
-    const { ColumnStore } = await import(pkgPath('dist/column-store.js'));
-    const { loadWasm, makeValuesCodec, makeTimestampCodec, makeALPValuesCodec, makeALPRangeCodec } = await import('./wasm-loader.js');
-    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { loadWasm, makeValuesCodec, makeTimestampCodec, makeALPValuesCodec, makeALPRangeCodec } =
+      await import("./wasm-loader.js");
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
 
-    if (codecName === 'rust-wasm-values') {
+    if (codecName === "rust-wasm-values") {
       const wasmVals = makeValuesCodec(wasm);
       return new ColumnStore(
-        { name: 'rust-wasm-values', encodeValues: wasmVals.encodeValues, decodeValues: wasmVals.decodeValues, encodeValuesWithStats: wasmVals.encodeValuesWithStats },
-        size, () => 0,
+        {
+          name: "rust-wasm-values",
+          encodeValues: wasmVals.encodeValues,
+          decodeValues: wasmVals.decodeValues,
+          encodeValuesWithStats: wasmVals.encodeValuesWithStats,
+        },
+        size,
+        () => 0
       );
     }
 
-    if (codecName === 'rust-wasm-full') {
+    if (codecName === "rust-wasm-full") {
       const wasmVals = makeValuesCodec(wasm);
       const wasmTs = makeTimestampCodec(wasm);
       return new ColumnStore(
-        { name: 'rust-wasm-full', encodeValues: wasmVals.encodeValues, decodeValues: wasmVals.decodeValues, encodeValuesWithStats: wasmVals.encodeValuesWithStats },
-        size, () => 0, undefined,
-        { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
+        {
+          name: "rust-wasm-full",
+          encodeValues: wasmVals.encodeValues,
+          decodeValues: wasmVals.decodeValues,
+          encodeValuesWithStats: wasmVals.encodeValuesWithStats,
+        },
+        size,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        }
       );
     }
 
-    if (codecName === 'alp-full') {
+    if (codecName === "alp-full") {
       const alpVals = makeALPValuesCodec(wasm);
       const wasmTs = makeTimestampCodec(wasm);
       return new ColumnStore(
-        { name: 'alp-full', encodeValues: alpVals.encodeValues, decodeValues: alpVals.decodeValues, encodeValuesWithStats: alpVals.encodeValuesWithStats, encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats, decodeBatchValues: alpVals.decodeBatchValues },
-        size, () => 0, undefined,
-        { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
+        {
+          name: "alp-full",
+          encodeValues: alpVals.encodeValues,
+          decodeValues: alpVals.decodeValues,
+          encodeValuesWithStats: alpVals.encodeValuesWithStats,
+          encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats,
+          decodeBatchValues: alpVals.decodeBatchValues,
+        },
+        size,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        }
       );
     }
 
-    if (codecName === 'alp-range') {
+    if (codecName === "alp-range") {
       const alpVals = makeALPValuesCodec(wasm);
       const wasmTs = makeTimestampCodec(wasm);
       const rangeCodec = makeALPRangeCodec(wasm);
       return new ColumnStore(
-        { name: 'alp-range', encodeValues: alpVals.encodeValues, decodeValues: alpVals.decodeValues, encodeValuesWithStats: alpVals.encodeValuesWithStats, encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats, decodeBatchValues: alpVals.decodeBatchValues },
-        size, () => 0, undefined,
-        { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
-        rangeCodec,
+        {
+          name: "alp-range",
+          encodeValues: alpVals.encodeValues,
+          decodeValues: alpVals.decodeValues,
+          encodeValuesWithStats: alpVals.encodeValuesWithStats,
+          encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats,
+          decodeBatchValues: alpVals.decodeBatchValues,
+        },
+        size,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        },
+        rangeCodec
       );
     }
 
     // Precision-quantized variants: alp-p{N}.
-    const precMatch = codecName!.match(/^alp-p(\d+)$/);
+    const precMatch = codecName?.match(/^alp-p(\d+)$/);
     if (precMatch) {
       const precision = parseInt(precMatch[1]!, 10);
       const alpVals = makeALPValuesCodec(wasm);
       const wasmTs = makeTimestampCodec(wasm);
       const rangeCodec = makeALPRangeCodec(wasm);
       return new ColumnStore(
-        { name: `alp-p${precision}`, encodeValues: alpVals.encodeValues, decodeValues: alpVals.decodeValues, encodeValuesWithStats: alpVals.encodeValuesWithStats, encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats, decodeBatchValues: alpVals.decodeBatchValues },
-        size, () => 0, undefined,
-        { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
+        {
+          name: `alp-p${precision}`,
+          encodeValues: alpVals.encodeValues,
+          decodeValues: alpVals.decodeValues,
+          encodeValuesWithStats: alpVals.encodeValuesWithStats,
+          encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats,
+          decodeBatchValues: alpVals.decodeBatchValues,
+        },
+        size,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        },
         rangeCodec,
         undefined, // labelIndex
-        precision,
+        precision
       );
     }
   }
@@ -591,30 +789,58 @@ async function freshBackend(name: string): Promise<StorageBackend> {
   if (rgMatch) {
     const [, codecName, sizeStr] = rgMatch;
     const size = parseInt(sizeStr!, 10);
-    const { RowGroupStore } = await import(pkgPath('dist/row-group-store.js'));
-    const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import('./wasm-loader.js');
-    const wasmPath = pkgPath('wasm/o11ytsdb-rust.wasm');
+    const { RowGroupStore } = await import(pkgPath("dist/row-group-store.js"));
+    const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(
+      "./wasm-loader.js"
+    );
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
 
-    if (codecName === 'rg-alp-full') {
+    if (codecName === "rg-alp-full") {
       const alpVals = makeALPValuesCodec(wasm);
       const wasmTs = makeTimestampCodec(wasm);
       return new RowGroupStore(
-        { name: 'rg-alp-full', encodeValues: alpVals.encodeValues, decodeValues: alpVals.decodeValues, encodeValuesWithStats: alpVals.encodeValuesWithStats, encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats, decodeBatchValues: alpVals.decodeBatchValues },
-        size, () => 0, undefined,
-        { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
+        {
+          name: "rg-alp-full",
+          encodeValues: alpVals.encodeValues,
+          decodeValues: alpVals.decodeValues,
+          encodeValuesWithStats: alpVals.encodeValuesWithStats,
+          encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats,
+          decodeBatchValues: alpVals.decodeBatchValues,
+        },
+        size,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        }
       );
     }
 
-    if (codecName === 'rg-alp-range') {
+    if (codecName === "rg-alp-range") {
       const alpVals = makeALPValuesCodec(wasm);
       const wasmTs = makeTimestampCodec(wasm);
       const rangeCodec = makeALPRangeCodec(wasm);
       return new RowGroupStore(
-        { name: 'rg-alp-range', encodeValues: alpVals.encodeValues, decodeValues: alpVals.decodeValues, encodeValuesWithStats: alpVals.encodeValuesWithStats, encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats, decodeBatchValues: alpVals.decodeBatchValues },
-        size, () => 0, undefined,
-        { name: 'rust-wasm-ts', encodeTimestamps: wasmTs.encodeTimestamps, decodeTimestamps: wasmTs.decodeTimestamps },
-        rangeCodec,
+        {
+          name: "rg-alp-range",
+          encodeValues: alpVals.encodeValues,
+          decodeValues: alpVals.decodeValues,
+          encodeValuesWithStats: alpVals.encodeValuesWithStats,
+          encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats,
+          decodeBatchValues: alpVals.decodeBatchValues,
+        },
+        size,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        },
+        rangeCodec
       );
     }
   }

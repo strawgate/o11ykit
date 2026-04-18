@@ -1,35 +1,40 @@
 // ── Query Engine ─────────────────────────────────────────────────────
 
-import { lowerBound, upperBound } from './utils.js';
-
 function aggInit(fn) {
-  if (fn === 'min') return Infinity;
-  if (fn === 'max') return -Infinity;
+  if (fn === "min") return Infinity;
+  if (fn === "max") return -Infinity;
   return 0;
 }
 
 function aggAccum(acc, v, fn) {
   switch (fn) {
-    case 'sum': case 'avg': return acc + v;
-    case 'min': return v < acc ? v : acc;
-    case 'max': return v > acc ? v : acc;
-    case 'count': return acc + 1;
-    case 'last': return v;
-    default: return acc;
+    case "sum":
+    case "avg":
+      return acc + v;
+    case "min":
+      return v < acc ? v : acc;
+    case "max":
+      return v > acc ? v : acc;
+    case "count":
+      return acc + 1;
+    case "last":
+      return v;
+    default:
+      return acc;
   }
 }
 
 function aggFinalize(vals, counts, fn) {
-  if (fn === 'avg') for (let i = 0; i < vals.length; i++) if (counts[i] > 0) vals[i] /= counts[i];
+  if (fn === "avg") for (let i = 0; i < vals.length; i++) if (counts[i] > 0) vals[i] /= counts[i];
 }
 
 export class ScanEngine {
   query(storage, opts) {
-    let ids = storage.matchLabel('__name__', opts.metric);
+    let ids = storage.matchLabel("__name__", opts.metric);
     if (opts.matchers) {
       for (const m of opts.matchers) {
         const s = new Set(storage.matchLabel(m.label, m.value));
-        ids = ids.filter(id => s.has(id));
+        ids = ids.filter((id) => s.has(id));
       }
     }
     let scannedSamples = 0;
@@ -38,7 +43,11 @@ export class ScanEngine {
       for (const id of ids) {
         const data = storage.read(id, opts.start, opts.end);
         scannedSamples += data.timestamps.length;
-        series.push({ labels: storage.labels(id) ?? new Map(), timestamps: data.timestamps, values: data.values });
+        series.push({
+          labels: storage.labels(id) ?? new Map(),
+          timestamps: data.timestamps,
+          values: data.values,
+        });
       }
       return { series, scannedSeries: ids.length, scannedSamples };
     }
@@ -48,11 +57,18 @@ export class ScanEngine {
       const data = storage.read(id, opts.start, opts.end);
       scannedSamples += data.timestamps.length;
       const labels = storage.labels(id) ?? new Map();
-      const groupKey = opts.groupBy ? opts.groupBy.map(k => labels.get(k) ?? '').join('\0') : '__all__';
+      const groupKey = opts.groupBy
+        ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0")
+        : "__all__";
       let group = groups.get(groupKey);
       if (!group) {
-        const gl = new Map(); gl.set('__name__', opts.metric);
-        if (opts.groupBy) for (const k of opts.groupBy) { const v = labels.get(k); if (v) gl.set(k, v); }
+        const gl = new Map();
+        gl.set("__name__", opts.metric);
+        if (opts.groupBy)
+          for (const k of opts.groupBy) {
+            const v = labels.get(k);
+            if (v) gl.set(k, v);
+          }
         group = { labels: gl, ranges: [] };
         groups.set(groupKey, group);
       }
@@ -68,7 +84,8 @@ export class ScanEngine {
   }
 
   _aggregate(ranges, fn, step) {
-    if (ranges.length === 0) return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+    if (ranges.length === 0)
+      return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
     if (!step) return this._pointAggregate(ranges, fn);
     return this._stepAggregate(ranges, fn, step);
   }
@@ -78,7 +95,7 @@ export class ScanEngine {
     for (const r of ranges) if (r.timestamps.length > longest.timestamps.length) longest = r;
     const timestamps = longest.timestamps;
     const values = new Float64Array(timestamps.length);
-    if (fn === 'rate') {
+    if (fn === "rate") {
       const src = ranges[0];
       for (let i = 1; i < src.timestamps.length; i++) {
         const dt = Number(src.timestamps[i] - src.timestamps[i - 1]) / 1_000_000;
@@ -90,19 +107,23 @@ export class ScanEngine {
     const counts = new Float64Array(timestamps.length);
     for (const r of ranges) {
       const len = Math.min(r.values.length, timestamps.length);
-      for (let i = 0; i < len; i++) { values[i] = aggAccum(values[i], r.values[i], fn); counts[i]++; }
+      for (let i = 0; i < len; i++) {
+        values[i] = aggAccum(values[i], r.values[i], fn);
+        counts[i]++;
+      }
     }
     aggFinalize(values, counts, fn);
     return { timestamps, values };
   }
 
   _stepAggregate(ranges, fn, step) {
-    let minT = BigInt('9223372036854775807');
+    let minT = BigInt("9223372036854775807");
     let maxT = -minT;
     for (const r of ranges) {
       if (r.timestamps.length === 0) continue;
       if (r.timestamps[0] < minT) minT = r.timestamps[0];
-      if (r.timestamps[r.timestamps.length - 1] > maxT) maxT = r.timestamps[r.timestamps.length - 1];
+      if (r.timestamps[r.timestamps.length - 1] > maxT)
+        maxT = r.timestamps[r.timestamps.length - 1];
     }
     const bucketCount = Number((maxT - minT) / step) + 1;
     const timestamps = new BigInt64Array(bucketCount);

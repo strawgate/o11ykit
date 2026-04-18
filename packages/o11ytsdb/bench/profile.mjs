@@ -13,9 +13,9 @@
  */
 
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgDir = join(__dirname, "..");
@@ -39,10 +39,14 @@ function generateData() {
     for (let i = 0; i < POINTS_PER_SERIES; i++) {
       timestamps[i] = T0 + BigInt(i) * INTERVAL;
       // Realistic mix: counters, gauges, constant
-      if (s % 5 === 0) values[i] = 42.0; // constant
-      else if (s % 5 === 1) values[i] = i * 1.0; // monotonic counter
-      else if (s % 5 === 2) values[i] = Math.sin(i * 0.01) * 100; // smooth gauge
-      else if (s % 5 === 3) values[i] = Math.random() * 1000; // high variance
+      if (s % 5 === 0)
+        values[i] = 42.0; // constant
+      else if (s % 5 === 1)
+        values[i] = i * 1.0; // monotonic counter
+      else if (s % 5 === 2)
+        values[i] = Math.sin(i * 0.01) * 100; // smooth gauge
+      else if (s % 5 === 3)
+        values[i] = Math.random() * 1000; // high variance
       else values[i] = Math.floor(i / 100) * 10.0; // step function
     }
     const labels = new Map([
@@ -102,7 +106,16 @@ async function makeWasmCodecs(wasmBytes) {
       const s = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + 64));
       return {
         compressed,
-        stats: { minV: s[0], maxV: s[1], sum: s[2], count: s[3], firstV: s[4], lastV: s[5], sumOfSquares: s[6], resetCount: s[7] },
+        stats: {
+          minV: s[0],
+          maxV: s[1],
+          sum: s[2],
+          count: s[3],
+          firstV: s[4],
+          lastV: s[5],
+          sumOfSquares: s[6],
+          resetCount: s[7],
+        },
       };
     },
     encodeBatchValuesWithStats(arrays) {
@@ -113,30 +126,50 @@ async function makeWasmCodecs(wasmBytes) {
       const valsPtr = w.allocScratch(numArrays * chunkSize * 8);
       for (let i = 0; i < numArrays; i++) {
         const arr = arrays[i];
-        mem().set(new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength), valsPtr + i * chunkSize * 8);
+        mem().set(
+          new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength),
+          valsPtr + i * chunkSize * 8
+        );
       }
       const outCap = numArrays * chunkSize * 20;
       const outPtr = w.allocScratch(outCap);
       const offsetsPtr = w.allocScratch(numArrays * 4);
       const sizesPtr = w.allocScratch(numArrays * 4);
       const statsPtr = w.allocScratch(numArrays * 64);
-      const totalBytes = w.encodeBatchValuesWithStats(
-        valsPtr, chunkSize, numArrays, outPtr, outCap, offsetsPtr, sizesPtr, statsPtr
+      const _totalBytes = w.encodeBatchValuesWithStats(
+        valsPtr,
+        chunkSize,
+        numArrays,
+        outPtr,
+        outCap,
+        offsetsPtr,
+        sizesPtr,
+        statsPtr
       );
       // Read back results.
-      const offsets = new Uint32Array(w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4));
+      const offsets = new Uint32Array(
+        w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4)
+      );
       const sizes = new Uint32Array(w.memory.buffer.slice(sizesPtr, sizesPtr + numArrays * 4));
       const allStats = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
-      const outBuf = new Uint8Array(w.memory.buffer);
+      const _outBuf = new Uint8Array(w.memory.buffer);
       const results = [];
       for (let i = 0; i < numArrays; i++) {
-        const compressed = new Uint8Array(w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i]));
+        const compressed = new Uint8Array(
+          w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i])
+        );
         const si = i * 8;
         results.push({
           compressed,
           stats: {
-            minV: allStats[si], maxV: allStats[si+1], sum: allStats[si+2], count: allStats[si+3],
-            firstV: allStats[si+4], lastV: allStats[si+5], sumOfSquares: allStats[si+6], resetCount: allStats[si+7],
+            minV: allStats[si],
+            maxV: allStats[si + 1],
+            sum: allStats[si + 2],
+            count: allStats[si + 3],
+            firstV: allStats[si + 4],
+            lastV: allStats[si + 5],
+            sumOfSquares: allStats[si + 6],
+            resetCount: allStats[si + 7],
           },
         });
       }
@@ -152,7 +185,10 @@ async function makeWasmCodecs(wasmBytes) {
       const tsPtr = w.allocScratch(n * 8);
       const outCap = n * 20;
       const outPtr = w.allocScratch(outCap);
-      mem().set(new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength), tsPtr);
+      mem().set(
+        new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength),
+        tsPtr
+      );
       const bytesWritten = w.encodeTimestamps(tsPtr, n, outPtr, outCap);
       return new Uint8Array(w.memory.buffer.slice(outPtr, outPtr + bytesWritten));
     },
@@ -179,7 +215,9 @@ async function makeWasmCodecs(wasmBytes) {
       const m = mem();
       m.set(new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength), tsPtr);
       m.set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), valPtr);
-      return new Uint8Array(w.memory.buffer.slice(outPtr, outPtr + w.encodeChunk(tsPtr, valPtr, n, outPtr, outCap)));
+      return new Uint8Array(
+        w.memory.buffer.slice(outPtr, outPtr + w.encodeChunk(tsPtr, valPtr, n, outPtr, outCap))
+      );
     },
     decode(buf) {
       w.resetScratch();
@@ -230,7 +268,16 @@ async function makeWasmCodecs(wasmBytes) {
       const s = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + 64));
       return {
         compressed,
-        stats: { minV: s[0], maxV: s[1], sum: s[2], count: s[3], firstV: s[4], lastV: s[5], sumOfSquares: s[6], resetCount: s[7] },
+        stats: {
+          minV: s[0],
+          maxV: s[1],
+          sum: s[2],
+          count: s[3],
+          firstV: s[4],
+          lastV: s[5],
+          sumOfSquares: s[6],
+          resetCount: s[7],
+        },
       };
     },
     encodeBatchValuesWithStats(arrays) {
@@ -240,7 +287,10 @@ async function makeWasmCodecs(wasmBytes) {
       const valsPtr = w.allocScratch(numArrays * chunkSize * 8);
       for (let i = 0; i < numArrays; i++) {
         const arr = arrays[i];
-        mem().set(new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength), valsPtr + i * chunkSize * 8);
+        mem().set(
+          new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength),
+          valsPtr + i * chunkSize * 8
+        );
       }
       const outCap = numArrays * chunkSize * 20;
       const outPtr = w.allocScratch(outCap);
@@ -248,20 +298,37 @@ async function makeWasmCodecs(wasmBytes) {
       const sizesPtr = w.allocScratch(numArrays * 4);
       const statsPtr = w.allocScratch(numArrays * 64);
       w.encodeBatchValuesALPWithStats(
-        valsPtr, chunkSize, numArrays, outPtr, outCap, offsetsPtr, sizesPtr, statsPtr
+        valsPtr,
+        chunkSize,
+        numArrays,
+        outPtr,
+        outCap,
+        offsetsPtr,
+        sizesPtr,
+        statsPtr
       );
-      const offsets = new Uint32Array(w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4));
+      const offsets = new Uint32Array(
+        w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4)
+      );
       const sizes = new Uint32Array(w.memory.buffer.slice(sizesPtr, sizesPtr + numArrays * 4));
       const allStats = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
       const results = [];
       for (let i = 0; i < numArrays; i++) {
-        const compressed = new Uint8Array(w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i]));
+        const compressed = new Uint8Array(
+          w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i])
+        );
         const si = i * 8;
         results.push({
           compressed,
           stats: {
-            minV: allStats[si], maxV: allStats[si+1], sum: allStats[si+2], count: allStats[si+3],
-            firstV: allStats[si+4], lastV: allStats[si+5], sumOfSquares: allStats[si+6], resetCount: allStats[si+7],
+            minV: allStats[si],
+            maxV: allStats[si + 1],
+            sum: allStats[si + 2],
+            count: allStats[si + 3],
+            firstV: allStats[si + 4],
+            lastV: allStats[si + 5],
+            sumOfSquares: allStats[si + 6],
+            resetCount: allStats[si + 7],
           },
         });
       }
@@ -281,11 +348,15 @@ async function makeWasmCodecs(wasmBytes) {
       const outTsPtr = w.allocScratch(maxSamples * 8);
       const outValPtr = w.allocScratch(maxSamples * 8);
       const n = w.rangeDecodeALP(
-        tsInPtr, compressedTs.length,
-        valInPtr, compressedVals.length,
-        startT, endT,
-        outTsPtr, outValPtr,
-        maxSamples,
+        tsInPtr,
+        compressedTs.length,
+        valInPtr,
+        compressedVals.length,
+        startT,
+        endT,
+        outTsPtr,
+        outValPtr,
+        maxSamples
       );
       if (n === 0) {
         return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
@@ -359,7 +430,7 @@ async function profileBackend(name, makeStore, data, TOTAL_SAMPLES) {
   const ingestMs = tIngestEnd - tIngestStart;
   result.phases.ingest = {
     ms: ingestMs,
-    rate: TOTAL_SAMPLES / ingestMs * 1000,
+    rate: (TOTAL_SAMPLES / ingestMs) * 1000,
     mem: memDelta(snapCreate, snapIngest),
   };
 
@@ -383,7 +454,7 @@ async function profileBackend(name, makeStore, data, TOTAL_SAMPLES) {
   const snapQuery = gcAndSnap();
   result.phases.query = {
     ms: queryMs,
-    rate: totalRead / queryMs * 1000,
+    rate: (totalRead / queryMs) * 1000,
     mem: memDelta(snapIngest, snapQuery),
     samplesRead: totalRead,
   };
@@ -403,12 +474,16 @@ async function profileBackend(name, makeStore, data, TOTAL_SAMPLES) {
   if (ok) {
     for (let i = 0; i < expectedLen; i++) {
       if (r0.timestamps[i] !== data[0].timestamps[i]) {
-        console.log(`    ⚠ ts mismatch at [${i}]: expected ${data[0].timestamps[i]}, got ${r0.timestamps[i]} (diff=${Number(r0.timestamps[i] - data[0].timestamps[i])})`);
+        console.log(
+          `    ⚠ ts mismatch at [${i}]: expected ${data[0].timestamps[i]}, got ${r0.timestamps[i]} (diff=${Number(r0.timestamps[i] - data[0].timestamps[i])})`
+        );
         ok = false;
         break;
       }
       if (Math.abs(r0.values[i] - data[0].values[i]) > 1e-10) {
-        console.log(`    ⚠ val mismatch at [${i}]: expected ${data[0].values[i]}, got ${r0.values[i]}`);
+        console.log(
+          `    ⚠ val mismatch at [${i}]: expected ${data[0].values[i]}, got ${r0.values[i]}`
+        );
         ok = false;
         break;
       }
@@ -430,7 +505,10 @@ async function main() {
   const positional = [];
   for (let i = 2; i < process.argv.length; i++) {
     const a = process.argv[i];
-    if (a === "--repeat" || a === "--dataset") { i++; continue; }
+    if (a === "--repeat" || a === "--dataset") {
+      i++;
+      continue;
+    }
     if (a.startsWith("--")) continue;
     positional.push(a);
   }
@@ -450,13 +528,16 @@ async function main() {
     const { loadOtelData } = await import(join(__dirname, "load-otel.mjs"));
     data = await loadOtelData(otelPath, { repeat });
     TOTAL_SAMPLES = data.reduce((s, d) => s + d.timestamps.length, 0);
-    console.log(`  Data source: OTel ${dataset} (${data.length} series, ${TOTAL_SAMPLES.toLocaleString()} pts${repeat > 1 ? `, ×${repeat}` : ""})\n`);
+    console.log(
+      `  Data source: OTel ${dataset} (${data.length} series, ${TOTAL_SAMPLES.toLocaleString()} pts${repeat > 1 ? `, ×${repeat}` : ""})\n`
+    );
   } else {
     data = generateData();
     TOTAL_SAMPLES = NUM_SERIES * POINTS_PER_SERIES;
   }
   const wasmBytes = loadWasmSync();
-  const { valuesCodec, alpValuesCodec, tsCodec, fullCodec, alpRangeCodec } = await makeWasmCodecs(wasmBytes);
+  const { valuesCodec, alpValuesCodec, tsCodec, fullCodec, alpRangeCodec } =
+    await makeWasmCodecs(wasmBytes);
 
   const backends = [];
 
@@ -515,12 +596,22 @@ async function main() {
       name: `column-alp-fused-${CHUNK_SIZE}`,
       make: async () => {
         const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
-        return () => new ColumnStore(alpValuesCodec, CHUNK_SIZE, makeGrouper(), undefined, tsCodec, alpRangeCodec);
+        return () =>
+          new ColumnStore(
+            alpValuesCodec,
+            CHUNK_SIZE,
+            makeGrouper(),
+            undefined,
+            tsCodec,
+            alpRangeCodec
+          );
       },
     },
   ];
 
-  console.log(`\n  Profile: ${data.length} series, ${TOTAL_SAMPLES.toLocaleString()} samples (chunk=${CHUNK_SIZE})\n`);
+  console.log(
+    `\n  Profile: ${data.length} series, ${TOTAL_SAMPLES.toLocaleString()} samples (chunk=${CHUNK_SIZE})\n`
+  );
 
   for (const def of defs) {
     if (filter && !def.name.includes(filter)) continue;
@@ -531,9 +622,15 @@ async function main() {
 
   // ── Summary table ──
 
-  console.log("  ┌─────────────────────────────┬──────────┬──────────┬──────────┬────────┬───────┬────┐");
-  console.log("  │ Backend                     │  Ingest  │  Query   │   Mem    │ B/pt   │ Heap  │ OK │");
-  console.log("  ├─────────────────────────────┼──────────┼──────────┼──────────┼────────┼───────┼────┤");
+  console.log(
+    "  ┌─────────────────────────────┬──────────┬──────────┬──────────┬────────┬───────┬────┐"
+  );
+  console.log(
+    "  │ Backend                     │  Ingest  │  Query   │   Mem    │ B/pt   │ Heap  │ OK │"
+  );
+  console.log(
+    "  ├─────────────────────────────┼──────────┼──────────┼──────────┼────────┼───────┼────┤"
+  );
 
   for (const r of backends) {
     const ingestStr = `${fmtRate(r.phases.ingest.rate)}/s`.padStart(8);
@@ -542,20 +639,32 @@ async function main() {
     const bptStr = `${r.bPerPt.toFixed(1)}`.padStart(6);
     const heapStr = fmtBytes(r.totalMem.heap).padStart(5);
     const ok = r.correct ? "✓" : "✗";
-    console.log(`  │ ${r.name.padEnd(27)} │ ${ingestStr} │ ${queryStr} │ ${memStr} │ ${bptStr} │ ${heapStr} │ ${ok}  │`);
+    console.log(
+      `  │ ${r.name.padEnd(27)} │ ${ingestStr} │ ${queryStr} │ ${memStr} │ ${bptStr} │ ${heapStr} │ ${ok}  │`
+    );
   }
-  console.log("  └─────────────────────────────┴──────────┴──────────┴──────────┴────────┴───────┴────┘");
+  console.log(
+    "  └─────────────────────────────┴──────────┴──────────┴──────────┴────────┴───────┴────┘"
+  );
 
   // ── Detailed per-backend breakdown ──
 
   if (filter || backends.length === 1) {
     for (const r of backends) {
       console.log(`\n  ── ${r.name} detailed ──\n`);
-      console.log(`    Create:  ${r.phases.create.ms.toFixed(1)}ms  heap: ${fmtBytes(r.phases.create.mem.heap)}  ab: ${fmtBytes(r.phases.create.mem.ab)}`);
-      console.log(`    Ingest:  ${r.phases.ingest.ms.toFixed(1)}ms  ${fmtRate(r.phases.ingest.rate)} samples/s  heap: ${fmtBytes(r.phases.ingest.mem.heap)}  ab: ${fmtBytes(r.phases.ingest.mem.ab)}`);
-      console.log(`    Query:   ${r.phases.query.ms.toFixed(1)}ms  ${fmtRate(r.phases.query.rate)} samples/s  heap: ${fmtBytes(r.phases.query.mem.heap)}  ab: ${fmtBytes(r.phases.query.mem.ab)}`);
+      console.log(
+        `    Create:  ${r.phases.create.ms.toFixed(1)}ms  heap: ${fmtBytes(r.phases.create.mem.heap)}  ab: ${fmtBytes(r.phases.create.mem.ab)}`
+      );
+      console.log(
+        `    Ingest:  ${r.phases.ingest.ms.toFixed(1)}ms  ${fmtRate(r.phases.ingest.rate)} samples/s  heap: ${fmtBytes(r.phases.ingest.mem.heap)}  ab: ${fmtBytes(r.phases.ingest.mem.ab)}`
+      );
+      console.log(
+        `    Query:   ${r.phases.query.ms.toFixed(1)}ms  ${fmtRate(r.phases.query.rate)} samples/s  heap: ${fmtBytes(r.phases.query.mem.heap)}  ab: ${fmtBytes(r.phases.query.mem.ab)}`
+      );
       console.log(`    Store:   ${fmtBytes(r.storeMemory)}  (${r.bPerPt.toFixed(1)} B/pt)`);
-      console.log(`    Total:   rss=${fmtBytes(r.totalMem.rss)}  heap=${fmtBytes(r.totalMem.heap)}  ab=${fmtBytes(r.totalMem.ab)}`);
+      console.log(
+        `    Total:   rss=${fmtBytes(r.totalMem.rss)}  heap=${fmtBytes(r.totalMem.heap)}  ab=${fmtBytes(r.totalMem.ab)}`
+      );
     }
   }
 
@@ -563,17 +672,29 @@ async function main() {
 
   if (backends.length > 1) {
     console.log("\n  ── Phase timing breakdown (ms) ──\n");
-    console.log(`  ${"Backend".padEnd(28)} ${"Create".padStart(8)} ${"Ingest".padStart(8)} ${"Query".padStart(8)} ${"Total".padStart(8)}`);
-    console.log(`  ${"─".repeat(28)} ${"─".repeat(8)} ${"─".repeat(8)} ${"─".repeat(8)} ${"─".repeat(8)}`);
+    console.log(
+      `  ${"Backend".padEnd(28)} ${"Create".padStart(8)} ${"Ingest".padStart(8)} ${"Query".padStart(8)} ${"Total".padStart(8)}`
+    );
+    console.log(
+      `  ${"─".repeat(28)} ${"─".repeat(8)} ${"─".repeat(8)} ${"─".repeat(8)} ${"─".repeat(8)}`
+    );
     for (const r of backends) {
       const total = r.phases.create.ms + r.phases.ingest.ms + r.phases.query.ms;
-      console.log(`  ${r.name.padEnd(28)} ${r.phases.create.ms.toFixed(1).padStart(8)} ${r.phases.ingest.ms.toFixed(1).padStart(8)} ${r.phases.query.ms.toFixed(1).padStart(8)} ${total.toFixed(1).padStart(8)}`);
+      console.log(
+        `  ${r.name.padEnd(28)} ${r.phases.create.ms.toFixed(1).padStart(8)} ${r.phases.ingest.ms.toFixed(1).padStart(8)} ${r.phases.query.ms.toFixed(1).padStart(8)} ${total.toFixed(1).padStart(8)}`
+      );
     }
   }
 
   console.log("");
-  const anyFail = backends.some(r => !r.correct);
-  if (anyFail) { console.log("  CORRECTNESS FAILURE\n"); process.exit(1); }
+  const anyFail = backends.some((r) => !r.correct);
+  if (anyFail) {
+    console.log("  CORRECTNESS FAILURE\n");
+    process.exit(1);
+  }
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Suite, printReport } from "./harness.js";
+import { printReport, Suite } from "./harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgPath = (rel: string) => join(__dirname, "..", "..", rel);
@@ -20,16 +20,32 @@ export default async function runInternerBench() {
   const { Interner } = await import(pkgPath("dist/interner.js"));
   const tsInterner = new Interner();
 
-  suite.add("intern_10k", "ts", () => {
-    for (const s of strings) tsInterner.intern(s);
-  }, { iterations: 200, itemsPerCall: strings.length });
+  suite.add(
+    "intern_10k",
+    "ts",
+    () => {
+      for (const s of strings) tsInterner.intern(s);
+    },
+    { iterations: 200, itemsPerCall: strings.length }
+  );
 
-  suite.add("resolve_10k", "ts", () => {
-    for (let i = 0; i < strings.length; i++) tsInterner.resolve(i);
-  }, { iterations: 300, itemsPerCall: strings.length });
+  suite.add(
+    "resolve_10k",
+    "ts",
+    () => {
+      for (let i = 0; i < strings.length; i++) tsInterner.resolve(i);
+    },
+    { iterations: 300, itemsPerCall: strings.length }
+  );
 
   const rawUtf16Bytes = strings.reduce((sum, s) => sum + s.length * 2, 0);
-  suite.addCompression("string_memory", "ts", strings.length, rawUtf16Bytes, tsInterner.memoryBytes());
+  suite.addCompression(
+    "string_memory",
+    "ts",
+    strings.length,
+    rawUtf16Bytes,
+    tsInterner.memoryBytes()
+  );
 
   try {
     const wasmBytes = readFileSync(pkgPath("wasm/o11ytsdb-rust.wasm"));
@@ -42,14 +58,19 @@ export default async function runInternerBench() {
     if (wasm.internerReset && wasm.internerIntern) {
       const encoder = new TextEncoder();
       wasm.internerReset();
-      suite.add("intern_10k", "rust-wasm", () => {
-        const mem = new Uint8Array(wasm.memory.buffer);
-        for (const s of strings) {
-          const bytes = encoder.encode(s);
-          mem.set(bytes, 0);
-          wasm.internerIntern(0, bytes.length);
-        }
-      }, { iterations: 200, itemsPerCall: strings.length });
+      suite.add(
+        "intern_10k",
+        "rust-wasm",
+        () => {
+          const mem = new Uint8Array(wasm.memory.buffer);
+          for (const s of strings) {
+            const bytes = encoder.encode(s);
+            mem.set(bytes, 0);
+            wasm.internerIntern(0, bytes.length);
+          }
+        },
+        { iterations: 200, itemsPerCall: strings.length }
+      );
 
       const checkTs = new Interner();
       wasm.internerReset();
@@ -63,10 +84,22 @@ export default async function runInternerBench() {
           break;
         }
       }
-      suite.addValidation("ts", "rust-wasm", "same-id-sequence", valid, valid ? "matched" : "mismatch");
+      suite.addValidation(
+        "ts",
+        "rust-wasm",
+        "same-id-sequence",
+        valid,
+        valid ? "matched" : "mismatch"
+      );
     }
   } catch (err: any) {
-    suite.addValidation("ts", "rust-wasm", "same-id-sequence", false, `skipped: ${err.message ?? err}`);
+    suite.addValidation(
+      "ts",
+      "rust-wasm",
+      "same-id-sequence",
+      false,
+      `skipped: ${err.message ?? err}`
+    );
   }
 
   const report = suite.run();

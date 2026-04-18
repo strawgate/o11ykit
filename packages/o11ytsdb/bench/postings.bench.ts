@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Suite, printReport } from "./harness.js";
+import { printReport, Suite } from "./harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgPath = (rel: string) => join(__dirname, "..", "..", rel);
@@ -9,19 +9,21 @@ const pkgPath = (rel: string) => join(__dirname, "..", "..", rel);
 function makeSeriesLabels(n: number): Map<string, string>[] {
   const out: Map<string, string>[] = [];
   for (let i = 0; i < n; i++) {
-    out.push(new Map([
-      ["__name__", "http_requests_total"],
-      ["service", `svc-${i % 200}`],
-      ["region", `r-${i % 10}`],
-      ["env", i % 2 === 0 ? "prod" : "dev"],
-    ]));
+    out.push(
+      new Map([
+        ["__name__", "http_requests_total"],
+        ["service", `svc-${i % 200}`],
+        ["region", `r-${i % 10}`],
+        ["env", i % 2 === 0 ? "prod" : "dev"],
+      ])
+    );
   }
   return out;
 }
 
 function naiveIntersect(a: number[], b: number[]): number[] {
   const s = new Set(b);
-  return a.filter(x => s.has(x));
+  return a.filter((x) => s.has(x));
 }
 
 function makeSorted(size: number, stride: number): number[] {
@@ -38,9 +40,14 @@ export default async function runPostingsBench() {
   const postings = new MemPostings();
   labels.forEach((l, i) => postings.add(i, l));
 
-  suite.add("lookup_1_label", "ts", () => {
-    postings.get("env", "prod");
-  }, { iterations: 20_000 });
+  suite.add(
+    "lookup_1_label",
+    "ts",
+    () => {
+      postings.get("env", "prod");
+    },
+    { iterations: 20_000 }
+  );
 
   const sizes = [100, 1000, 10_000];
   for (const size of sizes) {
@@ -51,20 +58,30 @@ export default async function runPostingsBench() {
     suite.add(`intersect_naive_${size}`, "baseline", () => naiveIntersect(a, b), { iterations });
   }
 
-  suite.add("query_match_postings", "ts", () => {
-    const idsA = postings.get("__name__", "http_requests_total");
-    const idsB = postings.get("env", "prod");
-    postings.intersect(idsA, idsB);
-  }, { iterations: 20_000 });
+  suite.add(
+    "query_match_postings",
+    "ts",
+    () => {
+      const idsA = postings.get("__name__", "http_requests_total");
+      const idsB = postings.get("env", "prod");
+      postings.intersect(idsA, idsB);
+    },
+    { iterations: 20_000 }
+  );
 
-  suite.add("query_match_linear_scan", "baseline", () => {
-    const out: number[] = [];
-    for (let i = 0; i < labels.length; i++) {
-      const set = labels[i]!;
-      if (set.get("__name__") === "http_requests_total" && set.get("env") === "prod") out.push(i);
-    }
-    return out;
-  }, { iterations: 2_000 });
+  suite.add(
+    "query_match_linear_scan",
+    "baseline",
+    () => {
+      const out: number[] = [];
+      for (let i = 0; i < labels.length; i++) {
+        const set = labels[i]!;
+        if (set.get("__name__") === "http_requests_total" && set.get("env") === "prod") out.push(i);
+      }
+      return out;
+    },
+    { iterations: 2_000 }
+  );
 
   const report = suite.run();
   printReport(report);

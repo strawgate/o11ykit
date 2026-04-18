@@ -133,6 +133,7 @@ export class RowGroupStore implements StorageBackend {
       });
     }
 
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const group = this.groups[groupId]!;
     const memberIndex = group.members.length;
     group.members.push(id);
@@ -146,7 +147,9 @@ export class RowGroupStore implements StorageBackend {
   }
 
   append(id: SeriesId, timestamp: bigint, value: number): void {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.allSeries[id]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const group = this.groups[s.groupId]!;
 
     if (s.hot.count === group.hotCount) {
@@ -167,7 +170,9 @@ export class RowGroupStore implements StorageBackend {
   }
 
   appendBatch(id: SeriesId, timestamps: BigInt64Array, values: Float64Array): void {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.allSeries[id]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const group = this.groups[s.groupId]!;
     let offset = 0;
     const len = timestamps.length;
@@ -204,6 +209,7 @@ export class RowGroupStore implements StorageBackend {
       if (this.quantize) {
         const q = this.quantize;
         for (let i = 0; i < batch; i++) {
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           s.hot.values[s.hot.count + i] = q(values[offset + i]!);
         }
       } else {
@@ -230,22 +236,28 @@ export class RowGroupStore implements StorageBackend {
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.allSeries[id]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const group = this.groups[s.groupId]!;
     const parts: TimeRange[] = [];
 
     if (this.rangeCodec && this.tsCodec) {
       for (const rg of group.rowGroups) {
         if (s.memberIndex >= rg.memberCount) continue;
+        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const tsChunk = group.frozenTimestamps[rg.tsChunkIndex]!;
         if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
         const compressedValues = rg.valueBuffer.subarray(
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           rg.offsets[s.memberIndex]!,
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           rg.offsets[s.memberIndex]! + rg.sizes[s.memberIndex]!
         );
 
         const result = this.rangeCodec.rangeDecodeValues(
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           tsChunk.compressed!,
           compressedValues,
           start,
@@ -254,6 +266,7 @@ export class RowGroupStore implements StorageBackend {
         if (result.timestamps.length > 0) {
           parts.push(result);
           if (!tsChunk.timestamps) {
+            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed!);
           }
         }
@@ -261,16 +274,20 @@ export class RowGroupStore implements StorageBackend {
     } else {
       for (const rg of group.rowGroups) {
         if (s.memberIndex >= rg.memberCount) continue;
+        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const tsChunk = group.frozenTimestamps[rg.tsChunkIndex]!;
         if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
         if (!tsChunk.timestamps && this.tsCodec && tsChunk.compressed) {
           tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed);
         }
+        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const timestamps = tsChunk.timestamps!;
 
         const compressedValues = rg.valueBuffer.subarray(
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           rg.offsets[s.memberIndex]!,
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           rg.offsets[s.memberIndex]! + rg.sizes[s.memberIndex]!
         );
         const values = this.valuesCodec.decodeValues(compressedValues);
@@ -347,6 +364,7 @@ export class RowGroupStore implements StorageBackend {
   private maybeFreeze(group: SeriesGroup): void {
     let minCount = Infinity;
     for (const memberId of group.members) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const c = this.allSeries[memberId]!.hot.count;
       if (c < minCount) minCount = c;
     }
@@ -369,14 +387,18 @@ export class RowGroupStore implements StorageBackend {
         const compressed = this.tsCodec.encodeTimestamps(ts);
         group.frozenTimestamps.push({
           compressed,
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           minT: ts[0]!,
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           maxT: ts[this.chunkSize - 1]!,
           count: this.chunkSize,
         });
       } else {
         group.frozenTimestamps.push({
           timestamps: ts,
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           minT: ts[0]!,
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           maxT: ts[this.chunkSize - 1]!,
           count: this.chunkSize,
         });
@@ -392,11 +414,14 @@ export class RowGroupStore implements StorageBackend {
           const bEnd = Math.min(bStart + BATCH_CAP, numMembers);
           const arrays: Float64Array[] = [];
           for (let m = bStart; m < bEnd; m++) {
+            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             const s = this.allSeries[group.members[m]!]!;
             arrays.push(s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize));
           }
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           const results = this.valuesCodec.encodeBatchValuesWithStats!(arrays);
           for (let m = 0; m < results.length; m++) {
+            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             const { compressed, stats } = results[m]!;
             blobs.push(compressed);
             allStats.push(stats);
@@ -404,12 +429,14 @@ export class RowGroupStore implements StorageBackend {
         }
       } else {
         for (const memberId of group.members) {
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           const s = this.allSeries[memberId]!;
           const vals = s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
 
           let compressed: Uint8Array;
           let stats: ChunkStats;
           if (hasWasmStats) {
+            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             const result = this.valuesCodec.encodeValuesWithStats!(vals);
             compressed = result.compressed;
             stats = result.stats;
@@ -433,12 +460,14 @@ export class RowGroupStore implements StorageBackend {
 
       let pos = 0;
       for (let m = 0; m < numMembers; m++) {
+        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const blob = blobs[m]!;
         valueBuffer.set(blob, pos);
         offsets[m] = pos;
         sizes[m] = blob.byteLength;
         pos += blob.byteLength;
 
+        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const st = allStats[m]!;
         const si = m * 8;
         packedStats[si] = st.minV;
@@ -464,6 +493,7 @@ export class RowGroupStore implements StorageBackend {
     // Shift remaining hot data back.
     const frozenSamples = chunksToFreeze * this.chunkSize;
     for (const memberId of group.members) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const s = this.allSeries[memberId]!;
       const remaining = s.hot.count - frozenSamples;
       if (remaining > 0) {
