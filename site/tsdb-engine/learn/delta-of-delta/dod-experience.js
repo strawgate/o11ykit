@@ -6,7 +6,7 @@
  */
 
 import {
-  $, el, buildBreadcrumb, buildStat, fmt, fmtBytes, zigzagEncode, generateSamples,
+  $, el, buildBreadcrumb, buildStat, fmt, fmtBytes, zigzagEncode, generateSamples, initGlossary,
 } from '../shared.js';
 
 /* ─── Constants ───────────────────────────────────────────────────── */
@@ -291,10 +291,10 @@ function renderSummary() {
   const t0Pct = tierTotal > 0 ? Math.round((data.tierCounts[0] / tierTotal) * 100) : 0;
 
   if (jitterMs === 0) {
-    story.innerHTML = `With <strong>0 ms jitter</strong>, ${t0Pct}% of deltas-of-deltas are exactly zero — each costs only <strong>1 bit</strong>. The entire timestamp column compresses to <strong>${ratio.toFixed(0)}× smaller</strong> than raw 8-byte timestamps.`;
+    story.innerHTML = `With <strong>0 ms jitter</strong>, ${t0Pct}% of <span class="xp-term" data-term="delta-of-delta">deltas-of-deltas</span> are exactly zero — each costs only <strong>1 bit</strong>. The entire timestamp column compresses to <strong>${ratio.toFixed(0)}× smaller</strong> than raw 8-byte timestamps.`;
   } else {
     const warnClass = avgBits > 10 ? ' warn' : '';
-    story.innerHTML = `With <strong class="${warnClass}">${fmt(jitterMs)} ms jitter</strong>, only ${t0Pct}% of ΔoΔ values are zero. Average encoding cost rises to <strong class="${warnClass}">${avgBits.toFixed(1)} bits/timestamp</strong>. Compression ratio: <strong>${ratio.toFixed(1)}×</strong>.`;
+    story.innerHTML = `With <strong class="${warnClass}">${fmt(jitterMs)} ms jitter</strong>, only ${t0Pct}% of <span class="xp-term" data-term="delta-of-delta">ΔoΔ</span> values are zero. Average encoding cost rises to <strong class="${warnClass}">${avgBits.toFixed(1)} bits/timestamp</strong>. Compression ratio: <strong>${ratio.toFixed(1)}×</strong>.`;
   }
 }
 
@@ -341,6 +341,7 @@ function init() {
 
   // Initial render
   renderAll();
+  initGlossary();
 }
 
 document.addEventListener('DOMContentLoaded', init);

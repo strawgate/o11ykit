@@ -18,6 +18,7 @@ import {
   float64ToBits,
   fmt,
   fmtBytes,
+  initGlossary,
 } from "../shared.js";
 
 /* ─── Constants ───────────────────────────────────────────────────── */
@@ -300,7 +301,7 @@ function renderDecisionTree() {
     <div class="dt-flow">
       <div class="dt-row">
         <div class="${nc("xor-q")}">
-          <span class="dt-label">XOR = 0 ?</span>
+          <span class="dt-label"><span class="xp-term" data-term="XOR">XOR</span> = 0 ?</span>
         </div>
         <div class="${ac("xor-yes")}">
           <span class="dt-lbl dt-lbl-yes">yes</span>
@@ -318,7 +319,7 @@ function renderDecisionTree() {
 
       <div class="dt-row">
         <div class="${nc("window-q")}">
-          <span class="dt-label">Window fits ?</span>
+          <span class="dt-label"><span class="xp-term" data-term="window">Window</span> fits ?</span>
           <span class="dt-cost">lead ≥ prev_lead &amp;&amp; trail ≥ prev_trail</span>
         </div>
         <div class="${ac("win-yes")}">
@@ -326,7 +327,7 @@ function renderDecisionTree() {
           <span class="dt-arrow-line">→</span>
         </div>
         <div class="${nc("reuse")}">
-          <span class="dt-label">Write "<code>10</code>" + meaningful</span>
+          <span class="dt-label">Write "<code>10</code>" + <span class="xp-term" data-term="meaningful bits">meaningful</span></span>
           <span class="dt-cost">2 + M bits${isReuse ? costNote : ""}</span>
         </div>
       </div>
@@ -337,7 +338,7 @@ function renderDecisionTree() {
 
       <div class="dt-row">
         <div class="${nc("new")}">
-          <span class="dt-label">Write "<code>11</code>" + 6‑bit lead + 6‑bit len + meaningful</span>
+          <span class="dt-label">Write "<code>11</code>" + 6‑bit lead + 6‑bit len + <span class="xp-term" data-term="meaningful bits">meaningful</span></span>
           <span class="dt-cost">14 + M bits${isNew ? costNote : ""}</span>
         </div>
       </div>
@@ -447,6 +448,14 @@ function buildFirstValueDetail(row) {
   const panel = el("div", { class: "xor-detail-panel xp-animate-in" });
   panel.appendChild(el("h3", {}, `Value #${row.idx}: ${row.value} — stored as raw 64 bits`));
   panel.appendChild(buildBitGrid(row.bits, { label: "IEEE 754 bits" }));
+  const ieee754Note = el(
+    "p",
+    { class: "xor-ieee-note" },
+    `Each float64 is: 1 sign bit + 11 exponent bits + 52 fraction bits (`,
+    el("span", { class: "xp-term", "data-term": "IEEE 754" }, "IEEE 754"),
+    `)`
+  );
+  panel.appendChild(ieee754Note);
 
   const encSection = el("div", { class: "xor-encoded-section" });
   encSection.appendChild(el("div", { class: "xor-bitgrid-label" }, "Encoded output"));
@@ -508,9 +517,9 @@ function buildDetailPanel(row) {
   if (row.encoding === "identical") {
     encGrid.appendChild(el("span", { class: "xor-enc-bit enc-ctrl" }, "0"));
     encSection.appendChild(encGrid);
-    encSection.appendChild(
-      el("div", { class: "xor-enc-annotation" }, '"0" → values are identical. Total: 1 bit.')
-    );
+    const ann = el("div", { class: "xor-enc-annotation" });
+    ann.innerHTML = `"0" → values are identical. Total: 1 bit.`;
+    encSection.appendChild(ann);
   } else if (row.encoding === "reuse") {
     // Control: "10"
     encGrid.appendChild(el("span", { class: "xor-enc-bit enc-ctrl" }, "1"));
@@ -523,13 +532,11 @@ function buildDetailPanel(row) {
       encGrid.appendChild(el("span", { class: "xor-enc-bit enc-data" }, row.xorBits[i]));
     }
     encSection.appendChild(encGrid);
-    encSection.appendChild(
-      el(
-        "div",
-        { class: "xor-enc-annotation" },
-        `"1" (not identical) + "0" (reuse window) + ${row.windowMeaningful} bits in window [${wl}…${63 - wt}] = ${row.cost} bits total`
-      )
-    );
+    const ann = el("div", { class: "xor-enc-annotation" });
+    ann.innerHTML =
+      `"1" (not identical) + "0" (reuse <span class="xp-term" data-term="window">window</span>) + ` +
+      `${row.windowMeaningful} bits in <span class="xp-term" data-term="window">window</span> [${wl}…${63 - wt}] = ${row.cost} bits total`;
+    encSection.appendChild(ann);
 
     // Legend
     const legend = el("div", { class: "xor-enc-legend" });
@@ -560,13 +567,13 @@ function buildDetailPanel(row) {
       encGrid.appendChild(el("span", { class: "xor-enc-bit enc-data" }, row.xorBits[i]));
     }
     encSection.appendChild(encGrid);
-    encSection.appendChild(
-      el(
-        "div",
-        { class: "xor-enc-annotation" },
-        `"11" (new window) + ${lzBin} (leading=${row.leadingZeros}) + ${mlBin} (meaningful=${row.meaningfulBits}) + ${row.meaningfulBits} data bits = ${row.cost} bits total`
-      )
-    );
+    const ann = el("div", { class: "xor-enc-annotation" });
+    ann.innerHTML =
+      `"11" (new <span class="xp-term" data-term="window">window</span>) + ` +
+      `${lzBin} (<span class="xp-term" data-term="leading zeros">leading</span>=${row.leadingZeros}) + ` +
+      `${mlBin} (<span class="xp-term" data-term="meaningful bits">meaningful</span>=${row.meaningfulBits}) + ` +
+      `${row.meaningfulBits} data bits = ${row.cost} bits total`;
+    encSection.appendChild(ann);
 
     // Legend
     const legend = el("div", { class: "xor-enc-legend" });
@@ -844,17 +851,17 @@ function renderSummary() {
     story.innerHTML =
       `<strong>${patternName}</strong> achieves <strong class="success">${ratio.toFixed(1)}× compression</strong>. ` +
       `${identPct}% of values are identical to their predecessor (1 bit each), ` +
-      `${reusePct}% reuse the previous bit window. ` +
+      `${reusePct}% reuse the previous bit <span class="xp-term" data-term="window">window</span>. ` +
       `Average cost: just <strong class="success">${avgBits.toFixed(1)} bits/value</strong> vs 64 bits raw.`;
   } else if (ratio >= 3) {
     story.innerHTML =
       `<strong>${patternName}</strong> compresses to <strong>${ratio.toFixed(1)}×</strong>. ` +
-      `${identPct}% identical, ${reusePct}% window reuse. ` +
+      `${identPct}% identical, ${reusePct}% <span class="xp-term" data-term="window">window</span> reuse. ` +
       `The changing values still share many bits, averaging <strong>${avgBits.toFixed(1)} bits/value</strong>.`;
   } else {
     story.innerHTML =
       `<strong>${patternName}</strong> compresses poorly at <strong class="warn">${ratio.toFixed(1)}×</strong>. ` +
-      `Random values share few bits, so XOR results have many meaningful bits. ` +
+      `Random values share few bits, so <span class="xp-term" data-term="XOR">XOR</span> results have many <span class="xp-term" data-term="meaningful bits">meaningful bits</span>. ` +
       `Average cost: <strong class="warn">${avgBits.toFixed(1)} bits/value</strong> — close to raw.`;
   }
 }
@@ -879,6 +886,7 @@ function init() {
   $("#breadcrumb-nav").innerHTML = buildBreadcrumb("XOR\u2011Delta");
   renderPatternPicker();
   recompute();
+  initGlossary();
 
   let resizeTimer;
   window.addEventListener("resize", () => {
