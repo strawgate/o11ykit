@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Delta-of-Delta Timestamp Compression — Interactive Experience | o11ytsdb</title>
+    <meta name="description" content="Watch timestamps collapse from 8 bytes each to as little as 1 bit — interactively explore Gorilla-style delta-of-delta encoding." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="../shared.css" />
+    <link rel="stylesheet" href="dod-experience.css" />
+  </head>
+  <body>
+    <a href="#main" class="xp-skip-link">Skip to content</a>
+    <div class="xp-ambient" aria-hidden="true"></div>
+    <div class="xp-page" id="main">
+
+      <div id="breadcrumb-nav"></div>
+
+      <div class="xp-hero">
+        <p class="xp-eyebrow">Timestamp Compression</p>
+        <h1>Delta‑of‑Delta</h1>
+        <p class="lede">
+          Metrics arrive at regular intervals — every 15 s, 30 s, 60 s.
+          Delta-of-delta exploits that regularity: perfectly spaced timestamps
+          compress to <strong>1 bit each</strong>, 64× smaller than raw.
+          Drag the jitter slider and watch compression degrade in real time.
+        </p>
+      </div>
+
+      <!-- A. Controls -->
+      <section class="xp-section" id="controls-section">
+        <h2>① Tune the Signal</h2>
+        <p>Choose an interval and add jitter to simulate real-world clock drift.</p>
+        <div class="xp-card">
+          <div class="xp-controls" id="controls-row">
+            <div class="dod-control-group">
+              <label class="xp-label" for="interval-select">Interval</label>
+              <select class="xp-select" id="interval-select">
+                <option value="10">10 s</option>
+                <option value="15" selected>15 s</option>
+                <option value="30">30 s</option>
+                <option value="60">60 s</option>
+              </select>
+            </div>
+            <div class="dod-control-group dod-slider-wide">
+              <label class="xp-label" for="jitter-slider">Jitter</label>
+              <div class="xp-slider-row">
+                <input type="range" class="xp-slider" id="jitter-slider"
+                       min="0" max="5000" step="50" value="0" />
+                <span class="xp-slider-value" id="jitter-value">0 ms</span>
+              </div>
+            </div>
+            <button class="xp-btn xp-btn-primary" id="btn-regenerate">⟳ Regenerate</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- B. Transformation Table -->
+      <section class="xp-section" id="table-section">
+        <h2>② Transformation Table</h2>
+        <p>Each row shows one timestamp flowing through the pipeline.</p>
+        <div class="xp-card dod-table-wrap">
+          <div class="dod-table-scroll">
+            <table class="xp-table dod-table" id="dod-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Timestamp</th>
+                  <th>Δ (delta)</th>
+                  <th>ΔoΔ</th>
+                  <th>ZigZag</th>
+                  <th>Tier</th>
+                  <th>Prefix</th>
+                  <th>Bits</th>
+                </tr>
+              </thead>
+              <tbody id="dod-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- C. Tier Distribution -->
+      <section class="xp-section" id="tier-section">
+        <h2>③ Tier Distribution</h2>
+        <p>How values spread across encoding tiers — green is cheapest.</p>
+        <div class="xp-card">
+          <div class="dod-tier-bar" id="tier-bar"></div>
+          <div class="dod-tier-legend" id="tier-legend"></div>
+        </div>
+      </section>
+
+      <!-- D. Bit Cost Profile -->
+      <section class="xp-section" id="bitcost-section">
+        <h2>④ Bit Cost Profile</h2>
+        <p>Each bar = one timestamp's encoding cost. Shorter is better.</p>
+        <div class="xp-card">
+          <div class="dod-bitcost-chart" id="bitcost-chart"></div>
+        </div>
+      </section>
+
+      <!-- E. Compression Summary -->
+      <section class="xp-section" id="summary-section">
+        <h2>⑤ Compression Summary</h2>
+        <div class="xp-stats-row" id="summary-stats"></div>
+        <div class="dod-story" id="jitter-story"></div>
+      </section>
+
+      <footer style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--xp-border); text-align: center;">
+        <p style="font-size: 13px; color: var(--xp-text-dim);">
+          Part of <a href="/o11ykit/" style="color: var(--xp-accent); text-decoration: none;">o11ykit</a>
+          · <a href="/o11ykit/tsdb-engine/learn/" style="color: var(--xp-text-muted); text-decoration: none;">← Back to Learn</a>
+        </p>
+      </footer>
+
+    </div>
+    <script type="module" src="dod-experience.js"></script>
+  </body>
+</html>
