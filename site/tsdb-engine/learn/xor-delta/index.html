@@ -23,9 +23,21 @@
         <h1>XOR‑Delta</h1>
         <p class="lede">
           Metrics that change slowly — temperature, CPU&nbsp;%, latency — produce nearly
-          identical IEEE&nbsp;754 bit patterns. XOR‑Delta exploits this: XOR consecutive
+          identical <span class="xp-term" data-term="IEEE 754">IEEE&nbsp;754</span> bit patterns.
+          XOR‑Delta exploits this: <span class="xp-term" data-term="XOR">XOR</span> consecutive
           values, and most bits cancel out. The remaining handful of
-          <strong>meaningful bits</strong> is all you need to store.
+          <strong><span class="xp-term" data-term="meaningful bits">meaningful bits</span></strong>
+          is all you need to store.
+        </p>
+        <p class="xp-why-matters">
+          Two consecutive CPU readings like 50.0 and 51.0 are stored as 64-bit floats — but they
+          share 57 of their 64 bits. <span class="xp-term" data-term="XOR">XOR</span>-Delta stores
+          only the 7 bits that differ, plus a tiny header describing where those bits live. Most
+          metric sequences compress to 2–14 bits per sample instead of 64.
+        </p>
+        <p class="xp-why-matters">
+          The very first value is always stored as raw 64 bits. Compression applies from the second
+          value onward.
         </p>
       </div>
 
@@ -39,16 +51,10 @@
         </div>
       </section>
 
-      <!-- D. Encoding Decision Tree -->
-      <section class="xp-section" id="tree-section">
-        <h2>② Encoding Decision Tree</h2>
-        <p>Every value follows this flowchart. Click a table row below to highlight the path taken.</p>
-        <div class="xp-card" id="decision-tree"></div>
-      </section>
-
       <!-- B. XOR Visualization Table -->
       <section class="xp-section" id="table-section">
-        <h2>③ XOR Visualization Table</h2>
+        <h2>② XOR Visualization Table</h2>
+        <p>For each value after the first, <span class="xp-term" data-term="XOR">XOR</span> it with the previous value to get only the bits that changed:</p>
         <p>Each row shows a value XOR'd with its predecessor. Click any row to expand bit-level detail.</p>
         <div class="xp-card xor-table-wrap">
           <div class="xor-table-scroll xp-scroll-x">
@@ -58,9 +64,9 @@
                   <th>#</th>
                   <th>Value</th>
                   <th>XOR with prev</th>
-                  <th>Lead 0s</th>
-                  <th>Trail 0s</th>
-                  <th>Meaningful</th>
+                  <th><span class="xp-term" data-term="leading zeros">Lead 0s</span></th>
+                  <th><span class="xp-term" data-term="trailing zeros">Trail 0s</span></th>
+                  <th><span class="xp-term" data-term="meaningful bits">Meaningful</span></th>
                   <th>Encoding</th>
                   <th>Cost</th>
                 </tr>
@@ -69,6 +75,14 @@
             </table>
           </div>
         </div>
+      </section>
+
+      <!-- D. Encoding Decision Tree -->
+      <section class="xp-section" id="tree-section">
+        <h2>③ Encoding Decision Tree</h2>
+        <p>Based on the <span class="xp-term" data-term="XOR">XOR</span> result, the encoder picks the most efficient encoding:</p>
+        <p>Every value follows this flowchart. Click a table row above to highlight the path taken.</p>
+        <div class="xp-card" id="decision-tree"></div>
       </section>
 
       <!-- E. Compression Cost Profile -->

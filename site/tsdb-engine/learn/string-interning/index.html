@@ -22,16 +22,30 @@
         <p class="xp-eyebrow">Label Storage</p>
         <h1>String Interning</h1>
         <p class="lede">
-          Instead of storing <code class="xp-code">"region=us-west-2"</code> in every series,
-          store it <strong>once</strong> in a byte buffer and reference it by a 4-byte integer ID.
+          <strong>String interning</strong> means: instead of storing the same string over and over, store it
+          <strong>once</strong> in a byte buffer and give each copy a tiny 4-byte integer that points to the original.
+          In metric storage, <span class="xp-term" data-term="label">labels</span> like
+          <code class="xp-code">region=us-west-2</code> appear in thousands of
+          <span class="xp-term" data-term="series">series</span> — without interning, each copy wastes memory.
           Generate Kubernetes-style metrics and watch memory usage collapse as strings are reused.
+        </p>
+      </div>
+
+      <!-- Series & Labels primer -->
+      <div class="xp-card" style="margin-bottom:0">
+        <p style="margin:0;font-size:14px;line-height:1.7">
+          A <strong><span class="xp-term" data-term="series">series</span></strong> is one stream of metric data
+          uniquely identified by its <strong><span class="xp-term" data-term="label">labels</span></strong>.
+          Labels are <code class="xp-code">key=value</code> pairs like <code class="xp-code">job=api</code> or
+          <code class="xp-code">region=us-west</code>. A monitoring system tracking 10,000 pods might have 50,000+
+          series — but most share the same small set of label values, making interning highly effective.
         </p>
       </div>
 
       <!-- A. Series Generator -->
       <section class="xp-section" id="generator-section">
         <h2>① Generate Series</h2>
-        <p>Create realistic Kubernetes metric series with shared labels. Adjust the count and hit Generate.</p>
+        <p>Create realistic Kubernetes metric <span class="xp-term" data-term="series">series</span> with shared <span class="xp-term" data-term="label">labels</span>. Adjust the count and hit Generate.</p>
         <div class="xp-card">
           <div class="xp-controls" id="gen-controls">
             <div class="xp-slider-group">
@@ -57,7 +71,7 @@
       <!-- B. Naive vs Interned Split View -->
       <section class="xp-section" id="split-section">
         <h2>③ Naive vs Interned</h2>
-        <p>Side-by-side: every series stores full strings (left) vs. integer IDs into a shared buffer (right).</p>
+        <p>Side-by-side: every <span class="xp-term" data-term="series">series</span> stores full strings (left) vs. integer IDs into a shared buffer (right).</p>
         <div class="intern-split">
           <div class="xp-card intern-panel" id="naive-panel">
             <h3>Naive Storage</h3>
@@ -93,8 +107,16 @@
       <!-- D. Intern Animation -->
       <section class="xp-section" id="animation-section">
         <h2>⑤ Intern a String</h2>
-        <p>Step through the FNV-1a hash → open-addressing → store-or-reuse pipeline.</p>
+        <p>Step through the <span class="xp-term" data-term="FNV-1a">FNV-1a</span> hash → <span class="xp-term" data-term="open addressing">open-addressing</span> → store-or-reuse pipeline.</p>
         <div class="xp-card xp-card-raised">
+          <div style="margin-bottom:16px;font-size:13px;line-height:1.8;color:var(--xp-text-muted)">
+            <p style="margin:0 0 8px">To check whether a string is already stored, we use a <strong>hash table</strong> — a data structure for near-instant lookups:</p>
+            <ol style="margin:0;padding-left:20px">
+              <li><strong>Hash</strong>: run the string through a <span class="xp-term" data-term="hash function">hash function</span> (<span class="xp-term" data-term="FNV-1a">FNV-1a</span>) to get a slot number</li>
+              <li><strong>Probe</strong>: check that slot; if taken by a different string, check the next slot (<span class="xp-term" data-term="linear probing">linear probing</span>)</li>
+              <li><strong>Insert or reuse</strong>: if the string is new, store it and record its position; if it already exists, return the existing position</li>
+            </ol>
+          </div>
           <div class="xp-controls">
             <div class="xp-slider-group">
               <label class="xp-label" for="anim-string-select">String to intern</label>
@@ -114,7 +136,7 @@
 
           <!-- Hash table visualization -->
           <div class="intern-hash-table-wrap">
-            <span class="xp-label">Hash Table (open addressing)</span>
+            <span class="xp-label">Hash Table (<span class="xp-term" data-term="open addressing">open addressing</span>)</span>
             <div class="intern-hash-grid" id="hash-grid"></div>
           </div>
         </div>
@@ -123,7 +145,7 @@
       <!-- E. Cardinality Impact -->
       <section class="xp-section" id="cardinality-section">
         <h2>⑥ Cardinality Impact</h2>
-        <p>Memory grows differently for naive vs interned as the number of unique strings changes.</p>
+        <p>Memory grows differently for naive vs interned as <span class="xp-term" data-term="cardinality">cardinality</span> (the number of unique strings) changes.</p>
         <div class="xp-card">
           <canvas id="cardinality-canvas" width="900" height="300" style="width:100%;height:280px;"></canvas>
           <div class="intern-chart-legend" id="cardinality-legend"></div>

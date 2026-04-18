@@ -27,6 +27,12 @@
           compress to <strong>1 bit each</strong>, 64× smaller than raw.
           Drag the jitter slider and watch compression degrade in real time.
         </p>
+        <p class="lede" style="margin-top: 12px; font-size: 0.95em; color: var(--xp-text-muted);">
+          <strong>Why this matters:</strong> Prometheus timestamps are 64-bit nanosecond integers — 8 bytes each.
+          At 1 sample/15 s, 1 million timestamps = 8 MB. With
+          <span class="xp-term" data-term="delta-of-delta">Delta-of-Delta</span> encoding, a perfectly regular
+          15-second interval costs just 1 bit per sample — 125 KB for the same million samples, a 64× reduction.
+        </p>
       </div>
 
       <!-- A. Controls -->
@@ -57,6 +63,17 @@
         </div>
       </section>
 
+      <!-- Encoding chain explainer -->
+      <div class="xp-card" style="margin: 0 0 24px; padding: 20px 24px;">
+        <p style="margin: 0 0 10px; font-weight: 600; color: var(--xp-text);">Timestamps are compressed in a 4-step chain:</p>
+        <ol style="margin: 0; padding-left: 20px; line-height: 1.9; color: var(--xp-text-muted);">
+          <li><strong>Raw → <span class="xp-term" data-term="delta">Δ (delta)</span>:</strong> record the gap between consecutive timestamps instead of the timestamps themselves. Regular 15-second intervals → all deltas = 15,000,000,000 ns.</li>
+          <li><strong><span class="xp-term" data-term="delta">Δ</span> → <span class="xp-term" data-term="delta-of-delta">ΔoΔ (delta-of-delta)</span>:</strong> record how much each <span class="xp-term" data-term="delta">delta</span> changed. Perfect regularity → ΔoΔ = 0 every time.</li>
+          <li><strong><span class="xp-term" data-term="delta-of-delta">ΔoΔ</span> → <span class="xp-term" data-term="zigzag">ZigZag</span>:</strong> map signed integers to unsigned so small negatives get small codes.</li>
+          <li><strong><span class="xp-term" data-term="zigzag">ZigZag</span> → <span class="xp-term" data-term="tier">Tier</span>:</strong> pick the shortest bit pattern that fits the value.</li>
+        </ol>
+      </div>
+
       <!-- B. Transformation Table -->
       <section class="xp-section" id="table-section">
         <h2>② Transformation Table</h2>
@@ -68,10 +85,10 @@
                 <tr>
                   <th>#</th>
                   <th>Timestamp</th>
-                  <th>Δ (delta)</th>
-                  <th>ΔoΔ</th>
-                  <th>ZigZag</th>
-                  <th>Tier</th>
+                  <th><span class="xp-term" data-term="delta">Δ</span> (delta)</th>
+                  <th><span class="xp-term" data-term="delta-of-delta">ΔoΔ</span></th>
+                  <th><span class="xp-term" data-term="zigzag">ZigZag</span></th>
+                  <th><span class="xp-term" data-term="tier">Tier</span></th>
                   <th>Prefix</th>
                   <th>Bits</th>
                 </tr>
@@ -85,7 +102,7 @@
       <!-- C. Tier Distribution -->
       <section class="xp-section" id="tier-section">
         <h2>③ Tier Distribution</h2>
-        <p>How values spread across encoding tiers — green is cheapest.</p>
+        <p>How values spread across encoding <span class="xp-term" data-term="tier">tiers</span> — green is cheapest.</p>
         <div class="xp-card">
           <div class="dod-tier-bar" id="tier-bar"></div>
           <div class="dod-tier-legend" id="tier-legend"></div>
