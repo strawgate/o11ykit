@@ -253,6 +253,8 @@
   border-radius: 16px;
   padding: 20px;
   animation: rise-in 300ms ease both;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .chunk-detail-header {
