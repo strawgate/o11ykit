@@ -64,19 +64,6 @@
   min-height: 0;
 }
 
-.intern-panel-body::-webkit-scrollbar {
-  width: 4px;
-}
-
-.intern-panel-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.intern-panel-body::-webkit-scrollbar-thumb {
-  background: var(--xp-border-strong);
-  border-radius: 2px;
-}
-
 .intern-panel-footer {
   padding-top: 10px;
   border-top: 1px solid var(--xp-border);
@@ -176,15 +163,6 @@
   max-height: 120px;
   overflow-y: auto;
   padding-right: 4px;
-}
-
-.intern-id-table::-webkit-scrollbar {
-  width: 4px;
-}
-
-.intern-id-table::-webkit-scrollbar-thumb {
-  background: var(--xp-border-strong);
-  border-radius: 2px;
 }
 
 .intern-id-entry {

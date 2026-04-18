@@ -10,17 +10,6 @@
   gap: 6px;
   overflow-x: auto;
   padding-bottom: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--xp-border-strong) transparent;
-}
-
-.alp-values-scroll::-webkit-scrollbar {
-  height: 6px;
-}
-
-.alp-values-scroll::-webkit-scrollbar-thumb {
-  background: var(--xp-border-strong);
-  border-radius: 3px;
 }
 
 .alp-val-chip {
