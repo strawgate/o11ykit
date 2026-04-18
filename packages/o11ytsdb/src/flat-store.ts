@@ -75,13 +75,18 @@ export class FlatStore implements StorageBackend {
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
+    return this.readParts(id, start, end)[0] ?? { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+  }
+
+  readParts(id: SeriesId, start: bigint, end: bigint): TimeRange[] {
     const s = this.series[id]!;
     const lo = lowerBound(s.timestamps, start, 0, s.count);
     const hi = upperBound(s.timestamps, end, lo, s.count);
-    return {
+    if (hi <= lo) return [];
+    return [{
       timestamps: s.timestamps.slice(lo, hi),
       values: s.values.slice(lo, hi),
-    };
+    }];
   }
 
   labels(id: SeriesId): Labels | undefined {
