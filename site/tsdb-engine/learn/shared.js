@@ -252,3 +252,32 @@ export function drawSparkline(canvas, values, opts = {}) {
   ctx.fillStyle = color.replace(')', `, ${fillAlpha})`).replace('rgb', 'rgba');
   ctx.fill();
 }
+
+/* ─── Stat Card Builder ───────────────────────────────────────────── */
+
+/**
+ * Build a standard `.xp-stat` card element.
+ * @param {string} label
+ * @param {string|number} value
+ * @param {string} [unit]
+ * @param {object} [opts]  – opts.cls (extra class on value), opts.color (inline color on value)
+ * @returns {HTMLElement}
+ */
+export function buildStat(label, value, unit = '', opts = {}) {
+  const valueEl = el('div', {
+    class: ['xp-stat-value', opts.cls].filter(Boolean).join(' '),
+    ...(opts.color ? { style: { color: opts.color } } : {}),
+  }, String(value));
+  return el('div', { class: 'xp-stat' },
+    el('div', { class: 'xp-stat-label' }, label),
+    valueEl,
+    unit ? el('div', { class: 'xp-stat-unit' }, unit) : null,
+  );
+}
+
+/* ─── Async Helpers ───────────────────────────────────────────────── */
+
+/** Promise-based sleep. */
+export function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}

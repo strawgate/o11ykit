@@ -10,6 +10,7 @@ import {
   $,
   $$,
   buildBreadcrumb,
+  buildStat,
   clz64,
   ctz64,
   drawSparkline,
@@ -648,7 +649,7 @@ function renderTable() {
     // Encoding badge
     const badge = el(
       "span",
-      { class: `xor-enc-badge enc-${row.encoding}` },
+      { class: `xp-badge xor-enc-badge enc-${row.encoding}` },
       ENC_LABELS[row.encoding]
     );
     tr.appendChild(el("td", {}, badge));
@@ -780,13 +781,7 @@ function renderSummary() {
   ];
 
   for (const s of stats) {
-    const stat = el(
-      "div",
-      { class: "xp-stat" },
-      el("div", { class: "xp-stat-label" }, s.label),
-      el("div", { class: "xp-stat-value" }, s.value),
-      el("div", { class: "xp-stat-unit" }, s.unit)
-    );
+    const stat = buildStat(s.label, s.value, s.unit);
     if (s.label === "Ratio") {
       const valEl = stat.querySelector(".xp-stat-value");
       valEl.style.color =
