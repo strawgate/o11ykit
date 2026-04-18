@@ -9,7 +9,13 @@
       content="Interactive documentation for o11ytsdb: a browser-native TSDB with XOR-delta compression, pluggable storage backends, and real-time query engine. Generate millions of data points and query them live."
     />
     <meta name="theme-color" content="#0a1624" />
+    <meta property="og:title" content="o11ytsdb — Browser-Native Time-Series Database Engine" />
+    <meta property="og:description" content="Interactive documentation for o11ytsdb, a browser-native time-series database with ALP compression, Gorilla encoding, and real-time querying." />
+    <meta property="og:type" content="website" />
     <base href="/tsdb-engine/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="../styles.css" />
     <link rel="stylesheet" href="css/base.css" />
     <link rel="stylesheet" href="css/architecture.css" />
@@ -17,10 +23,14 @@
     <link rel="stylesheet" href="css/chart.css" />
     <link rel="stylesheet" href="css/storage-explorer.css" />
     <link rel="stylesheet" href="css/byte-explorer.css" />
+    <link rel="modulepreload" href="js/app.js" />
+    <link rel="modulepreload" href="js/stores.js" />
+    <link rel="modulepreload" href="js/codec.js" />
   </head>
   <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
     <div class="ambient" aria-hidden="true"></div>
-    <main class="page">
+    <main id="main-content" class="page">
 
       <!-- ─── Top Bar ─────────────────────────────────────────── -->
       <header class="topbar panel">
@@ -117,7 +127,7 @@
         </div>
 
         <!-- Stats dashboard -->
-        <div class="stats-grid" id="statsGrid" style="display:none;">
+        <div class="stats-grid" id="statsGrid" role="region" aria-label="Generation statistics" style="display:none;">
           <div class="stat-card">
             <div class="stat-big" id="statTotalPoints">—</div>
             <div class="stat-desc">Total data points</div>
@@ -193,7 +203,7 @@
           </div>
 
           <!-- Query results -->
-          <div id="queryResults" style="display:none;">
+          <div id="queryResults" role="status" aria-live="polite" aria-label="Query execution results" style="display:none;">
             <div class="query-stats">
               <span id="qStatScannedSeries">—</span>
               <span id="qStatScannedSamples">—</span>
@@ -214,7 +224,7 @@
         </div>
 
         <!-- Storage Explorer -->
-        <div class="storage-explorer" id="storageExplorer" style="display:none;">
+        <div class="storage-explorer" id="storageExplorer" role="region" aria-label="Storage explorer" style="display:none;">
           <h3>💾 Storage Explorer</h3>
           <p class="storage-intro">Explore the internal chunk layout of the storage backend. Each series is a row; frozen compressed chunks are <span class="tag-frozen">frozen</span> and the active write buffer is <span class="tag-hot">hot</span>. Click any chunk to inspect it.</p>
           <div class="storage-overview" id="storageOverview"></div>
