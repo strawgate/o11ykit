@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Query Engine — Interactive Experience | o11ytsdb</title>
+    <meta name="description" content="Trace the end-to-end query flow in a TSDB: label matching, postings intersection, chunk pruning, stats skip, decode, and step-aligned aggregation." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="../shared.css" />
+    <link rel="stylesheet" href="query-experience.css" />
+  </head>
+  <body>
+    <a href="#main" class="xp-skip-link">Skip to content</a>
+    <div class="xp-ambient" aria-hidden="true"></div>
+    <div class="xp-page" id="main">
+
+      <div id="breadcrumb-nav"></div>
+
+      <div class="xp-hero">
+        <p class="xp-eyebrow">Query Pipeline</p>
+        <h1>Query Engine</h1>
+        <p class="lede">
+          Trace the end-to-end journey of a TSDB query — from label matching through
+          postings intersection, chunk pruning, stats shortcuts, decoding, and
+          step-aligned aggregation. Build a query and watch it execute stage by stage.
+        </p>
+      </div>
+
+      <!-- A. Dataset Summary -->
+      <section class="xp-section" id="dataset-section">
+        <h2>① Sample Dataset</h2>
+        <p>A simulated TSDB with three metrics, multiple label dimensions, and chunked storage.</p>
+        <div class="xp-stats-row" id="dataset-stats"></div>
+        <div class="xp-card qe-dataset-card" id="dataset-detail"></div>
+      </section>
+
+      <!-- B. Pipeline -->
+      <section class="xp-section" id="pipeline-section">
+        <h2>② Query Pipeline</h2>
+        <p>Six stages transform a PromQL-like selector into aggregated results. Each stage lights up as the query executes.</p>
+        <div class="xp-pipeline" id="pipeline-bar"></div>
+      </section>
+
+      <!-- C. Query Builder -->
+      <section class="xp-section" id="query-section">
+        <h2>③ Query Builder</h2>
+        <p>Configure a query and hit Execute to watch the pipeline animate.</p>
+        <div class="xp-card qe-builder-card">
+          <div class="qe-query-preview" id="query-preview"></div>
+          <div class="qe-builder-grid">
+            <div class="qe-control-group">
+              <label class="xp-label" for="metric-select">Metric</label>
+              <select class="xp-select" id="metric-select">
+                <option value="http_requests">http_requests</option>
+                <option value="cpu_usage">cpu_usage</option>
+                <option value="memory_bytes">memory_bytes</option>
+              </select>
+            </div>
+
+            <div class="qe-control-group qe-filters-group">
+              <label class="xp-label">Label Filters</label>
+              <div id="filter-rows"></div>
+              <button type="button" class="xp-btn qe-btn-add-filter" id="btn-add-filter">+ Add Filter</button>
+            </div>
+
+            <div class="qe-control-group">
+              <label class="xp-label" for="range-select">Time Range</label>
+              <select class="xp-select" id="range-select">
+                <option value="3">Last 3 hours</option>
+                <option value="5">Last 5 hours</option>
+              </select>
+            </div>
+
+            <div class="qe-control-group">
+              <label class="xp-label" for="step-select">Step</label>
+              <select class="xp-select" id="step-select">
+                <option value="30">30 min</option>
+                <option value="60">1 hour</option>
+              </select>
+            </div>
+
+            <div class="qe-control-group">
+              <label class="xp-label" for="agg-select">Aggregation</label>
+              <select class="xp-select" id="agg-select">
+                <option value="sum">sum</option>
+                <option value="avg">avg</option>
+                <option value="max">max</option>
+                <option value="min">min</option>
+              </select>
+            </div>
+          </div>
+          <button type="button" class="xp-btn xp-btn-primary qe-btn-execute" id="btn-execute">▶ Execute Query</button>
+        </div>
+      </section>
+
+      <!-- D. Stage 1: Label Matching & Postings Intersection -->
+      <section class="xp-section" id="stage-match-section" hidden>
+        <h2>④ Label Matching &amp; Postings Intersection</h2>
+        <p id="match-description"></p>
+        <div class="xp-card qe-match-card" id="match-viz"></div>
+        <div class="qe-match-summary" id="match-summary"></div>
+      </section>
+
+      <!-- E. Stage 2: Chunk Pruning -->
+      <section class="xp-section" id="stage-prune-section" hidden>
+        <h2>⑤ Chunk Pruning</h2>
+        <p id="prune-description"></p>
+        <div class="xp-card qe-prune-card" id="prune-viz"></div>
+        <div class="qe-match-summary" id="prune-summary"></div>
+      </section>
+
+      <!-- F. Stage 3: Aggregation -->
+      <section class="xp-section" id="stage-agg-section" hidden>
+        <h2>⑥ Step-Aligned Aggregation</h2>
+        <p id="agg-description"></p>
+        <div class="xp-card qe-agg-card" id="agg-viz"></div>
+      </section>
+
+      <!-- G. Results -->
+      <section class="xp-section" id="results-section" hidden>
+        <h2>⑦ Results</h2>
+        <div class="xp-stats-row" id="result-stats"></div>
+        <div class="xp-card qe-sparkline-card">
+          <canvas id="result-sparkline" height="160"></canvas>
+        </div>
+        <div class="qe-result-table" id="result-table"></div>
+      </section>
+
+      <footer style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--xp-border); text-align: center;">
+        <p style="font-size: 13px; color: var(--xp-text-dim);">
+          Part of <a href="/o11ykit/" style="color: var(--xp-accent); text-decoration: none;">o11ykit</a>
+          · <a href="/o11ykit/tsdb-engine/learn/" style="color: var(--xp-text-muted); text-decoration: none;">← Back to Learn</a>
+        </p>
+      </footer>
+
+    </div>
+    <script type="module" src="query-experience.js"></script>
+  </body>
+</html>
