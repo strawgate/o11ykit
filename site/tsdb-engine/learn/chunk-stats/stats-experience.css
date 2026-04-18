@@ -1,0 +1,425 @@
+/* ─── Chunk Stats Experience ──────────────────────────────────────── */
+
+/* ─── Sparkline Card ──────────────────────────────────────────────── */
+.cs-sparkline-card {
+  padding: 16px;
+}
+
+.cs-sparkline-card canvas {
+  width: 100%;
+  display: block;
+  border-radius: var(--xp-radius-sm);
+}
+
+/* ─── Chunk Timeline Strip ────────────────────────────────────────── */
+.cs-timeline-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  margin-bottom: 16px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--xp-border-strong) transparent;
+}
+
+.cs-timeline-strip::-webkit-scrollbar {
+  height: 6px;
+}
+
+.cs-timeline-strip::-webkit-scrollbar-thumb {
+  background: var(--xp-border-strong);
+  border-radius: 3px;
+}
+
+.cs-chunk-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--xp-surface);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+  min-width: 72px;
+  transition: all 200ms;
+  position: relative;
+}
+
+.cs-chunk-block:hover {
+  border-color: var(--xp-accent);
+  background: var(--xp-accent-glow);
+}
+
+.cs-chunk-block.selected {
+  border-color: var(--xp-accent);
+  background: var(--xp-accent-glow);
+  box-shadow: 0 0 16px rgba(96, 165, 250, 0.15);
+}
+
+.cs-chunk-block .chunk-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--xp-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.cs-chunk-block .chunk-time {
+  font-size: 9px;
+  color: var(--xp-text-dim);
+  font-family: var(--xp-mono);
+  white-space: nowrap;
+}
+
+.cs-chunk-block .chunk-range-bar {
+  width: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to top, var(--xp-accent), var(--xp-success));
+  min-height: 20px;
+  max-height: 48px;
+  transition: all 200ms;
+}
+
+.cs-chunk-block .chunk-count {
+  font-size: 10px;
+  font-family: var(--xp-mono);
+  color: var(--xp-text-muted);
+  background: var(--xp-surface-raised);
+  padding: 1px 6px;
+  border-radius: 99px;
+}
+
+/* ─── Detail Panel ────────────────────────────────────────────────── */
+.cs-detail-panel {
+  animation: xp-fade-in 300ms ease both;
+}
+
+.cs-detail-panel[hidden] {
+  display: none;
+}
+
+.cs-detail-header {
+  margin-bottom: 12px;
+}
+
+.cs-detail-header h3 {
+  margin: 0 0 2px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.cs-detail-header .time-range {
+  font-size: 12px;
+  color: var(--xp-text-dim);
+  font-family: var(--xp-mono);
+}
+
+.cs-detail-panel canvas {
+  width: 100%;
+  display: block;
+  border-radius: var(--xp-radius-sm);
+  margin-top: 12px;
+}
+
+/* ─── Query Controls ──────────────────────────────────────────────── */
+.cs-query-controls {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.cs-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ─── Execution Grid ──────────────────────────────────────────────── */
+.cs-exec-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.cs-bucket-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--xp-surface);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  transition: all 300ms;
+  opacity: 0.3;
+}
+
+.cs-bucket-row.active {
+  opacity: 1;
+  border-color: var(--xp-accent);
+  background: var(--xp-accent-glow);
+}
+
+.cs-bucket-row.done {
+  opacity: 1;
+}
+
+.cs-bucket-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--xp-text-muted);
+  min-width: 70px;
+  flex-shrink: 0;
+}
+
+.cs-bucket-chunks {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.cs-exec-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--xp-radius-xs);
+  font-family: var(--xp-mono);
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--xp-border);
+  background: var(--xp-surface-raised);
+  color: var(--xp-text-dim);
+  transition: all 300ms;
+}
+
+.cs-exec-chip.stats-only {
+  background: var(--xp-success-glow);
+  border-color: rgba(52, 211, 153, 0.4);
+  color: var(--xp-success);
+}
+
+.cs-exec-chip.must-decode {
+  background: var(--xp-error-glow);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: var(--xp-error);
+}
+
+.cs-exec-chip.skipped {
+  background: var(--xp-surface);
+  border-color: var(--xp-border);
+  color: var(--xp-text-dim);
+  opacity: 0.5;
+}
+
+.cs-exec-chip .chip-icon {
+  font-size: 12px;
+}
+
+.cs-bucket-result {
+  font-family: var(--xp-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  min-width: 60px;
+  text-align: right;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 300ms;
+}
+
+.cs-bucket-result.visible {
+  opacity: 1;
+}
+
+/* ─── Execution Progress ──────────────────────────────────────────── */
+.cs-exec-progress {
+  font-size: 13px;
+  color: var(--xp-text-muted);
+  min-height: 20px;
+}
+
+/* ─── Speedup Card ────────────────────────────────────────────────── */
+.cs-speedup-card {
+  text-align: center;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+.cs-speedup-value {
+  font-family: var(--xp-mono);
+  font-size: 36px;
+  font-weight: 700;
+  color: var(--xp-success);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.cs-speedup-label {
+  font-size: 14px;
+  color: var(--xp-text-muted);
+}
+
+.cs-speedup-detail {
+  font-size: 13px;
+  color: var(--xp-text-dim);
+  margin-top: 8px;
+}
+
+/* ─── Bucket Results Table ────────────────────────────────────────── */
+.cs-bucket-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.cs-result-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  background: var(--xp-surface);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  animation: xp-fade-in 300ms ease both;
+}
+
+.cs-result-cell .cell-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--xp-text-dim);
+}
+
+.cs-result-cell .cell-value {
+  font-family: var(--xp-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.cs-result-cell .cell-method {
+  font-size: 10px;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+.cs-result-cell .cell-method.stats-only {
+  color: var(--xp-success);
+}
+
+.cs-result-cell .cell-method.decoded {
+  color: var(--xp-error);
+}
+
+/* ─── Explain Grid ────────────────────────────────────────────────── */
+.cs-explain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.cs-explain-card {
+  text-align: center;
+  padding: 20px 16px;
+  transition: all 200ms;
+}
+
+.cs-explain-card.highlight {
+  border-color: var(--xp-accent);
+  background: var(--xp-accent-glow);
+  box-shadow: 0 0 24px rgba(96, 165, 250, 0.1);
+}
+
+.cs-explain-icon {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.cs-explain-card h3 {
+  font-family: var(--xp-mono);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--xp-accent);
+  margin: 0 0 6px;
+}
+
+.cs-explain-card p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--xp-text-muted);
+  margin: 0;
+  max-width: none;
+}
+
+/* ─── Flash Animations ────────────────────────────────────────────── */
+@keyframes cs-flash-green {
+  0% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px 4px rgba(52, 211, 153, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+  }
+}
+
+@keyframes cs-flash-red {
+  0% {
+    box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px 4px rgba(248, 113, 113, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(248, 113, 113, 0);
+  }
+}
+
+.cs-exec-chip.flash-green {
+  animation: cs-flash-green 500ms ease;
+}
+
+.cs-exec-chip.flash-red {
+  animation: cs-flash-red 500ms ease;
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .cs-query-controls {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .cs-bucket-row {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .cs-bucket-label {
+    min-width: unset;
+    flex-basis: 100%;
+  }
+
+  .cs-bucket-result {
+    flex-basis: 100%;
+    text-align: left;
+  }
+
+  .cs-explain-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cs-bucket-results {
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  }
+
+  .cs-speedup-value {
+    font-size: 28px;
+  }
+}
