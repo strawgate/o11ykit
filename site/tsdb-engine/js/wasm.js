@@ -6,7 +6,8 @@ export let wasmLoadError = null;
 
 export async function loadWasm() {
   try {
-    const resp = await fetch('./o11ytsdb.wasm');
+    const wasmUrl = new URL('../o11ytsdb.wasm', import.meta.url).href;
+    const resp = await fetch(wasmUrl);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const { instance } = await WebAssembly.instantiate(await resp.arrayBuffer(), { env: {} });
     wasmExports = instance.exports;

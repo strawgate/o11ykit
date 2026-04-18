@@ -11,6 +11,7 @@ export const CHART_COLORS = [
 export let lastChartState = null;
 let tooltipEl = null;
 let crosshairEl = null;
+let tooltipController = null;
 
 export function renderChart(canvas, seriesData, title) {
   const rect = canvas.parentElement.getBoundingClientRect();
@@ -152,6 +153,9 @@ export function renderChart(canvas, seriesData, title) {
 }
 
 export function setupChartTooltip() {
+  if (tooltipController) tooltipController.abort();
+  tooltipController = new AbortController();
+
   const canvas = $('#chartCanvas');
   const container = canvas.closest('.chart-container');
   container.style.position = 'relative';
@@ -167,11 +171,12 @@ export function setupChartTooltip() {
     container.appendChild(tooltipEl);
   }
 
-  canvas.addEventListener('mousemove', handleChartHover);
+  const opts = { signal: tooltipController.signal };
+  canvas.addEventListener('mousemove', handleChartHover, opts);
   canvas.addEventListener('mouseleave', () => {
     if (crosshairEl) crosshairEl.style.display = 'none';
     if (tooltipEl) tooltipEl.style.display = 'none';
-  });
+  }, opts);
 }
 
 function handleChartHover(e) {

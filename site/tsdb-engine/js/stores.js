@@ -30,6 +30,7 @@ export class FlatStore {
     this._series = [];
     this._labels = [];
     this._postings = new Map();
+    this._labelKeyMap = new Map();
     this._sampleCount = 0;
   }
   get seriesCount() { return this._series.length; }
@@ -37,11 +38,14 @@ export class FlatStore {
 
   getOrCreateSeries(labels) {
     const key = makeLabelKey(labels);
+    const cached = this._labelKeyMap.get(key);
+    if (cached !== undefined) return cached;
     const existing = _findExistingSeriesId(this._labels, key);
-    if (existing >= 0) return existing;
+    if (existing >= 0) { this._labelKeyMap.set(key, existing); return existing; }
     const id = this._series.length;
     this._series.push({ timestamps: new BigInt64Array(128), values: new Float64Array(128), count: 0 });
     _registerLabels(id, labels, this._labels, this._postings);
+    this._labelKeyMap.set(key, id);
     return id;
   }
 
@@ -104,6 +108,7 @@ export class ChunkedStore {
     this._series = [];
     this._labels = [];
     this._postings = new Map();
+    this._labelKeyMap = new Map();
     this._sampleCount = 0;
   }
   get seriesCount() { return this._series.length; }
@@ -111,14 +116,17 @@ export class ChunkedStore {
 
   getOrCreateSeries(labels) {
     const key = makeLabelKey(labels);
+    const cached = this._labelKeyMap.get(key);
+    if (cached !== undefined) return cached;
     const existing = _findExistingSeriesId(this._labels, key);
-    if (existing >= 0) return existing;
+    if (existing >= 0) { this._labelKeyMap.set(key, existing); return existing; }
     const id = this._series.length;
     this._series.push({
       hot: { timestamps: new BigInt64Array(this.chunkSize), values: new Float64Array(this.chunkSize), count: 0 },
       frozen: [],
     });
     _registerLabels(id, labels, this._labels, this._postings);
+    this._labelKeyMap.set(key, id);
     return id;
   }
 
@@ -224,6 +232,7 @@ export class ColumnStore {
     this._groups = [];
     this._labels = [];
     this._postings = new Map();
+    this._labelKeyMap = new Map();
     this._sampleCount = 0;
   }
 
@@ -232,8 +241,10 @@ export class ColumnStore {
 
   getOrCreateSeries(labels) {
     const key = makeLabelKey(labels);
+    const cached = this._labelKeyMap.get(key);
+    if (cached !== undefined) return cached;
     const existing = _findExistingSeriesId(this._labels, key);
-    if (existing >= 0) return existing;
+    if (existing >= 0) { this._labelKeyMap.set(key, existing); return existing; }
     const id = this._allSeries.length;
 
     const groupId = 0;
@@ -255,6 +266,7 @@ export class ColumnStore {
     });
 
     _registerLabels(id, labels, this._labels, this._postings);
+    this._labelKeyMap.set(key, id);
     return id;
   }
 

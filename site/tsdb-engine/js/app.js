@@ -237,9 +237,17 @@ for (const id of ['queryMetric', 'queryAgg', 'queryGroupBy', 'queryStep']) {
   $(`#${id}`).addEventListener('change', () => { if (currentStore) runQuery(); });
 }
 
-window.addEventListener('resize', () => {
-  if (currentStore && $('#queryResults').style.display !== 'none') runQuery();
-});
+let resizeController = null;
+
+function installResizeListener() {
+  if (resizeController) resizeController.abort();
+  resizeController = new AbortController();
+  window.addEventListener('resize', () => {
+    if (currentStore && $('#queryResults').style.display !== 'none') runQuery();
+  }, { signal: resizeController.signal });
+}
+
+installResizeListener();
 
 // ── Initialization ───────────────────────────────────────────────────
 
