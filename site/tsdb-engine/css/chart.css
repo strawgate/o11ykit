@@ -1,0 +1,130 @@
+/* ─── Query Results ───────────────────────────────────────────────── */
+
+.query-controls h3 {
+  margin: 18px 0 12px;
+  font-size: 20px;
+}
+
+.query-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 12px;
+  animation: rise-in 300ms ease both;
+}
+
+.query-stats span {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  background: white;
+  border: 1px solid rgba(43, 80, 106, 0.15);
+  border-radius: 8px;
+  padding: 6px 12px;
+}
+
+.query-stats span strong {
+  color: var(--ink);
+}
+
+.chart-container {
+  background: white;
+  border: 1px solid rgba(43, 80, 106, 0.15);
+  border-radius: 16px;
+  padding: 16px;
+  overflow: visible;
+  position: relative;
+  animation: rise-in 400ms ease both;
+}
+
+.chart-container canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  justify-content: center;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ─── Chart Tooltip ────────────────────────────────────────────────── */
+
+.chart-crosshair {
+  position: absolute;
+  width: 1px;
+  background: rgba(15, 58, 94, 0.35);
+  pointer-events: none;
+  z-index: 5;
+  display: none;
+}
+
+.chart-tooltip {
+  position: absolute;
+  background: rgba(15, 58, 94, 0.94);
+  color: white;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 10;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  display: none;
+  max-width: 300px;
+}
+
+.tooltip-time {
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 600;
+  font-size: 11px;
+  opacity: 0.7;
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+
+.tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3px 0;
+  font-size: 12px;
+}
+
+.tooltip-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tooltip-label {
+  flex: 1;
+  opacity: 0.85;
+  font-size: 11px;
+}
+
+.tooltip-row strong {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+}
