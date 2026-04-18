@@ -110,35 +110,20 @@ function renderSparkline(canvasId, decoded) {
   ctx.stroke();
 }
 
-export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
-  const panel = $('#chunkDetailPanel');
-  panel.style.display = '';
-  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+function _decodeChunkData(chunk, isColumn) {
+  if (isColumn) {
+    const values = wasmDecodeValuesALP(chunk.compressedValues);
+    const timestamps = wasmDecodeTimestamps(chunk.tsChunkCompressed);
+    return { timestamps, values };
+  }
+  return decodeChunk(chunk.compressed);
+}
 
-  const metricName = seriesInfo.labels.get('__name__') || 'unknown';
-  const labelStr = [...seriesInfo.labels]
-    .filter(([k]) => k !== '__name__')
-    .map(([k, v]) => `${k}="${v}"`)
-    .join(', ');
+function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, chunkIndex) {
+  const sparkId = 'sparkline-' + Date.now();
+  const codecName = isColumn ? 'ALP' : 'XOR-Delta';
 
-  if (type === 'frozen') {
-    const chunk = seriesInfo.info.frozen[chunkIndex];
-    const isColumn = !!chunk.compressedValues;
-    const isChunked = !!chunk.compressed;
-
-    let decoded;
-    if (isColumn) {
-      const values = wasmDecodeValuesALP(chunk.compressedValues);
-      const timestamps = wasmDecodeTimestamps(chunk.tsChunkCompressed);
-      decoded = { timestamps, values };
-    } else {
-      decoded = decodeChunk(chunk.compressed);
-    }
-
-    const sparkId = 'sparkline-' + Date.now();
-    const codecName = isColumn ? 'ALP' : 'XOR-Delta';
-
-    const columnExtra = isColumn ? `
+  const columnExtra = isColumn ? `
         <div class="detail-stat">
           <div class="detail-stat-label">Values (ALP)</div>
           <div class="detail-stat-value">${formatBytes(chunk.valuesBytes)}</div>
@@ -148,7 +133,7 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
           <div class="detail-stat-value">${formatBytes(chunk.timestampBytes)} ÷ ${chunk.sharedTsSeries} = ${formatBytes(chunk.amortizedTsBytes)}</div>
         </div>` : '';
 
-    const byteLayoutLegend = isColumn ? `
+  const byteLayoutLegend = isColumn ? `
           <span class="byte-legend-item"><span class="byte-swatch header"></span>ALP header (14 B)</span>
           <span class="byte-legend-item"><span class="byte-swatch values"></span>Bit-packed offsets</span>
           <span class="byte-legend-item"><span class="byte-swatch exceptions"></span>Exceptions</span>
@@ -158,7 +143,7 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
           <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Interleaved Δ²ts + XOR values</span>
         `;
 
-    panel.innerHTML = `
+  const html = `
       <div class="chunk-detail-header">
         <div class="chunk-detail-title">
           <span class="tag-frozen">Frozen</span> Chunk ${chunkIndex} — ${metricName}
@@ -206,6 +191,27 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
         <h4>Decoded Values</h4>
         <canvas id="${sparkId}" width="600" height="120"></canvas>
       </div>`;
+
+  return { html, sparkId };
+}
+
+export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
+  const panel = $('#chunkDetailPanel');
+  panel.style.display = '';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  const metricName = seriesInfo.labels.get('__name__') || 'unknown';
+  const labelStr = [...seriesInfo.labels]
+    .filter(([k]) => k !== '__name__')
+    .map(([k, v]) => `${k}="${v}"`)
+    .join(', ');
+
+  if (type === 'frozen') {
+    const chunk = seriesInfo.info.frozen[chunkIndex];
+    const isColumn = !!chunk.compressedValues;
+    const decoded = _decodeChunkData(chunk, isColumn);
+    const { html, sparkId } = _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, chunkIndex);
+    panel.innerHTML = html;
 
     if (isColumn) {
       renderByteMapALP(chunk.compressedValues, chunk.tsChunkCompressed, chunk.sharedTsSeries);

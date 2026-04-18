@@ -42,25 +42,22 @@ $('#btnGenerate').addEventListener('click', () => {
   });
 });
 
-function generateData(numSeries, numPoints, pattern, backendType, intervalMs = 10000) {
-  let store;
+function _createStore(backendType, chunkSize) {
   if (backendType === 'column') {
     if (!wasmReady) {
       alert('WASM codec not loaded — ColumnStore requires WebAssembly. Try ChunkedStore instead.');
-      return;
+      return null;
     }
-    store = new ColumnStore(CHUNK_SIZE);
+    return new ColumnStore(chunkSize);
   } else if (backendType === 'chunked') {
-    store = new ChunkedStore(CHUNK_SIZE);
-  } else {
-    store = new FlatStore();
+    return new ChunkedStore(chunkSize);
   }
+  return new FlatStore();
+}
+
+function _ingestMetrics(store, numSeries, numPoints, pattern, stepMs, backendType) {
   const now = BigInt(Date.now()) * NS_PER_MS;
-  const intervalNs = BigInt(intervalMs) * NS_PER_MS;
-
-  const t0 = performance.now();
-
-  generatedMetrics = [];
+  const intervalNs = BigInt(stepMs) * NS_PER_MS;
   const metricsUsed = new Set();
 
   const allSeriesData = [];
@@ -102,22 +99,21 @@ function generateData(numSeries, numPoints, pattern, backendType, intervalMs = 1
     }
   }
 
-  const ingestTime = performance.now() - t0;
-  currentStore = store;
-  generatedMetrics = [...metricsUsed];
+  return { metricsUsed, totalIngested: store.sampleCount };
+}
 
-  const totalPoints = store.sampleCount;
+function _displayStats(store, metricsUsed, totalIngested, ingestTime, intervalMs, numPoints) {
   const memBytes = store.memoryBytes();
-  const rawBytes = totalPoints * 16;
+  const rawBytes = totalIngested * 16;
   const compressionRatio = rawBytes / memBytes;
 
   $('#statsGrid').style.display = '';
-  $('#statTotalPoints').textContent = totalPoints.toLocaleString();
+  $('#statTotalPoints').textContent = totalIngested.toLocaleString();
   $('#statSeries').textContent = store.seriesCount.toLocaleString();
   $('#statMemory').textContent = formatBytes(memBytes);
   $('#statCompression').textContent = compressionRatio.toFixed(1) + '×';
   $('#statIngestTime').textContent = ingestTime.toFixed(0) + ' ms';
-  $('#statIngestRate').textContent = formatNum(totalPoints / (ingestTime / 1000)) + ' pts/s';
+  $('#statIngestRate').textContent = formatNum(totalIngested / (ingestTime / 1000)) + ' pts/s';
 
   const metricSelect = $('#queryMetric');
   metricSelect.innerHTML = '';
@@ -134,6 +130,20 @@ function generateData(numSeries, numPoints, pattern, backendType, intervalMs = 1
   autoSelectQueryStep(intervalMs, numPoints);
   buildStorageExplorer(store);
   runQuery();
+}
+
+function generateData(numSeries, numPoints, pattern, backendType, intervalMs = 10000) {
+  const store = _createStore(backendType, CHUNK_SIZE);
+  if (!store) return;
+
+  const t0 = performance.now();
+  const { metricsUsed, totalIngested } = _ingestMetrics(store, numSeries, numPoints, pattern, intervalMs, backendType);
+  const ingestTime = performance.now() - t0;
+
+  currentStore = store;
+  generatedMetrics = [...metricsUsed];
+
+  _displayStats(store, metricsUsed, totalIngested, ingestTime, intervalMs, numPoints);
 }
 
 // ── Query ────────────────────────────────────────────────────────────

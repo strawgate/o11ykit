@@ -4,6 +4,24 @@ import { encodeChunk, decodeChunk } from './codec.js';
 import { lowerBound, upperBound, makeLabelKey } from './utils.js';
 import { wasmEncodeValuesALP, wasmDecodeValuesALP, wasmEncodeTimestamps, wasmDecodeTimestamps } from './wasm.js';
 
+// ── Shared helpers ───────────────────────────────────────────────────
+
+function _findExistingSeriesId(labelsList, key) {
+  for (let i = 0; i < labelsList.length; i++) {
+    if (makeLabelKey(labelsList[i]) === key) return i;
+  }
+  return -1;
+}
+
+function _registerLabels(id, labels, labelsList, postings) {
+  labelsList.push(new Map(labels));
+  for (const [k, v] of labels) {
+    const pk = `${k}\0${v}`;
+    if (!postings.has(pk)) postings.set(pk, []);
+    postings.get(pk).push(id);
+  }
+}
+
 // ── FlatStore ────────────────────────────────────────────────────────
 
 export class FlatStore {
@@ -19,17 +37,11 @@ export class FlatStore {
 
   getOrCreateSeries(labels) {
     const key = makeLabelKey(labels);
-    for (let i = 0; i < this._labels.length; i++) {
-      if (makeLabelKey(this._labels[i]) === key) return i;
-    }
+    const existing = _findExistingSeriesId(this._labels, key);
+    if (existing >= 0) return existing;
     const id = this._series.length;
     this._series.push({ timestamps: new BigInt64Array(128), values: new Float64Array(128), count: 0 });
-    this._labels.push(new Map(labels));
-    for (const [k, v] of labels) {
-      const pk = `${k}\0${v}`;
-      if (!this._postings.has(pk)) this._postings.set(pk, []);
-      this._postings.get(pk).push(id);
-    }
+    _registerLabels(id, labels, this._labels, this._postings);
     return id;
   }
 
@@ -99,20 +111,14 @@ export class ChunkedStore {
 
   getOrCreateSeries(labels) {
     const key = makeLabelKey(labels);
-    for (let i = 0; i < this._labels.length; i++) {
-      if (makeLabelKey(this._labels[i]) === key) return i;
-    }
+    const existing = _findExistingSeriesId(this._labels, key);
+    if (existing >= 0) return existing;
     const id = this._series.length;
     this._series.push({
       hot: { timestamps: new BigInt64Array(this.chunkSize), values: new Float64Array(this.chunkSize), count: 0 },
       frozen: [],
     });
-    this._labels.push(new Map(labels));
-    for (const [k, v] of labels) {
-      const pk = `${k}\0${v}`;
-      if (!this._postings.has(pk)) this._postings.set(pk, []);
-      this._postings.get(pk).push(id);
-    }
+    _registerLabels(id, labels, this._labels, this._postings);
     return id;
   }
 
@@ -226,9 +232,8 @@ export class ColumnStore {
 
   getOrCreateSeries(labels) {
     const key = makeLabelKey(labels);
-    for (let i = 0; i < this._labels.length; i++) {
-      if (makeLabelKey(this._labels[i]) === key) return i;
-    }
+    const existing = _findExistingSeriesId(this._labels, key);
+    if (existing >= 0) return existing;
     const id = this._allSeries.length;
 
     const groupId = 0;
@@ -249,12 +254,7 @@ export class ColumnStore {
       frozen: [],
     });
 
-    this._labels.push(new Map(labels));
-    for (const [k, v] of labels) {
-      const pk = `${k}\0${v}`;
-      if (!this._postings.has(pk)) this._postings.set(pk, []);
-      this._postings.get(pk).push(id);
-    }
+    _registerLabels(id, labels, this._labels, this._postings);
     return id;
   }
 
