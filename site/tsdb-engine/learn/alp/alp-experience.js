@@ -144,8 +144,6 @@ let stepper;
 
 function init() {
   $("#breadcrumb-nav").innerHTML = buildBreadcrumb("ALP Compression");
-  buildPatternButtons();
-  selectPreset("temperature");
 
   const stages = [
     { icon: "🔍", label: "Scan" },
@@ -173,6 +171,9 @@ function init() {
   });
 
   stepper = new Stepper(5, onStageChange);
+
+  buildPatternButtons();
+  selectPreset("temperature");
 
   $("#btn-prev").addEventListener("click", () => stepper.prev());
   $("#btn-next").addEventListener("click", () => stepper.next());

@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Learn — How Metric Storage Works | o11ytsdb</title>
+    <meta name="description" content="Interactive experiences that teach you how a time-series database stores, compresses, and queries metric data — from bit-level encoding to query optimization." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="shared.css" />
+    <style>
+      .hub-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+        margin-top: 32px;
+      }
+      .hub-card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 24px;
+        background: var(--xp-surface);
+        border: 1px solid var(--xp-border);
+        border-radius: var(--xp-radius);
+        text-decoration: none;
+        color: inherit;
+        transition: all 200ms;
+        position: relative;
+        overflow: hidden;
+      }
+      .hub-card:hover {
+        border-color: var(--xp-accent);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px rgba(96, 165, 250, 0.08);
+      }
+      .hub-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: var(--card-accent, var(--xp-accent));
+        opacity: 0;
+        transition: opacity 200ms;
+      }
+      .hub-card:hover::before { opacity: 1; }
+      .hub-icon {
+        font-size: 28px;
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--card-glow, var(--xp-accent-glow));
+        border-radius: 12px;
+        flex-shrink: 0;
+      }
+      .hub-card h3 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 600;
+        color: #fff;
+      }
+      .hub-card p {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--xp-text-muted);
+      }
+      .hub-tag {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: var(--card-glow, var(--xp-accent-glow));
+        color: var(--card-accent, var(--xp-accent));
+        border: 1px solid var(--card-accent, var(--xp-accent));
+        opacity: 0.8;
+      }
+      .hub-intro {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 32px;
+        align-items: center;
+      }
+      .hub-intro-diagram {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-family: var(--xp-mono);
+        font-size: 11px;
+        color: var(--xp-text-dim);
+        padding: 16px;
+        background: var(--xp-surface);
+        border: 1px solid var(--xp-border);
+        border-radius: var(--xp-radius-sm);
+        white-space: pre;
+        line-height: 1.4;
+      }
+      @media (max-width: 700px) {
+        .hub-intro { grid-template-columns: 1fr; }
+        .hub-intro-diagram { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <a href="#main" class="xp-skip-link">Skip to content</a>
+    <div class="xp-ambient" aria-hidden="true"></div>
+    <div class="xp-page" id="main">
+
+      <nav class="xp-topbar" aria-label="Breadcrumb">
+        <div class="xp-breadcrumb">
+          <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+          <span class="sep">›</span>
+          <span class="current">Learn</span>
+        </div>
+      </nav>
+
+      <div class="xp-hero">
+        <p class="xp-eyebrow">Learn</p>
+        <h1>How Metric Storage Works</h1>
+        <div class="hub-intro">
+          <p class="lede">
+            A time-series database takes billions of floating-point measurements and packs them into
+            a fraction of their original size — then answers queries across all of them in milliseconds.
+            <br/><br/>
+            Each experience below lets you <strong>see</strong> and <strong>interact</strong> with
+            one piece of that puzzle. Click any card to explore.
+          </p>
+          <div class="hub-intro-diagram" aria-hidden="true">Metric sample arrives
+  ↓
+┌─────────────────────────┐
+│  String Interning       │ labels → integer IDs
+│  Inverted Index         │ fast label lookup
+├─────────────────────────┤
+│  ALP / XOR-Delta        │ value compression
+│  Delta-of-Delta         │ timestamp compression
+├─────────────────────────┤
+│  Chunk Stats            │ min/max/sum/count
+│  Query Engine           │ prune → decode → agg
+└─────────────────────────┘
+  ↓
+Answer in &lt;1ms</div>
+        </div>
+      </div>
+
+      <section>
+        <h2 style="color:#fff; margin-bottom: 4px;">Compression</h2>
+        <p style="color: var(--xp-text-muted); font-size: 14px; margin-bottom: 16px;">How raw numbers become tiny bit streams</p>
+        <div class="hub-grid">
+
+          <a href="alp/" class="hub-card" style="--card-accent: #10b981; --card-glow: rgba(16, 185, 129, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(16, 185, 129, 0.1);">📐</div>
+            <h3>ALP Compression</h3>
+            <p>Watch floating-point numbers get quantized to integers, bit-packed, and compressed to a fraction of their size — with lossless round-trip.</p>
+            <span class="hub-tag" style="--card-accent: #10b981; --card-glow: rgba(16, 185, 129, 0.1);">Values</span>
+          </a>
+
+          <a href="delta-of-delta/" class="hub-card" style="--card-accent: #06b6d4; --card-glow: rgba(6, 182, 212, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(6, 182, 212, 0.1);">⏱️</div>
+            <h3>Delta-of-Delta</h3>
+            <p>Regular timestamps compress to almost nothing — just 1 bit per sample when the interval is constant. Watch the math unfold.</p>
+            <span class="hub-tag" style="--card-accent: #06b6d4; --card-glow: rgba(6, 182, 212, 0.1);">Timestamps</span>
+          </a>
+
+          <a href="xor-delta/" class="hub-card" style="--card-accent: #a78bfa; --card-glow: rgba(167, 139, 250, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(167, 139, 250, 0.1);">⊕</div>
+            <h3>XOR-Delta</h3>
+            <p>Values that barely change need barely any bits. XOR two floats, find the meaningful window, and store just that.</p>
+            <span class="hub-tag" style="--card-accent: #a78bfa; --card-glow: rgba(167, 139, 250, 0.1);">Values</span>
+          </a>
+
+        </div>
+      </section>
+
+      <section style="margin-top: 40px;">
+        <h2 style="color:#fff; margin-bottom: 4px;">Storage &amp; Indexing</h2>
+        <p style="color: var(--xp-text-muted); font-size: 14px; margin-bottom: 16px;">How data is organized for fast writes and reads</p>
+        <div class="hub-grid">
+
+          <a href="string-interning/" class="hub-card" style="--card-accent: #f59e0b; --card-glow: rgba(245, 158, 11, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(245, 158, 11, 0.1);">🏷️</div>
+            <h3>String Interning</h3>
+            <p>10,000 series × 4 labels each = 40,000 strings. Interning stores each unique string once and references it by integer ID.</p>
+            <span class="hub-tag" style="--card-accent: #f59e0b; --card-glow: rgba(245, 158, 11, 0.1);">Labels</span>
+          </a>
+
+          <a href="chunk-stats/" class="hub-card" style="--card-accent: #f87171; --card-glow: rgba(248, 113, 113, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(248, 113, 113, 0.1);">📊</div>
+            <h3>Chunk Stats</h3>
+            <p>Each compressed chunk stores min, max, sum, and count. Queries can skip entire chunks without decompressing — often 100× faster.</p>
+            <span class="hub-tag" style="--card-accent: #f87171; --card-glow: rgba(248, 113, 113, 0.1);">Query</span>
+          </a>
+
+          <a href="query-engine/" class="hub-card" style="--card-accent: #60a5fa; --card-glow: rgba(96, 165, 250, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(96, 165, 250, 0.1);">🔍</div>
+            <h3>Query Engine</h3>
+            <p>From label filters to aggregated answers: postings intersection, chunk pruning, step-aligned bucketing — end to end.</p>
+            <span class="hub-tag" style="--card-accent: #60a5fa;">Pipeline</span>
+          </a>
+
+        </div>
+      </section>
+
+      <footer style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--xp-border); text-align: center;">
+        <p style="font-size: 13px; color: var(--xp-text-dim);">
+          Part of <a href="/o11ykit/" style="color: var(--xp-accent); text-decoration: none;">o11ykit</a>
+          · <a href="/o11ykit/tsdb-engine/" style="color: var(--xp-text-muted); text-decoration: none;">Back to TSDB Engine →</a>
+        </p>
+      </footer>
+
+    </div>
+  </body>
+</html>
