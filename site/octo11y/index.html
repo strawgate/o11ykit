@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="../styles.css" />
   </head>
-  <body>
+  <body class="page-octo11y">
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <div class="ambient" aria-hidden="true"></div>
     <main id="main-content" class="page">
@@ -46,6 +46,42 @@
       </section>
 
       <section class="panel">
+        <h2>The Pipeline</h2>
+        <p>Every Octo11y workflow follows the same path from raw run data to published metrics.</p>
+        <div class="pipeline" role="list" aria-label="Octo11y pipeline steps">
+          <div class="pipeline-step" role="listitem">
+            <span class="step-icon">⚙️</span>
+            <span class="step-name">workflow run</span>
+            <span class="step-desc">GitHub Actions</span>
+          </div>
+          <span class="pipeline-arrow" aria-hidden="true">→</span>
+          <div class="pipeline-step" role="listitem">
+            <span class="step-icon">🔍</span>
+            <span class="step-name">parse-results</span>
+            <span class="step-desc">logs or files</span>
+          </div>
+          <span class="pipeline-arrow" aria-hidden="true">→</span>
+          <div class="pipeline-step" role="listitem">
+            <span class="step-icon">📦</span>
+            <span class="step-name">aggregate</span>
+            <span class="step-desc">run history</span>
+          </div>
+          <span class="pipeline-arrow" aria-hidden="true">→</span>
+          <div class="pipeline-step" role="listitem">
+            <span class="step-icon">🌿</span>
+            <span class="step-name">data branch</span>
+            <span class="step-desc">OTLP artifacts</span>
+          </div>
+          <span class="pipeline-arrow" aria-hidden="true">→</span>
+          <div class="pipeline-step" role="listitem">
+            <span class="step-icon">📈</span>
+            <span class="step-name">dashboard</span>
+            <span class="step-desc">trend charts</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
         <h2>Where Octo11y Fits</h2>
         <div class="grid grid-2">
           <article class="journey">
@@ -65,7 +101,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel octo11y">
         <h2>Core Capabilities</h2>
         <div class="grid grid-3">
           <article class="feature-card octo11y">
@@ -126,4 +162,5 @@ jobs:
       </footer>
     </main>
   </body>
+
 </html>

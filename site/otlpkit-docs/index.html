@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="../styles.css" />
   </head>
-  <body>
+  <body class="page-otlpkit">
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <div class="ambient" aria-hidden="true"></div>
     <main id="main-content" class="page">
@@ -42,9 +42,14 @@
             View @otlpkit Packages
           </a>
         </div>
+        <div class="stat-row">
+          <div class="stat-badge"><span class="stat-value">3</span><span class="stat-label">Signal types</span></div>
+          <div class="stat-badge"><span class="stat-value">4</span><span class="stat-label">Chart adapters</span></div>
+          <div class="stat-badge"><span class="stat-value">0</span><span class="stat-label">Backend deps</span></div>
+        </div>
       </section>
 
-      <section class="panel">
+      <section class="panel otlpkit">
         <h2>What You Can Build</h2>
         <div class="grid grid-3">
           <article class="feature-card otlpkit">
@@ -128,4 +133,5 @@ const option = toEChartsTimeSeriesOption(latency);</code></pre>
       </footer>
     </main>
   </body>
+
 </html>

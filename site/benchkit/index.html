@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="../styles.css" />
   </head>
-  <body>
+  <body class="page-benchkit">
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <div class="ambient" aria-hidden="true"></div>
     <main id="main-content" class="page">
@@ -47,6 +47,52 @@
       </section>
 
       <section class="panel">
+        <h2>What Catching a Regression Looks Like</h2>
+        <p>The <code>compare</code> action produces a summary like this after each run:</p>
+        <table class="regression-table" aria-label="Example benchmark comparison">
+          <thead>
+            <tr>
+              <th>Benchmark</th>
+              <th>Baseline</th>
+              <th>Candidate</th>
+              <th>Δ</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="name">BenchmarkEncode/1k</td>
+              <td>142 ns/op</td>
+              <td>138 ns/op</td>
+              <td class="pass">−2.8%</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+            <tr>
+              <td class="name">BenchmarkDecode/1k</td>
+              <td>98 ns/op</td>
+              <td>201 ns/op</td>
+              <td class="fail">+105%</td>
+              <td class="fail">✗ regression</td>
+            </tr>
+            <tr>
+              <td class="name">BenchmarkQuery/scan</td>
+              <td>3.2 ms/op</td>
+              <td>3.4 ms/op</td>
+              <td class="warn">+6.3%</td>
+              <td class="warn">⚠ warn</td>
+            </tr>
+            <tr>
+              <td class="name">BenchmarkIngest/10k</td>
+              <td>12.1 ms/op</td>
+              <td>11.8 ms/op</td>
+              <td class="pass">−2.5%</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel">
         <h2>Who Should Use Benchkit</h2>
         <div class="grid grid-2">
           <article class="journey">
@@ -64,7 +110,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel benchkit">
         <h2>Core Actions</h2>
         <div class="grid grid-3">
           <article class="feature-card benchkit">
