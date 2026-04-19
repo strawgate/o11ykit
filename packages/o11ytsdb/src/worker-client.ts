@@ -125,7 +125,12 @@ export class WorkerClient {
 
     return new Promise<WorkerResponse>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.worker.postMessage(envelope, transfer);
+      try {
+        this.worker.postMessage(envelope, transfer);
+      } catch (err) {
+        this.pending.delete(id);
+        reject(err);
+      }
     });
   }
 
