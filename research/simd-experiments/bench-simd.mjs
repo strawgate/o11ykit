@@ -340,6 +340,194 @@ function runFnv() {
 }
 
 // ═════════════════════════════════════════════════════════════════════
+// Experiment 4: ALP encode — f64 × 10^e → i64
+// ═════════════════════════════════════════════════════════════════════
+
+function runAlpConvert() {
+  const N = 640; // Chunk size
+  const EXP = 3; // precision=3 → scale = 1000
+  const factor = 10 ** EXP;
+
+  // Realistic gauge values that are ALP-friendly (3 decimal places)
+  const vals = new Float64Array(N);
+  for (let i = 0; i < N; i++) vals[i] = Math.round((50 + Math.random() * 50) * factor) / factor;
+
+  // JS baseline
+  const jsInts = new BigInt64Array(N);
+  const jsResult = bench(
+    'JS scalar loop',
+    () => {
+      let min = BigInt(Number.MAX_SAFE_INTEGER),
+        max = BigInt(Number.MIN_SAFE_INTEGER),
+        exc = 0;
+      for (let i = 0; i < N; i++) {
+        const scaled = vals[i] * factor;
+        if (Math.abs(scaled) > 9.2e18) {
+          exc++;
+          continue;
+        }
+        const iv = Math.round(scaled);
+        if (iv / factor === vals[i]) {
+          const b = BigInt(iv);
+          jsInts[i] = b;
+          if (b < min) min = b;
+          if (b > max) max = b;
+        } else {
+          exc++;
+        }
+      }
+    },
+    1000,
+    10000,
+  );
+
+  // WASM scalar
+  wasm.resetScratch();
+  const valPtr = wasm.allocScratch(N * 8);
+  const intPtr = wasm.allocScratch(N * 8);
+  const metaPtr = wasm.allocScratch(3 * 8);
+  copyF64In(valPtr, vals);
+
+  const wasmScalar = bench(
+    'WASM scalar',
+    () => {
+      wasm.alp_convert_scalar(valPtr, N, EXP, intPtr, metaPtr);
+    },
+    1000,
+    10000,
+  );
+
+  const wasmSimd = bench(
+    'WASM SIMD f64x2',
+    () => {
+      wasm.alp_convert_simd(valPtr, N, EXP, intPtr, metaPtr);
+    },
+    1000,
+    10000,
+  );
+
+  printResults('Experiment 4: ALP int conversion (N=640)', [jsResult, wasmScalar, wasmSimd]);
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Experiment 5: ALP FoR decode — (min_int + offset) / factor
+// ═════════════════════════════════════════════════════════════════════
+
+function runAlpReconstruct() {
+  const N = 640;
+  const EXP = 3;
+  const factor = 10 ** EXP;
+  const minInt = 50000n;
+
+  // Pre-build i64 offsets (simulating unpacked FoR values)
+  const offsets = new BigInt64Array(N);
+  for (let i = 0; i < N; i++) offsets[i] = BigInt(Math.floor(Math.random() * 50000));
+
+  // JS baseline
+  const jsResult = bench(
+    'JS scalar loop',
+    () => {
+      const out = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        out[i] = Number(minInt + offsets[i]) / factor;
+      }
+    },
+    1000,
+    10000,
+  );
+
+  // WASM scalar
+  wasm.resetScratch();
+  const offPtr = wasm.allocScratch(N * 8);
+  const outPtr = wasm.allocScratch(N * 8);
+  mem().set(new Uint8Array(offsets.buffer, offsets.byteOffset, offsets.byteLength), offPtr);
+
+  const wasmScalar = bench(
+    'WASM scalar',
+    () => {
+      wasm.alp_reconstruct_scalar(offPtr, N, 50000n, EXP, outPtr);
+    },
+    1000,
+    10000,
+  );
+
+  const wasmSimd = bench(
+    'WASM SIMD i64x2+f64x2',
+    () => {
+      wasm.alp_reconstruct_simd(offPtr, N, 50000n, EXP, outPtr);
+    },
+    1000,
+    10000,
+  );
+
+  printResults('Experiment 5: ALP FoR reconstruct (N=640)', [jsResult, wasmScalar, wasmSimd]);
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// Experiment 6: Quantize — round(v * scale) / scale
+// ═════════════════════════════════════════════════════════════════════
+
+function runQuantize() {
+  const N = 640;
+  const PRECISION = 3;
+  const scale = 10 ** PRECISION;
+
+  // Realistic gauge values
+  const vals = new Float64Array(N);
+  for (let i = 0; i < N; i++) vals[i] = 50 + Math.random() * 50;
+
+  // JS baseline (exact ColumnStore quantize path)
+  const jsResult = bench(
+    'JS Math.round',
+    () => {
+      const out = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        out[i] = Math.round(vals[i] * scale) / scale;
+      }
+    },
+    2000,
+    20000,
+  );
+
+  // WASM scalar
+  wasm.resetScratch();
+  const valPtr = wasm.allocScratch(N * 8);
+  const outPtr = wasm.allocScratch(N * 8);
+  copyF64In(valPtr, vals);
+
+  const wasmScalar = bench(
+    'WASM scalar',
+    () => {
+      wasm.quantize_scalar(valPtr, N, scale, outPtr);
+    },
+    2000,
+    20000,
+  );
+
+  const wasmSimd = bench(
+    'WASM SIMD f64x2',
+    () => {
+      wasm.quantize_simd(valPtr, N, scale, outPtr);
+    },
+    2000,
+    20000,
+  );
+
+  // Verify SIMD matches JS
+  wasm.quantize_simd(valPtr, N, scale, outPtr);
+  const simdOut = readF64Out(outPtr, 5);
+  for (let i = 0; i < 5; i++) {
+    const expected = Math.round(vals[i] * scale) / scale;
+    // Allow rounding mode difference (.5 cases: round-to-even vs round-half-up)
+    if (Math.abs(simdOut[i] - expected) > 1 / scale) {
+      console.error(`  ⚠ quantize mismatch at [${i}]: got ${simdOut[i]}, expected ${expected}`);
+    }
+  }
+
+  printResults('Experiment 6: Quantize (N=640, precision=3)', [jsResult, wasmScalar, wasmSimd]);
+}
+
+// ═════════════════════════════════════════════════════════════════════
 
 console.log('╔══════════════════════════════════════════════════════╗');
 console.log('║  SIMD Experiments — WASM SIMD vs scalar vs JS       ║');
@@ -348,5 +536,8 @@ console.log('╚═════════════════════�
 runMsToNs();
 runStats();
 runFnv();
+runAlpConvert();
+runAlpReconstruct();
+runQuantize();
 
 console.log('\n  Done.\n');
