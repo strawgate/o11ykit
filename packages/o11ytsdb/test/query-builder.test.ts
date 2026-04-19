@@ -242,26 +242,144 @@ describe("QueryBuilder — exec()", () => {
     }
   });
 
-  // ── Unsupported operations ─────────────────────────────────────
+  // ── Regex & negative matchers ────────────────────────────────────
 
-  it("throws for regex matcher (not yet supported)", () => {
+  it("filters with =~ regex matcher", () => {
     const store = populateStore();
-    expect(() =>
-      query().metric("cpu").where("host", "=~", "a|b").range(0n, 100_000_000n).exec(store)
-    ).toThrow("Matcher operator '=~' is not yet supported");
+    const result = query()
+      .metric("cpu")
+      .where("host", "=~", "a|b")
+      .range(0n, 100_000_000n)
+      .exec(store);
+    expect(result.series.length).toBe(2);
+    const hosts = result.series.map((s) => s.labels.get("host")).sort();
+    expect(hosts).toEqual(["a", "b"]);
   });
 
-  it("throws for != matcher (not yet supported)", () => {
+  it("filters with != negative matcher", () => {
     const store = populateStore();
-    expect(() =>
-      query().metric("cpu").where("host", "!=", "c").range(0n, 100_000_000n).exec(store)
-    ).toThrow("Matcher operator '!=' is not yet supported");
+    const result = query()
+      .metric("cpu")
+      .where("host", "!=", "c")
+      .range(0n, 100_000_000n)
+      .exec(store);
+    expect(result.series.length).toBe(2);
+    const hosts = result.series.map((s) => s.labels.get("host")).sort();
+    expect(hosts).toEqual(["a", "b"]);
   });
 
-  it("throws for compound rate() + sum() (not yet supported)", () => {
+  it("filters with !~ negative regex matcher", () => {
     const store = populateStore();
-    expect(() =>
-      query().metric("cpu").range(0n, 100_000_000n).rate().step(60_000n).sumBy("host").exec(store)
-    ).toThrow("Compound rate() + sum() is not yet supported");
+    const result = query()
+      .metric("cpu")
+      .where("host", "!~", "^c$")
+      .range(0n, 100_000_000n)
+      .exec(store);
+    expect(result.series.length).toBe(2);
+    const hosts = result.series.map((s) => s.labels.get("host")).sort();
+    expect(hosts).toEqual(["a", "b"]);
+  });
+
+  // ── Compound transforms ────────────────────────────────────────
+
+  it("executes rate().sumBy() compound transform", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .rate()
+      .step(60_000n)
+      .sumBy("region")
+      .exec(store);
+    // 3 series with region=us-east → should produce 1 group
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    expect(result.series[0]!.labels.get("region")).toBe("us-east");
+    // Should have step-aligned timestamps
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    expect(result.series[0]!.timestamps.length).toBeGreaterThan(0);
+  });
+
+  it("executes rate().avgBy() compound transform", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .rate()
+      .step(60_000n)
+      .avgBy("region")
+      .exec(store);
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    expect(result.series[0]!.timestamps.length).toBeGreaterThan(0);
+  });
+
+  it("executes rate().sumBy() without step (no-step compound)", () => {
+    const store = populateStore();
+    const result = query().metric("cpu").range(0n, 100_000_000n).rate().sumBy("region").exec(store);
+    // Should still produce grouped results even without step
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    expect(result.series[0]!.labels.get("region")).toBe("us-east");
+  });
+
+  // ── Percentile aggregations ────────────────────────────────────
+
+  it("executes p50 (median) aggregation", () => {
+    const store = populateStore();
+    const result = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p50().exec(store);
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const vals = result.series[0]!.values;
+    expect(vals.length).toBeGreaterThan(0);
+    // Median should be a real number (not NaN) for non-empty buckets
+    const nonNan = Array.from(vals).filter((v) => !Number.isNaN(v));
+    expect(nonNan.length).toBeGreaterThan(0);
+  });
+
+  it("executes p99 aggregation", () => {
+    const store = populateStore();
+    const result = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p99().exec(store);
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const vals = result.series[0]!.values;
+    const nonNan = Array.from(vals).filter((v) => !Number.isNaN(v));
+    expect(nonNan.length).toBeGreaterThan(0);
+  });
+
+  it("p50 <= p99 for same data", () => {
+    const store = populateStore();
+    const r50 = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p50().exec(store);
+    const r99 = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p99().exec(store);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const v50 = r50.series[0]!.values;
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const v99 = r99.series[0]!.values;
+    for (let i = 0; i < v50.length; i++) {
+      if (!Number.isNaN(v50[i]!) && !Number.isNaN(v99[i]!)) {
+        expect(v50[i]!).toBeLessThanOrEqual(v99[i]!);
+      }
+    }
+  });
+
+  it("p90By groups percentiles by label", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .step(60_000n)
+      .p90By("host")
+      .exec(store);
+    // 3 hosts → 3 groups
+    expect(result.series.length).toBe(3);
+    const hosts = result.series.map((s) => s.labels.get("host")).sort();
+    expect(hosts).toEqual(["a", "b", "c"]);
+  });
+
+  it("throws for percentile without step()", () => {
+    const store = populateStore();
+    expect(() => query().metric("cpu").range(0n, 100_000_000n).p50().exec(store)).toThrow(
+      "requires step()"
+    );
   });
 });

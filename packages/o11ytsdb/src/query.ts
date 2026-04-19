@@ -9,9 +9,11 @@
 import type {
   AggFn,
   Labels,
+  Matcher,
   QueryEngine,
   QueryOpts,
   QueryResult,
+  SeriesId,
   SeriesResult,
   StorageBackend,
   TimeRange,
@@ -56,6 +58,42 @@ function sortedIntersect(a: number[], b: number[]): number[] {
   return out;
 }
 
+/** Remove elements of b from a (both sorted). */
+function sortedDifference(a: number[], b: number[]): number[] {
+  if (b.length === 0) return a;
+  if (a.length === 0) return [];
+  const out: number[] = [];
+  let j = 0;
+  for (let i = 0; i < a.length; i++) {
+    const v = a[i]!;
+    j = gallopLowerBound(b, v, j);
+    if (j < b.length && b[j] === v) continue;
+    out.push(v);
+  }
+  return out;
+}
+
+/** Resolve a matcher against a storage backend, returning matched series IDs. */
+function matcherIds(storage: StorageBackend, m: Matcher): SeriesId[] {
+  if (m.op === "=" || m.op === "!=") {
+    return storage.matchLabel(m.label, m.value);
+  }
+  // Regex match — compile pattern and use matchLabelRegex if available.
+  // Note: patterns originate from the query builder (developer-authored), not
+  // untrusted end-user input. The length guard is a defense-in-depth measure.
+  if (m.value.length > 200) {
+    throw new Error(`Regex pattern too long (${m.value.length} chars, max 200)`);
+  }
+  const pattern = new RegExp(`^(?:${m.value})$`);
+  if (storage.matchLabelRegex) {
+    return storage.matchLabelRegex(m.label, pattern);
+  }
+  // Fallback: not available on this backend
+  throw new Error(
+    `Storage backend '${storage.name}' does not support regex matchers (matchLabelRegex).`
+  );
+}
+
 export class ScanEngine implements QueryEngine {
   readonly name = "scan";
 
@@ -64,11 +102,68 @@ export class ScanEngine implements QueryEngine {
     let ids = storage.matchLabel("__name__", opts.metric);
     if (opts.matchers) {
       for (const m of opts.matchers) {
-        ids = sortedIntersect(ids, storage.matchLabel(m.label, m.value));
+        const matched = matcherIds(storage, m);
+        if (m.op === "=" || m.op === "=~") {
+          ids = sortedIntersect(ids, matched);
+        } else {
+          // != or !~ → remove matched series
+          ids = sortedDifference(ids, matched);
+        }
       }
     }
 
     let scannedSamples = 0;
+
+    // ── Compound transform + aggregation (e.g. rate().sumBy()) ──
+    // Apply per-series transform first, then group + cross-series aggregate.
+    if (opts.transform && opts.agg) {
+      const groups = new Map<string, { labels: Labels; ranges: TimeRange[] }>();
+
+      for (const id of ids) {
+        let parts: TimeRange[];
+        if (opts.step && storage.readParts) {
+          parts = storage.readParts(id, opts.start, opts.end);
+        } else {
+          parts = [storage.read(id, opts.start, opts.end)];
+        }
+        for (const p of parts) scannedSamples += p.timestamps.length || p.stats?.count || 0;
+
+        // Apply per-series transform → step-aligned bucketed result.
+        const transformed = aggregate(parts, opts.transform, opts.step);
+
+        const labels = storage.labels(id) ?? new Map();
+        const groupKey = opts.groupBy
+          ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0")
+          : "__all__";
+
+        let group = groups.get(groupKey);
+        if (!group) {
+          const groupLabels = new Map<string, string>();
+          groupLabels.set("__name__", opts.metric);
+          if (opts.groupBy) {
+            for (const k of opts.groupBy) {
+              const v = labels.get(k);
+              if (v !== undefined) groupLabels.set(k, v);
+            }
+          }
+          group = { labels: groupLabels, ranges: [] };
+          groups.set(groupKey, group);
+        }
+        group.ranges.push(transformed);
+      }
+
+      // Cross-series aggregation on the transformed results.
+      const series: SeriesResult[] = [];
+      for (const [, group] of groups) {
+        const result = aggregate(group.ranges, opts.agg, opts.step);
+        series.push({
+          labels: group.labels,
+          timestamps: result.timestamps,
+          values: result.values,
+        });
+      }
+      return { series, scannedSeries: ids.length, scannedSamples };
+    }
 
     if (!opts.agg) {
       // No aggregation — return raw series.
@@ -137,6 +232,22 @@ export class ScanEngine implements QueryEngine {
 
 // ── Aggregation ──────────────────────────────────────────────────────
 
+/** Map percentile AggFn to its fractional value (0..1). */
+function percentileFraction(fn: AggFn): number | undefined {
+  switch (fn) {
+    case "p50":
+      return 0.5;
+    case "p90":
+      return 0.9;
+    case "p95":
+      return 0.95;
+    case "p99":
+      return 0.99;
+    default:
+      return undefined;
+  }
+}
+
 /** Initial accumulator value for a given aggregation function. */
 function aggInit(fn: AggFn): number {
   if (fn === "min") return Infinity;
@@ -177,6 +288,12 @@ function aggregate(ranges: TimeRange[], fn: AggFn, step?: bigint): TimeRange {
     return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
   }
 
+  if (!step && percentileFraction(fn) !== undefined) {
+    throw new Error(
+      `Percentile aggregation '${fn}' requires step(). Use .step() to set a bucket interval.`
+    );
+  }
+
   if (!step) {
     // No step alignment — point-by-point aggregation aligned to first series.
     return pointAggregate(ranges, fn);
@@ -196,12 +313,22 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
   const timestamps = longest.timestamps;
   const values = new Float64Array(timestamps.length);
 
-  if (fn === "rate") {
-    // Rate only makes sense per-series; use first.
+  if (fn === "rate" || fn === "increase") {
+    if (ranges.length !== 1) {
+      throw new Error(
+        `${fn}() without a subsequent aggregation must be evaluated per series — use ${fn}().sumBy() or similar`
+      );
+    }
     const src = ranges[0]!;
     for (let i = 1; i < src.timestamps.length; i++) {
-      const dt = Number(src.timestamps[i]! - src.timestamps[i - 1]!) / 1000; // ms → sec
-      values[i] = dt > 0 ? (src.values[i]! - src.values[i - 1]!) / dt : 0;
+      if (fn === "increase") {
+        const delta = src.values[i]! - src.values[i - 1]!;
+        values[i] = delta >= 0 ? delta : src.values[i]!;
+      } else {
+        const dt = Number(src.timestamps[i]! - src.timestamps[i - 1]!) / 1000;
+        const delta = src.values[i]! - src.values[i - 1]!;
+        values[i] = dt > 0 ? (delta >= 0 ? delta : src.values[i]!) / dt : 0;
+      }
     }
     return { timestamps, values };
   }
@@ -267,8 +394,11 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   // buckets.  This avoids collecting all decoded ranges into a temporary
   // array, reducing peak memory from O(total_chunks × chunk_size) to
   // O(chunk_size) and cutting GC pressure substantially.
-  if (fn === "rate") {
-    _stepAggregateRate(ranges, values, counts, bucketCount, minT, minTN, stepN);
+  const pFrac = percentileFraction(fn);
+  if (fn === "rate" || fn === "increase") {
+    _stepAggregateRate(ranges, values, counts, bucketCount, minT, minTN, stepN, fn === "increase");
+  } else if (pFrac !== undefined) {
+    _stepAggregatePercentile(ranges, values, counts, bucketCount, minT, minTN, stepN, pFrac);
   } else {
     // Track timestamps for "last" aggregation to ensure temporal correctness
     // when chunks from multiple series contribute to the same bucket.
@@ -525,8 +655,9 @@ function _makeAccumulator(
 }
 
 /**
- * Rate aggregation — needs per-bucket first/last tracking.
+ * Rate/increase aggregation — needs per-bucket first/last tracking.
  * Handles stats-only parts by decoding them inline.
+ * When isIncrease is true, returns delta (last - first) without dividing by time.
  */
 function _stepAggregateRate(
   ranges: TimeRange[],
@@ -535,7 +666,8 @@ function _stepAggregateRate(
   bucketCount: number,
   minT: bigint,
   minTN: number,
-  stepN: number
+  stepN: number,
+  isIncrease = false
 ): void {
   const firstTs = new Float64Array(bucketCount).fill(Infinity);
   const firstVal = new Float64Array(bucketCount);
@@ -597,7 +729,85 @@ function _stepAggregateRate(
     }
   }
   for (let i = 0; i < bucketCount; i++) {
-    const dt = (lastTs[i]! - firstTs[i]!) / 1000;
-    values[i] = dt > 0 ? (lastVal[i]! - firstVal[i]!) / dt : 0;
+    if (isIncrease) {
+      const delta = lastVal[i]! - firstVal[i]!;
+      values[i] = delta >= 0 ? delta : lastVal[i]!; // counter reset: use last value
+    } else {
+      const delta = lastVal[i]! - firstVal[i]!;
+      const dt = (lastTs[i]! - firstTs[i]!) / 1000;
+      values[i] = dt > 0 ? (delta >= 0 ? delta : lastVal[i]!) / dt : 0;
+    }
+  }
+}
+
+/**
+ * Percentile aggregation — collects all values per bucket, sorts, picks percentile index.
+ * Uses the "nearest rank" method: index = ceil(p * n) - 1.
+ */
+function _stepAggregatePercentile(
+  ranges: TimeRange[],
+  values: Float64Array,
+  counts: Float64Array,
+  bucketCount: number,
+  minT: bigint,
+  minTN: number,
+  stepN: number,
+  fraction: number
+): void {
+  const buckets: number[][] = new Array(bucketCount);
+  for (let i = 0; i < bucketCount; i++) buckets[i] = [];
+
+  const readTs = (dv: DataView, i: number): number => {
+    const off = i << 3;
+    return dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
+  };
+
+  for (let ri = 0; ri < ranges.length; ri++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+    const r = ranges[ri]!;
+    // Always decode stats-only parts — we need individual values.
+    const decoded =
+      r.timestamps.length === 0 && r.decode ? (r.decodeView ? r.decodeView() : r.decode()) : r;
+    const src = decoded.timestamps;
+    const len = src.length;
+    if (len === 0) continue;
+    const vs = decoded.values;
+
+    // Use chunk metadata for arithmetic bucket indexing when available.
+    const hasChunkMeta = r.chunkMinT !== undefined && r.chunkMaxT !== undefined;
+    if (len >= 2 && hasChunkMeta) {
+      const chunkMinTN = Number(r.chunkMinT! - minT) + minTN;
+      const chunkMaxTN = Number(r.chunkMaxT! - minT) + minTN;
+      const span = chunkMaxTN - chunkMinTN;
+      if (span > 0 && span % (len - 1) === 0) {
+        const interval = span / (len - 1);
+        const base = chunkMinTN - minTN;
+        for (let i = 0; i < len; i++) {
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+          buckets[((base + i * interval) / stepN) | 0]!.push(vs[i]!);
+        }
+        continue;
+      }
+    }
+    const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+    for (let i = 0; i < len; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+      buckets[((readTs(dv, i) - minTN) / stepN) | 0]!.push(vs[i]!);
+    }
+  }
+
+  // Sort each bucket and pick the percentile value.
+  for (let i = 0; i < bucketCount; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+    const b = buckets[i]!;
+    counts[i] = b.length;
+    if (b.length === 0) {
+      values[i] = NaN;
+      continue;
+    }
+    b.sort((a, c) => a - c);
+    const idx = Math.min(Math.ceil(fraction * b.length) - 1, b.length - 1);
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+    values[i] = b[idx]!;
   }
 }

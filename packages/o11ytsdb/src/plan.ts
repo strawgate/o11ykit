@@ -26,7 +26,17 @@ export interface PlanMatcher {
 export type TransformFn = "rate" | "increase" | "irate" | "abs" | "ceil" | "floor" | "sqrt";
 
 /** Pure aggregation functions (collapse series, not per-series transforms). */
-export type PlanAggFn = "sum" | "avg" | "min" | "max" | "count" | "last";
+export type PlanAggFn =
+  | "sum"
+  | "avg"
+  | "min"
+  | "max"
+  | "count"
+  | "last"
+  | "p50"
+  | "p90"
+  | "p95"
+  | "p99";
 
 // ── Plan nodes ───────────────────────────────────────────────────────
 

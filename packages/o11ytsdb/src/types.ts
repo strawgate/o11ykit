@@ -121,6 +121,9 @@ export interface StorageBackend {
   /** Return all series IDs where the given label has the given value. */
   matchLabel(label: string, value: string): SeriesId[];
 
+  /** Return all series IDs where the given label matches the regex. */
+  matchLabelRegex?(label: string, pattern: RegExp): SeriesId[];
+
   /** Read decoded samples in [start, end] for a series. */
   read(id: SeriesId, start: bigint, end: bigint): TimeRange;
 
@@ -141,12 +144,29 @@ export interface StorageBackend {
 
 // ── Query engine ─────────────────────────────────────────────────────
 
-export type AggFn = "sum" | "avg" | "min" | "max" | "count" | "last" | "rate";
+export type AggFn =
+  | "sum"
+  | "avg"
+  | "min"
+  | "max"
+  | "count"
+  | "last"
+  | "rate"
+  | "increase"
+  | "p50"
+  | "p90"
+  | "p95"
+  | "p99";
+
+export type MatchOp = "=" | "!=" | "=~" | "!~";
 
 export interface Matcher {
   label: string;
+  op: MatchOp;
   value: string;
 }
+
+export type TransformOp = "rate" | "increase";
 
 export interface QueryOpts {
   metric: string;
@@ -155,6 +175,7 @@ export interface QueryOpts {
   end: bigint;
   step?: bigint;
   agg?: AggFn;
+  transform?: TransformOp;
   groupBy?: string[];
 }
 

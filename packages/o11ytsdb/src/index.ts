@@ -46,6 +46,7 @@ export type {
   Codec,
   Labels,
   Matcher,
+  MatchOp,
   QueryEngine,
   QueryOpts,
   QueryResult,
@@ -56,6 +57,7 @@ export type {
   StorageBackend,
   TimeRange,
   TimestampCodec,
+  TransformOp,
   ValuesCodec,
 } from "./types.js";
 export type { WasmCodecs } from "./wasm-codecs.js";
