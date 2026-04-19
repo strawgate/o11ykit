@@ -10,17 +10,6 @@
   gap: 6px;
   overflow-x: auto;
   padding-bottom: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--xp-border-strong) transparent;
-}
-
-.alp-values-scroll::-webkit-scrollbar {
-  height: 6px;
-}
-
-.alp-values-scroll::-webkit-scrollbar-thumb {
-  background: var(--xp-border-strong);
-  border-radius: 3px;
 }
 
 .alp-val-chip {
@@ -153,8 +142,12 @@
   background: var(--xp-success-glow);
 }
 
-.alp-check { color: var(--xp-success); }
-.alp-cross { color: var(--xp-error); }
+.alp-check {
+  color: var(--xp-success);
+}
+.alp-cross {
+  color: var(--xp-error);
+}
 
 /* ─── Quantize Two-Column ─────────────────────────────────────────── */
 .alp-quant-grid {
@@ -175,7 +168,8 @@
   font-size: 16px;
 }
 
-.alp-quant-grid .from, .alp-quant-grid .to {
+.alp-quant-grid .from,
+.alp-quant-grid .to {
   padding: 6px 10px;
   background: var(--xp-surface-raised);
   border-radius: var(--xp-radius-xs);
@@ -306,10 +300,20 @@
 }
 
 /* Alternating value colors for packed bits */
-.alp-packed-bit.v-even { background: rgba(96, 165, 250, 0.15); color: var(--xp-accent-light); }
-.alp-packed-bit.v-odd  { background: rgba(52, 211, 153, 0.15); color: var(--xp-success); }
-.alp-packed-bit.v-even[data-b="0"] { color: rgba(96, 165, 250, 0.35); }
-.alp-packed-bit.v-odd[data-b="0"]  { color: rgba(52, 211, 153, 0.35); }
+.alp-packed-bit.v-even {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--xp-accent-light);
+}
+.alp-packed-bit.v-odd {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--xp-success);
+}
+.alp-packed-bit.v-even[data-b="0"] {
+  color: rgba(96, 165, 250, 0.35);
+}
+.alp-packed-bit.v-odd[data-b="0"] {
+  color: rgba(52, 211, 153, 0.35);
+}
 
 /* ─── Exceptions Panel ────────────────────────────────────────────── */
 .alp-exc-list {
@@ -366,10 +370,22 @@
   min-width: 2px;
 }
 
-.alp-wire-seg.seg-header    { background: var(--region-header); color: #fff; }
-.alp-wire-seg.seg-packed    { background: var(--region-values); color: #fff; }
-.alp-wire-seg.seg-exc-pos   { background: var(--region-exceptions); color: #000; }
-.alp-wire-seg.seg-exc-val   { background: var(--xp-warn); color: #000; }
+.alp-wire-seg.seg-header {
+  background: var(--region-header);
+  color: #fff;
+}
+.alp-wire-seg.seg-packed {
+  background: var(--region-values);
+  color: #fff;
+}
+.alp-wire-seg.seg-exc-pos {
+  background: var(--region-exceptions);
+  color: #000;
+}
+.alp-wire-seg.seg-exc-val {
+  background: var(--xp-warn);
+  color: #000;
+}
 
 .alp-wire-legend {
   display: flex;
@@ -419,7 +435,8 @@
     gap: 4px 8px;
   }
 
-  .alp-quant-grid .from, .alp-quant-grid .to {
+  .alp-quant-grid .from,
+  .alp-quant-grid .to {
     padding: 4px 6px;
   }
 

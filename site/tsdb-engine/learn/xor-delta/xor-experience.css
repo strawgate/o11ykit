@@ -16,17 +16,6 @@
 
 .xor-table-scroll {
   overflow-x: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--xp-border-strong) transparent;
-}
-
-.xor-table-scroll::-webkit-scrollbar {
-  height: 6px;
-}
-
-.xor-table-scroll::-webkit-scrollbar-thumb {
-  background: var(--xp-border-strong);
-  border-radius: 3px;
 }
 
 .xor-table {
@@ -117,13 +106,8 @@
 }
 
 /* ─── Encoding Badges ─────────────────────────────────────────────── */
+/* Encoding badge — base from .xp-badge in shared.css */
 .xor-enc-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  font-family: var(--xp-mono);
   letter-spacing: 0.02em;
 }
 
@@ -485,16 +469,7 @@
 }
 
 /* ─── Story Box ───────────────────────────────────────────────────── */
-.xor-story {
-  margin-top: 16px;
-  padding: 16px 20px;
-  background: var(--xp-surface);
-  border: 1px solid var(--xp-border);
-  border-radius: var(--xp-radius-sm);
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--xp-text-muted);
-}
+/* base from .xp-story in shared.css */
 
 .xor-story strong {
   color: var(--xp-text);
@@ -542,3 +517,13 @@
     font-size: 9px;
   }
 }
+
+/* ─── IEEE 754 note ───────────────────────────────────────────────── */
+
+.xor-ieee-note {
+  font-size: 0.75rem;
+  color: var(--xp-text-muted, #94a3b8);
+  margin: 4px 0 8px;
+  letter-spacing: 0.02em;
+}
+.xor-ieee-note strong { color: var(--xp-accent); }

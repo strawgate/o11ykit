@@ -6,7 +6,7 @@
  */
 
 import {
-  $, el, buildBreadcrumb, fmt, fmtBytes, zigzagEncode, generateSamples,
+  $, el, buildBreadcrumb, buildStat, fmt, fmtBytes, zigzagEncode, generateSamples, initGlossary,
 } from '../shared.js';
 
 /* ─── Constants ───────────────────────────────────────────────────── */
@@ -177,11 +177,11 @@ function renderTable() {
 
     // Tier badge
     if (row.tier >= 0) {
-      const badge = el('span', { class: `dod-tier-badge t${row.tier}` }, row.tierLabel);
+      const badge = el('span', { class: `xp-badge dod-tier-badge t${row.tier}` }, row.tierLabel);
       tr.appendChild(el('td', {}, badge));
     } else {
       const badge = el('span', {
-        class: 'dod-tier-badge',
+        class: 'xp-badge dod-tier-badge',
         style: { background: 'rgba(139, 92, 246, 0.15)', color: 'var(--region-header)' },
       }, row.tierLabel);
       tr.appendChild(el('td', {}, badge));
@@ -279,11 +279,7 @@ function renderSummary() {
   ];
 
   for (const s of stats) {
-    const stat = el('div', { class: 'xp-stat' },
-      el('div', { class: 'xp-stat-label' }, s.label),
-      el('div', { class: 'xp-stat-value' }, s.value),
-      el('div', { class: 'xp-stat-unit' }, s.unit),
-    );
+    const stat = buildStat(s.label, s.value, s.unit);
     if (s.label === 'Ratio') {
       stat.querySelector('.xp-stat-value').style.color = ratio >= 10 ? 'var(--xp-success)' : ratio >= 4 ? 'var(--xp-accent)' : 'var(--xp-warn)';
     }
@@ -295,10 +291,10 @@ function renderSummary() {
   const t0Pct = tierTotal > 0 ? Math.round((data.tierCounts[0] / tierTotal) * 100) : 0;
 
   if (jitterMs === 0) {
-    story.innerHTML = `With <strong>0 ms jitter</strong>, ${t0Pct}% of deltas-of-deltas are exactly zero — each costs only <strong>1 bit</strong>. The entire timestamp column compresses to <strong>${ratio.toFixed(0)}× smaller</strong> than raw 8-byte timestamps.`;
+    story.innerHTML = `With <strong>0 ms jitter</strong>, ${t0Pct}% of <span class="xp-term" data-term="delta-of-delta">deltas-of-deltas</span> are exactly zero — each costs only <strong>1 bit</strong>. The entire timestamp column compresses to <strong>${ratio.toFixed(0)}× smaller</strong> than raw 8-byte timestamps.`;
   } else {
     const warnClass = avgBits > 10 ? ' warn' : '';
-    story.innerHTML = `With <strong class="${warnClass}">${fmt(jitterMs)} ms jitter</strong>, only ${t0Pct}% of ΔoΔ values are zero. Average encoding cost rises to <strong class="${warnClass}">${avgBits.toFixed(1)} bits/timestamp</strong>. Compression ratio: <strong>${ratio.toFixed(1)}×</strong>.`;
+    story.innerHTML = `With <strong class="${warnClass}">${fmt(jitterMs)} ms jitter</strong>, only ${t0Pct}% of <span class="xp-term" data-term="delta-of-delta">ΔoΔ</span> values are zero. Average encoding cost rises to <strong class="${warnClass}">${avgBits.toFixed(1)} bits/timestamp</strong>. Compression ratio: <strong>${ratio.toFixed(1)}×</strong>.`;
   }
 }
 
@@ -345,6 +341,7 @@ function init() {
 
   // Initial render
   renderAll();
+  initGlossary();
 }
 
 document.addEventListener('DOMContentLoaded', init);

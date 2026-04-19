@@ -22,16 +22,26 @@
         <p class="xp-eyebrow">Query Optimization</p>
         <h1>Chunk Stats</h1>
         <p class="lede">
-          When a chunk is frozen, the TSDB pre-computes <strong>min, max, sum, count</strong>.
-          During query execution, aligned buckets can be answered from stats alone —
+          When a <span class="xp-term" data-term="chunk">chunk</span> is <span class="xp-term" data-term="frozen">frozen</span>, the TSDB pre-computes <strong>min, max, sum, count</strong>.
+          During query execution, <span class="xp-term" data-term="aligned">aligned</span> buckets can be answered from stats alone —
           no decompression needed. This can be <strong>100× faster</strong>.
+        </p>
+        <p class="lede">
+          When a chunk is sealed, the TSDB pre-computes four statistics: minimum value, maximum value,
+          sum of all values, and count of <span class="xp-term" data-term="sample">samples</span>.
+          These four numbers are enough to answer the most common queries — max(), min(), sum(), avg(),
+          and rate() — without decompressing the <span class="xp-term" data-term="chunk">chunk</span> at all.
+        </p>
+        <p class="lede" style="font-size: 0.9em; color: var(--xp-text-dim);">
+          Decompressing a chunk takes CPU time and memory. For a query spanning 100 chunks, skipping
+          even 80% of them makes the query ~5× faster.
         </p>
       </div>
 
       <!-- A. Full Dataset Sparkline -->
       <section class="xp-section" id="data-section">
         <h2>① Dataset &amp; Chunks</h2>
-        <p>12 chunks of temperature data, 64 samples each. Chunk boundaries are marked with dashed lines.</p>
+        <p>12 <span class="xp-term" data-term="chunk">chunks</span> of temperature data, 64 <span class="xp-term" data-term="sample">samples</span> each. Chunk boundaries are marked with dashed lines.</p>
         <div class="xp-card cs-sparkline-card">
           <canvas id="sparkline-canvas" height="140"></canvas>
         </div>
@@ -40,8 +50,8 @@
       <!-- B. Chunk Timeline -->
       <section class="xp-section" id="timeline-section">
         <h2>② Chunk Timeline</h2>
-        <p>Click any chunk to inspect its pre-computed stats.</p>
-        <div class="cs-timeline-strip" id="timeline-strip"></div>
+        <p>Click any <span class="xp-term" data-term="chunk">chunk</span> to inspect its pre-computed stats.</p>
+        <div class="cs-timeline-strip xp-scroll-x" id="timeline-strip"></div>
         <div class="xp-card cs-detail-panel" id="chunk-detail" hidden>
           <div class="cs-detail-header" id="detail-header"></div>
           <div class="xp-stats-row" id="detail-stats"></div>
@@ -52,7 +62,7 @@
       <!-- C. Query Builder -->
       <section class="xp-section" id="query-section">
         <h2>③ Query Builder</h2>
-        <p>Configure an aggregation query and watch the engine decide which chunks to decode.</p>
+        <p>Configure an aggregation query and watch the engine decide which <span class="xp-term" data-term="chunk">chunks</span> to decode.</p>
         <div class="xp-card">
           <div class="xp-controls cs-query-controls">
             <div class="cs-control-group">
@@ -65,7 +75,7 @@
               </select>
             </div>
             <div class="cs-control-group">
-              <label class="xp-label" for="step-select">Step Size</label>
+              <label class="xp-label" for="step-select"><span class="xp-term" data-term="step-aligned aggregation">Step Size</span></label>
               <select class="xp-select" id="step-select">
                 <option value="1">1 chunk</option>
                 <option value="2">2 chunks</option>
@@ -101,37 +111,37 @@
       </section>
 
       <!-- F. Skip Logic Explanation -->
-      <section class="xp-section" id="explain-section">
+      <section class="xp-section" id="skip-logic-section" hidden>
         <h2>⑥ Skip Logic</h2>
         <p>How the engine decides whether to decode or skip each chunk:</p>
         <div class="cs-explain-grid" id="explain-grid">
           <div class="xp-card cs-explain-card" data-agg="max">
             <div class="cs-explain-icon">📈</div>
             <h3>max</h3>
-            <p>If <code class="xp-code">chunk.max ≤ running_max</code> → <strong>skip</strong>. The chunk can't improve the answer.</p>
+            <p>If <code class="xp-code">chunk.max ≤ running_max</code> → <strong>skip</strong>. The <span class="xp-term" data-term="chunk">chunk</span> can't improve the answer.</p>
           </div>
           <div class="xp-card cs-explain-card" data-agg="min">
             <div class="cs-explain-icon">📉</div>
             <h3>min</h3>
-            <p>If <code class="xp-code">chunk.min ≥ running_min</code> → <strong>skip</strong>. The chunk can't lower the answer.</p>
+            <p>If <code class="xp-code">chunk.min ≥ running_min</code> → <strong>skip</strong>. The <span class="xp-term" data-term="chunk">chunk</span> can't lower the answer.</p>
           </div>
           <div class="xp-card cs-explain-card" data-agg="sum">
             <div class="cs-explain-icon">➕</div>
             <h3>sum</h3>
-            <p>If bucket aligns with chunk → use <code class="xp-code">chunk.sum</code> directly. No decode needed.</p>
+            <p>If bucket <span class="xp-term" data-term="aligned">aligns</span> with <span class="xp-term" data-term="chunk">chunk</span> → use <code class="xp-code">chunk.sum</code> directly. No decode needed.</p>
           </div>
           <div class="xp-card cs-explain-card" data-agg="avg">
             <div class="cs-explain-icon">📊</div>
             <h3>avg</h3>
-            <p>If aligned → compute <code class="xp-code">chunk.sum / chunk.count</code>. Both are pre-computed.</p>
+            <p>If <span class="xp-term" data-term="aligned">aligned</span> → compute <code class="xp-code">chunk.sum / chunk.count</code>. Both are pre-computed.</p>
           </div>
         </div>
       </section>
 
       <footer style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--xp-border); text-align: center;">
         <p style="font-size: 13px; color: var(--xp-text-dim);">
-          Part of <a href="/o11ykit/" style="color: var(--xp-accent); text-decoration: none;">o11ykit</a>
-          · <a href="/o11ykit/tsdb-engine/learn/" style="color: var(--xp-text-muted); text-decoration: none;">← Back to Learn</a>
+          Part of <a href="../../../" style="color: var(--xp-accent); text-decoration: none;">o11ykit</a>
+          · <a href="../" style="color: var(--xp-text-muted); text-decoration: none;">← Back to Learn</a>
         </p>
       </footer>
 

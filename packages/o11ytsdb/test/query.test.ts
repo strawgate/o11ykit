@@ -1,15 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 
-import { ColumnStore } from '../src/column-store.js';
-import { FlatStore } from '../src/flat-store.js';
-import { ScanEngine } from '../src/query.js';
-import type { Labels, StorageBackend, ValuesCodec } from '../src/types.js';
+import { ColumnStore } from "../src/column-store.js";
+import { FlatStore } from "../src/flat-store.js";
+import { ScanEngine } from "../src/query.js";
+// biome-ignore lint/correctness/noUnusedImports: test code
+import type { Labels, StorageBackend, ValuesCodec } from "../src/types.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function makeLabels(name: string, extra?: Record<string, string>): Labels {
   const m = new Map<string, string>();
-  m.set('__name__', name);
+  m.set("__name__", name);
   if (extra) {
     for (const [k, v] of Object.entries(extra)) m.set(k, v);
   }
@@ -19,14 +20,18 @@ function makeLabels(name: string, extra?: Record<string, string>): Labels {
 function populateStore(): FlatStore {
   const store = new FlatStore();
   // 3 CPU series for hosts a, b, c — each with 100 points
-  for (const host of ['a', 'b', 'c']) {
-    const id = store.getOrCreateSeries(makeLabels('cpu', { host, region: 'us-east' }));
+  for (const host of ["a", "b", "c"]) {
+    const id = store.getOrCreateSeries(makeLabels("cpu", { host, region: "us-east" }));
     for (let i = 0; i < 100; i++) {
-      store.append(id, 1_000_000n + BigInt(i) * 15_000n, 10 + (host.charCodeAt(0) - 97) * 10 + i * 0.1);
+      store.append(
+        id,
+        1_000_000n + BigInt(i) * 15_000n,
+        10 + (host.charCodeAt(0) - 97) * 10 + i * 0.1
+      );
     }
   }
   // 1 memory series
-  const memId = store.getOrCreateSeries(makeLabels('mem', { host: 'a' }));
+  const memId = store.getOrCreateSeries(makeLabels("mem", { host: "a" }));
   for (let i = 0; i < 50; i++) {
     store.append(memId, 1_000_000n + BigInt(i) * 15_000n, 8192 + i);
   }
@@ -35,13 +40,13 @@ function populateStore(): FlatStore {
 
 // ── Tests ────────────────────────────────────────────────────────────
 
-describe('ScanEngine', () => {
+describe("ScanEngine", () => {
   const engine = new ScanEngine();
 
-  it('queries single metric without aggregation', () => {
+  it("queries single metric without aggregation", () => {
     const store = populateStore();
     const result = engine.query(store, {
-      metric: 'cpu',
+      metric: "cpu",
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
     });
@@ -50,38 +55,40 @@ describe('ScanEngine', () => {
     expect(result.scannedSamples).toBe(300);
   });
 
-  it('filters by label matcher', () => {
+  it("filters by label matcher", () => {
     const store = populateStore();
     const result = engine.query(store, {
-      metric: 'cpu',
-      matchers: [{ label: 'host', value: 'b' }],
+      metric: "cpu",
+      matchers: [{ label: "host", value: "b" }],
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
     });
     expect(result.series.length).toBe(1);
-    expect(result.series[0]!.labels.get('host')).toBe('b');
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    expect(result.series[0]!.labels.get("host")).toBe("b");
   });
 
-  it('filters by time range', () => {
+  it("filters by time range", () => {
     const store = populateStore();
     const start = 1_000_000n + 50n * 15_000n;
     const end = 1_000_000n + 70n * 15_000n;
     const result = engine.query(store, {
-      metric: 'cpu',
-      matchers: [{ label: 'host', value: 'a' }],
+      metric: "cpu",
+      matchers: [{ label: "host", value: "a" }],
       start,
       end,
     });
     expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBeGreaterThanOrEqual(15);
     expect(s.timestamps.length).toBeLessThanOrEqual(25);
   });
 
-  it('returns empty for non-existent metric', () => {
+  it("returns empty for non-existent metric", () => {
     const store = populateStore();
     const result = engine.query(store, {
-      metric: 'nonexistent',
+      metric: "nonexistent",
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
     });
@@ -89,83 +96,89 @@ describe('ScanEngine', () => {
     expect(result.scannedSeries).toBe(0);
   });
 
-  it('aggregates with sum', () => {
+  it("aggregates with sum", () => {
     const store = populateStore();
     const result = engine.query(store, {
-      metric: 'cpu',
+      metric: "cpu",
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
-      agg: 'sum',
+      agg: "sum",
     });
     expect(result.series.length).toBe(1);
     // Sum of 3 series at each point
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(100);
     // First point: 10 + 20 + 30 = 60
     expect(s.values[0]).toBeCloseTo(60);
   });
 
-  it('aggregates with avg', () => {
+  it("aggregates with avg", () => {
     const store = populateStore();
     const result = engine.query(store, {
-      metric: 'cpu',
+      metric: "cpu",
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
-      agg: 'avg',
+      agg: "avg",
     });
     expect(result.series.length).toBe(1);
     // Avg of 10, 20, 30 = 20
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[0]).toBeCloseTo(20);
   });
 
-  it('aggregates with min', () => {
+  it("aggregates with min", () => {
     const store = populateStore();
     const result = engine.query(store, {
-      metric: 'cpu',
+      metric: "cpu",
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
-      agg: 'min',
+      agg: "min",
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[0]).toBeCloseTo(10);
   });
 
-  it('aggregates with max', () => {
+  it("aggregates with max", () => {
     const store = populateStore();
     const result = engine.query(store, {
-      metric: 'cpu',
+      metric: "cpu",
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
-      agg: 'max',
+      agg: "max",
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[0]).toBeCloseTo(30);
   });
 
-  it('aggregates with count', () => {
+  it("aggregates with count", () => {
     const store = populateStore();
     const result = engine.query(store, {
-      metric: 'cpu',
+      metric: "cpu",
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
-      agg: 'count',
+      agg: "count",
     });
     // 3 series contribute to each point
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[0]).toBe(3);
   });
 
-  it('aggregates with rate', () => {
+  it("aggregates with rate", () => {
     const store = new FlatStore();
-    const id = store.getOrCreateSeries(makeLabels('counter'));
+    const id = store.getOrCreateSeries(makeLabels("counter"));
     // Counter: 0, 100, 200, 300 at 1-second intervals (1e9 ns)
     for (let i = 0; i < 4; i++) {
       store.append(id, BigInt(i) * 1_000_000_000n, i * 100);
     }
     const result = engine.query(store, {
-      metric: 'counter',
+      metric: "counter",
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
-      agg: 'rate',
+      agg: "rate",
     });
     // rate = delta_v / delta_t (in seconds, but delta is in ms)
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(4);
     // First rate is 0 (no previous)
@@ -188,8 +201,8 @@ describe('ScanEngine', () => {
    */
   function makeStepStore(): FlatStore {
     const store = new FlatStore();
-    const idA = store.getOrCreateSeries(makeLabels('m', { host: 'a', region: 'us' }));
-    const idB = store.getOrCreateSeries(makeLabels('m', { host: 'b', region: 'eu' }));
+    const idA = store.getOrCreateSeries(makeLabels("m", { host: "a", region: "us" }));
+    const idB = store.getOrCreateSeries(makeLabels("m", { host: "b", region: "eu" }));
     for (let i = 0; i < 6; i++) {
       store.append(idA, BigInt(i) * 1_000n, (i + 1) * 10);
       store.append(idB, BigInt(i) * 1_000n, i + 1);
@@ -197,11 +210,16 @@ describe('ScanEngine', () => {
     return store;
   }
 
-  it('step aggregation sum computes correct values', () => {
+  it("step aggregation sum computes correct values", () => {
     const store = makeStepStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 6_000n, agg: 'sum', step: 2_000n,
+      metric: "m",
+      start: 0n,
+      end: 6_000n,
+      agg: "sum",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(3);
     // bucket 0: 10+20+1+2 = 33
@@ -212,11 +230,16 @@ describe('ScanEngine', () => {
     expect(s.values[2]).toBeCloseTo(121);
   });
 
-  it('step aggregation min computes correct values', () => {
+  it("step aggregation min computes correct values", () => {
     const store = makeStepStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 6_000n, agg: 'min', step: 2_000n,
+      metric: "m",
+      start: 0n,
+      end: 6_000n,
+      agg: "min",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(3);
     // bucket 0: min(10,20,1,2) = 1
@@ -227,11 +250,16 @@ describe('ScanEngine', () => {
     expect(s.values[2]).toBe(5);
   });
 
-  it('step aggregation max computes correct values', () => {
+  it("step aggregation max computes correct values", () => {
     const store = makeStepStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 6_000n, agg: 'max', step: 2_000n,
+      metric: "m",
+      start: 0n,
+      end: 6_000n,
+      agg: "max",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(3);
     // bucket 0: max(10,20,1,2) = 20
@@ -242,11 +270,16 @@ describe('ScanEngine', () => {
     expect(s.values[2]).toBe(60);
   });
 
-  it('step aggregation avg computes correct values', () => {
+  it("step aggregation avg computes correct values", () => {
     const store = makeStepStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 6_000n, agg: 'avg', step: 2_000n,
+      metric: "m",
+      start: 0n,
+      end: 6_000n,
+      agg: "avg",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(3);
     // bucket 0: (10+20+1+2)/4 = 8.25
@@ -257,11 +290,16 @@ describe('ScanEngine', () => {
     expect(s.values[2]).toBeCloseTo(30.25);
   });
 
-  it('step aggregation count computes correct values', () => {
+  it("step aggregation count computes correct values", () => {
     const store = makeStepStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 6_000n, agg: 'count', step: 2_000n,
+      metric: "m",
+      start: 0n,
+      end: 6_000n,
+      agg: "count",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(3);
     // Each bucket: 2 samples from A + 2 from B = 4
@@ -270,11 +308,16 @@ describe('ScanEngine', () => {
     expect(s.values[2]).toBe(4);
   });
 
-  it('step aggregation last computes correct values', () => {
+  it("step aggregation last computes correct values", () => {
     const store = makeStepStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 6_000n, agg: 'last', step: 2_000n,
+      metric: "m",
+      start: 0n,
+      end: 6_000n,
+      agg: "last",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(3);
     // last overwrites in insertion order: A then B processed sequentially
@@ -286,11 +329,16 @@ describe('ScanEngine', () => {
     expect(s.values[2]).toBe(6);
   });
 
-  it('step aggregation bucket timestamps are aligned to step', () => {
+  it("step aggregation bucket timestamps are aligned to step", () => {
     const store = makeStepStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 6_000n, agg: 'sum', step: 2_000n,
+      metric: "m",
+      start: 0n,
+      end: 6_000n,
+      agg: "sum",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const ts = result.series[0]!.timestamps;
     expect(ts[0]).toBe(0n);
     expect(ts[1]).toBe(2_000n);
@@ -299,9 +347,9 @@ describe('ScanEngine', () => {
 
   // ── stepAggregate rate ─────────────────────────────────────────────
 
-  it('step aggregation rate computes per-bucket derivative', () => {
+  it("step aggregation rate computes per-bucket derivative", () => {
     const store = new FlatStore();
-    const id = store.getOrCreateSeries(makeLabels('counter'));
+    const id = store.getOrCreateSeries(makeLabels("counter"));
     // Counter: 0, 100, 200, 300, 400, 500 at 1s intervals
     for (let i = 0; i < 6; i++) {
       store.append(id, BigInt(i) * 1_000n, i * 100);
@@ -311,8 +359,13 @@ describe('ScanEngine', () => {
     //   bucket 1 (t=2000): values 200,300 → rate = (300-200)/(3000-2000)/1000 = 100/1 = 100/s
     //   bucket 2 (t=4000): values 400,500 → rate = (500-400)/(5000-4000)/1000 = 100/1 = 100/s
     const result = engine.query(store, {
-      metric: 'counter', start: 0n, end: 6_000n, agg: 'rate', step: 2_000n,
+      metric: "counter",
+      start: 0n,
+      end: 6_000n,
+      agg: "rate",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(3);
     // (100 - 0) / ((1000 - 0) / 1000) = 100 / 1 = 100
@@ -321,9 +374,9 @@ describe('ScanEngine', () => {
     expect(s.values[2]).toBeCloseTo(100);
   });
 
-  it('step aggregation rate with varying rate', () => {
+  it("step aggregation rate with varying rate", () => {
     const store = new FlatStore();
-    const id = store.getOrCreateSeries(makeLabels('counter'));
+    const id = store.getOrCreateSeries(makeLabels("counter"));
     // bucket 0: t=0 v=0, t=1000 v=50  → rate = 50/s
     // bucket 1: t=2000 v=50, t=3000 v=250 → rate = 200/s
     store.append(id, 0n, 0);
@@ -331,23 +384,33 @@ describe('ScanEngine', () => {
     store.append(id, 2_000n, 50);
     store.append(id, 3_000n, 250);
     const result = engine.query(store, {
-      metric: 'counter', start: 0n, end: 4_000n, agg: 'rate', step: 2_000n,
+      metric: "counter",
+      start: 0n,
+      end: 4_000n,
+      agg: "rate",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(2);
     expect(s.values[0]).toBeCloseTo(50);
     expect(s.values[1]).toBeCloseTo(200);
   });
 
-  it('step aggregation rate with single point per bucket produces 0', () => {
+  it("step aggregation rate with single point per bucket produces 0", () => {
     const store = new FlatStore();
-    const id = store.getOrCreateSeries(makeLabels('counter'));
+    const id = store.getOrCreateSeries(makeLabels("counter"));
     // One point per bucket → dt=0 → rate=0
     store.append(id, 0n, 100);
     store.append(id, 5_000n, 200);
     const result = engine.query(store, {
-      metric: 'counter', start: 0n, end: 6_000n, agg: 'rate', step: 3_000n,
+      metric: "counter",
+      start: 0n,
+      end: 6_000n,
+      agg: "rate",
+      step: 3_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(2);
     // Each bucket has only one point: dt=0 → rate=0
@@ -355,118 +418,166 @@ describe('ScanEngine', () => {
     expect(s.values[1]).toBe(0);
   });
 
-  it('step aggregation rate with empty bucket produces NaN', () => {
+  it("step aggregation rate with empty bucket produces NaN", () => {
     const store = new FlatStore();
-    const id = store.getOrCreateSeries(makeLabels('counter'));
+    const id = store.getOrCreateSeries(makeLabels("counter"));
     store.append(id, 0n, 100);
     store.append(id, 4_000n, 200);
     const result = engine.query(store, {
-      metric: 'counter', start: 0n, end: 5_000n, agg: 'rate', step: 2_000n,
+      metric: "counter",
+      start: 0n,
+      end: 5_000n,
+      agg: "rate",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(3);
-    expect(s.values[0]).toBe(0);     // single point → rate=0
-    expect(s.values[1]).toBeNaN();   // empty bucket → NaN
-    expect(s.values[2]).toBe(0);     // single point → rate=0
+    expect(s.values[0]).toBe(0); // single point → rate=0
+    expect(s.values[1]).toBeNaN(); // empty bucket → NaN
+    expect(s.values[2]).toBe(0); // single point → rate=0
   });
 
   // ── stepAggregate edge cases ───────────────────────────────────────
 
-  it('step aggregation with single point produces one bucket', () => {
+  it("step aggregation with single point produces one bucket", () => {
     const store = new FlatStore();
-    const id = store.getOrCreateSeries(makeLabels('single'));
+    const id = store.getOrCreateSeries(makeLabels("single"));
     store.append(id, 5_000n, 42);
     const result = engine.query(store, {
-      metric: 'single', start: 0n, end: 10_000n, agg: 'sum', step: 3_000n,
+      metric: "single",
+      start: 0n,
+      end: 10_000n,
+      agg: "sum",
+      step: 3_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.timestamps.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[0]).toBe(42);
   });
 
-  it('step aggregation with step larger than data span produces one bucket', () => {
+  it("step aggregation with step larger than data span produces one bucket", () => {
     const store = makeStepStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 6_000n, agg: 'sum', step: 100_000n,
+      metric: "m",
+      start: 0n,
+      end: 6_000n,
+      agg: "sum",
+      step: 100_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(1);
     // All 12 values: (10+20+30+40+50+60) + (1+2+3+4+5+6) = 210 + 21 = 231
     expect(s.values[0]).toBeCloseTo(231);
   });
 
-  it('step aggregation with empty buckets produces NaN', () => {
+  it("step aggregation with empty buckets produces NaN", () => {
     const store = new FlatStore();
-    const id = store.getOrCreateSeries(makeLabels('sparse'));
+    const id = store.getOrCreateSeries(makeLabels("sparse"));
     // Points at t=0 and t=4000 → bucket at t=2000 has no data
     store.append(id, 0n, 10);
     store.append(id, 4_000n, 50);
     const result = engine.query(store, {
-      metric: 'sparse', start: 0n, end: 5_000n, agg: 'min', step: 2_000n,
+      metric: "sparse",
+      start: 0n,
+      end: 5_000n,
+      agg: "min",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(3);
-    expect(s.values[0]).toBe(10);         // bucket 0: has data
-    expect(s.values[1]).toBeNaN();        // bucket 1: empty → NaN
-    expect(s.values[2]).toBe(50);         // bucket 2: has data
+    expect(s.values[0]).toBe(10); // bucket 0: has data
+    expect(s.values[1]).toBeNaN(); // bucket 1: empty → NaN
+    expect(s.values[2]).toBe(50); // bucket 2: has data
   });
 
-  it('step aggregation empty buckets NaN for max', () => {
+  it("step aggregation empty buckets NaN for max", () => {
     const store = new FlatStore();
-    const id = store.getOrCreateSeries(makeLabels('sparse'));
+    const id = store.getOrCreateSeries(makeLabels("sparse"));
     store.append(id, 0n, 10);
     store.append(id, 4_000n, 50);
     const result = engine.query(store, {
-      metric: 'sparse', start: 0n, end: 5_000n, agg: 'max', step: 2_000n,
+      metric: "sparse",
+      start: 0n,
+      end: 5_000n,
+      agg: "max",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.values[0]).toBe(10);
     expect(s.values[1]).toBeNaN();
     expect(s.values[2]).toBe(50);
   });
 
-  it('step aggregation empty buckets NaN for avg', () => {
+  it("step aggregation empty buckets NaN for avg", () => {
     const store = new FlatStore();
-    const id = store.getOrCreateSeries(makeLabels('sparse'));
+    const id = store.getOrCreateSeries(makeLabels("sparse"));
     store.append(id, 0n, 10);
     store.append(id, 4_000n, 50);
     const result = engine.query(store, {
-      metric: 'sparse', start: 0n, end: 5_000n, agg: 'avg', step: 2_000n,
+      metric: "sparse",
+      start: 0n,
+      end: 5_000n,
+      agg: "avg",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.values[0]).toBe(10);
     expect(s.values[1]).toBeNaN();
     expect(s.values[2]).toBe(50);
   });
 
-  it('step aggregation empty buckets are 0 for sum and count', () => {
+  it("step aggregation empty buckets are 0 for sum and count", () => {
     const store = new FlatStore();
-    const id = store.getOrCreateSeries(makeLabels('sparse'));
+    const id = store.getOrCreateSeries(makeLabels("sparse"));
     store.append(id, 0n, 10);
     store.append(id, 4_000n, 50);
     // sum: empty bucket stays 0
     const sumResult = engine.query(store, {
-      metric: 'sparse', start: 0n, end: 5_000n, agg: 'sum', step: 2_000n,
+      metric: "sparse",
+      start: 0n,
+      end: 5_000n,
+      agg: "sum",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(sumResult.series[0]!.values[1]).toBe(0);
     // count: empty bucket stays 0
     const countResult = engine.query(store, {
-      metric: 'sparse', start: 0n, end: 5_000n, agg: 'count', step: 2_000n,
+      metric: "sparse",
+      start: 0n,
+      end: 5_000n,
+      agg: "count",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(countResult.series[0]!.values[1]).toBe(0);
   });
 
   // ── groupBy + step combined ────────────────────────────────────────
 
-  it('groupBy + step produces correct per-group values', () => {
+  it("groupBy + step produces correct per-group values", () => {
     const store = makeStepStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 6_000n, agg: 'sum', step: 2_000n, groupBy: ['region'],
+      metric: "m",
+      start: 0n,
+      end: 6_000n,
+      agg: "sum",
+      step: 2_000n,
+      groupBy: ["region"],
     });
     // 2 regions: 'us' (host a) and 'eu' (host b)
     expect(result.series.length).toBe(2);
 
-    const us = result.series.find(s => s.labels.get('region') === 'us')!;
-    const eu = result.series.find(s => s.labels.get('region') === 'eu')!;
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const us = result.series.find((s) => s.labels.get("region") === "us")!;
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const eu = result.series.find((s) => s.labels.get("region") === "eu")!;
     expect(us).toBeDefined();
     expect(eu).toBeDefined();
 
@@ -481,13 +592,20 @@ describe('ScanEngine', () => {
     expect(eu.values[2]).toBeCloseTo(11);
   });
 
-  it('groupBy + step min produces correct per-group values', () => {
+  it("groupBy + step min produces correct per-group values", () => {
     const store = makeStepStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 6_000n, agg: 'min', step: 2_000n, groupBy: ['host'],
+      metric: "m",
+      start: 0n,
+      end: 6_000n,
+      agg: "min",
+      step: 2_000n,
+      groupBy: ["host"],
     });
-    const a = result.series.find(s => s.labels.get('host') === 'a')!;
-    const b = result.series.find(s => s.labels.get('host') === 'b')!;
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const a = result.series.find((s) => s.labels.get("host") === "a")!;
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const b = result.series.find((s) => s.labels.get("host") === "b")!;
     // Host a: bucket 0: min(10,20)=10, bucket 1: min(30,40)=30, bucket 2: min(50,60)=50
     expect(a.values[0]).toBe(10);
     expect(a.values[1]).toBe(30);
@@ -498,41 +616,52 @@ describe('ScanEngine', () => {
     expect(b.values[2]).toBe(5);
   });
 
-  it('groupBy with no groupBy key returns single group', () => {
+  it("groupBy with no groupBy key returns single group", () => {
     const store = populateStore();
     const result = engine.query(store, {
-      metric: 'cpu', start: 0n, end: BigInt(Number.MAX_SAFE_INTEGER),
-      agg: 'sum',
+      metric: "cpu",
+      start: 0n,
+      end: BigInt(Number.MAX_SAFE_INTEGER),
+      agg: "sum",
     });
     // No groupBy → all series aggregated into one
     expect(result.series.length).toBe(1);
     // First point: 10 + 20 + 30 = 60
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[0]).toBeCloseTo(60);
   });
 
   // ── pointAggregate coverage ────────────────────────────────────────
 
-  it('aggregates with last (pointAggregate)', () => {
+  it("aggregates with last (pointAggregate)", () => {
     const store = populateStore();
     const result = engine.query(store, {
-      metric: 'cpu', start: 0n, end: BigInt(Number.MAX_SAFE_INTEGER), agg: 'last',
+      metric: "cpu",
+      start: 0n,
+      end: BigInt(Number.MAX_SAFE_INTEGER),
+      agg: "last",
     });
     expect(result.series.length).toBe(1);
     // last overwrites sequentially: a=10, b=20, c=30 → last = 30
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[0]).toBe(30);
   });
 
-  it('pointAggregate handles unequal-length series', () => {
+  it("pointAggregate handles unequal-length series", () => {
     const store = new FlatStore();
-    const idA = store.getOrCreateSeries(makeLabels('m', { host: 'x' }));
-    const idB = store.getOrCreateSeries(makeLabels('m', { host: 'y' }));
+    const idA = store.getOrCreateSeries(makeLabels("m", { host: "x" }));
+    const idB = store.getOrCreateSeries(makeLabels("m", { host: "y" }));
     // A has 5 points, B has 3
     for (let i = 0; i < 5; i++) store.append(idA, BigInt(i) * 1_000n, 10);
     for (let i = 0; i < 3; i++) store.append(idB, BigInt(i) * 1_000n, 20);
 
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 10_000n, agg: 'sum',
+      metric: "m",
+      start: 0n,
+      end: 10_000n,
+      agg: "sum",
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     // Longest series (A) has 5 points, so output has 5 timestamps
     expect(s.timestamps.length).toBe(5);
@@ -546,33 +675,37 @@ describe('ScanEngine', () => {
 
   // ── scannedSamples tracking ────────────────────────────────────────
 
-  it('scannedSamples is correct with step aggregation', () => {
+  it("scannedSamples is correct with step aggregation", () => {
     const store = makeStepStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 6_000n, agg: 'sum', step: 2_000n,
+      metric: "m",
+      start: 0n,
+      end: 6_000n,
+      agg: "sum",
+      step: 2_000n,
     });
     // 2 series × 6 points = 12
     expect(result.scannedSamples).toBe(12);
     expect(result.scannedSeries).toBe(2);
   });
 
-  it('handles empty store gracefully', () => {
+  it("handles empty store gracefully", () => {
     const store = new FlatStore();
     const result = engine.query(store, {
-      metric: 'anything',
+      metric: "anything",
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
     });
     expect(result.series.length).toBe(0);
   });
 
-  it('handles aggregation on empty result', () => {
+  it("handles aggregation on empty result", () => {
     const store = new FlatStore();
     const result = engine.query(store, {
-      metric: 'nothing',
+      metric: "nothing",
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
-      agg: 'sum',
+      agg: "sum",
     });
     expect(result.series.length).toBe(0);
     expect(result.scannedSamples).toBe(0);
@@ -586,7 +719,7 @@ describe('ScanEngine', () => {
    * doesn't provide encodeValuesWithStats.
    */
   const identityValuesCodec: ValuesCodec = {
-    name: 'identity',
+    name: "identity",
     encodeValues(values: Float64Array): Uint8Array {
       return new Uint8Array(values.buffer.slice(0));
     },
@@ -604,19 +737,24 @@ describe('ScanEngine', () => {
    */
   function makeStatsStore(): ColumnStore {
     const store = new ColumnStore(identityValuesCodec, 4);
-    const id = store.getOrCreateSeries(makeLabels('m'));
+    const id = store.getOrCreateSeries(makeLabels("m"));
     for (let i = 0; i < 8; i++) {
       store.append(id, BigInt(i) * 1_000n, (i + 1) * 10);
     }
     return store;
   }
 
-  it('stats-skip: sum with large step uses chunk stats', () => {
+  it("stats-skip: sum with large step uses chunk stats", () => {
     const store = makeStatsStore();
     // step=4000 → 2 buckets, each chunk fits exactly in one bucket
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 8_000n, agg: 'sum', step: 4_000n,
+      metric: "m",
+      start: 0n,
+      end: 8_000n,
+      agg: "sum",
+      step: 4_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(2);
     // Chunk 0: sum(10,20,30,40) = 100
@@ -625,31 +763,46 @@ describe('ScanEngine', () => {
     expect(s.values[1]).toBeCloseTo(260);
   });
 
-  it('stats-skip: min with large step uses chunk stats', () => {
+  it("stats-skip: min with large step uses chunk stats", () => {
     const store = makeStatsStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 8_000n, agg: 'min', step: 4_000n,
+      metric: "m",
+      start: 0n,
+      end: 8_000n,
+      agg: "min",
+      step: 4_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.values[0]).toBe(10);
     expect(s.values[1]).toBe(50);
   });
 
-  it('stats-skip: max with large step uses chunk stats', () => {
+  it("stats-skip: max with large step uses chunk stats", () => {
     const store = makeStatsStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 8_000n, agg: 'max', step: 4_000n,
+      metric: "m",
+      start: 0n,
+      end: 8_000n,
+      agg: "max",
+      step: 4_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.values[0]).toBe(40);
     expect(s.values[1]).toBe(80);
   });
 
-  it('stats-skip: avg with large step uses chunk stats', () => {
+  it("stats-skip: avg with large step uses chunk stats", () => {
     const store = makeStatsStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 8_000n, agg: 'avg', step: 4_000n,
+      metric: "m",
+      start: 0n,
+      end: 8_000n,
+      agg: "avg",
+      step: 4_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     // Chunk 0: avg(10,20,30,40) = 25
     expect(s.values[0]).toBeCloseTo(25);
@@ -657,52 +810,76 @@ describe('ScanEngine', () => {
     expect(s.values[1]).toBeCloseTo(65);
   });
 
-  it('stats-skip: count with large step uses chunk stats', () => {
+  it("stats-skip: count with large step uses chunk stats", () => {
     const store = makeStatsStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 8_000n, agg: 'count', step: 4_000n,
+      metric: "m",
+      start: 0n,
+      end: 8_000n,
+      agg: "count",
+      step: 4_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.values[0]).toBe(4);
     expect(s.values[1]).toBe(4);
   });
 
-  it('stats-skip: last with large step uses chunk stats', () => {
+  it("stats-skip: last with large step uses chunk stats", () => {
     const store = makeStatsStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 8_000n, agg: 'last', step: 4_000n,
+      metric: "m",
+      start: 0n,
+      end: 8_000n,
+      agg: "last",
+      step: 4_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
-    expect(s.values[0]).toBe(40);  // last of chunk 0
-    expect(s.values[1]).toBe(80);  // last of chunk 1
+    expect(s.values[0]).toBe(40); // last of chunk 0
+    expect(s.values[1]).toBe(80); // last of chunk 1
   });
 
-  it('stats-skip: single big bucket (step > data span) uses stats', () => {
+  it("stats-skip: single big bucket (step > data span) uses stats", () => {
     const store = makeStatsStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 10_000n, agg: 'sum', step: 100_000n,
+      metric: "m",
+      start: 0n,
+      end: 10_000n,
+      agg: "sum",
+      step: 100_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(1);
     // sum(10..80) = 360
     expect(s.values[0]).toBeCloseTo(360);
   });
 
-  it('stats-skip: scannedSamples counts stats-only parts', () => {
+  it("stats-skip: scannedSamples counts stats-only parts", () => {
     const store = makeStatsStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 8_000n, agg: 'sum', step: 4_000n,
+      metric: "m",
+      start: 0n,
+      end: 8_000n,
+      agg: "sum",
+      step: 4_000n,
     });
     // 8 samples total (2 chunks × 4)
     expect(result.scannedSamples).toBe(8);
   });
 
-  it('stats-skip: small step lazy-decodes chunks spanning multiple buckets', () => {
+  it("stats-skip: small step lazy-decodes chunks spanning multiple buckets", () => {
     const store = makeStatsStore();
     // step=2000 → 4 buckets; each 4-sample chunk spans 2 buckets → lazy decode
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 8_000n, agg: 'sum', step: 2_000n,
+      metric: "m",
+      start: 0n,
+      end: 8_000n,
+      agg: "sum",
+      step: 2_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(4);
     // Bucket 0 [0,2000): t=0→10, t=1000→20 → sum=30
@@ -715,11 +892,16 @@ describe('ScanEngine', () => {
     expect(s.values[3]).toBeCloseTo(150);
   });
 
-  it('stats-skip: rate with ColumnStore lazy-decodes correctly', () => {
+  it("stats-skip: rate with ColumnStore lazy-decodes correctly", () => {
     const store = makeStatsStore();
     const result = engine.query(store, {
-      metric: 'm', start: 0n, end: 8_000n, agg: 'rate', step: 4_000n,
+      metric: "m",
+      start: 0n,
+      end: 8_000n,
+      agg: "rate",
+      step: 4_000n,
     });
+    // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(2);
     // Each bucket has 4 points at 1s intervals, values increase by 10 each
