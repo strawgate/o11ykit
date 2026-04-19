@@ -429,10 +429,10 @@ New window       → '11' + 6L + 6M   (14 + N bits)</code></pre>
         <h2>Fluent Query Builder</h2>
         <p class="section-intro">The query builder compiles a typed <code>PlanNode</code> AST and executes it against any <code>StorageBackend</code>. It's the preferred high-level query API.</p>
 
-<pre><code>import { query } from 'o11ytsdb';
+<pre><code>import { query, executePlan } from 'o11ytsdb';
 
-// Composable, immutable builder — chain any combination
-const result = await query()
+// Composable, immutable builder — chain any combination (exec is synchronous)
+const result = query()
   .metric('http_request_duration_seconds')
   .where('method', '=', 'GET')
   .where('status', '=~', '2..')   // regex matcher
@@ -442,7 +442,7 @@ const result = await query()
   .sumBy('endpoint')
   .exec(storage);
 
-// Or compile to a plan first (inspect / serialize / defer)
+// Or compile to a plan first (inspect / defer / pass around)
 const plan = query()
   .metric('cpu_usage')
   .where('host', '!=', 'canary')
@@ -453,7 +453,7 @@ const plan = query()
 
 // plan.kind === 'aggregate' | 'timeRange' | 'select' | 'transform'
 // Execute later with any compatible storage backend
-const { series, scannedSamples } = await execute(plan, storage);</code></pre>
+const { series, scannedSamples } = executePlan(plan, storage);</code></pre>
 
         <div class="grid grid-2" style="margin-top:18px">
           <div class="query-feature">
@@ -500,8 +500,8 @@ const timestamps = BigInt64Array.from({ length: 10000 }, (_, i) =&gt; BigInt(Dat
 const values = Float64Array.from({ length: 10000 }, (_, i) =&gt; 100 + Math.sin(i / 50) * 30 + Math.random() * 5);
 store.appendBatch(seriesId, timestamps, values);
 
-// 3. Query with the fluent builder (recommended)
-const result = await query()
+// 3. Query with the fluent builder (recommended — exec is synchronous)
+const result = query()
   .metric('http_requests')
   .where('region', '=', 'us-east')
   .range(timestamps[0], timestamps[timestamps.length - 1])
