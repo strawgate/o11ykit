@@ -204,7 +204,13 @@ export class QueryBuilder {
     }
 
     if (agg != null) {
-      node = { kind: "aggregate", input: node, fn: agg, step, groupBy };
+      node = {
+        kind: "aggregate",
+        input: node,
+        fn: agg,
+        ...(step != null && { step }),
+        ...(groupBy != null && { groupBy }),
+      };
     }
 
     return node;
