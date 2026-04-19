@@ -99,14 +99,32 @@ function benchAppendBatch(
   const codec = createPlainCodec();
 
   // Warmup
-  const warmup = new ColumnStore(codec, CHUNK_SIZE, () => 0, label, undefined, undefined, undefined, precision);
+  const warmup = new ColumnStore(
+    codec,
+    CHUNK_SIZE,
+    () => 0,
+    label,
+    undefined,
+    undefined,
+    undefined,
+    precision
+  );
   const wId = warmup.getOrCreateSeries(new Map([["__name__", "warmup"]]));
   warmup.appendBatch(wId, ts, vals);
 
   // Timed
   const start = performance.now();
   for (let iter = 0; iter < ITERS; iter++) {
-    const store = new ColumnStore(codec, CHUNK_SIZE, () => 0, label, undefined, undefined, undefined, precision);
+    const store = new ColumnStore(
+      codec,
+      CHUNK_SIZE,
+      () => 0,
+      label,
+      undefined,
+      undefined,
+      undefined,
+      precision
+    );
     const id = store.getOrCreateSeries(new Map([["__name__", `s_${iter}`]]));
     store.appendBatch(id, ts, vals);
   }
@@ -164,7 +182,14 @@ describe("precision auto-detect benchmark", () => {
 
     // Verify quantization actually rounds values.
     const store = new ColumnStore(
-      createPlainCodec(), CHUNK_SIZE, () => 0, "verify", undefined, undefined, undefined, 6
+      createPlainCodec(),
+      CHUNK_SIZE,
+      () => 0,
+      "verify",
+      undefined,
+      undefined,
+      undefined,
+      6
     );
     const id = store.getOrCreateSeries(new Map([["__name__", "verify"]]));
     store.appendBatch(id, ts, vals);
@@ -181,7 +206,16 @@ describe("precision auto-detect benchmark", () => {
 
   it("auto-detect correctness: integer values pass through unchanged", () => {
     const codec = createPlainCodec();
-    const store = new ColumnStore(codec, CHUNK_SIZE, () => 0, "int-check", undefined, undefined, undefined, 6);
+    const store = new ColumnStore(
+      codec,
+      CHUNK_SIZE,
+      () => 0,
+      "int-check",
+      undefined,
+      undefined,
+      undefined,
+      6
+    );
     const id = store.getOrCreateSeries(new Map([["__name__", "counter"]]));
 
     const smallTs = new BigInt64Array([1n, 2n, 3n, 4n, 5n]);
@@ -194,7 +228,16 @@ describe("precision auto-detect benchmark", () => {
 
   it("auto-detect correctness: mixed batch quantizes non-integers", () => {
     const codec = createPlainCodec();
-    const store = new ColumnStore(codec, CHUNK_SIZE, () => 0, "mixed-check", undefined, undefined, undefined, 3);
+    const store = new ColumnStore(
+      codec,
+      CHUNK_SIZE,
+      () => 0,
+      "mixed-check",
+      undefined,
+      undefined,
+      undefined,
+      3
+    );
     const id = store.getOrCreateSeries(new Map([["__name__", "mixed"]]));
 
     const smallTs = new BigInt64Array([1n, 2n, 3n]);
@@ -212,7 +255,16 @@ describe("precision auto-detect benchmark", () => {
 
   it("auto-detect correctness: append() skips quantize for integer values", () => {
     const codec = createPlainCodec();
-    const store = new ColumnStore(codec, CHUNK_SIZE, () => 0, "single-check", undefined, undefined, undefined, 6);
+    const store = new ColumnStore(
+      codec,
+      CHUNK_SIZE,
+      () => 0,
+      "single-check",
+      undefined,
+      undefined,
+      undefined,
+      6
+    );
     const id = store.getOrCreateSeries(new Map([["__name__", "single"]]));
 
     store.append(id, 1n, 42);

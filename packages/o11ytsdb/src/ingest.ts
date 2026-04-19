@@ -43,34 +43,10 @@ const ATTR_PREFIX_RESOURCE = "resource.";
 const ATTR_PREFIX_SCOPE = "scope_attr.";
 const ATTR_PREFIX_POINT = "attr.";
 
-// ── T3: Sanitize cache ──────────────────────────────────────────────
-const sanitizeCache = new Map<string, string>();
+const SANITIZE_RE = /[^a-zA-Z0-9_]/gu;
 
 function sanitizeLabelKey(key: string): string {
-  let cached = sanitizeCache.get(key);
-  if (cached !== undefined) return cached;
-  cached = key.replace(/[^a-zA-Z0-9_]/gu, "_");
-  sanitizeCache.set(key, cached);
-  return cached;
-}
-
-// ── Per-prefix key caches (avoids string concat on cache hits) ──────
-const resourceKeyCache = new Map<string, string>();
-const scopeKeyCache = new Map<string, string>();
-const pointKeyCache = new Map<string, string>();
-
-function prefixedKey(prefix: string, key: string): string {
-  const cache =
-    prefix === ATTR_PREFIX_POINT
-      ? pointKeyCache
-      : prefix === ATTR_PREFIX_RESOURCE
-        ? resourceKeyCache
-        : scopeKeyCache;
-  let cached = cache.get(key);
-  if (cached !== undefined) return cached;
-  cached = `${prefix}${sanitizeLabelKey(key)}`;
-  cache.set(key, cached);
-  return cached;
+  return key.replace(SANITIZE_RE, "_");
 }
 
 // ── FNV-1a incremental hashing ──────────────────────────────────────
@@ -105,7 +81,7 @@ function computePointAttrsHash(baseHash: number, pointAttrs: Record<string, unkn
   for (const key of Object.keys(pointAttrs)) {
     hash = fnvHashEntry(
       hash,
-      prefixedKey(ATTR_PREFIX_POINT, key),
+      `${ATTR_PREFIX_POINT}${sanitizeLabelKey(key)}`,
       attributeValueToLabel(pointAttrs[key])
     );
     count++;
@@ -134,7 +110,10 @@ function buildSnapshotLabels(
   }
   labels.set("__name__", metricName);
   for (const key of Object.keys(pointAttrs)) {
-    labels.set(prefixedKey(ATTR_PREFIX_POINT, key), attributeValueToLabel(pointAttrs[key]));
+    labels.set(
+      `${ATTR_PREFIX_POINT}${sanitizeLabelKey(key)}`,
+      attributeValueToLabel(pointAttrs[key])
+    );
   }
   return labels;
 }
@@ -240,10 +219,16 @@ function ingestMetricsDocument(
       baseEntries.push([SCOPE_NAME_LABEL, scope?.name ?? ""]);
       baseEntries.push([SCOPE_VERSION_LABEL, scope?.version ?? ""]);
       for (const [key, value] of Object.entries(resourceAttrs)) {
-        baseEntries.push([prefixedKey(ATTR_PREFIX_RESOURCE, key), attributeValueToLabel(value)]);
+        baseEntries.push([
+          `${ATTR_PREFIX_RESOURCE}${sanitizeLabelKey(key)}`,
+          attributeValueToLabel(value),
+        ]);
       }
       for (const [key, value] of Object.entries(scopeAttrs)) {
-        baseEntries.push([prefixedKey(ATTR_PREFIX_SCOPE, key), attributeValueToLabel(value)]);
+        baseEntries.push([
+          `${ATTR_PREFIX_SCOPE}${sanitizeLabelKey(key)}`,
+          attributeValueToLabel(value),
+        ]);
       }
 
       let baseHash = FNV_OFFSET >>> 0;

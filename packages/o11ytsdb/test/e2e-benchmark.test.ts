@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { ColumnStore } from "../src/column-store.js";
 import { ScanEngine } from "../src/query.js";
-import type { ValuesCodec, TimestampCodec, RangeDecodeCodec } from "../src/types.js";
+import type { RangeDecodeCodec, TimestampCodec, ValuesCodec } from "../src/types.js";
 import { initWasmCodecs } from "../src/wasm-codecs.js";
 
 // ── Constants ─────────────────────────────────────────────────────────
@@ -23,7 +23,8 @@ const RAW_BYTES = NUM_SERIES * SAMPLES_PER_SERIES * 8; // 1.31 MB
 // Seeded PRNG for reproducible benchmarks (xoshiro128**)
 function mulberry32(seed: number) {
   return () => {
-    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -114,7 +115,7 @@ function createStore(cfg: CodecConfig): ColumnStore {
     () => 0,
     cfg.label,
     cfg.tsCodec,
-    cfg.rangeCodec,
+    cfg.rangeCodec
   );
 }
 
@@ -126,7 +127,10 @@ function ingestAll(store: ColumnStore, data: SeriesData[]): void {
   }
 }
 
-function benchIngest(cfg: CodecConfig, data: SeriesData[]): { elapsedMs: number; store: ColumnStore } {
+function benchIngest(
+  cfg: CodecConfig,
+  data: SeriesData[]
+): { elapsedMs: number; store: ColumnStore } {
   // Warmup
   const warmup = createStore(cfg);
   ingestAll(warmup, data);
@@ -150,7 +154,7 @@ function benchQuery(
   store: ColumnStore,
   engine: ScanEngine,
   data: SeriesData[],
-  fullRange: boolean,
+  fullRange: boolean
 ): { elapsedMs: number; totalSamples: number } {
   const startT = data[0]!.timestamps[0]!;
   const endT = data[0]!.timestamps[SAMPLES_PER_SERIES - 1]!;
@@ -188,7 +192,12 @@ describe("E2E Benchmark: codec comparison", { timeout: 120_000 }, () => {
     const configs: CodecConfig[] = [
       { label: "JS Plain (f64)", valuesCodec: createPlainJsCodec() },
       { label: "WASM XOR (Gorilla)", valuesCodec: wasm.xorValuesCodec, tsCodec: wasm.tsCodec },
-      { label: "WASM ALP", valuesCodec: wasm.valuesCodec, tsCodec: wasm.tsCodec, rangeCodec: wasm.rangeCodec },
+      {
+        label: "WASM ALP",
+        valuesCodec: wasm.valuesCodec,
+        tsCodec: wasm.tsCodec,
+        rangeCodec: wasm.rangeCodec,
+      },
     ];
 
     const data = generateData();
@@ -284,8 +293,20 @@ describe("E2E Benchmark: codec comparison", { timeout: 120_000 }, () => {
       "",
       "  ▸ Pipeline performance (ingest + compress + query)",
       "",
-      padRow("Codec", "Ingest (M samp/s)", "Memory (KB)", "Full Query (M s/s)", "Range 10% (M s/s)"),
-      padRow("─────", "─────────────────", "───────────", "──────────────────", "─────────────────"),
+      padRow(
+        "Codec",
+        "Ingest (M samp/s)",
+        "Memory (KB)",
+        "Full Query (M s/s)",
+        "Range 10% (M s/s)"
+      ),
+      padRow(
+        "─────",
+        "─────────────────",
+        "───────────",
+        "──────────────────",
+        "─────────────────"
+      ),
     ];
 
     for (const r of results) {
@@ -295,8 +316,8 @@ describe("E2E Benchmark: codec comparison", { timeout: 120_000 }, () => {
           (r.ingestSamplesPerSec / 1e6).toFixed(2),
           (r.compressedBytes / 1024).toFixed(1),
           (r.fullQuerySamplesPerSec / 1e6).toFixed(2),
-          (r.rangeQuerySamplesPerSec / 1e6).toFixed(2),
-        ),
+          (r.rangeQuerySamplesPerSec / 1e6).toFixed(2)
+        )
       );
     }
 
@@ -308,9 +329,9 @@ describe("E2E Benchmark: codec comparison", { timeout: 120_000 }, () => {
       const r = results[i]!;
       lines.push(
         `  ${r.label} vs ${jsResult.label}:` +
-        `  ingest ${(r.ingestSamplesPerSec / jsResult.ingestSamplesPerSec).toFixed(2)}x` +
-        `  | full-query ${(r.fullQuerySamplesPerSec / jsResult.fullQuerySamplesPerSec).toFixed(2)}x` +
-        `  | range-query ${(r.rangeQuerySamplesPerSec / jsResult.rangeQuerySamplesPerSec).toFixed(2)}x`,
+          `  ingest ${(r.ingestSamplesPerSec / jsResult.ingestSamplesPerSec).toFixed(2)}x` +
+          `  | full-query ${(r.fullQuerySamplesPerSec / jsResult.fullQuerySamplesPerSec).toFixed(2)}x` +
+          `  | range-query ${(r.rangeQuerySamplesPerSec / jsResult.rangeQuerySamplesPerSec).toFixed(2)}x`
       );
     }
 

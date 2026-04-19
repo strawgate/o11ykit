@@ -4,6 +4,8 @@
  * Public API surface.
  */
 
+// Worker isolation + transfer protocol
+export { BackpressureController } from "./backpressure.js";
 export { ChunkedStore } from "./chunked-store.js";
 export type { DecodedChunk } from "./codec.js";
 // Codec — XOR-delta (Gorilla) compression
@@ -30,7 +32,6 @@ export {
   parseOtlpToSamples,
 } from "./ingest.js";
 export type { InternId } from "./interner.js";
-
 // String interner + inverted index
 export { Interner } from "./interner.js";
 // Label index — shared label management for storage backends
@@ -61,8 +62,6 @@ export type {
 export type { WasmCodecs } from "./wasm-codecs.js";
 // WASM codec loader (ALP + XOR-delta + SIMD accelerators)
 export { initWasmCodecs } from "./wasm-codecs.js";
-
-// Worker isolation + transfer protocol
 export { WorkerClient } from "./worker-client.js";
 export type {
   RequestEnvelope,
