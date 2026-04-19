@@ -217,7 +217,12 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
     encodeBatchValuesWithStats(arrays: Float64Array[]) {
       const numArrays = arrays.length;
       if (numArrays === 0) return [];
-      const chunkSize = arrays[0]!.length;
+      const chunkSize = arrays[0]?.length ?? 0;
+      if (!arrays.every((a) => a.length === chunkSize)) {
+        throw new RangeError(
+          `encodeBatchValuesWithStats: all arrays must have the same length (expected ${chunkSize})`,
+        );
+      }
       wasm.resetScratch();
 
       const valsPtr = wasm.allocScratch(numArrays * chunkSize * 8);

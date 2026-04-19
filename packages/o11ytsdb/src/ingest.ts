@@ -211,9 +211,11 @@ export function parseOtlpToSamples(payload: unknown): ParsedOtlpResult {
  * detectSignal, and isMetricsDocument. Use when the caller has already
  * validated the payload type (e.g. worker protocol).
  *
- * @param msToNs — Optional WASM SIMD accelerator that converts a Float64Array
- *   of **millisecond** timestamps (after {@link normalizeTimestamp}) into a
- *   BigInt64Array of nanoseconds. When omitted, a scalar BigInt loop is used.
+ * @param msToNs - Optional converter from millisecond timestamps to nanosecond
+ *   BigInt64Array. Receives a **Float64Array of milliseconds** (already
+ *   truncated by normalizeTimestamp — sub-ms precision is lost). Must return a
+ *   BigInt64Array of nanosecond epoch values. Pass `wc.msToNs` from
+ *   {@link WasmCodecs} for a SIMD-accelerated (~12×) implementation.
  */
 export function ingestOtlpObject(
   document: OtlpMetricsDocument,
@@ -332,7 +334,11 @@ function ingestMetricsDocument(
 /**
  * Parse and ingest OTLP metrics in one step (convenience wrapper).
  *
- * @param msToNs — Optional WASM SIMD accelerator. See {@link ingestOtlpObject}.
+ * @param msToNs - Optional converter from millisecond timestamps to nanosecond
+ *   BigInt64Array. Receives a **Float64Array of milliseconds** (already
+ *   truncated by normalizeTimestamp — sub-ms precision is lost). Must return a
+ *   BigInt64Array of nanosecond epoch values. Pass `wc.msToNs` from
+ *   {@link WasmCodecs} for a SIMD-accelerated (~12×) implementation.
  */
 export function ingestOtlpJson(
   payload: unknown,

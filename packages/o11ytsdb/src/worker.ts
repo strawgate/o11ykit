@@ -117,7 +117,6 @@ export class O11yWorkerRuntime {
   private readonly engine: QueryEngine;
   private createStore: (chunkSize: number, precision?: number) => StorageBackend;
   private store: StorageBackend;
-  private wasmCodecs: WasmCodecs | null = null;
   private wasmReady: Promise<void>;
   private defaultPrecision: number | undefined;
 
@@ -125,6 +124,7 @@ export class O11yWorkerRuntime {
     this.endpoint = endpoint ?? resolveEndpoint();
     this.defaultPrecision = config?.precision;
     const codec = createValuesCodec();
+    const hasCustomFactory = config?.createStore !== undefined;
     this.createStore =
       config?.createStore ??
       ((cs: number, precision?: number) =>
@@ -147,19 +147,20 @@ export class O11yWorkerRuntime {
     this.wasmReady = tryLoadWasm()
       .then((wc) => {
         if (wc) {
-          this.wasmCodecs = wc;
-          this.createStore = (cs: number, precision?: number) =>
-            new ColumnStore(
-              wc.valuesCodec,
-              cs,
-              undefined,
-              undefined,
-              wc.tsCodec,
-              wc.rangeCodec,
-              undefined,
-              precision,
-              wc.quantizeBatch
-            );
+          if (!hasCustomFactory) {
+            this.createStore = (cs: number, precision?: number) =>
+              new ColumnStore(
+                wc.valuesCodec,
+                cs,
+                undefined,
+                undefined,
+                wc.tsCodec,
+                wc.rangeCodec,
+                undefined,
+                precision,
+                wc.quantizeBatch
+              );
+          }
         }
       })
       .catch(() => {
