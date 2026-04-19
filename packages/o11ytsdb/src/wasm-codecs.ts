@@ -220,7 +220,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const chunkSize = arrays[0]?.length ?? 0;
       if (!arrays.every((a) => a.length === chunkSize)) {
         throw new RangeError(
-          `encodeBatchValuesWithStats: all arrays must have the same length (expected ${chunkSize})`,
+          `encodeBatchValuesWithStats: all arrays must have the same length (expected ${chunkSize})`
         );
       }
       wasm.resetScratch();
