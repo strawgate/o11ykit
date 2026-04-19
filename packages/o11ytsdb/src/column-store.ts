@@ -123,7 +123,20 @@ export class ColumnStore implements StorageBackend {
     this.quantizeBatch = quantizeBatch;
     if (precision != null) {
       const scale = 10 ** precision;
-      this.quantize = (v: number) => Math.round(v * scale) / scale;
+      if (quantizeBatch) {
+        // Use WASM quantize for single values too, ensuring consistent rounding
+        // (banker's rounding via f64x2_nearest) across append() and appendBatch().
+        const scratch = new Float64Array(1);
+        const qb = quantizeBatch;
+        const p = precision;
+        this.quantize = (v: number) => {
+          scratch[0] = v;
+          qb(scratch, p);
+          return scratch[0]!;
+        };
+      } else {
+        this.quantize = (v: number) => Math.round(v * scale) / scale;
+      }
     }
   }
 

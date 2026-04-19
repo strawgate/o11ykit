@@ -16,7 +16,7 @@ type MessageListener = (event: { data: unknown }) => void;
 
 /** Minimal mock that captures postMessage calls and lets us send responses. */
 function createMockWorker() {
-  const listeners: MessageListener[] = [];
+  const messageListeners: MessageListener[] = [];
   const posted: Array<{ message: unknown; transfer?: ArrayBufferLike[] }> = [];
 
   return {
@@ -25,14 +25,16 @@ function createMockWorker() {
       postMessage(message: unknown, transfer?: ArrayBufferLike[]): void {
         posted.push({ message, transfer });
       },
-      addEventListener(_type: string, listener: MessageListener): void {
-        listeners.push(listener);
+      addEventListener(type: string, listener: MessageListener): void {
+        if (type === "message") messageListeners.push(listener);
+        // Silently accept other types (e.g. "error") without storing them,
+        // since the mock doesn't simulate worker crashes.
       },
       terminate: vi.fn(),
     },
     /** Simulate receiving a message from the "worker". */
     respond(data: unknown): void {
-      for (const listener of listeners) listener({ data });
+      for (const listener of messageListeners) listener({ data });
     },
     /** Auto-respond to the next postMessage with a success envelope. */
     autoRespond(payload: WorkerResponse): void {
@@ -313,8 +315,8 @@ describe("WorkerClient", () => {
       // We need to wire up manually
       let capturedListener: MessageListener | undefined;
       workerNoTerminate.addEventListener.mockImplementation(
-        (_type: string, listener: MessageListener) => {
-          capturedListener = listener;
+        (type: string, listener: MessageListener) => {
+          if (type === "message") capturedListener = listener;
         }
       );
 
