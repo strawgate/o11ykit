@@ -84,7 +84,7 @@ function matcherIds(storage: StorageBackend, m: Matcher): SeriesId[] {
   if (m.value.length > 200) {
     throw new Error(`Regex pattern too long (${m.value.length} chars, max 200)`);
   }
-  const pattern = new RegExp(m.value);
+  const pattern = new RegExp(`^(?:${m.value})$`);
   if (storage.matchLabelRegex) {
     return storage.matchLabelRegex(m.label, pattern);
   }
@@ -314,7 +314,11 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
   const values = new Float64Array(timestamps.length);
 
   if (fn === "rate" || fn === "increase") {
-    // Rate/increase only makes sense per-series; use first.
+    if (ranges.length !== 1) {
+      throw new Error(
+        `${fn}() without a subsequent aggregation must be evaluated per series — use ${fn}().sumBy() or similar`
+      );
+    }
     const src = ranges[0]!;
     for (let i = 1; i < src.timestamps.length; i++) {
       if (fn === "increase") {

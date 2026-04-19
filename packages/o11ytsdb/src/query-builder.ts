@@ -236,11 +236,11 @@ export class QueryBuilder {
       node = { kind: "transform", input: node, fn };
     }
 
-    if (agg != null) {
+    if (agg != null || (step != null && transforms.length > 0)) {
       node = {
         kind: "aggregate",
         input: node,
-        fn: agg,
+        fn: (agg ?? transforms[transforms.length - 1]!) as PlanAggFn,
         ...(step != null && { step }),
         ...(groupBy != null && { groupBy }),
       };
