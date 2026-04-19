@@ -2,7 +2,7 @@
  * WASM codec loader for o11ytsdb.
  *
  * Loads a .wasm binary and wraps it in the CodecImpl interface.
- * Both Rust and Zig produce the same ABI:
+ * Rust WASM ABI:
  *   - encodeChunk(ts_ptr, val_ptr, count, out_ptr, out_cap) → bytes_written
  *   - decodeChunk(in_ptr, in_len, ts_ptr, val_ptr, max_samples) → n_samples
  *   - allocScratch(size) → ptr

@@ -24,7 +24,7 @@
 // ── Types ────────────────────────────────────────────────────────────
 
 /** Runtime tag — open string, not a closed union. */
-export type Runtime = string; // 'ts' | 'zig' | 'rust' | future
+export type Runtime = string; // 'ts' | 'rust' | future
 
 export interface BenchResult {
   name: string;

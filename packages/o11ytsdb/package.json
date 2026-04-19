@@ -39,9 +39,8 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "build:zig": "cd zig && zig build -Doptimize=ReleaseSmall && cp zig-out/lib/o11ytsdb.wasm ../wasm/o11ytsdb-zig.wasm",
     "build:rust": "cd rust && cargo build --release --target wasm32-unknown-unknown && cp target/wasm32-unknown-unknown/release/o11ytsdb_wasm.wasm ../wasm/o11ytsdb-rust.wasm",
-    "build:wasm": "npm run build:zig && npm run build:rust",
+    "build:wasm": "npm run build:rust",
     "build:all": "npm run build:wasm && npm run build",
     "bench:build": "tsc -p bench/tsconfig.json",
     "bench": "npm run build && npm run bench:build && node bench/run.mjs",
