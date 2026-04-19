@@ -2,7 +2,7 @@
  * Shared test data generators for o11ytsdb benchmarks.
  *
  * Every benchmark and cross-validation test uses these generators
- * to produce deterministic, reproducible data. Both TS and Zig
+ * to produce deterministic, reproducible data. Both TS and Rust
  * implementations must produce identical output for these inputs.
  */
 

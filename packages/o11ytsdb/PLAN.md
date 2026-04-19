@@ -19,36 +19,32 @@ time but costs 20% more memory gets rejected.
 
 ---
 
-## The Triple Implementation Protocol
+## The Dual Implementation Protocol
 
-Every hot-path module has three implementations: TypeScript, Zig→WASM,
-and Rust→WASM. They serve as mutual oracles.
+Every hot-path module has two implementations: TypeScript and Rust→WASM.
+They serve as mutual oracles.
 
 ### Rules
 
-1. **All three must exist before merge.** No "we'll add WASM later."
-2. **Cross-validate all test vectors.** TS encode → Zig decode →
-   Rust decode, and every other permutation. If any two disagree,
-   there's a bug. Find it.
-3. **Benchmark all three on every PR.** Results go in `bench/results/`.
+1. **Both must exist before merge.** No "we'll add WASM later."
+2. **Cross-validate all test vectors.** TS encode → Rust decode and
+   vice versa. If the two disagree, there's a bug. Find it.
+3. **Benchmark both on every PR.** Results go in `bench/results/`.
    CI compares against the baseline commit. Regressions block merge.
-4. **Ship the winner.** After benchmarking, pick the best WASM backend
-   (Zig or Rust) for .wasm binary size, throughput, and decode speed.
-   Ship TS as the always-available fallback. Auto-detect WASM support
+4. **Ship the winner.** After benchmarking, ship Rust WASM as the fast
+   path and TS as the always-available fallback. Auto-detect WASM support
    at runtime.
 5. **No vendor names in source.** Algorithms have papers, not brands.
    Call it "xor-delta compression," not "Gorilla." Call it "float-int
    conversion," not "VictoriaMetrics decimal." The code should read
    like a textbook, not a changelog of other people's projects.
 
-### Why Three
+### Why Two
 
-- Correctness: three independent implementations catch spec bugs that
-  two might share by coincidence.
-- WASM shootout: Zig promises smallest binaries and explicit memory.
-  Rust promises mature toolchain and ecosystem. Benchmark, don't guess.
+- Correctness: two independent implementations catch spec bugs that
+  a single implementation might hide.
 - Portability: TS-only build works everywhere, WASM build is faster.
-- Culture: if you can't write it in both Zig and Rust, you don't
+- Culture: if you can't write it in both TS and Rust, you don't
   understand the algorithm well enough to ship it.
 
 ### WASM Comparison Criteria
@@ -122,26 +118,23 @@ from the Facebook 2015 paper, stripped of branding.
 - 64-bit precision: use `DataView` for float↔bits, `BigInt` pairs for
   XOR/CLZ/shift. The research prototype had a precision bug here. Fix it.
 
-**Zig deliverables:**
-- Same API, exported as WASM functions
-- Operates on WASM linear memory (caller allocates input/output buffers)
-- No allocations in the hot path
+**Zig deliverables:** *Removed — Zig implementation has been retired in favor of Rust.*
 
 **Rust deliverables:**
-- Same API, same ABI as Zig (#[no_mangle] extern "C")
+- Same API as TS (#[no_mangle] extern "C")
 - `#![no_std]` — no allocator, no panics in hot paths
 - `opt-level = "z"` + LTO for smallest binary
 
 **Benchmark gate:**
 
-| Metric | TS target | Zig target | Rust target | Research baseline |
-|--------|-----------|------------|-------------|-------------------|
-| Encode throughput | ≥500K samples/s | ≥2M samples/s | ≥2M samples/s | 896K (TS proto) |
-| Decode throughput | ≥5M samples/s | ≥15M samples/s | ≥15M samples/s | 5.2M (TS proto) |
-| Compression (gauges) | ≥2.0x | ≥2.0x | ≥2.0x | 2.5x |
-| Compression (counters) | ≥2.0x | ≥2.0x | ≥2.0x | 2.3x |
-| Round-trip correctness | bit-exact | bit-exact | bit-exact | FAILED (proto bug) |
-| .wasm binary size | N/A | <20 KB | <20 KB | — |
+| Metric | TS target | Rust target | Research baseline |
+|--------|-----------|-------------|-------------------|
+| Encode throughput | ≥500K samples/s | ≥2M samples/s | 896K (TS proto) |
+| Decode throughput | ≥5M samples/s | ≥15M samples/s | 5.2M (TS proto) |
+| Compression (gauges) | ≥2.0x | ≥2.0x | 2.5x |
+| Compression (counters) | ≥2.0x | ≥2.0x | 2.3x |
+| Round-trip correctness | bit-exact | bit-exact | FAILED (proto bug) |
+| .wasm binary size | N/A | <20 KB | — |
 
 ### M2: String Interner
 
@@ -217,17 +210,12 @@ Handle all five OTLP metric types.
 - Delta-to-cumulative conversion for sum metrics
 - Counter reset detection (value decreases → reset event)
 
-**Zig deliverables:**
-- Schema-aware JSON scanner: skip unknown fields, emit directly to
-  column buffers in WASM linear memory
-- Zero JS object allocation in the hot path
-- The crossover point where WASM beats JSON.parse is ~100 KB payloads
-  (research hypothesis — benchmark will validate)
+**Zig deliverables:** *Removed — Zig implementation has been retired in favor of Rust.*
 
 **Benchmark gate:**
 
-| Metric | TS target | Zig target | Notes |
-|--------|-----------|------------|-------|
+| Metric | TS target | Rust target | Notes |
+|--------|-----------|-------------|-------|
 | Ingest throughput | ≥50K pts/s | ≥200K pts/s | Sustained 60s |
 | Parse 10 KB payload | <1 ms | <0.5 ms | Small batch |
 | Parse 1 MB payload | <50 ms | <15 ms | Large batch |
@@ -321,25 +309,17 @@ packages/o11ytsdb/
 │   ├── query.ts            # M6: Streaming query executor
 │   ├── histogram.ts        # M7: Histogram storage + query
 │   └── worker.ts           # M8: Worker isolation
-├── zig/
-│   ├── build.zig           # Zig build → WASM
-│   └── src/
-│       ├── root.zig        # WASM exports
-│       ├── codec.zig       # M1: XOR-delta codec (Zig)
-│       ├── interner.zig    # M2: String interner (Zig)
-│       └── ingest.zig      # M5: JSON scanner (Zig)
 ├── rust/
 │   ├── Cargo.toml          # Rust build → WASM
 │   └── src/
-│       ├── lib.rs          # WASM exports (mirrors root.zig)
+│       ├── lib.rs          # WASM exports
 │       ├── codec.rs        # M1: XOR-delta codec (Rust)
 │       ├── interner.rs     # M2: String interner (Rust)
 │       └── ingest.rs       # M5: JSON scanner (Rust)
 ├── wasm/                   # Built .wasm artifacts (gitignored)
-│   ├── o11ytsdb-zig.wasm
 │   └── o11ytsdb-rust.wasm
 └── test/
-    ├── codec.test.ts       # Cross-validates TS, Zig, and Rust
+    ├── codec.test.ts       # Cross-validates TS and Rust
     ├── interner.test.ts
     ├── postings.test.ts
     ├── chunk.test.ts
@@ -428,11 +408,11 @@ are tighter because we'll be on Node 22+ and browser V8.
 | Memory for 10K × 1024 pts | <50 MB | 80 MB |
 | Compression ratio (avg) | ≥2.5x | — |
 | Encode (TS) | ≥500K samples/s | — |
-| Encode (Zig) | ≥2M samples/s | — |
+| Encode (Rust) | ≥2M samples/s | — |
 | Decode (TS) | ≥5M samples/s | — |
-| Decode (Zig) | ≥15M samples/s | — |
+| Decode (Rust) | ≥15M samples/s | — |
 | Ingest pipeline (TS) | ≥50K pts/s | — |
-| Ingest pipeline (Zig) | ≥200K pts/s | — |
+| Ingest pipeline (Rust) | ≥200K pts/s | — |
 | Query 10K × 1024 | <100 ms | 200 ms |
 | Query scratch memory | <1 MB | 2 MB |
 | Index 2-label intersect (100K) | <1 µs | 5 µs |

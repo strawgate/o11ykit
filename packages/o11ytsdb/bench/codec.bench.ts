@@ -58,16 +58,6 @@ try {
   console.log("  ⚠ TS codec not built — skipping. Run `npm run build` first.");
 }
 
-// Zig WASM implementation.
-try {
-  const { loadWasm, makeCodecImpl } = await import("./wasm-loader.js");
-  const zigWasmPath = pkgPath("wasm/o11ytsdb-zig.wasm");
-  const zigWasm = await loadWasm(zigWasmPath);
-  implementations.push(makeCodecImpl(zigWasm, "zig", "Zig→WASM"));
-} catch (e: any) {
-  console.log(`  ⚠ Zig WASM codec not available — skipping. ${e.message ?? e}`);
-}
-
 // Rust WASM implementation.
 try {
   const { loadWasm, makeCodecImpl } = await import("./wasm-loader.js");
