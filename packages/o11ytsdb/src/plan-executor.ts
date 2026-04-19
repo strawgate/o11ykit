@@ -3,8 +3,7 @@
  *
  * V1 strategy: extract parameters from the plan, map to the existing
  * ScanEngine.query() interface. Advanced features (compound transforms,
- * regex matchers, binary ops) will be handled natively as the executor
- * matures.
+ * binary ops) will be handled natively as the executor matures.
  */
 
 import type {
@@ -99,51 +98,40 @@ function flattenPlan(root: PlanNode): FlatPlan {
 // ── Matcher mapping ──────────────────────────────────────────────────
 
 /**
- * Convert PlanMatchers to the current Matcher type (equality only).
- * Throws for operators not yet supported by the engine.
+ * Convert PlanMatchers to the current Matcher type.
+ * All four operators (=, !=, =~, !~) are now supported.
  */
 function toEngineMatchers(planMatchers: readonly PlanMatcher[]): Matcher[] {
-  const out: Matcher[] = [];
-  for (const m of planMatchers) {
-    if (m.op !== "=") {
-      throw new Error(
-        `Matcher operator '${m.op}' is not yet supported (label=${m.label}, value=${m.value}). ` +
-          `Only '=' is supported in the current executor.`
-      );
-    }
-    out.push({ label: m.label, value: m.value });
-  }
-  return out;
+  return planMatchers.map((m) => ({ label: m.label, op: m.op, value: m.value }));
 }
 
 // ── Aggregation mapping ──────────────────────────────────────────────
 
 /**
- * Map plan transforms + aggregation to a single AggFn for the current
- * ScanEngine. The current engine treats 'rate' as an AggFn, so we can
- * handle the common case of rate() alone. Compound transform+agg
- * (e.g., rate().sumBy()) is not yet supported.
+ * Map plan transforms + aggregation to QueryOpts fields.
+ * Returns the aggregation function and optional per-series transform.
  */
-function resolveAggFn(transforms: TransformFn[], agg: PlanAggFn | undefined): AggFn | undefined {
+function resolveAggFn(
+  transforms: TransformFn[],
+  agg: PlanAggFn | undefined
+): { agg: AggFn | undefined; transform: "rate" | "increase" | undefined } {
   if (transforms.length === 0) {
-    return agg; // 'sum' | 'avg' | ... | undefined — all valid AggFn values
+    return { agg, transform: undefined };
   }
 
-  if (transforms.length === 1 && transforms[0] === "rate" && agg == null) {
-    // rate() without a subsequent aggregation → maps to agg:'rate'
-    return "rate";
-  }
-
-  if (transforms.length === 1 && transforms[0] === "rate" && agg != null) {
-    throw new Error(
-      `Compound rate() + ${agg}() is not yet supported. ` +
-        `The executor will support per-series rate → aggregation in a future version.`
-    );
+  if (transforms.length === 1 && (transforms[0] === "rate" || transforms[0] === "increase")) {
+    const transform = transforms[0];
+    if (agg == null) {
+      // rate() or increase() without a subsequent aggregation → treated as AggFn
+      return { agg: transform as AggFn, transform: undefined };
+    }
+    // Compound: transform per-series, then cross-series aggregation
+    return { agg, transform };
   }
 
   throw new Error(
     `Transform '${transforms.join(" → ")}' is not yet supported by the executor. ` +
-      `Supported: rate() (without subsequent aggregation).`
+      `Supported: rate(), increase() (with optional subsequent aggregation).`
   );
 }
 
@@ -155,14 +143,13 @@ const engine = new ScanEngine();
  * Execute a query plan against a storage backend.
  *
  * V1: flattens the plan tree and delegates to ScanEngine.query().
- * Supports: = matchers, all 6 aggregations ± step ± groupBy, rate().
- * Not yet supported: !=, =~, !~ matchers; compound transforms;
- * binary ops; increase, irate, abs, etc.
+ * Supports: =, !=, =~, !~ matchers, all 6 aggregations ± step ± groupBy, rate().
+ * Not yet supported: compound transforms; binary ops; increase, irate, abs, etc.
  */
 export function executePlan(plan: PlanNode, storage: StorageBackend): QueryResult {
   const flat = flattenPlan(plan);
   const matchers = toEngineMatchers(flat.matchers);
-  const agg = resolveAggFn(flat.transforms, flat.agg);
+  const resolved = resolveAggFn(flat.transforms, flat.agg);
 
   const opts: QueryOpts = {
     metric: flat.metric,
@@ -170,7 +157,8 @@ export function executePlan(plan: PlanNode, storage: StorageBackend): QueryResul
     end: flat.end,
   };
   if (matchers.length > 0) opts.matchers = matchers;
-  if (agg != null) opts.agg = agg;
+  if (resolved.agg != null) opts.agg = resolved.agg;
+  if (resolved.transform != null) opts.transform = resolved.transform;
   if (flat.step != null) opts.step = flat.step;
   if (flat.groupBy != null && flat.groupBy.length > 0) opts.groupBy = [...flat.groupBy];
 

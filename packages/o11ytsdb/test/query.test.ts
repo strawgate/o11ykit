@@ -59,7 +59,7 @@ describe("ScanEngine", () => {
     const store = populateStore();
     const result = engine.query(store, {
       metric: "cpu",
-      matchers: [{ label: "host", value: "b" }],
+      matchers: [{ label: "host", op: "=" as const, value: "b" }],
       start: 0n,
       end: BigInt(Number.MAX_SAFE_INTEGER),
     });
@@ -74,7 +74,7 @@ describe("ScanEngine", () => {
     const end = 1_000_000n + 70n * 15_000n;
     const result = engine.query(store, {
       metric: "cpu",
-      matchers: [{ label: "host", value: "a" }],
+      matchers: [{ label: "host", op: "=" as const, value: "a" }],
       start,
       end,
     });

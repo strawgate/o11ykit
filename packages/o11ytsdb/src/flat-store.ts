@@ -76,6 +76,10 @@ export class FlatStore implements StorageBackend {
     return this.labelIndex.matchLabel(label, value);
   }
 
+  matchLabelRegex(label: string, pattern: RegExp): SeriesId[] {
+    return this.labelIndex.matchLabelRegex(label, pattern);
+  }
+
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
     return (
       this.readParts(id, start, end)[0] ?? {
