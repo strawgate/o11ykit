@@ -185,28 +185,18 @@ impl<'a> BitReader<'a> {
 
     #[inline(always)]
     fn read_bits(&mut self, count: u8) -> u64 {
-        // Fast path: byte-aligned reads for 64 and 16 bits.
-        if self.bit_pos == 0 {
-            match count {
-                64 => {
-                    let mut bytes = [0u8; 8];
-                    bytes.copy_from_slice(&self.buf[self.byte_pos..self.byte_pos + 8]);
-                    self.byte_pos += 8;
-                    return u64::from_be_bytes(bytes);
-                }
-                16 => {
-                    let mut bytes = [0u8; 2];
-                    bytes.copy_from_slice(&self.buf[self.byte_pos..self.byte_pos + 2]);
-                    self.byte_pos += 2;
-                    return u16::from_be_bytes(bytes) as u64;
-                }
-                8 => {
-                    let v = self.buf[self.byte_pos] as u64;
-                    self.byte_pos += 1;
-                    return v;
-                }
-                _ => {}
-            }
+        // Fast path: load a single u64 and extract bits with 2 shifts.
+        // Works for count ≤ 57 (max bit_pos=7 + count=57 = 64 bits in one u64).
+        // This covers the hot path: FoR-u64 exception decode at bw=50-55.
+        if count <= 57 && self.byte_pos + 8 <= self.buf.len() {
+            let mut bytes = [0u8; 8];
+            bytes.copy_from_slice(&self.buf[self.byte_pos..self.byte_pos + 8]);
+            let raw = u64::from_be_bytes(bytes);
+            let value = (raw << self.bit_pos) >> (64 - count);
+            let total = self.bit_pos as usize + count as usize;
+            self.byte_pos += total / 8;
+            self.bit_pos = (total % 8) as u8;
+            return value;
         }
 
         // Medium path: fits within current byte.
@@ -222,11 +212,10 @@ impl<'a> BitReader<'a> {
             return val;
         }
 
-        // General path: read across byte boundaries.
+        // General path: read across byte boundaries (count > 57 or near end of buffer).
         let mut value: u64 = 0;
         let mut bits_left = count;
 
-        // Read remaining bits from current byte.
         if self.bit_pos > 0 {
             let fill = remaining;
             value = (self.buf[self.byte_pos] as u64) & ((1u64 << fill) - 1);
@@ -235,14 +224,12 @@ impl<'a> BitReader<'a> {
             self.bit_pos = 0;
         }
 
-        // Read whole bytes.
         while bits_left >= 8 {
             value = (value << 8) | (self.buf[self.byte_pos] as u64);
             self.byte_pos += 1;
             bits_left -= 8;
         }
 
-        // Read remaining bits.
         if bits_left > 0 {
             value = (value << bits_left)
                 | ((self.buf[self.byte_pos] >> (8 - bits_left)) as u64 & ((1u64 << bits_left) - 1));
