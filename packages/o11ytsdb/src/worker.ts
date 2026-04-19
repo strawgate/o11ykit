@@ -1,4 +1,5 @@
 import { ColumnStore } from './column-store.js';
+import { ingestOtlpJson } from './ingest.js';
 import { ScanEngine } from './query.js';
 import type { QueryEngine, StorageBackend, ValuesCodec } from './types.js';
 import {
@@ -12,6 +13,19 @@ interface WorkerLikeEndpoint {
   postMessage(message: unknown, transfer?: ArrayBufferLike[]): void;
   addEventListener?: (type: 'message', listener: (event: { data: unknown }) => void) => void;
   on?: (type: 'message', listener: (data: unknown) => void) => void;
+}
+
+function decodeUtf8(payload: Uint8Array): string {
+  const nodeBuffer = (globalThis as { Buffer?: { from: (value: Uint8Array) => { toString: (encoding: string) => string } } }).Buffer;
+  if (nodeBuffer) {
+    return nodeBuffer.from(payload).toString('utf8');
+  }
+  const decoderCtor = (globalThis as { TextDecoder?: new () => { decode: (input: Uint8Array) => string } }).TextDecoder;
+  if (decoderCtor) return new decoderCtor().decode(payload);
+
+  let encoded = '';
+  for (let i = 0; i < payload.length; i++) encoded += String.fromCharCode(payload[i]!);
+  return decodeURIComponent(escape(encoded));
 }
 
 function createValuesCodec(): ValuesCodec {
@@ -70,7 +84,6 @@ export class O11yWorkerRuntime {
   private readonly engine: QueryEngine;
   private readonly createStore: (chunkSize: number) => StorageBackend;
   private store: StorageBackend;
-
   constructor(endpoint?: WorkerLikeEndpoint, config?: WorkerRuntimeConfig) {
     this.endpoint = endpoint ?? resolveEndpoint();
     const codec = createValuesCodec();
@@ -113,10 +126,16 @@ export class O11yWorkerRuntime {
           return;
         }
         case 'ingest': {
+          const jsonPayload = decodeUtf8(payload.payload);
+          const result = ingestOtlpJson(jsonPayload, this.store);
+          this.send(ok(id, { ok: true, type: 'ingest', result }, meta));
+          return;
+        }
+        case 'append': {
           const labels = new Map(payload.labels);
           const seriesId = this.store.getOrCreateSeries(labels);
           this.store.appendBatch(seriesId, payload.timestamps, payload.values);
-          this.send(ok(id, { ok: true, type: 'ingest', seriesId, ingestedSamples: payload.values.length }, meta));
+          this.send(ok(id, { ok: true, type: 'append', seriesId, ingestedSamples: payload.values.length }, meta));
           return;
         }
         case 'query': {

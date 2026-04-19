@@ -66,6 +66,10 @@ function makeRequest(id: number, payload: RequestEnvelope['payload']): RequestEn
   return { id, kind: 'request', payload };
 }
 
+function encodeUtf8(value: string): Uint8Array {
+  return new TextEncoder().encode(value);
+}
+
 describe('O11yWorkerRuntime', () => {
   let mock: ReturnType<typeof createMockEndpoint>;
   let runtime: O11yWorkerRuntime;
@@ -104,6 +108,60 @@ describe('O11yWorkerRuntime', () => {
   // ── ingest ────────────────────────────────────────────────────
 
   describe('ingest', () => {
+    it('ingests OTLP payload and returns IngestResult', async () => {
+      mock.sendRequest(makeRequest(1, { type: 'init', chunkSize: 1024 }));
+      await waitForResponse(mock);
+
+      const payload = JSON.stringify({
+        resourceMetrics: [{
+          resource: { attributes: [{ key: 'service.name', value: { stringValue: 'checkout' } }] },
+          scopeMetrics: [{
+            scope: { name: 'runtime', version: '1.0.0' },
+            metrics: [{
+              name: 'cpu_usage',
+              gauge: {
+                dataPoints: [
+                  { timeUnixNano: '1000000', asDouble: 1.25, attributes: [{ key: 'host', value: { stringValue: 'a' } }] },
+                  { timeUnixNano: '2000000', asDouble: 2.25, attributes: [{ key: 'host', value: { stringValue: 'a' } }] },
+                ],
+              },
+            }],
+          }],
+        }],
+      });
+
+      mock.sendRequest(makeRequest(2, {
+        type: 'ingest',
+        payload: encodeUtf8(payload),
+      }));
+
+      const resp = await waitForResponse(mock);
+      expect(resp.payload.ok).toBe(true);
+      expect(resp.payload.type).toBe('ingest');
+      if (resp.payload.type === 'ingest') {
+        expect(resp.payload.result.pointsSeen).toBe(2);
+        expect(resp.payload.result.pointsAccepted).toBe(2);
+        expect(resp.payload.result.samplesInserted).toBe(2);
+        expect(resp.payload.result.seriesCreated).toBe(1);
+      }
+    });
+
+    it('returns parse/drop errors for invalid OTLP payload', async () => {
+      mock.sendRequest(makeRequest(1, { type: 'init' }));
+      await waitForResponse(mock);
+
+      mock.sendRequest(makeRequest(2, { type: 'ingest', payload: encodeUtf8('{bad-json') }));
+      const resp = await waitForResponse(mock);
+      expect(resp.payload.ok).toBe(true);
+      expect(resp.payload.type).toBe('ingest');
+      if (resp.payload.type === 'ingest') {
+        expect(resp.payload.result.errors).toBe(1);
+        expect(resp.payload.result.dropped).toBe(1);
+      }
+    });
+  });
+
+  describe('append', () => {
     it('ingests samples and returns series info', async () => {
       // Init first
       mock.sendRequest(makeRequest(1, { type: 'init', chunkSize: 1024 }));
@@ -113,7 +171,7 @@ describe('O11yWorkerRuntime', () => {
       const values = new Float64Array([1.0, 2.0, 3.0]);
 
       mock.sendRequest(makeRequest(2, {
-        type: 'ingest',
+        type: 'append',
         labels: [['__name__', 'cpu'], ['host', 'a']],
         timestamps,
         values,
@@ -121,8 +179,8 @@ describe('O11yWorkerRuntime', () => {
       const resp = await waitForResponse(mock);
 
       expect(resp.payload.ok).toBe(true);
-      expect(resp.payload.type).toBe('ingest');
-      if (resp.payload.type === 'ingest') {
+      expect(resp.payload.type).toBe('append');
+      if (resp.payload.type === 'append') {
         expect(resp.payload.seriesId).toBeTypeOf('number');
         expect(resp.payload.ingestedSamples).toBe(3);
       }
@@ -139,7 +197,7 @@ describe('O11yWorkerRuntime', () => {
 
       // Ingest
       mock.sendRequest(makeRequest(2, {
-        type: 'ingest',
+        type: 'append',
         labels: [['__name__', 'cpu'], ['host', 'web-01']],
         timestamps: BigInt64Array.from([100n, 200n, 300n]),
         values: new Float64Array([10, 20, 30]),
@@ -202,7 +260,7 @@ describe('O11yWorkerRuntime', () => {
       await waitForResponse(mock);
 
       mock.sendRequest(makeRequest(2, {
-        type: 'ingest',
+        type: 'append',
         labels: [['__name__', 'mem']],
         timestamps: BigInt64Array.from([1n, 2n]),
         values: new Float64Array([100, 200]),
@@ -352,7 +410,7 @@ describe('O11yWorkerRuntime', () => {
 
       // Ingest two series
       mock.sendRequest(makeRequest(2, {
-        type: 'ingest',
+        type: 'append',
         labels: [['__name__', 'http_requests'], ['method', 'GET']],
         timestamps: BigInt64Array.from([100n, 200n, 300n]),
         values: new Float64Array([1, 2, 3]),
@@ -360,7 +418,7 @@ describe('O11yWorkerRuntime', () => {
       await waitForResponse(mock);
 
       mock.sendRequest(makeRequest(3, {
-        type: 'ingest',
+        type: 'append',
         labels: [['__name__', 'http_requests'], ['method', 'POST']],
         timestamps: BigInt64Array.from([100n, 200n]),
         values: new Float64Array([10, 20]),

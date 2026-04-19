@@ -1,3 +1,4 @@
+import type { IngestResult } from './ingest.js';
 import type { QueryOpts, QueryResult } from './types.js';
 import {
   isResponseEnvelope,
@@ -22,6 +23,17 @@ interface WorkerLike {
 interface PendingRequest {
   resolve: (value: WorkerResponse) => void;
   reject: (error: unknown) => void;
+}
+
+function encodeUtf8(value: string): Uint8Array {
+  const nodeBuffer = (globalThis as { Buffer?: { from: (value: string, encoding: string) => Uint8Array } }).Buffer;
+  if (nodeBuffer) {
+    return Uint8Array.from(nodeBuffer.from(value, 'utf8'));
+  }
+  const encoded = unescape(encodeURIComponent(value));
+  const out = new Uint8Array(encoded.length);
+  for (let i = 0; i < encoded.length; i++) out[i] = encoded.charCodeAt(i);
+  return out;
 }
 
 export interface WorkerClientOptions {
@@ -53,19 +65,36 @@ export class WorkerClient {
   }
 
   async ingest(
+    payload: string,
+    strategy: TransferStrategy = this.transferStrategy,
+  ): Promise<IngestResult> {
+    const encoded = encodeUtf8(payload);
+    const transferables = strategy === 'transferable' ? [encoded.buffer] : [];
+
+    const response = await this.send({
+      type: 'ingest',
+      payload: encoded,
+    }, transferables, strategy);
+
+    if (response.ok === false) throw new Error(response.error);
+    if (response.type !== 'ingest') throw new Error(`Unexpected response type: ${response.type}`);
+    return response.result;
+  }
+
+  async append(
     labels: ReadonlyMap<string, string>,
     timestamps: BigInt64Array,
     values: Float64Array,
   ): Promise<{ seriesId: number; ingestedSamples: number }> {
     const response = await this.send({
-      type: 'ingest',
+      type: 'append',
       labels: [...labels.entries()],
       timestamps,
       values,
     }, this.getTransferables(timestamps, values));
 
     if (response.ok === false) throw new Error(response.error);
-    if (response.type !== 'ingest') throw new Error(`Unexpected response type: ${response.type}`);
+    if (response.type !== 'append') throw new Error(`Unexpected response type: ${response.type}`);
     return { seriesId: response.seriesId, ingestedSamples: response.ingestedSamples };
   }
 

@@ -1,3 +1,4 @@
+import type { IngestResult } from './ingest.js';
 import type { QueryOpts, QueryResult } from './types.js';
 
 export type RequestId = number;
@@ -18,6 +19,11 @@ export interface InitRequest {
 
 export interface IngestRequest {
   type: 'ingest';
+  payload: Uint8Array;
+}
+
+export interface AppendRequest {
+  type: 'append';
   labels: LabelEntries;
   timestamps: BigInt64Array;
   values: Float64Array;
@@ -41,7 +47,7 @@ export interface EchoRequest {
   payload: Uint8Array;
 }
 
-export type WorkerRequest = InitRequest | IngestRequest | QueryRequest | StatsRequest | CloseRequest | EchoRequest;
+export type WorkerRequest = InitRequest | IngestRequest | AppendRequest | QueryRequest | StatsRequest | CloseRequest | EchoRequest;
 
 export interface InitResponse {
   ok: true;
@@ -52,6 +58,12 @@ export interface InitResponse {
 export interface IngestResponse {
   ok: true;
   type: 'ingest';
+  result: IngestResult;
+}
+
+export interface AppendResponse {
+  ok: true;
+  type: 'append';
   seriesId: number;
   ingestedSamples: number;
 }
@@ -90,7 +102,7 @@ export interface ErrorResponse {
   stack?: string;
 }
 
-export type WorkerResponse = InitResponse | IngestResponse | QueryResponse | StatsResponse | EchoResponse | CloseResponse | ErrorResponse;
+export type WorkerResponse = InitResponse | IngestResponse | AppendResponse | QueryResponse | StatsResponse | EchoResponse | CloseResponse | ErrorResponse;
 
 export interface RequestEnvelope<T extends WorkerRequest = WorkerRequest> {
   id: RequestId;

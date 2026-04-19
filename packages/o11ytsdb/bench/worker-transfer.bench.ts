@@ -22,7 +22,7 @@ interface RequestEnvelope {
     type: 'init';
     chunkSize?: number;
   } | {
-    type: 'ingest';
+    type: 'append';
     labels: Array<[string, string]>;
     timestamps: BigInt64Array;
     values: Float64Array;
@@ -43,7 +43,7 @@ interface ResponseEnvelope {
   kind: 'response';
   payload: { ok: false; type: 'error'; error: string }
     | { ok: true; type: 'init'; backend: string }
-    | { ok: true; type: 'ingest'; seriesId: number; ingestedSamples: number }
+    | { ok: true; type: 'append'; seriesId: number; ingestedSamples: number }
     | { ok: true; type: 'query'; result: { series: unknown[] } }
     | { ok: true; type: 'stats'; stats: { seriesCount: number; sampleCount: number; memoryBytes: number } }
     | { ok: true; type: 'echo'; bytes: number }
@@ -208,7 +208,7 @@ async function runIngestQueryProof(): Promise<void> {
   }
 
   const ingest = await client.request({
-    type: 'ingest',
+    type: 'append',
     labels: [['__name__', 'cpu_usage'], ['service', 'bench']],
     timestamps,
     values,

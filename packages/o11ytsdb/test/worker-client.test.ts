@@ -95,27 +95,81 @@ describe('WorkerClient', () => {
   // ── ingest() ──────────────────────────────────────────────────
 
   describe('ingest()', () => {
-    it('sends ingest request with labels, timestamps, values', async () => {
-      mock.autoRespond({ ok: true, type: 'ingest', seriesId: 0, ingestedSamples: 3 });
+    it('sends OTLP payload bytes and returns IngestResult', async () => {
+      mock.autoRespond({
+        ok: true,
+        type: 'ingest',
+        result: {
+          pointsSeen: 2,
+          pointsAccepted: 2,
+          samplesInserted: 2,
+          seriesCreated: 1,
+          errors: 0,
+          dropped: 0,
+          metricTypeCounts: { gauge: 1, sum: 0, histogram: 0, summary: 0, exponentialHistogram: 0 },
+        },
+      });
+
+      const payload = JSON.stringify({ resourceMetrics: [] });
+      const result = await client.ingest(payload);
+      expect(result.samplesInserted).toBe(2);
+
+      const envelope = mock.posted[0].message as RequestEnvelope;
+      expect(envelope.payload.type).toBe('ingest');
+      if (envelope.payload.type === 'ingest') {
+        expect(envelope.payload.payload).toBeInstanceOf(Uint8Array);
+      }
+    });
+
+    it('uses transferable payload by default', async () => {
+      mock.autoRespond({
+        ok: true,
+        type: 'ingest',
+        result: {
+          pointsSeen: 0,
+          pointsAccepted: 0,
+          samplesInserted: 0,
+          seriesCreated: 0,
+          errors: 0,
+          dropped: 0,
+          metricTypeCounts: { gauge: 0, sum: 0, histogram: 0, summary: 0, exponentialHistogram: 0 },
+        },
+      });
+
+      await client.ingest('{"resourceMetrics":[]}');
+      expect(mock.posted[0].transfer).toHaveLength(1);
+    });
+
+    it('throws on worker error responses', async () => {
+      mock.autoRespond({ ok: false, type: 'error', error: 'ingest fail' });
+      await expect(client.ingest('not-json')).rejects.toThrow('ingest fail');
+    });
+  });
+
+  // ── append() ──────────────────────────────────────────────────
+
+  describe('append()', () => {
+    it('sends append request with labels, timestamps, values', async () => {
+      mock.autoRespond({ ok: true, type: 'append', seriesId: 0, ingestedSamples: 3 });
 
       const labels = new Map([['__name__', 'cpu'], ['host', 'a']]);
       const timestamps = BigInt64Array.from([1n, 2n, 3n]);
       const values = new Float64Array([10, 20, 30]);
 
-      const result = await client.ingest(labels, timestamps, values);
+      const result = await client.append(labels, timestamps, values);
       expect(result).toEqual({ seriesId: 0, ingestedSamples: 3 });
 
       const envelope = mock.posted[0].message as RequestEnvelope;
-      expect(envelope.payload.type).toBe('ingest');
+      expect(envelope.payload.type).toBe('append');
     });
 
     it('includes transferables for transferable strategy', async () => {
-      mock.autoRespond({ ok: true, type: 'ingest', seriesId: 0, ingestedSamples: 1 });
+      mock.autoRespond({ ok: true, type: 'append', seriesId: 0, ingestedSamples: 1 });
 
       const timestamps = BigInt64Array.from([1n]);
       const values = new Float64Array([1]);
 
-      await client.ingest(new Map([['k', 'v']]), timestamps, values);
+      await client.append(new Map([['k', 'v']]), timestamps, values);
 
       const transfer = mock.posted[0].transfer;
       expect(transfer).toBeDefined();
@@ -125,12 +179,12 @@ describe('WorkerClient', () => {
     it('omits transferables for structured-clone strategy', async () => {
       mock = createMockWorker();
       client = new WorkerClient({ worker: mock.worker, transferStrategy: 'structured-clone' });
-      mock.autoRespond({ ok: true, type: 'ingest', seriesId: 0, ingestedSamples: 1 });
+      mock.autoRespond({ ok: true, type: 'append', seriesId: 0, ingestedSamples: 1 });
 
       const timestamps = BigInt64Array.from([1n]);
       const values = new Float64Array([1]);
 
-      await client.ingest(new Map([['k', 'v']]), timestamps, values);
+      await client.append(new Map([['k', 'v']]), timestamps, values);
 
       const transfer = mock.posted[0].transfer;
       expect(transfer).toEqual([]);
@@ -140,7 +194,7 @@ describe('WorkerClient', () => {
       mock.autoRespond({ ok: false, type: 'error', error: 'ingest fail' });
 
       await expect(
-        client.ingest(new Map(), BigInt64Array.from([1n]), new Float64Array([1])),
+        client.append(new Map(), BigInt64Array.from([1n]), new Float64Array([1])),
       ).rejects.toThrow('ingest fail');
     });
   });
