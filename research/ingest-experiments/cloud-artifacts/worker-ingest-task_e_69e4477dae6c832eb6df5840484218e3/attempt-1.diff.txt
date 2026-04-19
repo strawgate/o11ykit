@@ -1,0 +1,1289 @@
+diff --git a/packages/o11ytsdb/bench/worker-transfer.bench.ts b/packages/o11ytsdb/bench/worker-transfer.bench.ts
+index 8e429be7a09aea1be8408f893608491f262011b3..98b8e5a7ee17738e5f68d46a6270dcb98f9e6a40 100644
+--- a/packages/o11ytsdb/bench/worker-transfer.bench.ts
++++ b/packages/o11ytsdb/bench/worker-transfer.bench.ts
+@@ -1,71 +1,71 @@
+ import { Worker } from 'node:worker_threads';
+ import { dirname, join } from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ 
+ 
+ interface MetricRow {
+   strategy: TransferStrategy;
+   samples: number;
+   roundTripMs: number;
+   mainThreadBlockMs: number;
+   memoryDeltaBytes: number;
+ }
+ 
+ const SIZES = [1_000, 10_000, 100_000, 1_000_000] as const;
+ 
+ type TransferStrategy = 'structured-clone' | 'transferable' | 'shared-array-buffer';
+ 
+ interface RequestEnvelope {
+   id: number;
+   kind: 'request';
+   payload: {
+     type: 'init';
+     chunkSize?: number;
+   } | {
+-    type: 'ingest';
++    type: 'append';
+     labels: Array<[string, string]>;
+     timestamps: BigInt64Array;
+     values: Float64Array;
+   } | {
+     type: 'query';
+     opts: { metric: string; start: bigint; end: bigint };
+   } | {
+     type: 'close';
+   } | {
+     type: 'echo';
+     payload: Uint8Array;
+   };
+   meta?: { strategy?: TransferStrategy; sentAt?: number };
+ }
+ 
+ interface ResponseEnvelope {
+   id: number;
+   kind: 'response';
+   payload: { ok: false; type: 'error'; error: string }
+     | { ok: true; type: 'init'; backend: string }
+-    | { ok: true; type: 'ingest'; seriesId: number; ingestedSamples: number }
++    | { ok: true; type: 'append'; seriesId: number; ingestedSamples: number }
+     | { ok: true; type: 'query'; result: { series: unknown[] } }
+     | { ok: true; type: 'stats'; stats: { seriesCount: number; sampleCount: number; memoryBytes: number } }
+     | { ok: true; type: 'echo'; bytes: number }
+     | { ok: true; type: 'close' };
+ }
+ const ITERATIONS = 12;
+ 
+ const __dirname = dirname(fileURLToPath(import.meta.url));
+ const workerPath = join(__dirname, '../../dist/worker.js');
+ 
+ type Pending = {
+   resolve: (response: ResponseEnvelope) => void;
+   reject: (error: unknown) => void;
+ };
+ 
+ class BenchWorkerClient {
+   private readonly worker: Worker;
+   private readonly pending = new Map<number, Pending>();
+   private nextId = 1;
+ 
+   constructor(path: string) {
+     this.worker = new Worker(path);
+     this.worker.on('message', (raw: unknown) => {
+       const message = raw as ResponseEnvelope;
+       const handlers = this.pending.get(message.id);
+@@ -186,51 +186,51 @@ async function benchmarkStrategy(strategy: TransferStrategy, samples: number): P
+   await client.terminate();
+ 
+   return {
+     strategy,
+     samples,
+     roundTripMs: p50(rtts),
+     mainThreadBlockMs: p50(blocks),
+     memoryDeltaBytes,
+   };
+ }
+ 
+ async function runIngestQueryProof(): Promise<void> {
+   const client = new BenchWorkerClient(workerPath);
+   const init = await client.request({ type: 'init', chunkSize: 1024 }, 'structured-clone');
+   if (!init.payload.ok) throw new Error(`init failed: ${init.payload.error}`);
+ 
+   const n = 2_048;
+   const timestamps = new BigInt64Array(n);
+   const values = new Float64Array(n);
+   for (let i = 0; i < n; i++) {
+     timestamps[i] = BigInt(1_700_000_000_000 + i * 1000);
+     values[i] = Math.sin(i / 32);
+   }
+ 
+   const ingest = await client.request({
+-    type: 'ingest',
++    type: 'append',
+     labels: [['__name__', 'cpu_usage'], ['service', 'bench']],
+     timestamps,
+     values,
+   }, 'structured-clone');
+   if (!ingest.payload.ok) throw new Error(`ingest failed: ${ingest.payload.error}`);
+ 
+   const query = await client.request({
+     type: 'query',
+     opts: {
+       metric: 'cpu_usage',
+       start: timestamps[0]!,
+       end: timestamps[n - 1]!,
+     },
+   }, 'structured-clone');
+ 
+   if (!query.payload.ok) throw new Error(`query failed: ${query.payload.error}`);
+   if (query.payload.type !== 'query') throw new Error(`unexpected response: ${query.payload.type}`);
+   if (query.payload.result.series.length !== 1) {
+     throw new Error(`expected 1 series, got ${query.payload.result.series.length}`);
+   }
+ 
+   await client.request({ type: 'close' }, 'structured-clone');
+   await client.terminate();
+ }
+ 
+diff --git a/packages/o11ytsdb/src/worker-client.ts b/packages/o11ytsdb/src/worker-client.ts
+index 89d59505a113e1524b681a38ac73e0f7b3dd7e5b..4fd8cd01e070cf865ece133e8b28890d2757b276 100644
+--- a/packages/o11ytsdb/src/worker-client.ts
++++ b/packages/o11ytsdb/src/worker-client.ts
+@@ -1,93 +1,122 @@
++import type { IngestResult } from './ingest.js';
+ import type { QueryOpts, QueryResult } from './types.js';
+ import {
+   isResponseEnvelope,
+   type RequestEnvelope,
+   type RequestId,
+   type ResponseEnvelope,
+   type TransferStrategy,
+   type WorkerRequest,
+   type WorkerResponse,
+ } from './worker-protocol.js';
+ 
+ interface MessageEventLike {
+   data: unknown;
+ }
+ 
+ interface WorkerLike {
+   postMessage(message: unknown, transfer?: ArrayBufferLike[]): void;
+   addEventListener(type: 'message', listener: (event: MessageEventLike) => void): void;
+   terminate?: () => void;
+ }
+ 
+ interface PendingRequest {
+   resolve: (value: WorkerResponse) => void;
+   reject: (error: unknown) => void;
+ }
+ 
++function encodeUtf8(value: string): Uint8Array {
++  const nodeBuffer = (globalThis as { Buffer?: { from: (value: string, encoding: string) => Uint8Array } }).Buffer;
++  if (nodeBuffer) {
++    return Uint8Array.from(nodeBuffer.from(value, 'utf8'));
++  }
++  const encoded = unescape(encodeURIComponent(value));
++  const out = new Uint8Array(encoded.length);
++  for (let i = 0; i < encoded.length; i++) out[i] = encoded.charCodeAt(i);
++  return out;
++}
++
+ export interface WorkerClientOptions {
+   worker: WorkerLike;
+   transferStrategy?: TransferStrategy;
+ }
+ 
+ export class WorkerClient {
+   private readonly worker: WorkerLike;
+   private readonly transferStrategy: TransferStrategy;
+   private nextId: RequestId = 1;
+   private readonly pending = new Map<RequestId, PendingRequest>();
+ 
+   constructor(opts: WorkerClientOptions) {
+     this.worker = opts.worker;
+     this.transferStrategy = opts.transferStrategy ?? 'transferable';
+     this.worker.addEventListener('message', (event) => this.onMessage(event.data));
+   }
+ 
+   async init(chunkSize?: number): Promise<{ backend: string }> {
+     const payload: WorkerRequest = chunkSize === undefined
+       ? { type: 'init' }
+       : { type: 'init', chunkSize };
+ 
+     const response = await this.send(payload);
+     if (response.ok === false) throw new Error(response.error);
+     if (response.type !== 'init') throw new Error(`Unexpected response type: ${response.type}`);
+     return { backend: response.backend };
+   }
+ 
+   async ingest(
++    payload: string,
++    strategy: TransferStrategy = this.transferStrategy,
++  ): Promise<IngestResult> {
++    const encoded = encodeUtf8(payload);
++    const transferables = strategy === 'transferable' ? [encoded.buffer] : [];
++
++    const response = await this.send({
++      type: 'ingest',
++      payload: encoded,
++    }, transferables, strategy);
++
++    if (response.ok === false) throw new Error(response.error);
++    if (response.type !== 'ingest') throw new Error(`Unexpected response type: ${response.type}`);
++    return response.result;
++  }
++
++  async append(
+     labels: ReadonlyMap<string, string>,
+     timestamps: BigInt64Array,
+     values: Float64Array,
+   ): Promise<{ seriesId: number; ingestedSamples: number }> {
+     const response = await this.send({
+-      type: 'ingest',
++      type: 'append',
+       labels: [...labels.entries()],
+       timestamps,
+       values,
+     }, this.getTransferables(timestamps, values));
+ 
+     if (response.ok === false) throw new Error(response.error);
+-    if (response.type !== 'ingest') throw new Error(`Unexpected response type: ${response.type}`);
++    if (response.type !== 'append') throw new Error(`Unexpected response type: ${response.type}`);
+     return { seriesId: response.seriesId, ingestedSamples: response.ingestedSamples };
+   }
+ 
+   async query(opts: QueryOpts): Promise<QueryResult> {
+     const response = await this.send({ type: 'query', opts });
+     if (response.ok === false) throw new Error(response.error);
+     if (response.type !== 'query') throw new Error(`Unexpected response type: ${response.type}`);
+     return response.result;
+   }
+ 
+   async stats(): Promise<{ seriesCount: number; sampleCount: number; memoryBytes: number }> {
+     const response = await this.send({ type: 'stats' });
+     if (response.ok === false) throw new Error(response.error);
+     if (response.type !== 'stats') throw new Error(`Unexpected response type: ${response.type}`);
+     return response.stats;
+   }
+ 
+   async echo(payload: Uint8Array, strategy: TransferStrategy = this.transferStrategy): Promise<number> {
+     const transferables = strategy === 'transferable' ? [payload.buffer] : [];
+     const response = await this.send({ type: 'echo', payload }, transferables, strategy);
+     if (response.ok === false) throw new Error(response.error);
+     if (response.type !== 'echo') throw new Error(`Unexpected response type: ${response.type}`);
+     return response.bytes;
+   }
+ 
+diff --git a/packages/o11ytsdb/src/worker-protocol.ts b/packages/o11ytsdb/src/worker-protocol.ts
+index 41bb2daa7a904d5a49ffc254cec4e21b30c4c0c2..8ff72df5b1f3e49fe4e40d89900fd2a76b7909e6 100644
+--- a/packages/o11ytsdb/src/worker-protocol.ts
++++ b/packages/o11ytsdb/src/worker-protocol.ts
+@@ -1,118 +1,130 @@
++import type { IngestResult } from './ingest.js';
+ import type { QueryOpts, QueryResult } from './types.js';
+ 
+ export type RequestId = number;
+ 
+ export type TransferStrategy = 'structured-clone' | 'transferable' | 'shared-array-buffer';
+ 
+ export type LabelEntries = Array<[string, string]>;
+ 
+ export interface ProtocolMeta {
+   strategy?: TransferStrategy;
+   sentAt?: number;
+ }
+ 
+ export interface InitRequest {
+   type: 'init';
+   chunkSize?: number;
+ }
+ 
+ export interface IngestRequest {
+   type: 'ingest';
++  payload: Uint8Array;
++}
++
++export interface AppendRequest {
++  type: 'append';
+   labels: LabelEntries;
+   timestamps: BigInt64Array;
+   values: Float64Array;
+ }
+ 
+ export interface QueryRequest {
+   type: 'query';
+   opts: QueryOpts;
+ }
+ 
+ export interface StatsRequest {
+   type: 'stats';
+ }
+ 
+ export interface CloseRequest {
+   type: 'close';
+ }
+ 
+ export interface EchoRequest {
+   type: 'echo';
+   payload: Uint8Array;
+ }
+ 
+-export type WorkerRequest = InitRequest | IngestRequest | QueryRequest | StatsRequest | CloseRequest | EchoRequest;
++export type WorkerRequest = InitRequest | IngestRequest | AppendRequest | QueryRequest | StatsRequest | CloseRequest | EchoRequest;
+ 
+ export interface InitResponse {
+   ok: true;
+   type: 'init';
+   backend: string;
+ }
+ 
+ export interface IngestResponse {
+   ok: true;
+   type: 'ingest';
++  result: IngestResult;
++}
++
++export interface AppendResponse {
++  ok: true;
++  type: 'append';
+   seriesId: number;
+   ingestedSamples: number;
+ }
+ 
+ export interface QueryResponse {
+   ok: true;
+   type: 'query';
+   result: QueryResult;
+ }
+ 
+ export interface StatsResponse {
+   ok: true;
+   type: 'stats';
+   stats: {
+     seriesCount: number;
+     sampleCount: number;
+     memoryBytes: number;
+   };
+ }
+ 
+ export interface EchoResponse {
+   ok: true;
+   type: 'echo';
+   bytes: number;
+ }
+ 
+ export interface CloseResponse {
+   ok: true;
+   type: 'close';
+ }
+ 
+ export interface ErrorResponse {
+   ok: false;
+   type: 'error';
+   error: string;
+   stack?: string;
+ }
+ 
+-export type WorkerResponse = InitResponse | IngestResponse | QueryResponse | StatsResponse | EchoResponse | CloseResponse | ErrorResponse;
++export type WorkerResponse = InitResponse | IngestResponse | AppendResponse | QueryResponse | StatsResponse | EchoResponse | CloseResponse | ErrorResponse;
+ 
+ export interface RequestEnvelope<T extends WorkerRequest = WorkerRequest> {
+   id: RequestId;
+   kind: 'request';
+   payload: T;
+   meta?: ProtocolMeta;
+ }
+ 
+ export interface ResponseEnvelope<T extends WorkerResponse = WorkerResponse> {
+   id: RequestId;
+   kind: 'response';
+   payload: T;
+   meta?: ProtocolMeta;
+ }
+ 
+ export function ok<T extends WorkerResponse>(id: RequestId, payload: T, meta?: ProtocolMeta): ResponseEnvelope<T> {
+   return meta ? { id, kind: 'response', payload, meta } : { id, kind: 'response', payload };
+ }
+ 
+ export function err(id: RequestId, error: unknown, meta?: ProtocolMeta): ResponseEnvelope<ErrorResponse> {
+   const message = error instanceof Error ? error.message : String(error);
+   const stack = error instanceof Error ? error.stack : undefined;
+   const payload: ErrorResponse = stack
+     ? { ok: false, type: 'error', error: message, stack }
+     : { ok: false, type: 'error', error: message };
+diff --git a/packages/o11ytsdb/src/worker.ts b/packages/o11ytsdb/src/worker.ts
+index 9337d2572f073ba13f7c802fc556269c74fc174a..5d07413770b5251d2e7defdef53525344817ff51 100644
+--- a/packages/o11ytsdb/src/worker.ts
++++ b/packages/o11ytsdb/src/worker.ts
+@@ -1,41 +1,55 @@
+ import { ColumnStore } from './column-store.js';
++import { ingestOtlpJson } from './ingest.js';
+ import { ScanEngine } from './query.js';
+ import type { QueryEngine, StorageBackend, ValuesCodec } from './types.js';
+ import {
+   err,
+   ok,
+   type RequestEnvelope,
+   type ResponseEnvelope,
+ } from './worker-protocol.js';
+ 
+ interface WorkerLikeEndpoint {
+   postMessage(message: unknown, transfer?: ArrayBufferLike[]): void;
+   addEventListener?: (type: 'message', listener: (event: { data: unknown }) => void) => void;
+   on?: (type: 'message', listener: (data: unknown) => void) => void;
+ }
+ 
++function decodeUtf8(payload: Uint8Array): string {
++  const nodeBuffer = (globalThis as { Buffer?: { from: (value: Uint8Array) => { toString: (encoding: string) => string } } }).Buffer;
++  if (nodeBuffer) {
++    return nodeBuffer.from(payload).toString('utf8');
++  }
++  const decoderCtor = (globalThis as { TextDecoder?: new () => { decode: (input: Uint8Array) => string } }).TextDecoder;
++  if (decoderCtor) return new decoderCtor().decode(payload);
++
++  let encoded = '';
++  for (let i = 0; i < payload.length; i++) encoded += String.fromCharCode(payload[i]!);
++  return decodeURIComponent(escape(encoded));
++}
++
+ function createValuesCodec(): ValuesCodec {
+   return {
+     name: 'f64-plain',
+     encodeValues(values: Float64Array): Uint8Array {
+       const out = new Uint8Array(4 + values.byteLength);
+       new DataView(out.buffer).setUint32(0, values.length, true);
+       out.set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), 4);
+       return out;
+     },
+     decodeValues(buf: Uint8Array): Float64Array {
+       if (buf.byteLength < 4) return new Float64Array(0);
+       const n = new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint32(0, true);
+       const raw = buf.subarray(4);
+       const bytes = raw.byteLength - (raw.byteLength % 8);
+       const copy = raw.slice(0, bytes);
+       const values = new Float64Array(copy.buffer, copy.byteOffset, Math.min(n, Math.floor(bytes / 8)));
+       return values.slice();
+     },
+   };
+ }
+ 
+ function resolveEndpoint(): WorkerLikeEndpoint {
+   const maybeSelf = globalThis as {
+     self?: WorkerLikeEndpoint;
+     postMessage?: (message: unknown, transfer?: ArrayBufferLike[]) => void;
+@@ -48,97 +62,102 @@ function resolveEndpoint(): WorkerLikeEndpoint {
+   if (typeof maybeSelf.postMessage === 'function') {
+     return {
+       postMessage: maybeSelf.postMessage.bind(globalThis),
+       addEventListener: (type, listener) => {
+         (globalThis as unknown as { addEventListener: (event: string, cb: (e: { data: unknown }) => void) => void })
+           .addEventListener(type, listener);
+       },
+     };
+   }
+ 
+   throw new Error('No worker endpoint available.');
+ }
+ 
+ export interface WorkerRuntimeConfig {
+   /** Factory to create a storage backend. Receives the chunk size from the init message. */
+   createStore?: (chunkSize: number) => StorageBackend;
+   /** Query engine instance. Defaults to ScanEngine. */
+   queryEngine?: QueryEngine;
+ }
+ 
+ export class O11yWorkerRuntime {
+   private readonly endpoint: WorkerLikeEndpoint;
+   private readonly engine: QueryEngine;
+   private readonly createStore: (chunkSize: number) => StorageBackend;
+   private store: StorageBackend;
+-
+   constructor(endpoint?: WorkerLikeEndpoint, config?: WorkerRuntimeConfig) {
+     this.endpoint = endpoint ?? resolveEndpoint();
+     const codec = createValuesCodec();
+     this.createStore = config?.createStore ?? ((cs: number) => new ColumnStore(codec, cs));
+     this.engine = config?.queryEngine ?? new ScanEngine();
+     this.store = this.createStore(1024);
+   }
+ 
+   start(): void {
+     const listener = (raw: unknown): void => {
+       const eventData = (raw as { data?: unknown }).data ?? raw;
+       if (!eventData || typeof eventData !== 'object') return;
+ 
+       const msg = eventData as RequestEnvelope;
+       if (msg.kind !== 'request') return;
+       void this.handle(msg);
+     };
+ 
+     if (typeof this.endpoint.addEventListener === 'function') {
+       this.endpoint.addEventListener('message', listener);
+       return;
+     }
+ 
+     if (typeof this.endpoint.on === 'function') {
+       this.endpoint.on('message', listener);
+       return;
+     }
+ 
+     throw new Error('Worker endpoint does not support message listeners.');
+   }
+ 
+   private async handle(msg: RequestEnvelope): Promise<void> {
+     const { id, payload, meta } = msg;
+     try {
+       switch (payload.type) {
+         case 'init': {
+           const chunkSize = payload.chunkSize ?? 1024;
+           this.store = this.createStore(chunkSize);
+           this.send(ok(id, { ok: true, type: 'init', backend: this.store.name }, meta));
+           return;
+         }
+         case 'ingest': {
++          const jsonPayload = decodeUtf8(payload.payload);
++          const result = ingestOtlpJson(jsonPayload, this.store);
++          this.send(ok(id, { ok: true, type: 'ingest', result }, meta));
++          return;
++        }
++        case 'append': {
+           const labels = new Map(payload.labels);
+           const seriesId = this.store.getOrCreateSeries(labels);
+           this.store.appendBatch(seriesId, payload.timestamps, payload.values);
+-          this.send(ok(id, { ok: true, type: 'ingest', seriesId, ingestedSamples: payload.values.length }, meta));
++          this.send(ok(id, { ok: true, type: 'append', seriesId, ingestedSamples: payload.values.length }, meta));
+           return;
+         }
+         case 'query': {
+           const result = this.engine.query(this.store, payload.opts);
+           this.send(ok(id, { ok: true, type: 'query', result }, meta));
+           return;
+         }
+         case 'stats': {
+           this.send(ok(id, {
+             ok: true,
+             type: 'stats',
+             stats: {
+               seriesCount: this.store.seriesCount,
+               sampleCount: this.store.sampleCount,
+               memoryBytes: this.store.memoryBytes(),
+             },
+           }, meta));
+           return;
+         }
+         case 'echo': {
+           this.send(ok(id, { ok: true, type: 'echo', bytes: payload.payload.byteLength }, meta));
+           return;
+         }
+         case 'close': {
+           this.send(ok(id, { ok: true, type: 'close' }, meta));
+diff --git a/packages/o11ytsdb/test/worker-client.test.ts b/packages/o11ytsdb/test/worker-client.test.ts
+index e82eed18fcf86ac24f6ba3884b2473dd0c4be0a3..782962bf5949a0b25b0147c069c6e606f9702c02 100644
+--- a/packages/o11ytsdb/test/worker-client.test.ts
++++ b/packages/o11ytsdb/test/worker-client.test.ts
+@@ -73,96 +73,150 @@ describe('WorkerClient', () => {
+       expect(result).toEqual({ backend: 'column' });
+ 
+       const envelope = mock.posted[0].message as RequestEnvelope;
+       expect(envelope.kind).toBe('request');
+       expect(envelope.payload).toEqual({ type: 'init', chunkSize: 640 });
+     });
+ 
+     it('sends init without chunkSize when omitted', async () => {
+       mock.autoRespond({ ok: true, type: 'init', backend: 'column' });
+ 
+       await client.init();
+       const envelope = mock.posted[0].message as RequestEnvelope;
+       expect(envelope.payload).toEqual({ type: 'init' });
+     });
+ 
+     it('throws on error response', async () => {
+       mock.autoRespond({ ok: false, type: 'error', error: 'init failed' });
+ 
+       await expect(client.init()).rejects.toThrow('init failed');
+     });
+   });
+ 
+   // ── ingest() ──────────────────────────────────────────────────
+ 
+   describe('ingest()', () => {
+-    it('sends ingest request with labels, timestamps, values', async () => {
+-      mock.autoRespond({ ok: true, type: 'ingest', seriesId: 0, ingestedSamples: 3 });
++    it('sends OTLP payload bytes and returns IngestResult', async () => {
++      mock.autoRespond({
++        ok: true,
++        type: 'ingest',
++        result: {
++          pointsSeen: 2,
++          pointsAccepted: 2,
++          samplesInserted: 2,
++          seriesCreated: 1,
++          errors: 0,
++          dropped: 0,
++          metricTypeCounts: { gauge: 1, sum: 0, histogram: 0, summary: 0, exponentialHistogram: 0 },
++        },
++      });
++
++      const payload = JSON.stringify({ resourceMetrics: [] });
++      const result = await client.ingest(payload);
++      expect(result.samplesInserted).toBe(2);
++
++      const envelope = mock.posted[0].message as RequestEnvelope;
++      expect(envelope.payload.type).toBe('ingest');
++      if (envelope.payload.type === 'ingest') {
++        expect(envelope.payload.payload).toBeInstanceOf(Uint8Array);
++      }
++    });
++
++    it('uses transferable payload by default', async () => {
++      mock.autoRespond({
++        ok: true,
++        type: 'ingest',
++        result: {
++          pointsSeen: 0,
++          pointsAccepted: 0,
++          samplesInserted: 0,
++          seriesCreated: 0,
++          errors: 0,
++          dropped: 0,
++          metricTypeCounts: { gauge: 0, sum: 0, histogram: 0, summary: 0, exponentialHistogram: 0 },
++        },
++      });
++
++      await client.ingest('{"resourceMetrics":[]}');
++      expect(mock.posted[0].transfer).toHaveLength(1);
++    });
++
++    it('throws on worker error responses', async () => {
++      mock.autoRespond({ ok: false, type: 'error', error: 'ingest fail' });
++      await expect(client.ingest('not-json')).rejects.toThrow('ingest fail');
++    });
++  });
++
++  // ── append() ──────────────────────────────────────────────────
++
++  describe('append()', () => {
++    it('sends append request with labels, timestamps, values', async () => {
++      mock.autoRespond({ ok: true, type: 'append', seriesId: 0, ingestedSamples: 3 });
+ 
+       const labels = new Map([['__name__', 'cpu'], ['host', 'a']]);
+       const timestamps = BigInt64Array.from([1n, 2n, 3n]);
+       const values = new Float64Array([10, 20, 30]);
+ 
+-      const result = await client.ingest(labels, timestamps, values);
++      const result = await client.append(labels, timestamps, values);
+       expect(result).toEqual({ seriesId: 0, ingestedSamples: 3 });
+ 
+       const envelope = mock.posted[0].message as RequestEnvelope;
+-      expect(envelope.payload.type).toBe('ingest');
++      expect(envelope.payload.type).toBe('append');
+     });
+ 
+     it('includes transferables for transferable strategy', async () => {
+-      mock.autoRespond({ ok: true, type: 'ingest', seriesId: 0, ingestedSamples: 1 });
++      mock.autoRespond({ ok: true, type: 'append', seriesId: 0, ingestedSamples: 1 });
+ 
+       const timestamps = BigInt64Array.from([1n]);
+       const values = new Float64Array([1]);
+ 
+-      await client.ingest(new Map([['k', 'v']]), timestamps, values);
++      await client.append(new Map([['k', 'v']]), timestamps, values);
+ 
+       const transfer = mock.posted[0].transfer;
+       expect(transfer).toBeDefined();
+       expect(transfer!.length).toBe(2);
+     });
+ 
+     it('omits transferables for structured-clone strategy', async () => {
+       mock = createMockWorker();
+       client = new WorkerClient({ worker: mock.worker, transferStrategy: 'structured-clone' });
+-      mock.autoRespond({ ok: true, type: 'ingest', seriesId: 0, ingestedSamples: 1 });
++      mock.autoRespond({ ok: true, type: 'append', seriesId: 0, ingestedSamples: 1 });
+ 
+       const timestamps = BigInt64Array.from([1n]);
+       const values = new Float64Array([1]);
+ 
+-      await client.ingest(new Map([['k', 'v']]), timestamps, values);
++      await client.append(new Map([['k', 'v']]), timestamps, values);
+ 
+       const transfer = mock.posted[0].transfer;
+       expect(transfer).toEqual([]);
+     });
+ 
+     it('throws on error response', async () => {
+       mock.autoRespond({ ok: false, type: 'error', error: 'ingest fail' });
+ 
+       await expect(
+-        client.ingest(new Map(), BigInt64Array.from([1n]), new Float64Array([1])),
++        client.append(new Map(), BigInt64Array.from([1n]), new Float64Array([1])),
+       ).rejects.toThrow('ingest fail');
+     });
+   });
+ 
+   // ── query() ───────────────────────────────────────────────────
+ 
+   describe('query()', () => {
+     it('sends query and returns result', async () => {
+       const queryResult = { series: [], scannedSeries: 0, scannedSamples: 0 };
+       mock.autoRespond({ ok: true, type: 'query', result: queryResult });
+ 
+       const result = await client.query({
+         metric: 'cpu',
+         start: 0n,
+         end: 100n,
+       });
+       expect(result).toEqual(queryResult);
+     });
+ 
+     it('throws on error response', async () => {
+       mock.autoRespond({ ok: false, type: 'error', error: 'query fail' });
+ 
+       await expect(
+         client.query({ metric: 'cpu', start: 0n, end: 100n }),
+       ).rejects.toThrow('query fail');
+diff --git a/packages/o11ytsdb/test/worker-runtime.test.ts b/packages/o11ytsdb/test/worker-runtime.test.ts
+index 3541207d50921e038a4bccc1545f9757f0289fbc..07a77911a736a1b3a5e3719d79e0eb0ab97e7425 100644
+--- a/packages/o11ytsdb/test/worker-runtime.test.ts
++++ b/packages/o11ytsdb/test/worker-runtime.test.ts
+@@ -44,124 +44,182 @@ function createMockEndpoint(mode: 'addEventListener' | 'on' = 'addEventListener'
+     /** Send a properly wrapped RequestEnvelope. */
+     sendRequest(envelope: RequestEnvelope): void {
+       this.send(envelope);
+     },
+   };
+ }
+ 
+ /** Wait for the runtime to post a response (polls for up to 100ms). */
+ async function waitForResponse(mock: ReturnType<typeof createMockEndpoint>, afterIndex = -1): Promise<ResponseEnvelope> {
+   const target = afterIndex >= 0 ? afterIndex + 1 : mock.posted.length;
+   for (let i = 0; i < 20; i++) {
+     await new Promise((r) => setTimeout(r, 5));
+     if (mock.posted.length > target || (afterIndex < 0 && mock.posted.length > 0 && i > 0)) {
+       break;
+     }
+   }
+   const last = mock.posted[mock.posted.length - 1];
+   if (!last) throw new Error('No response received within timeout');
+   return last.message as ResponseEnvelope;
+ }
+ 
+ function makeRequest(id: number, payload: RequestEnvelope['payload']): RequestEnvelope {
+   return { id, kind: 'request', payload };
+ }
+ 
++function encodeUtf8(value: string): Uint8Array {
++  return new TextEncoder().encode(value);
++}
++
+ describe('O11yWorkerRuntime', () => {
+   let mock: ReturnType<typeof createMockEndpoint>;
+   let runtime: O11yWorkerRuntime;
+ 
+   beforeEach(() => {
+     mock = createMockEndpoint();
+     runtime = new O11yWorkerRuntime(mock.endpoint as any);
+     runtime.start();
+   });
+ 
+   // ── init ──────────────────────────────────────────────────────
+ 
+   describe('init', () => {
+     it('responds with backend name', async () => {
+       mock.sendRequest(makeRequest(1, { type: 'init', chunkSize: 128 }));
+       const resp = await waitForResponse(mock);
+ 
+       expect(resp.kind).toBe('response');
+       expect(resp.id).toBe(1);
+       expect(resp.payload.ok).toBe(true);
+       expect(resp.payload.type).toBe('init');
+       if (resp.payload.type === 'init') {
+         expect(typeof resp.payload.backend).toBe('string');
+       }
+     });
+ 
+     it('uses default chunk size when omitted', async () => {
+       mock.sendRequest(makeRequest(1, { type: 'init' }));
+       const resp = await waitForResponse(mock);
+ 
+       expect(resp.payload.ok).toBe(true);
+       expect(resp.payload.type).toBe('init');
+     });
+   });
+ 
+   // ── ingest ────────────────────────────────────────────────────
+ 
+   describe('ingest', () => {
++    it('ingests OTLP payload and returns IngestResult', async () => {
++      mock.sendRequest(makeRequest(1, { type: 'init', chunkSize: 1024 }));
++      await waitForResponse(mock);
++
++      const payload = JSON.stringify({
++        resourceMetrics: [{
++          resource: { attributes: [{ key: 'service.name', value: { stringValue: 'checkout' } }] },
++          scopeMetrics: [{
++            scope: { name: 'runtime', version: '1.0.0' },
++            metrics: [{
++              name: 'cpu_usage',
++              gauge: {
++                dataPoints: [
++                  { timeUnixNano: '1000000', asDouble: 1.25, attributes: [{ key: 'host', value: { stringValue: 'a' } }] },
++                  { timeUnixNano: '2000000', asDouble: 2.25, attributes: [{ key: 'host', value: { stringValue: 'a' } }] },
++                ],
++              },
++            }],
++          }],
++        }],
++      });
++
++      mock.sendRequest(makeRequest(2, {
++        type: 'ingest',
++        payload: encodeUtf8(payload),
++      }));
++
++      const resp = await waitForResponse(mock);
++      expect(resp.payload.ok).toBe(true);
++      expect(resp.payload.type).toBe('ingest');
++      if (resp.payload.type === 'ingest') {
++        expect(resp.payload.result.pointsSeen).toBe(2);
++        expect(resp.payload.result.pointsAccepted).toBe(2);
++        expect(resp.payload.result.samplesInserted).toBe(2);
++        expect(resp.payload.result.seriesCreated).toBe(1);
++      }
++    });
++
++    it('returns parse/drop errors for invalid OTLP payload', async () => {
++      mock.sendRequest(makeRequest(1, { type: 'init' }));
++      await waitForResponse(mock);
++
++      mock.sendRequest(makeRequest(2, { type: 'ingest', payload: encodeUtf8('{bad-json') }));
++      const resp = await waitForResponse(mock);
++      expect(resp.payload.ok).toBe(true);
++      expect(resp.payload.type).toBe('ingest');
++      if (resp.payload.type === 'ingest') {
++        expect(resp.payload.result.errors).toBe(1);
++        expect(resp.payload.result.dropped).toBe(1);
++      }
++    });
++  });
++
++  describe('append', () => {
+     it('ingests samples and returns series info', async () => {
+       // Init first
+       mock.sendRequest(makeRequest(1, { type: 'init', chunkSize: 1024 }));
+       await waitForResponse(mock);
+ 
+       const timestamps = BigInt64Array.from([1000n, 2000n, 3000n]);
+       const values = new Float64Array([1.0, 2.0, 3.0]);
+ 
+       mock.sendRequest(makeRequest(2, {
+-        type: 'ingest',
++        type: 'append',
+         labels: [['__name__', 'cpu'], ['host', 'a']],
+         timestamps,
+         values,
+       }));
+       const resp = await waitForResponse(mock);
+ 
+       expect(resp.payload.ok).toBe(true);
+-      expect(resp.payload.type).toBe('ingest');
+-      if (resp.payload.type === 'ingest') {
++      expect(resp.payload.type).toBe('append');
++      if (resp.payload.type === 'append') {
+         expect(resp.payload.seriesId).toBeTypeOf('number');
+         expect(resp.payload.ingestedSamples).toBe(3);
+       }
+     });
+   });
+ 
+   // ── query ─────────────────────────────────────────────────────
+ 
+   describe('query', () => {
+     it('returns query results after ingesting data', async () => {
+       // Init
+       mock.sendRequest(makeRequest(1, { type: 'init', chunkSize: 1024 }));
+       await waitForResponse(mock);
+ 
+       // Ingest
+       mock.sendRequest(makeRequest(2, {
+-        type: 'ingest',
++        type: 'append',
+         labels: [['__name__', 'cpu'], ['host', 'web-01']],
+         timestamps: BigInt64Array.from([100n, 200n, 300n]),
+         values: new Float64Array([10, 20, 30]),
+       }));
+       await waitForResponse(mock);
+ 
+       // Query
+       mock.sendRequest(makeRequest(3, {
+         type: 'query',
+         opts: { metric: 'cpu', start: 0n, end: 1000n },
+       }));
+       const resp = await waitForResponse(mock);
+ 
+       expect(resp.payload.ok).toBe(true);
+       expect(resp.payload.type).toBe('query');
+       if (resp.payload.type === 'query') {
+         expect(resp.payload.result.series.length).toBeGreaterThanOrEqual(1);
+         expect(resp.payload.result.scannedSamples).toBeGreaterThan(0);
+       }
+     });
+ 
+     it('returns empty result for non-matching metric', async () => {
+       mock.sendRequest(makeRequest(1, { type: 'init' }));
+       await waitForResponse(mock);
+ 
+@@ -180,51 +238,51 @@ describe('O11yWorkerRuntime', () => {
+ 
+   // ── stats ─────────────────────────────────────────────────────
+ 
+   describe('stats', () => {
+     it('returns zero stats on fresh store', async () => {
+       mock.sendRequest(makeRequest(1, { type: 'init' }));
+       await waitForResponse(mock);
+ 
+       mock.sendRequest(makeRequest(2, { type: 'stats' }));
+       const resp = await waitForResponse(mock);
+ 
+       expect(resp.payload.ok).toBe(true);
+       expect(resp.payload.type).toBe('stats');
+       if (resp.payload.type === 'stats') {
+         expect(resp.payload.stats.seriesCount).toBe(0);
+         expect(resp.payload.stats.sampleCount).toBe(0);
+         expect(resp.payload.stats.memoryBytes).toBeTypeOf('number');
+       }
+     });
+ 
+     it('reflects ingested data', async () => {
+       mock.sendRequest(makeRequest(1, { type: 'init' }));
+       await waitForResponse(mock);
+ 
+       mock.sendRequest(makeRequest(2, {
+-        type: 'ingest',
++        type: 'append',
+         labels: [['__name__', 'mem']],
+         timestamps: BigInt64Array.from([1n, 2n]),
+         values: new Float64Array([100, 200]),
+       }));
+       await waitForResponse(mock);
+ 
+       mock.sendRequest(makeRequest(3, { type: 'stats' }));
+       const resp = await waitForResponse(mock);
+ 
+       if (resp.payload.type === 'stats') {
+         expect(resp.payload.stats.seriesCount).toBe(1);
+         expect(resp.payload.stats.sampleCount).toBe(2);
+       }
+     });
+   });
+ 
+   // ── echo ──────────────────────────────────────────────────────
+ 
+   describe('echo', () => {
+     it('echoes back the byte length', async () => {
+       mock.sendRequest(makeRequest(1, { type: 'echo', payload: new Uint8Array(512) }));
+       const resp = await waitForResponse(mock);
+ 
+       expect(resp.payload.ok).toBe(true);
+       expect(resp.payload.type).toBe('echo');
+@@ -330,59 +388,59 @@ describe('O11yWorkerRuntime', () => {
+ 
+   // ── Endpoint without any listener method ──────────────────────
+ 
+   describe('bad endpoint', () => {
+     it('throws when endpoint has neither addEventListener nor on', () => {
+       const badEndpoint = {
+         postMessage: vi.fn(),
+       };
+ 
+       const rt = new O11yWorkerRuntime(badEndpoint as any);
+       expect(() => rt.start()).toThrow('Worker endpoint does not support message listeners.');
+     });
+   });
+ 
+   // ── Full round-trip: init → ingest → query → stats → close ───
+ 
+   describe('full lifecycle', () => {
+     it('supports a complete init → ingest → query → stats → close cycle', async () => {
+       // Init
+       mock.sendRequest(makeRequest(1, { type: 'init', chunkSize: 640 }));
+       const initResp = await waitForResponse(mock);
+       expect(initResp.payload.type).toBe('init');
+ 
+       // Ingest two series
+       mock.sendRequest(makeRequest(2, {
+-        type: 'ingest',
++        type: 'append',
+         labels: [['__name__', 'http_requests'], ['method', 'GET']],
+         timestamps: BigInt64Array.from([100n, 200n, 300n]),
+         values: new Float64Array([1, 2, 3]),
+       }));
+       await waitForResponse(mock);
+ 
+       mock.sendRequest(makeRequest(3, {
+-        type: 'ingest',
++        type: 'append',
+         labels: [['__name__', 'http_requests'], ['method', 'POST']],
+         timestamps: BigInt64Array.from([100n, 200n]),
+         values: new Float64Array([10, 20]),
+       }));
+       await waitForResponse(mock);
+ 
+       // Query
+       mock.sendRequest(makeRequest(4, {
+         type: 'query',
+         opts: { metric: 'http_requests', start: 0n, end: 1000n },
+       }));
+       const queryResp = await waitForResponse(mock);
+       if (queryResp.payload.type === 'query') {
+         expect(queryResp.payload.result.series.length).toBe(2);
+         expect(queryResp.payload.result.scannedSamples).toBe(5);
+       }
+ 
+       // Stats
+       mock.sendRequest(makeRequest(5, { type: 'stats' }));
+       const statsResp = await waitForResponse(mock);
+       if (statsResp.payload.type === 'stats') {
+         expect(statsResp.payload.stats.seriesCount).toBe(2);
+         expect(statsResp.payload.stats.sampleCount).toBe(5);
+       }
+ 
+diff --git a/research/ingest-experiments/04-worker-bench.mjs b/research/ingest-experiments/04-worker-bench.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..8c04e9b2be62388cbb3100becc2a9d8ef1ffba6d
+--- /dev/null
++++ b/research/ingest-experiments/04-worker-bench.mjs
+@@ -0,0 +1,177 @@
++import { Worker } from 'node:worker_threads';
++import { dirname, join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++import { ColumnStore } from '../../packages/o11ytsdb/dist/column-store.js';
++import { ingestOtlpJson } from '../../packages/o11ytsdb/dist/ingest.js';
++
++const __dirname = dirname(fileURLToPath(import.meta.url));
++const workerPath = join(__dirname, '../../packages/o11ytsdb/dist/worker.js');
++
++const BATCH_POINTS = 10_000;
++const ITERATIONS = 15;
++
++function createValuesCodec() {
++  return {
++    name: 'f64-plain',
++    encodeValues(values) {
++      const out = new Uint8Array(4 + values.byteLength);
++      new DataView(out.buffer).setUint32(0, values.length, true);
++      out.set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), 4);
++      return out;
++    },
++    decodeValues(buf) {
++      if (buf.byteLength < 4) return new Float64Array(0);
++      const n = new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint32(0, true);
++      const raw = buf.subarray(4);
++      const bytes = raw.byteLength - (raw.byteLength % 8);
++      const copy = raw.slice(0, bytes);
++      const values = new Float64Array(copy.buffer, copy.byteOffset, Math.min(n, Math.floor(bytes / 8)));
++      return values.slice();
++    },
++  };
++}
++
++function makePayload(points) {
++  const dataPoints = new Array(points);
++  const baseNs = 1_700_000_000_000_000_000n;
++  for (let i = 0; i < points; i++) {
++    dataPoints[i] = {
++      timeUnixNano: (baseNs + BigInt(i) * 1_000_000n).toString(),
++      asDouble: Number((Math.sin(i / 250) * 100 + 500).toFixed(6)),
++      attributes: [{ key: 'host', value: { stringValue: `web-${i % 8}` } }],
++    };
++  }
++
++  return JSON.stringify({
++    resourceMetrics: [{
++      resource: { attributes: [{ key: 'service.name', value: { stringValue: 'worker-bench' } }] },
++      scopeMetrics: [{
++        scope: { name: 'bench.ingest', version: '0.1.0' },
++        metrics: [{
++          name: 'http_server_duration_ms',
++          gauge: { dataPoints },
++        }],
++      }],
++    }],
++  });
++}
++
++function p50(values) {
++  const sorted = [...values].sort((a, b) => a - b);
++  return sorted[Math.floor(sorted.length / 2)] ?? 0;
++}
++
++function measureImmediateDelay(startedAt) {
++  return new Promise((resolve) => {
++    setTimeout(() => {
++      resolve(performance.now() - startedAt);
++    }, 0);
++  });
++}
++
++class BenchWorkerClient {
++  constructor(path) {
++    this.worker = new Worker(path);
++    this.nextId = 1;
++    this.pending = new Map();
++
++    this.worker.on('message', (message) => {
++      const handlers = this.pending.get(message.id);
++      if (!handlers) return;
++      this.pending.delete(message.id);
++      handlers.resolve(message.payload);
++    });
++
++    this.worker.on('error', (error) => {
++      for (const [, handlers] of this.pending) handlers.reject(error);
++      this.pending.clear();
++    });
++  }
++
++  request(payload, transfer = []) {
++    const id = this.nextId++;
++    return new Promise((resolve, reject) => {
++      this.pending.set(id, { resolve, reject });
++      this.worker.postMessage({
++        id,
++        kind: 'request',
++        payload,
++        meta: { strategy: transfer.length > 0 ? 'transferable' : 'structured-clone', sentAt: Date.now() },
++      }, transfer);
++    });
++  }
++
++  async init() {
++    const response = await this.request({ type: 'init', chunkSize: 1024 });
++    if (!response.ok) throw new Error(response.error);
++  }
++
++  async ingest(payloadJson) {
++    const encoded = new TextEncoder().encode(payloadJson);
++    const response = await this.request({ type: 'ingest', payload: encoded }, [encoded.buffer]);
++    if (!response.ok) throw new Error(response.error);
++    return response.result;
++  }
++
++  async close() {
++    await this.request({ type: 'close' });
++    await this.worker.terminate();
++  }
++}
++
++async function run() {
++  const payload = makePayload(BATCH_POINTS);
++
++  const syncStore = new ColumnStore(createValuesCodec(), 1024);
++  const syncDurations = [];
++  const syncBlocks = [];
++
++  for (let i = 0; i < ITERATIONS; i++) {
++    const start = performance.now();
++    const delayPromise = measureImmediateDelay(start);
++    ingestOtlpJson(payload, syncStore);
++    const end = performance.now();
++    syncDurations.push(end - start);
++    syncBlocks.push(await delayPromise);
++  }
++
++  const workerClient = new BenchWorkerClient(workerPath);
++  await workerClient.init();
++
++  const workerRoundTrips = [];
++  const workerBlocks = [];
++
++  for (let i = 0; i < ITERATIONS; i++) {
++    const start = performance.now();
++    const delayPromise = measureImmediateDelay(start);
++    await workerClient.ingest(payload);
++    const end = performance.now();
++    workerRoundTrips.push(end - start);
++    workerBlocks.push(await delayPromise);
++  }
++
++  await workerClient.close();
++
++  const report = {
++    batchPoints: BATCH_POINTS,
++    iterations: ITERATIONS,
++    sync: {
++      p50MainThreadBlockMs: p50(syncBlocks),
++      p50IngestWallMs: p50(syncDurations),
++      throughputPointsPerSec: Math.round(BATCH_POINTS / (p50(syncDurations) / 1000)),
++    },
++    worker: {
++      p50MainThreadBlockMs: p50(workerBlocks),
++      p50RoundTripMs: p50(workerRoundTrips),
++      throughputPointsPerSec: Math.round(BATCH_POINTS / (p50(workerRoundTrips) / 1000)),
++    },
++  };
++
++  console.log(JSON.stringify(report, null, 2));
++}
++
++run().catch((error) => {
++  console.error(error);
++  process.exitCode = 1;
++});
+diff --git a/research/ingest-experiments/04-worker-ingest-results.md b/research/ingest-experiments/04-worker-ingest-results.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..90395d1c6d08d032e779d01bbb751157bc553019
+--- /dev/null
++++ b/research/ingest-experiments/04-worker-ingest-results.md
+@@ -0,0 +1,68 @@
++# Worker-Offloaded Ingest Prototype Results
++
++Date: 2026-04-19 (UTC)
++Benchmark script: `research/ingest-experiments/04-worker-bench.mjs`
++
++## Summary metrics (10,000-point OTLP batch, 15 iterations)
++
++- **Sync ingest on main thread**
++  - p50 main-thread blocking: **18.87 ms**
++  - p50 ingest wall time: **18.18 ms**
++  - throughput: **~550,018 points/sec**
++- **Worker ingest (payload transferred as `Uint8Array` transferable)**
++  - p50 main-thread blocking: **1.92 ms**
++  - p50 round-trip latency: **35.66 ms**
++  - throughput: **~280,400 points/sec**
++
++## Interpretation
++
++1. **Main-thread jank is substantially reduced**.
++   - Moving parse + flush into the worker cut p50 main-thread blocking from ~19ms to ~1.9ms.
++   - This is materially better for 60fps UI workloads.
++
++2. **End-to-end ingest latency increases**.
++   - Worker path adds postMessage encode/decode and queueing overhead.
++   - p50 RTT rose from ~18.2ms equivalent sync wall-time to ~35.7ms.
++
++3. **Throughput decreases significantly in this prototype**.
++   - ~49% lower throughput versus direct sync ingest in this environment.
++   - Trade-off appears acceptable if UI responsiveness is the priority.
++
++## Prototype behavior checks
++
++- Worker `ingest` now returns the same `IngestResult` shape as synchronous `ingestOtlpJson`.
++- Existing point-column ingestion remains available as worker `append`.
++- Errors from worker ingest are propagated to the caller via worker error envelopes.
++
++## Exploration notes
++
++### SharedArrayBuffer for zero-copy reads
++
++- `SharedArrayBuffer` can reduce copy overhead for payload handoff and, in theory, for query read paths.
++- However, **storage internals are mutable and index-heavy**, so direct SAB-based zero-copy reads likely need:
++  - fixed-layout buffers,
++  - atomic synchronization,
++  - and a versioning protocol to avoid torn reads.
++- Feasible for specialized hot paths, but not a drop-in replacement for current storage objects.
++
++### Backpressure when producer outpaces worker
++
++- Current `WorkerClient` does not apply queue bounds.
++- If batches arrive faster than ingest rate, pending promises and queued messages can grow unbounded.
++- Recommended follow-up:
++  - add max in-flight request count,
++  - expose queue depth metrics,
++  - optionally implement drop/coalesce strategy for bursty producers.
++
++### Could `append()` be replaced by worker `ingest()`?
++
++- Not fully.
++- `append()` is lower-level and already structured for pre-parsed columnar samples.
++- `ingest()` (OTLP JSON) is higher-level and incurs parse/serialization overhead.
++- They should coexist: `append()` for low-latency preprocessed pipelines, `ingest()` for convenience and UI-isolation.
++
++## Recommendation
++
++**OPTIONAL**
++
++Make worker-offloaded OTLP ingest an opt-in default for browser/UI-facing usage, but keep sync/append paths for max throughput and server-like contexts. Promote to full default only after adding explicit backpressure controls and more browser-device benchmarks.

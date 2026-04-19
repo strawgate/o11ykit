@@ -1,0 +1,611 @@
+diff --git a/research/ingest-experiments/05-wasm-bench.mjs b/research/ingest-experiments/05-wasm-bench.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..8be5a11c4fa9849d65cbc22c74af639f4f44d4eb
+--- /dev/null
++++ b/research/ingest-experiments/05-wasm-bench.mjs
+@@ -0,0 +1,155 @@
++import { readFileSync } from 'node:fs';
++import { fileURLToPath } from 'node:url';
++import { dirname, join } from 'node:path';
++import { performance } from 'node:perf_hooks';
++import { parseOtlpToSamples } from '../../packages/o11ytsdb/dist/ingest.js';
++
++const __dirname = dirname(fileURLToPath(import.meta.url));
++const wasmPath = join(__dirname, 'wasm-ingest', 'target', 'wasm32-unknown-unknown', 'release', 'wasm_ingest.wasm');
++
++function buildSyntheticPayload(metricCount = 10_000) {
++  const metrics = [];
++  const baseTs = 1_710_000_000_000_000_000n;
++  for (let i = 0; i < metricCount; i++) {
++    metrics.push({
++      name: `bench.cpu.utilization.${i % 32}`,
++      gauge: {
++        dataPoints: [{
++          timeUnixNano: (baseTs + BigInt(i) * 1_000_000_000n).toString(),
++          attributes: [
++            { key: 'host.name', value: { stringValue: `node-${i % 256}` } },
++            { key: 'cpu', value: { stringValue: String(i % 8) } },
++          ],
++          asDouble: 0.25 + (i % 100) / 100,
++        }],
++      },
++    });
++  }
++
++  return {
++    resourceMetrics: [{
++      resource: {
++        attributes: [
++          { key: 'service.name', value: { stringValue: 'bench' } },
++          { key: 'service.instance.id', value: { stringValue: 'i-1' } },
++        ],
++      },
++      scopeMetrics: [{
++        scope: { name: 'bench', version: '0.1' },
++        metrics,
++      }],
++    }],
++  };
++}
++
++function runTimed(iterations, fn, pointsPerIter) {
++  for (let i = 0; i < 5; i++) fn();
++  const t0 = performance.now();
++  for (let i = 0; i < iterations; i++) fn();
++  const ms = performance.now() - t0;
++  return (pointsPerIter * iterations * 1000) / ms;
++}
++
++function median(nums) {
++  const sorted = [...nums].sort((a, b) => a - b);
++  return sorted[Math.floor(sorted.length / 2)];
++}
++
++function benchTS(payload, points, iterations, rounds) {
++  const throughputs = [];
++  for (let r = 0; r < rounds; r++) {
++    throughputs.push(runTimed(iterations, () => {
++      const parsed = parseOtlpToSamples(payload);
++      if (parsed.result.pointsSeen !== points) throw new Error(`TS expected ${points} got ${parsed.result.pointsSeen}`);
++    }, points));
++  }
++  return { p50: median(throughputs), rounds: throughputs };
++}
++
++function benchWasm(payloadString, points, wasm, iterations, rounds) {
++  const encoder = new TextEncoder();
++  const throughputs = [];
++  const encodeCosts = [];
++  const copyCosts = [];
++
++  const { memory, alloc_input, parse_gauges, output_timestamps_ptr, output_values_ptr, output_fingerprints_ptr } = wasm.instance.exports;
++  let inputPtr = 0;
++  let inputCap = 0;
++
++  for (let r = 0; r < rounds; r++) {
++    throughputs.push(runTimed(iterations, () => {
++      const te0 = performance.now();
++      const jsonBytes = encoder.encode(payloadString);
++      encodeCosts.push(performance.now() - te0);
++
++      if (jsonBytes.length > inputCap) {
++        inputPtr = Number(alloc_input(jsonBytes.length));
++        inputCap = jsonBytes.length;
++      }
++
++      const tc0 = performance.now();
++      new Uint8Array(memory.buffer, inputPtr, jsonBytes.length).set(jsonBytes);
++      copyCosts.push(performance.now() - tc0);
++
++      const outPoints = Number(parse_gauges(inputPtr, jsonBytes.length));
++      if (outPoints !== points) throw new Error(`WASM expected ${points} got ${outPoints}`);
++
++      const ts0 = new Float64Array(memory.buffer, Number(output_timestamps_ptr()), 1)[0];
++      const v0 = new Float64Array(memory.buffer, Number(output_values_ptr()), 1)[0];
++      const f0 = new Uint32Array(memory.buffer, Number(output_fingerprints_ptr()), 1)[0];
++      if (!Number.isFinite(ts0 + v0 + f0)) throw new Error('invalid output');
++    }, points));
++  }
++
++  return {
++    p50: median(throughputs),
++    rounds: throughputs,
++    encodeMsP50: median(encodeCosts),
++    copyMsP50: median(copyCosts),
++  };
++}
++
++function benchPair(wasm, points, iter, rounds) {
++  const payload = buildSyntheticPayload(points);
++  const payloadString = JSON.stringify(payload);
++  const ts = benchTS(payload, points, iter, rounds);
++  const wasmStats = benchWasm(payloadString, points, wasm, iter, rounds);
++
++  return {
++    points,
++    payloadBytes: Buffer.byteLength(payloadString, 'utf8'),
++    tsPtsPerSecP50: ts.p50,
++    wasmPtsPerSecP50: wasmStats.p50,
++    speedup: wasmStats.p50 / ts.p50,
++    wasmEncodeMsP50: wasmStats.encodeMsP50,
++    wasmCopyMsP50: wasmStats.copyMsP50,
++  };
++}
++
++async function main() {
++  const wasmBytes = readFileSync(wasmPath);
++  const wasm = await WebAssembly.instantiate(wasmBytes, {});
++
++  const core = benchPair(wasm, 10_000, 20, 7);
++  const crossoverSizes = [250, 1_000, 2_500, 5_000, 10_000, 20_000];
++  const crossover = crossoverSizes.map((points) => benchPair(wasm, points, 10, 5));
++
++  const mem = process.memoryUsage();
++
++  console.log(JSON.stringify({
++    core10k: core,
++    crossover,
++    wasmBinaryBytes: wasmBytes.length,
++    memoryBytes: {
++      rss: mem.rss,
++      heapTotal: mem.heapTotal,
++      heapUsed: mem.heapUsed,
++      arrayBuffers: mem.arrayBuffers,
++    },
++  }, null, 2));
++}
++
++main().catch((err) => {
++  console.error(err);
++  process.exitCode = 1;
++});
+diff --git a/research/ingest-experiments/05-wasm-ingest-results.md b/research/ingest-experiments/05-wasm-ingest-results.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..27e0d580101f91830122af498bbc515b4def6541
+--- /dev/null
++++ b/research/ingest-experiments/05-wasm-ingest-results.md
+@@ -0,0 +1,116 @@
++# Experiment 05 — WASM ingest prototype (raw OTLP JSON bytes -> columnar arrays)
++
++Date: 2026-04-19
++
++## What was built
++
++- Rust `#![no_std]` prototype crate at `research/ingest-experiments/wasm-ingest/` targeting `wasm32-unknown-unknown`.
++- Raw C ABI exports (`alloc_input`, `parse_gauges`, output pointer getters), no `wasm-bindgen`.
++- Hand-rolled scanner (no `serde` / `serde_json`) that:
++  - reads UTF-8 JSON bytes from WASM memory,
++  - scans for gauge datapoints,
++  - extracts `timeUnixNano` and `asDouble`,
++  - computes FNV-1a fingerprint using metric name + datapoint attributes,
++  - writes columnar output buffers in linear memory:
++    - `f64[N]` timestamps,
++    - `f64[N]` values,
++    - `u32[N]` fingerprints.
++- JS benchmark harness at `research/ingest-experiments/05-wasm-bench.mjs` comparing TS `parseOtlpToSamples` vs WASM `parse_gauges` on equivalent synthetic OTLP payloads.
++
++## Build commands
++
++```bash
++npm run build --workspace o11ytsdb
++cargo build --target wasm32-unknown-unknown --release \
++  --manifest-path research/ingest-experiments/wasm-ingest/Cargo.toml
++node research/ingest-experiments/05-wasm-bench.mjs
++```
++
++`wasm-opt -Oz` was not run in this environment (`wasm-opt` not installed).
++
++## WASM binary size
++
++- `wasm_ingest.wasm`: **21,623 bytes** (~22 KB on disk).
++- This is below the requested `<50 KB` envelope and near the `<20 KB` aspirational hot-module target.
++
++## Throughput (10K gauge points payload)
++
++Payload characteristics:
++- 10,000 points,
++- 32 metric names,
++- 2 point attributes (`host.name`, `cpu`),
++- ~2.29 MB JSON payload.
++
++p50 throughput (points/sec):
++- TS `parseOtlpToSamples`: **1,337,122 pts/sec**
++- WASM `parse_gauges`: **210,157 pts/sec**
++- Relative speed (`wasm / ts`): **0.157x**
++
++Additional overhead measurements on WASM path (per call, p50):
++- `TextEncoder.encode(payload)`: **~1.10 ms**
++- JS -> WASM memory copy (`Uint8Array.set`): **~0.24 ms**
++
++## Crossover analysis
++
++Measured sizes (p50 throughput):
++
++| Points | Payload bytes | TS pts/sec | WASM pts/sec | WASM/TS |
++|---:|---:|---:|---:|---:|
++| 250 | 57,619 | 751,675 | 222,980 | 0.297x |
++| 1,000 | 229,640 | 754,826 | 224,596 | 0.298x |
++| 2,500 | 573,754 | 1,261,837 | 192,439 | 0.153x |
++| 5,000 | 1,147,270 | 1,612,838 | 189,060 | 0.117x |
++| 10,000 | 2,294,392 | 1,714,317 | 198,490 | 0.116x |
++| 20,000 | 4,588,566 | 1,682,031 | 221,654 | 0.132x |
++
++Observed in this prototype:
++- No crossover point where WASM beats TS in tested range (250 -> 20,000 points).
++- TS scales better with payload growth in this implementation.
++
++## SIMD check (`+simd128`)
++
++A separate build with `RUSTFLAGS='-C target-feature=+simd128'` was tested.
++
++- 10K payload WASM p50: **219,315 pts/sec** (vs 210,157 baseline) → small gain (~4.4%).
++- Binary size increased from **21,623 bytes** to **21,945 bytes**.
++
++Interpretation:
++- Minimal gain because the current scanner is control-flow/string-search heavy; it is not currently structured for meaningful SIMD acceleration.
++
++## Memory usage snapshot (Node process, after benchmark)
++
++- RSS: ~133.9 MB
++- JS heap used: ~18.8 MB
++- ArrayBuffers: ~4.6 MB
++
++Note: this is process-level memory, not isolated module-only resident bytes.
++
++## Is full parser or schema-aware scanner the right direction?
++
++For this workload, a **schema-aware scanner** remains the better fit than a full generic JSON parser in WASM:
++- known OTLP gauge field paths,
++- ability to skip unknown keys,
++- direct emission to column buffers.
++
++However, this prototype indicates that **algorithm quality dominates language/runtime choice**. A naive scanner in WASM is still much slower than optimized TS object-walk + hashing.
++
++## What a production WASM ingest module would need
++
++1. Single-pass tokenizer/scanner with far fewer rescans (`find_from` is O(n*m)-ish in practice).
++2. Zero-copy-ish handoff strategy to reduce repeated `TextEncoder.encode` + memory copy cost (e.g., ingest already as bytes from transport).
++3. Precomputed field-key matcher (vectorized compare or trie-based automaton) instead of repeated substring search.
++4. More efficient number parsing for 19-digit timestamps and doubles (SIMD-friendly routines).
++5. Streaming/chunked ingest API to avoid monolithic payload copies.
++6. Fingerprint path parity with TS rules (resource/scope/point attrs, stable ordering).
++
++## Recommendation
++
++**DEFER**
++
++Reasoning:
++- This prototype does not show a speedup; it is ~3-8x slower than TS for tested payloads.
++- Overheads from JS encoding/copy and scanner rescans erase potential wins.
++- WASM ingest could still become competitive, but only with a substantially more advanced scanner and lower handoff overhead.
++
++Suggested next step:
++- Run one more iteration focused on transport-level bytes ingestion (skip `TextEncoder`) and a single-pass scanner; if that cannot beat TS by at least ~1.5x at 10K-20K points, deprioritize this line of work.
+diff --git a/research/ingest-experiments/wasm-ingest/Cargo.lock b/research/ingest-experiments/wasm-ingest/Cargo.lock
+new file mode 100644
+index 0000000000000000000000000000000000000000..a98cace14b6e53fb2b6347d6db44d9addcf8d627
+--- /dev/null
++++ b/research/ingest-experiments/wasm-ingest/Cargo.lock
+@@ -0,0 +1,7 @@
++# This file is automatically @generated by Cargo.
++# It is not intended for manual editing.
++version = 4
++
++[[package]]
++name = "wasm_ingest"
++version = "0.1.0"
+diff --git a/research/ingest-experiments/wasm-ingest/Cargo.toml b/research/ingest-experiments/wasm-ingest/Cargo.toml
+new file mode 100644
+index 0000000000000000000000000000000000000000..512332ecd6dba882bfdf8dd6bdb8874a138e8b43
+--- /dev/null
++++ b/research/ingest-experiments/wasm-ingest/Cargo.toml
+@@ -0,0 +1,14 @@
++[package]
++name = "wasm_ingest"
++version = "0.1.0"
++edition = "2021"
++
++[lib]
++crate-type = ["cdylib"]
++
++[profile.release]
++lto = true
++codegen-units = 1
++opt-level = "z"
++panic = "abort"
++strip = true
+diff --git a/research/ingest-experiments/wasm-ingest/src/lib.rs b/research/ingest-experiments/wasm-ingest/src/lib.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..500f6b7be7ca7dca9cd193f8802c12799ad4eea9
+--- /dev/null
++++ b/research/ingest-experiments/wasm-ingest/src/lib.rs
+@@ -0,0 +1,289 @@
++#![no_std]
++
++use core::alloc::{GlobalAlloc, Layout};
++use core::panic::PanicInfo;
++use core::ptr;
++use core::slice;
++use core::str;
++use core::sync::atomic::{AtomicUsize, Ordering};
++
++const FNV_OFFSET: u32 = 0x811c9dc5;
++const FNV_PRIME: u32 = 0x0100_0193;
++
++struct BumpAllocator;
++
++static HEAP_PTR: AtomicUsize = AtomicUsize::new(0);
++static HEAP_END: AtomicUsize = AtomicUsize::new(0);
++
++unsafe impl GlobalAlloc for BumpAllocator {
++    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
++        init_heap();
++        let align = layout.align();
++        let size = layout.size();
++        let mut current = HEAP_PTR.load(Ordering::Relaxed);
++
++        loop {
++            let aligned = (current + (align - 1)) & !(align - 1);
++            let next = aligned.saturating_add(size);
++            if next > HEAP_END.load(Ordering::Relaxed) {
++                let need_bytes = next - HEAP_END.load(Ordering::Relaxed);
++                let need_pages = ((need_bytes + 65_535) / 65_536) as usize;
++                let grown = core::arch::wasm32::memory_grow(0, need_pages);
++                if grown == usize::MAX {
++                    return ptr::null_mut();
++                }
++                let new_end = (core::arch::wasm32::memory_size(0) as usize) * 65_536;
++                HEAP_END.store(new_end, Ordering::Relaxed);
++                current = HEAP_PTR.load(Ordering::Relaxed);
++                continue;
++            }
++            match HEAP_PTR.compare_exchange(current, next, Ordering::SeqCst, Ordering::SeqCst) {
++                Ok(_) => return aligned as *mut u8,
++                Err(actual) => current = actual,
++            }
++        }
++    }
++
++    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
++        // bump allocator: no-op
++    }
++}
++
++#[global_allocator]
++static ALLOCATOR: BumpAllocator = BumpAllocator;
++
++#[panic_handler]
++fn panic(_info: &PanicInfo) -> ! {
++    loop {}
++}
++
++
++unsafe extern "C" {
++    static __heap_base: u8;
++}
++
++fn init_heap() {
++    if HEAP_PTR.load(Ordering::Relaxed) != 0 {
++        return;
++    }
++    let base = ptr::addr_of!(__heap_base) as usize;
++    let end = (core::arch::wasm32::memory_size(0) as usize) * 65_536;
++    HEAP_PTR.store(base, Ordering::Relaxed);
++    HEAP_END.store(end, Ordering::Relaxed);
++}
++
++static mut TS_PTR: u32 = 0;
++static mut VAL_PTR: u32 = 0;
++static mut FP_PTR: u32 = 0;
++static mut OUT_CAP: u32 = 0;
++
++#[no_mangle]
++pub extern "C" fn alloc_input(len: u32) -> u32 {
++    let layout = Layout::from_size_align(len as usize, 1).unwrap_or(Layout::new::<u8>());
++    unsafe { ALLOCATOR.alloc(layout) as u32 }
++}
++
++#[no_mangle]
++pub extern "C" fn output_timestamps_ptr() -> u32 {
++    unsafe { TS_PTR }
++}
++
++#[no_mangle]
++pub extern "C" fn output_values_ptr() -> u32 {
++    unsafe { VAL_PTR }
++}
++
++#[no_mangle]
++pub extern "C" fn output_fingerprints_ptr() -> u32 {
++    unsafe { FP_PTR }
++}
++
++#[no_mangle]
++pub extern "C" fn output_capacity() -> u32 {
++    unsafe { OUT_CAP }
++}
++
++fn ensure_output_capacity(points: u32) {
++    unsafe {
++        if points <= OUT_CAP {
++            return;
++        }
++
++        let ts_layout = Layout::from_size_align((points as usize) * 8, 8).unwrap();
++        let val_layout = Layout::from_size_align((points as usize) * 8, 8).unwrap();
++        let fp_layout = Layout::from_size_align((points as usize) * 4, 4).unwrap();
++
++        TS_PTR = ALLOCATOR.alloc(ts_layout) as u32;
++        VAL_PTR = ALLOCATOR.alloc(val_layout) as u32;
++        FP_PTR = ALLOCATOR.alloc(fp_layout) as u32;
++        OUT_CAP = points;
++    }
++}
++
++fn find_from(haystack: &[u8], start: usize, needle: &[u8]) -> Option<usize> {
++    if needle.is_empty() || start >= haystack.len() || needle.len() > haystack.len() {
++        return None;
++    }
++    let last = haystack.len() - needle.len();
++    let mut i = start;
++    while i <= last {
++        if &haystack[i..i + needle.len()] == needle {
++            return Some(i);
++        }
++        i += 1;
++    }
++    None
++}
++
++fn parse_u64_ascii(bytes: &[u8], start: usize) -> (u64, usize) {
++    let mut i = start;
++    let mut out: u64 = 0;
++    while i < bytes.len() {
++        let b = bytes[i];
++        if !b.is_ascii_digit() {
++            break;
++        }
++        out = out.saturating_mul(10).saturating_add((b - b'0') as u64);
++        i += 1;
++    }
++    (out, i)
++}
++
++fn parse_f64_ascii(bytes: &[u8], start: usize) -> (f64, usize) {
++    let mut i = start;
++    while i < bytes.len() {
++        let b = bytes[i];
++        if !(b.is_ascii_digit() || b == b'.' || b == b'-' || b == b'+' || b == b'e' || b == b'E') {
++            break;
++        }
++        i += 1;
++    }
++    let n = str::from_utf8(&bytes[start..i]).ok().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
++    (n, i)
++}
++
++fn fnv_hash_str(mut h: u32, s: &str) -> u32 {
++    for b in s.as_bytes() {
++        h ^= *b as u32;
++        h = h.wrapping_mul(FNV_PRIME);
++    }
++    h
++}
++
++fn fnv_hash_entry(mut h: u32, key: &str, val: &str) -> u32 {
++    h = fnv_hash_str(h, key);
++    h ^= 0xFF;
++    h = h.wrapping_mul(FNV_PRIME);
++    h = fnv_hash_str(h, val);
++    h ^= 0xFE;
++    h = h.wrapping_mul(FNV_PRIME);
++    h
++}
++
++fn parse_attr_pairs(bytes: &[u8], mut scan: usize, end: usize, mut h: u32) -> u32 {
++    const KEY: &[u8] = b"\"key\":\"";
++    const STR_VAL: &[u8] = b"\"stringValue\":\"";
++
++    while let Some(kpos) = find_from(bytes, scan, KEY) {
++        if kpos >= end {
++            break;
++        }
++        let kstart = kpos + KEY.len();
++        let kend = find_from(bytes, kstart, b"\"").unwrap_or(end);
++        if kend > end {
++            break;
++        }
++        let vpos = match find_from(bytes, kend, STR_VAL) {
++            Some(v) if v < end => v,
++            _ => break,
++        };
++        let vstart = vpos + STR_VAL.len();
++        let vend = find_from(bytes, vstart, b"\"").unwrap_or(end);
++        if vend > end {
++            break;
++        }
++        let key = str::from_utf8(&bytes[kstart..kend]).unwrap_or("");
++        let val = str::from_utf8(&bytes[vstart..vend]).unwrap_or("");
++        h = fnv_hash_entry(h, key, val);
++        scan = vend;
++    }
++
++    h
++}
++
++fn count_points(bytes: &[u8]) -> u32 {
++    let mut count = 0;
++    let mut i = 0;
++    while let Some(pos) = find_from(bytes, i, b"\"timeUnixNano\":\"") {
++        count += 1;
++        i = pos + 1;
++    }
++    count
++}
++
++#[no_mangle]
++pub extern "C" fn parse_gauges(json_ptr: u32, json_len: u32) -> u32 {
++    let bytes = unsafe { slice::from_raw_parts(json_ptr as *const u8, json_len as usize) };
++    let estimated = count_points(bytes);
++    ensure_output_capacity(estimated.max(1));
++
++    let ts = unsafe { slice::from_raw_parts_mut(TS_PTR as *mut f64, OUT_CAP as usize) };
++    let vals = unsafe { slice::from_raw_parts_mut(VAL_PTR as *mut f64, OUT_CAP as usize) };
++    let fps = unsafe { slice::from_raw_parts_mut(FP_PTR as *mut u32, OUT_CAP as usize) };
++
++    let mut out = 0usize;
++    let mut i = 0usize;
++    const NAME: &[u8] = b"\"name\":\"";
++    const GAUGE: &[u8] = b"\"gauge\":";
++    const TSK: &[u8] = b"\"timeUnixNano\":\"";
++    const ATTRS: &[u8] = b"\"attributes\":[";
++    const AS_DOUBLE: &[u8] = b"\"asDouble\":";
++
++    while let Some(name_pos) = find_from(bytes, i, NAME) {
++        let nstart = name_pos + NAME.len();
++        let nend = match find_from(bytes, nstart, b"\"") {
++            Some(v) => v,
++            None => break,
++        };
++        let metric_name = str::from_utf8(&bytes[nstart..nend]).unwrap_or("");
++
++        let gauge_pos = match find_from(bytes, nend, GAUGE) {
++            Some(v) => v,
++            None => {
++                i = nend;
++                continue;
++            }
++        };
++        let ts_pos = match find_from(bytes, gauge_pos, TSK) {
++            Some(v) => v,
++            None => break,
++        };
++        let ts_start = ts_pos + TSK.len();
++        let (ts_ns, ts_end) = parse_u64_ascii(bytes, ts_start);
++
++        let asd_pos = match find_from(bytes, ts_end, AS_DOUBLE) {
++            Some(v) => v,
++            None => break,
++        };
++        let (value, asd_end) = parse_f64_ascii(bytes, asd_pos + AS_DOUBLE.len());
++
++        let mut h = fnv_hash_str(FNV_OFFSET, metric_name);
++        if let Some(attr_pos) = find_from(bytes, ts_end, ATTRS) {
++            if attr_pos < asd_pos {
++                let attrs_end = find_from(bytes, attr_pos, b"]").unwrap_or(asd_pos);
++                h = parse_attr_pairs(bytes, attr_pos, attrs_end, h);
++            }
++        }
++
++        if out < ts.len() {
++            ts[out] = ts_ns as f64;
++            vals[out] = value;
++            fps[out] = h;
++            out += 1;
++        }
++
++        i = asd_end;
++    }
++
++    out as u32
++}
