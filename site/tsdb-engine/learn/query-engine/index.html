@@ -32,6 +32,7 @@
       <section class="xp-section" id="dataset-section">
         <h2>① Sample Dataset</h2>
         <p>A simulated TSDB with three metrics, multiple label dimensions, and chunked storage.</p>
+        <p class="qe-primer"><strong>The data model:</strong> A monitoring system stores <span class="xp-term" data-term="series">series</span> — each series is one metric stream identified by <span class="xp-term" data-term="label">labels</span> (key=value pairs). Each series is split into fixed-size <span class="xp-term" data-term="chunk">chunks</span> of compressed <span class="xp-term" data-term="sample">samples</span>. A medium-sized system might have 50,000 series, each split into hundreds of chunks.</p>
         <div class="xp-stats-row" id="dataset-stats"></div>
         <div class="xp-card qe-dataset-card" id="dataset-detail"></div>
       </section>
@@ -98,6 +99,7 @@
       <!-- D. Stage 1: Label Matching & Postings Intersection -->
       <section class="xp-section" id="stage-match-section" hidden>
         <h2>④ Label Matching &amp; Postings Intersection</h2>
+        <p class="qe-primer"><strong>How label lookups work:</strong> For each unique label value (e.g. region=us-west-2), the TSDB maintains a <span class="xp-term" data-term="postings list">postings list</span> — a sorted array of <span class="xp-term" data-term="series">series</span> IDs that have that <span class="xp-term" data-term="label">label</span>. To find series matching multiple filters, we <em>intersect</em> these lists: keep only IDs that appear in all of them.</p>
         <p id="match-description"></p>
         <div class="xp-card qe-match-card" id="match-viz"></div>
         <div class="qe-match-summary" id="match-summary"></div>
@@ -130,8 +132,8 @@
 
       <footer style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--xp-border); text-align: center;">
         <p style="font-size: 13px; color: var(--xp-text-dim);">
-          Part of <a href="/o11ykit/" style="color: var(--xp-accent); text-decoration: none;">o11ykit</a>
-          · <a href="/o11ykit/tsdb-engine/learn/" style="color: var(--xp-text-muted); text-decoration: none;">← Back to Learn</a>
+          Part of <a href="../../../" style="color: var(--xp-accent); text-decoration: none;">o11ykit</a>
+          · <a href="../" style="color: var(--xp-text-muted); text-decoration: none;">← Back to Learn</a>
         </p>
       </footer>
 

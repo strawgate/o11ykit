@@ -12,9 +12,7 @@
           "scope": {
             "name": "otel.demo",
             "version": "1.2.3",
-            "attributes": [
-              { "key": "scope.role", "value": { "stringValue": "ingester" } }
-            ]
+            "attributes": [{ "key": "scope.role", "value": { "stringValue": "ingester" } }]
           },
           "metrics": [
             {
@@ -24,16 +22,12 @@
                 "dataPoints": [
                   {
                     "timeUnixNano": "1710000000000",
-                    "attributes": [
-                      { "key": "host.name", "value": { "stringValue": "node-a" } }
-                    ],
+                    "attributes": [{ "key": "host.name", "value": { "stringValue": "node-a" } }],
                     "asDouble": 0.73
                   },
                   {
                     "timeUnixNano": "1710000001000000000",
-                    "attributes": [
-                      { "key": "host.name", "value": { "stringValue": "node-a" } }
-                    ],
+                    "attributes": [{ "key": "host.name", "value": { "stringValue": "node-a" } }],
                     "asDouble": 0.74
                   },
                   {
@@ -66,9 +60,7 @@
                 "dataPoints": [
                   {
                     "timeUnixNano": "1710000001000000000",
-                    "attributes": [
-                      { "key": "route", "value": { "stringValue": "/cart" } }
-                    ],
+                    "attributes": [{ "key": "route", "value": { "stringValue": "/cart" } }],
                     "count": "4",
                     "sum": 53,
                     "bucketCounts": ["1", "2", "1"],
@@ -83,9 +75,7 @@
                 "dataPoints": [
                   {
                     "timeUnixNano": "1710000001000000000",
-                    "attributes": [
-                      { "key": "rpc.system", "value": { "stringValue": "grpc" } }
-                    ],
+                    "attributes": [{ "key": "rpc.system", "value": { "stringValue": "grpc" } }],
                     "count": "3",
                     "sum": 21,
                     "quantileValues": [
@@ -102,9 +92,7 @@
                 "dataPoints": [
                   {
                     "timeUnixNano": "1710000001000000000",
-                    "attributes": [
-                      { "key": "queue.name", "value": { "stringValue": "emails" } }
-                    ],
+                    "attributes": [{ "key": "queue.name", "value": { "stringValue": "emails" } }],
                     "count": "5",
                     "sum": 27,
                     "scale": "2",

@@ -4,7 +4,7 @@
  * Tests round-trip correctness and compression ratio across data patterns.
  */
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync, inflateRawSync } from "node:zlib";
 
@@ -18,10 +18,10 @@ const mem = () => new Uint8Array(w.memory.buffer);
 
 const CHUNK = 128;
 const patterns = [
-  ["constant", (i) => 42.0],
+  ["constant", (_i) => 42.0],
   ["counter", (i) => i * 1.0],
   ["sine", (i) => Math.sin(i * 0.01) * 100],
-  ["random", (i) => Math.random() * 1000],
+  ["random", (_i) => Math.random() * 1000],
   ["step", (i) => Math.floor(i / 100) * 10.0],
   ["pct", (i) => 45.2 + Math.sin(i * 0.1) * 5],
   ["latency_ms", (i) => 12.5 + i * 0.001],
@@ -85,10 +85,8 @@ function verify(original, decoded) {
 }
 
 console.log("\n  Codec comparison (chunk=128, deflate level=1)\n");
-console.log(
-  "  Pattern       raw(B/pt) XOR    ALP    XOR+df ALP+df  Best"
-);
-console.log("  " + "─".repeat(65));
+console.log("  Pattern       raw(B/pt) XOR    ALP    XOR+df ALP+df  Best");
+console.log(`  ${"─".repeat(65)}`);
 
 let allOk = true;
 for (const [name, fn] of patterns) {
@@ -116,11 +114,11 @@ for (const [name, fn] of patterns) {
 
   console.log(
     `  ${name.padEnd(13)} ${(rawBytes / CHUNK).toFixed(1).padStart(8)}  ` +
-    `${(xorBuf.length / CHUNK).toFixed(2).padStart(5)}  ` +
-    `${(alpBuf.length / CHUNK).toFixed(2).padStart(5)}  ` +
-    `${(xorDefBuf.length / CHUNK).toFixed(2).padStart(5)}  ` +
-    `${(alpDefBuf.length / CHUNK).toFixed(2).padStart(5)}  ` +
-    `${ok ? "" : "✗ "}${bestName}`
+      `${(xorBuf.length / CHUNK).toFixed(2).padStart(5)}  ` +
+      `${(alpBuf.length / CHUNK).toFixed(2).padStart(5)}  ` +
+      `${(xorDefBuf.length / CHUNK).toFixed(2).padStart(5)}  ` +
+      `${(alpDefBuf.length / CHUNK).toFixed(2).padStart(5)}  ` +
+      `${ok ? "" : "✗ "}${bestName}`
   );
 }
 

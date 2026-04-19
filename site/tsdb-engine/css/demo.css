@@ -145,9 +145,15 @@
   color: white;
 }
 
-.comp-bar-fill.raw { background: linear-gradient(90deg, #e74c3c, #c0392b); }
-.comp-bar-fill.compressed { background: linear-gradient(90deg, #10b981, #059669); }
-.comp-bar-fill.gzip { background: linear-gradient(90deg, #3b82f6, #1d4ed8); }
+.comp-bar-fill.raw {
+  background: linear-gradient(90deg, #e74c3c, #c0392b);
+}
+.comp-bar-fill.compressed {
+  background: linear-gradient(90deg, #10b981, #059669);
+}
+.comp-bar-fill.gzip {
+  background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+}
 
 .comp-bar-value {
   font-size: 13px;

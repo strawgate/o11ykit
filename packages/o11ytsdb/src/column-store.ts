@@ -15,12 +15,19 @@
  * to near-zero cost as group size grows.
  */
 
-import type {
-  ChunkStats, Labels, RangeDecodeCodec, SeriesId, StorageBackend, TimeRange, TimestampCodec, ValuesCodec,
-} from "./types.js";
+import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
 import { LabelIndex } from "./label-index.js";
 import { computeStats } from "./stats.js";
-import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
+import type {
+  ChunkStats,
+  Labels,
+  RangeDecodeCodec,
+  SeriesId,
+  StorageBackend,
+  TimeRange,
+  TimestampCodec,
+  ValuesCodec,
+} from "./types.js";
 
 // ── Internal types ───────────────────────────────────────────────────
 
@@ -96,7 +103,7 @@ export class ColumnStore implements StorageBackend {
     tsCodec?: TimestampCodec,
     rangeCodec?: RangeDecodeCodec,
     labelIndex?: LabelIndex,
-    precision?: number,
+    precision?: number
   ) {
     if (!Number.isFinite(chunkSize) || !Number.isInteger(chunkSize) || chunkSize < 1) {
       throw new RangeError(`chunkSize must be a finite integer >= 1, got ${chunkSize}`);
@@ -120,6 +127,9 @@ export class ColumnStore implements StorageBackend {
     if (!isNew) return id;
 
     const groupId = this.groupResolver(labels);
+    if (!Number.isInteger(groupId) || groupId < 0) {
+      throw new RangeError(`groupResolver must return a non-negative integer, got ${groupId}`);
+    }
 
     // Ensure group exists.
     while (this.groups.length <= groupId) {
@@ -131,6 +141,7 @@ export class ColumnStore implements StorageBackend {
       });
     }
 
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const group = this.groups[groupId]!;
     group.members.push(id);
 
@@ -143,7 +154,9 @@ export class ColumnStore implements StorageBackend {
   }
 
   append(id: SeriesId, timestamp: bigint, value: number): void {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.allSeries[id]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const group = this.groups[s.groupId]!;
 
     // Write timestamp to shared group buffer.
@@ -167,7 +180,13 @@ export class ColumnStore implements StorageBackend {
   }
 
   appendBatch(id: SeriesId, timestamps: BigInt64Array, values: Float64Array): void {
+    if (timestamps.length !== values.length) {
+      throw new RangeError(`appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`);
+    }
+    if (timestamps.length === 0) return;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.allSeries[id]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const group = this.groups[s.groupId]!;
     let offset = 0;
     const len = timestamps.length;
@@ -209,6 +228,7 @@ export class ColumnStore implements StorageBackend {
       if (this.quantize) {
         const q = this.quantize;
         for (let i = 0; i < batch; i++) {
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           s.hot.values[s.hot.count + i] = q(values[offset + i]!);
         }
       } else {
@@ -238,6 +258,7 @@ export class ColumnStore implements StorageBackend {
     const parts = this.readParts(id, start, end);
     // Resolve stats-only parts so concatRanges gets full sample data.
     for (let i = 0; i < parts.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const p = parts[i]!;
       if (p.timestamps.length === 0 && p.decode) {
         parts[i] = p.decode();
@@ -247,13 +268,16 @@ export class ColumnStore implements StorageBackend {
   }
 
   readParts(id: SeriesId, start: bigint, end: bigint): TimeRange[] {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.allSeries[id]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const group = this.groups[s.groupId]!;
     const parts: TimeRange[] = [];
 
     // ── Path A: Fused range-decode (best — ts decode + binary search + partial values decode in one WASM call) ──
     if (this.rangeCodec && this.tsCodec) {
       for (const chunk of s.frozen) {
+        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex]!;
         if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
@@ -264,6 +288,7 @@ export class ColumnStore implements StorageBackend {
         // spans multiple aggregation buckets and needs sample iteration.
         if (tsChunk.minT >= start && tsChunk.maxT <= end) {
           const rc = this.rangeCodec;
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           const tc = tsChunk.compressed!;
           const cv = chunk.compressedValues;
           parts.push({
@@ -278,13 +303,18 @@ export class ColumnStore implements StorageBackend {
         }
 
         const result = this.rangeCodec.rangeDecodeValues(
-          tsChunk.compressed!, chunk.compressedValues, start, end,
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+          tsChunk.compressed!,
+          chunk.compressedValues,
+          start,
+          end
         );
         if (result.timestamps.length > 0) {
           parts.push(result);
 
           // Cache decoded timestamps if not already cached.
           if (!tsChunk.timestamps) {
+            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed!);
           }
         }
@@ -292,6 +322,7 @@ export class ColumnStore implements StorageBackend {
     } else {
       // ── Path B: Individual decode (batch decode amortized by caller if needed) ──
       for (const chunk of s.frozen) {
+        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex]!;
         if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
@@ -309,8 +340,10 @@ export class ColumnStore implements StorageBackend {
             chunkMaxT: tsChunk.maxT,
             decode: () => {
               if (!tsChunk.timestamps && tsc) {
+                // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
                 tsChunk.timestamps = tsc.decodeTimestamps(tcc!);
               }
+              // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
               const ts = tsChunk.timestamps!;
               const vs = vc.decodeValues(cv);
               return { timestamps: ts, values: vs };
@@ -320,8 +353,10 @@ export class ColumnStore implements StorageBackend {
         }
 
         // Decompress timestamps if needed.
-        const timestamps = tsChunk.timestamps
-          ?? (tsChunk.timestamps = this.tsCodec!.decodeTimestamps(tsChunk.compressed!));
+        const timestamps =
+          tsChunk.timestamps ??
+          // biome-ignore lint/style/noNonNullAssertion lint/suspicious/noAssignInExpressions: bounds-checked by construction
+          (tsChunk.timestamps = this.tsCodec!.decodeTimestamps(tsChunk.compressed!));
 
         const values = this.valuesCodec.decodeValues(chunk.compressedValues);
         const lo = lowerBound(timestamps, start, 0, tsChunk.count);
@@ -356,8 +391,12 @@ export class ColumnStore implements StorageBackend {
 
   // ── Stats ──
 
-  get seriesCount(): number { return this.allSeries.length; }
-  get sampleCount(): number { return this._sampleCount; }
+  get seriesCount(): number {
+    return this.allSeries.length;
+  }
+  get sampleCount(): number {
+    return this._sampleCount;
+  }
 
   memoryBytes(): number {
     let bytes = 0;
@@ -394,6 +433,7 @@ export class ColumnStore implements StorageBackend {
     // Find the minimum sample count across all group members.
     let minCount = Infinity;
     for (const memberId of group.members) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const c = this.allSeries[memberId]!.hot.count;
       if (c < minCount) minCount = c;
     }
@@ -402,8 +442,8 @@ export class ColumnStore implements StorageBackend {
     const chunksToFreeze = Math.floor(minCount / this.chunkSize);
     if (chunksToFreeze === 0) return;
 
-    const hasBatch = typeof this.valuesCodec.encodeBatchValuesWithStats === 'function';
-    const hasWasmStats = typeof this.valuesCodec.encodeValuesWithStats === 'function';
+    const hasBatch = typeof this.valuesCodec.encodeBatchValuesWithStats === "function";
+    const hasWasmStats = typeof this.valuesCodec.encodeValuesWithStats === "function";
 
     for (let c = 0; c < chunksToFreeze; c++) {
       const chunkStart = c * this.chunkSize;
@@ -416,14 +456,18 @@ export class ColumnStore implements StorageBackend {
         const compressed = this.tsCodec.encodeTimestamps(ts);
         group.frozenTimestamps.push({
           compressed,
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           minT: ts[0]!,
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           maxT: ts[this.chunkSize - 1]!,
           count: this.chunkSize,
         });
       } else {
         group.frozenTimestamps.push({
           timestamps: ts,
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           minT: ts[0]!,
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           maxT: ts[this.chunkSize - 1]!,
           count: this.chunkSize,
         });
@@ -436,12 +480,16 @@ export class ColumnStore implements StorageBackend {
           const bEnd = Math.min(bStart + BATCH_CAP, group.members.length);
           const arrays: Float64Array[] = [];
           for (let m = bStart; m < bEnd; m++) {
+            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             const s = this.allSeries[group.members[m]!]!;
             arrays.push(s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize));
           }
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           const results = this.valuesCodec.encodeBatchValuesWithStats!(arrays);
           for (let m = 0; m < results.length; m++) {
+            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             const s = this.allSeries[group.members[bStart + m]!]!;
+            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             const { compressed, stats } = results[m]!;
             s.frozen.push({ compressedValues: compressed, tsChunkIndex, stats });
           }
@@ -449,12 +497,14 @@ export class ColumnStore implements StorageBackend {
       } else {
         // Fallback: encode each member individually.
         for (const memberId of group.members) {
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           const s = this.allSeries[memberId]!;
           const vals = s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
 
           let compressedValues: Uint8Array;
           let stats: ChunkStats;
           if (hasWasmStats) {
+            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             const result = this.valuesCodec.encodeValuesWithStats!(vals);
             compressedValues = result.compressed;
             stats = result.stats;
@@ -471,6 +521,7 @@ export class ColumnStore implements StorageBackend {
     // Shift remaining hot data back to the start (reuse buffers when possible).
     const frozenSamples = chunksToFreeze * this.chunkSize;
     for (const memberId of group.members) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const s = this.allSeries[memberId]!;
       const remaining = s.hot.count - frozenSamples;
       if (remaining > 0) {
@@ -492,4 +543,3 @@ export class ColumnStore implements StorageBackend {
     }
   }
 }
-

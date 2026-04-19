@@ -7,13 +7,13 @@
  * Target runtime: <2 seconds.
  */
 
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { performance } from 'node:perf_hooks';
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkgDir = join(__dirname, '..');
+const pkgDir = join(__dirname, "..");
 
 // ── Config ───────────────────────────────────────────────────────────
 
@@ -34,7 +34,10 @@ function generateData() {
       timestamps[i] = T0 + BigInt(i) * INTERVAL;
       values[i] = Math.sin(i * 0.1) * 100 + s * 10;
     }
-    const labels = new Map([['__name__', `metric_${s}`], ['job', 'test']]);
+    const labels = new Map([
+      ["__name__", `metric_${s}`],
+      ["job", "test"],
+    ]);
     series.push({ labels, timestamps, values });
   }
   return series;
@@ -43,7 +46,7 @@ function generateData() {
 // ── WASM loader ──────────────────────────────────────────────────────
 
 async function loadWasmCodecs() {
-  const wasmPath = join(pkgDir, 'wasm/o11ytsdb-rust.wasm');
+  const wasmPath = join(pkgDir, "wasm/o11ytsdb-rust.wasm");
   const wasmBytes = readFileSync(wasmPath);
   const { instance } = await WebAssembly.instantiate(wasmBytes, { env: {} });
   const w = instance.exports;
@@ -51,7 +54,7 @@ async function loadWasmCodecs() {
   const mem = () => new Uint8Array(w.memory.buffer);
 
   const valuesCodec = {
-    name: 'rust-wasm',
+    name: "rust-wasm",
     encodeValues(values) {
       const n = values.length;
       w.resetScratch();
@@ -84,7 +87,16 @@ async function loadWasmCodecs() {
       const s = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + 64));
       return {
         compressed,
-        stats: { minV: s[0], maxV: s[1], sum: s[2], count: s[3], firstV: s[4], lastV: s[5], sumOfSquares: s[6], resetCount: s[7] },
+        stats: {
+          minV: s[0],
+          maxV: s[1],
+          sum: s[2],
+          count: s[3],
+          firstV: s[4],
+          lastV: s[5],
+          sumOfSquares: s[6],
+          resetCount: s[7],
+        },
       };
     },
     encodeBatchValuesWithStats(arrays) {
@@ -94,26 +106,48 @@ async function loadWasmCodecs() {
       const valsPtr = w.allocScratch(numArrays * chunkSize * 8);
       for (let i = 0; i < numArrays; i++) {
         const arr = arrays[i];
-        mem().set(new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength), valsPtr + i * chunkSize * 8);
+        mem().set(
+          new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength),
+          valsPtr + i * chunkSize * 8
+        );
       }
       const outCap = numArrays * chunkSize * 20;
       const outPtr = w.allocScratch(outCap);
       const offsetsPtr = w.allocScratch(numArrays * 4);
       const sizesPtr = w.allocScratch(numArrays * 4);
       const statsPtr = w.allocScratch(numArrays * 64);
-      w.encodeBatchValuesWithStats(valsPtr, chunkSize, numArrays, outPtr, outCap, offsetsPtr, sizesPtr, statsPtr);
-      const offsets = new Uint32Array(w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4));
+      w.encodeBatchValuesWithStats(
+        valsPtr,
+        chunkSize,
+        numArrays,
+        outPtr,
+        outCap,
+        offsetsPtr,
+        sizesPtr,
+        statsPtr
+      );
+      const offsets = new Uint32Array(
+        w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4)
+      );
       const sizes = new Uint32Array(w.memory.buffer.slice(sizesPtr, sizesPtr + numArrays * 4));
       const allStats = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
       const results = [];
       for (let i = 0; i < numArrays; i++) {
-        const compressed = new Uint8Array(w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i]));
+        const compressed = new Uint8Array(
+          w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i])
+        );
         const si = i * 8;
         results.push({
           compressed,
           stats: {
-            minV: allStats[si], maxV: allStats[si+1], sum: allStats[si+2], count: allStats[si+3],
-            firstV: allStats[si+4], lastV: allStats[si+5], sumOfSquares: allStats[si+6], resetCount: allStats[si+7],
+            minV: allStats[si],
+            maxV: allStats[si + 1],
+            sum: allStats[si + 2],
+            count: allStats[si + 3],
+            firstV: allStats[si + 4],
+            lastV: allStats[si + 5],
+            sumOfSquares: allStats[si + 6],
+            resetCount: allStats[si + 7],
           },
         });
       }
@@ -122,14 +156,17 @@ async function loadWasmCodecs() {
   };
 
   const tsCodec = {
-    name: 'rust-wasm-ts',
+    name: "rust-wasm-ts",
     encodeTimestamps(timestamps) {
       const n = timestamps.length;
       w.resetScratch();
       const tsPtr = w.allocScratch(n * 8);
       const outCap = n * 20;
       const outPtr = w.allocScratch(outCap);
-      mem().set(new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength), tsPtr);
+      mem().set(
+        new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength),
+        tsPtr
+      );
       const bytesWritten = w.encodeTimestamps(tsPtr, n, outPtr, outCap);
       return new Uint8Array(w.memory.buffer.slice(outPtr, outPtr + bytesWritten));
     },
@@ -145,7 +182,7 @@ async function loadWasmCodecs() {
   };
 
   const alpValuesCodec = {
-    name: 'rust-wasm-alp',
+    name: "rust-wasm-alp",
     encodeValues(values) {
       const n = values.length;
       w.resetScratch();
@@ -178,7 +215,16 @@ async function loadWasmCodecs() {
       const s = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + 64));
       return {
         compressed,
-        stats: { minV: s[0], maxV: s[1], sum: s[2], count: s[3], firstV: s[4], lastV: s[5], sumOfSquares: s[6], resetCount: s[7] },
+        stats: {
+          minV: s[0],
+          maxV: s[1],
+          sum: s[2],
+          count: s[3],
+          firstV: s[4],
+          lastV: s[5],
+          sumOfSquares: s[6],
+          resetCount: s[7],
+        },
       };
     },
     encodeBatchValuesWithStats(arrays) {
@@ -188,7 +234,10 @@ async function loadWasmCodecs() {
       const valsPtr = w.allocScratch(numArrays * chunkSize * 8);
       for (let i = 0; i < numArrays; i++) {
         const arr = arrays[i];
-        mem().set(new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength), valsPtr + i * chunkSize * 8);
+        mem().set(
+          new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength),
+          valsPtr + i * chunkSize * 8
+        );
       }
       const outCap = numArrays * chunkSize * 20;
       const outPtr = w.allocScratch(outCap);
@@ -196,20 +245,37 @@ async function loadWasmCodecs() {
       const sizesPtr = w.allocScratch(numArrays * 4);
       const statsPtr = w.allocScratch(numArrays * 64);
       w.encodeBatchValuesALPWithStats(
-        valsPtr, chunkSize, numArrays, outPtr, outCap, offsetsPtr, sizesPtr, statsPtr
+        valsPtr,
+        chunkSize,
+        numArrays,
+        outPtr,
+        outCap,
+        offsetsPtr,
+        sizesPtr,
+        statsPtr
       );
-      const offsets = new Uint32Array(w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4));
+      const offsets = new Uint32Array(
+        w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4)
+      );
       const sizes = new Uint32Array(w.memory.buffer.slice(sizesPtr, sizesPtr + numArrays * 4));
       const allStats = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
       const results = [];
       for (let i = 0; i < numArrays; i++) {
-        const compressed = new Uint8Array(w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i]));
+        const compressed = new Uint8Array(
+          w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i])
+        );
         const si = i * 8;
         results.push({
           compressed,
           stats: {
-            minV: allStats[si], maxV: allStats[si+1], sum: allStats[si+2], count: allStats[si+3],
-            firstV: allStats[si+4], lastV: allStats[si+5], sumOfSquares: allStats[si+6], resetCount: allStats[si+7],
+            minV: allStats[si],
+            maxV: allStats[si + 1],
+            sum: allStats[si + 2],
+            count: allStats[si + 3],
+            firstV: allStats[si + 4],
+            lastV: allStats[si + 5],
+            sumOfSquares: allStats[si + 6],
+            resetCount: allStats[si + 7],
           },
         });
       }
@@ -228,11 +294,15 @@ async function loadWasmCodecs() {
       const outTsPtr = w.allocScratch(maxSamples * 8);
       const outValPtr = w.allocScratch(maxSamples * 8);
       const n = w.rangeDecodeALP(
-        tsInPtr, compressedTs.length,
-        valInPtr, compressedVals.length,
-        startT, endT,
-        outTsPtr, outValPtr,
-        maxSamples,
+        tsInPtr,
+        compressedTs.length,
+        valInPtr,
+        compressedVals.length,
+        startT,
+        endT,
+        outTsPtr,
+        outValPtr,
+        maxSamples
       );
       if (n === 0) {
         return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
@@ -259,7 +329,7 @@ function testBackend(name, store, data) {
   }
   const ingestMs = performance.now() - t0;
   const totalSamples = NUM_SERIES * POINTS_PER_SERIES;
-  const ingestRate = (totalSamples / ingestMs * 1000).toFixed(0);
+  const ingestRate = ((totalSamples / ingestMs) * 1000).toFixed(0);
   const memKB = (store.memoryBytes() / 1024).toFixed(1);
   const bPerPt = (store.memoryBytes() / totalSamples).toFixed(1);
 
@@ -273,13 +343,21 @@ function testBackend(name, store, data) {
   let ok = result.timestamps.length === POINTS_PER_SERIES;
   if (ok) {
     for (let i = 0; i < POINTS_PER_SERIES; i++) {
-      if (result.timestamps[i] !== expected.timestamps[i]) { ok = false; break; }
-      if (Math.abs(result.values[i] - expected.values[i]) > 1e-10) { ok = false; break; }
+      if (result.timestamps[i] !== expected.timestamps[i]) {
+        ok = false;
+        break;
+      }
+      if (Math.abs(result.values[i] - expected.values[i]) > 1e-10) {
+        ok = false;
+        break;
+      }
     }
   }
 
-  const status = ok ? '✓' : '✗ FAIL';
-  console.log(`  ${name.padEnd(30)} ${ingestRate.padStart(8)} samples/s  ${memKB.padStart(7)} KB  ${bPerPt.padStart(5)} B/pt  ${status}`);
+  const status = ok ? "✓" : "✗ FAIL";
+  console.log(
+    `  ${name.padEnd(30)} ${ingestRate.padStart(8)} samples/s  ${memKB.padStart(7)} KB  ${bPerPt.padStart(5)} B/pt  ${status}`
+  );
   return ok;
 }
 
@@ -289,30 +367,36 @@ async function main() {
   const data = generateData();
   const { valuesCodec, alpValuesCodec, tsCodec, alpRangeCodec } = await loadWasmCodecs();
 
-  console.log(`\n  Smoke test: ${NUM_SERIES} series × ${POINTS_PER_SERIES} pts (chunk=${CHUNK_SIZE})\n`);
-  console.log(`  ${'Backend'.padEnd(30)} ${'Ingest'.padStart(8)}          ${'Mem'.padStart(7)}     ${'Eff'.padStart(5)}    OK?`);
-  console.log(`  ${'─'.repeat(30)} ${'─'.repeat(8)}          ${'─'.repeat(7)}     ${'─'.repeat(5)}    ${'─'.repeat(6)}`);
+  console.log(
+    `\n  Smoke test: ${NUM_SERIES} series × ${POINTS_PER_SERIES} pts (chunk=${CHUNK_SIZE})\n`
+  );
+  console.log(
+    `  ${"Backend".padEnd(30)} ${"Ingest".padStart(8)}          ${"Mem".padStart(7)}     ${"Eff".padStart(5)}    OK?`
+  );
+  console.log(
+    `  ${"─".repeat(30)} ${"─".repeat(8)}          ${"─".repeat(7)}     ${"─".repeat(5)}    ${"─".repeat(6)}`
+  );
 
   let allOk = true;
 
   // FlatStore.
   {
-    const { FlatStore } = await import(join(pkgDir, 'dist/flat-store.js'));
-    allOk = testBackend('flat', new FlatStore(), data) && allOk;
+    const { FlatStore } = await import(join(pkgDir, "dist/flat-store.js"));
+    allOk = testBackend("flat", new FlatStore(), data) && allOk;
   }
 
   // ChunkedStore + WASM.
   {
-    const { ChunkedStore } = await import(join(pkgDir, 'dist/chunked-store.js'));
-    const { encodeChunk, decodeChunk } = await import(join(pkgDir, 'dist/codec.js'));
+    const { ChunkedStore } = await import(join(pkgDir, "dist/chunked-store.js"));
+    const { encodeChunk, decodeChunk } = await import(join(pkgDir, "dist/codec.js"));
     // Use WASM codec via the wasm-loader.
-    const wasmPath = join(pkgDir, 'wasm/o11ytsdb-rust.wasm');
+    const wasmPath = join(pkgDir, "wasm/o11ytsdb-rust.wasm");
     const wasmBytes = readFileSync(wasmPath);
     const { instance } = await WebAssembly.instantiate(wasmBytes, { env: {} });
     const w = instance.exports;
     const mem = () => new Uint8Array(w.memory.buffer);
     const codec = {
-      name: 'rust-wasm',
+      name: "rust-wasm",
       encode(timestamps, values) {
         const n = timestamps.length;
         w.resetScratch();
@@ -321,9 +405,14 @@ async function main() {
         const outCap = n * 20;
         const outPtr = w.allocScratch(outCap);
         const m = mem();
-        m.set(new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength), tsPtr);
+        m.set(
+          new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength),
+          tsPtr
+        );
         m.set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), valPtr);
-        return new Uint8Array(w.memory.buffer.slice(outPtr, outPtr + w.encodeChunk(tsPtr, valPtr, n, outPtr, outCap)));
+        return new Uint8Array(
+          w.memory.buffer.slice(outPtr, outPtr + w.encodeChunk(tsPtr, valPtr, n, outPtr, outCap))
+        );
       },
       decode(buf) {
         w.resetScratch();
@@ -339,34 +428,53 @@ async function main() {
         };
       },
     };
-    allOk = testBackend('chunked-rust-wasm-128', new ChunkedStore(codec, CHUNK_SIZE), data) && allOk;
+    allOk =
+      testBackend("chunked-rust-wasm-128", new ChunkedStore(codec, CHUNK_SIZE), data) && allOk;
   }
 
   // ColumnStore + XOR values + WASM timestamps.
   {
-    const { ColumnStore } = await import(join(pkgDir, 'dist/column-store.js'));
-    allOk = testBackend('column-xor-full-128', new ColumnStore(valuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec), data) && allOk;
+    const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+    allOk =
+      testBackend(
+        "column-xor-full-128",
+        new ColumnStore(valuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec),
+        data
+      ) && allOk;
   }
 
   // ColumnStore + ALP values + WASM timestamps.
   {
-    const { ColumnStore } = await import(join(pkgDir, 'dist/column-store.js'));
-    allOk = testBackend('column-alp-full-128', new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec), data) && allOk;
+    const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+    allOk =
+      testBackend(
+        "column-alp-full-128",
+        new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec),
+        data
+      ) && allOk;
   }
 
   // ColumnStore + ALP fused range-decode.
   {
-    const { ColumnStore } = await import(join(pkgDir, 'dist/column-store.js'));
-    allOk = testBackend('column-alp-fused-128', new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec), data) && allOk;
+    const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+    allOk =
+      testBackend(
+        "column-alp-fused-128",
+        new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec),
+        data
+      ) && allOk;
   }
 
-  console.log('');
+  console.log("");
   if (allOk) {
-    console.log('  All backends passed ✓\n');
+    console.log("  All backends passed ✓\n");
   } else {
-    console.log('  SOME BACKENDS FAILED ✗\n');
+    console.log("  SOME BACKENDS FAILED ✗\n");
     process.exit(1);
   }
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
