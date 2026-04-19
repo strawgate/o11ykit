@@ -36,8 +36,8 @@ type ChunkStats = import("../dist/types.js").ChunkStats;
 
 // ── Configuration ────────────────────────────────────────────────────
 
-const NUM_SERIES = 5_000;
-const PTS_PER_SERIES = 10_000;
+const NUM_SERIES = parseInt(process.env.BENCH_SERIES ?? "5000");
+const PTS_PER_SERIES = parseInt(process.env.BENCH_PTS ?? "10000");
 const CHUNK_SIZE = 640;
 const T0 = 1_700_000_000_000n;
 const INTERVAL = 15_000n;
@@ -368,8 +368,11 @@ async function runChild(mode: string): Promise<void> {
   const rangeCodec: RangeDecodeCodec = makeALPRangeCodec(wasm);
   let slab: ByteSlab | undefined;
 
-  if (mode.startsWith("slab-")) {
-    const sizeStr = mode.replace("slab-", "");
+  // Strip "rr-" prefix — round-robin is handled by ingest pattern, not codec selection.
+  const codecMode = mode.startsWith("rr-") ? mode.slice(3) : mode;
+
+  if (codecMode.startsWith("slab-")) {
+    const sizeStr = codecMode.replace("slab-", "");
     const slabSize = sizeStr.endsWith("k")
       ? parseInt(sizeStr) * 1024
       : sizeStr.endsWith("m")
@@ -379,8 +382,8 @@ async function runChild(mode: string): Promise<void> {
     valuesCodec = slabWrappedValuesCodec(valuesCodec, slab);
     tsCodec = slabWrappedTsCodec(tsCodec, slab);
     log(`  [${mode}] slab size: ${fmtBytes(slabSize)} (wrap mode — double copy)`);
-  } else if (mode.startsWith("direct-")) {
-    const sizeStr = mode.replace("direct-", "");
+  } else if (codecMode.startsWith("direct-")) {
+    const sizeStr = codecMode.replace("direct-", "");
     const slabSize = sizeStr.endsWith("k")
       ? parseInt(sizeStr) * 1024
       : sizeStr.endsWith("m")
@@ -600,7 +603,7 @@ async function runDriver(): Promise<void> {
   console.log(`  Node: ${process.version}`);
   console.log();
 
-  const variants = ["baseline", "roundrobin", "direct-1m"];
+  const variants = ["baseline", "roundrobin", "rr-direct-1m"];
   const results: VariantResult[] = [];
 
   for (const variant of variants) {
@@ -738,6 +741,23 @@ async function runDriver(): Promise<void> {
   } else {
     console.log(`    No RSS improvement from slab allocation.`);
   }
+
+  // ── RSS breakdown for best variant ──
+  console.log(`\n  ══ RSS Breakdown (${best.name}) ══\n`);
+  const hotCap = best.hotBufBytes ?? 0;
+  const wasmEst = 18 * 1024 * 1024; // ~18 MB constant WASM linear memory
+  const heapObj = best.heap;
+  const compressedAB = best.arrayBuffers - hotCap;
+  const processBase = best.rss - best.external - heapObj;
+  console.log(`    Store (compressed + metadata):  ${fmtBytes(best.storeMem).padEnd(12)} — logical data`);
+  console.log(`    Hot buffers (capacity):         ${fmtBytes(hotCap).padEnd(12)} — expandable write buffers`);
+  console.log(`    Compressed ArrayBuffers:        ${fmtBytes(compressedAB).padEnd(12)} — buffer.slice() per chunk`);
+  console.log(`    WASM linear memory:             ${fmtBytes(wasmEst).padEnd(12)} — fixed codec scratch space`);
+  console.log(`    JS heap objects:                ${fmtBytes(heapObj).padEnd(12)} — labels, stats, metadata`);
+  console.log(`    V8 + process overhead:          ${fmtBytes(Math.max(0, processBase)).padEnd(12)} — runtime, code, stack`);
+  console.log(`    ─────────────────────────────────────`);
+  console.log(`    Total RSS:                      ${fmtBytes(best.rss)}`);
+  console.log(`    Overhead above store:            ${fmtBytes(best.rss - best.storeMem)} (${((best.rss - best.storeMem) / best.storeMem * 100).toFixed(0)}%)`);
   console.log();
 }
 

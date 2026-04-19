@@ -558,6 +558,15 @@ export class ColumnStore implements StorageBackend {
       } else {
         s.hot.count = 0;
       }
+
+      // Shrink over-expanded hot buffers to reclaim memory.
+      // Buffers grow by chunkSize in appendBatch when a series races ahead of its
+      // group.  Once frozen data is consumed, the extra capacity is waste.
+      if (s.hot.values.length > this.chunkSize && s.hot.count <= this.chunkSize) {
+        const shrunk = new Float64Array(this.chunkSize);
+        shrunk.set(s.hot.values.subarray(0, s.hot.count));
+        s.hot.values = shrunk;
+      }
     }
 
     // Shift shared timestamps (reuse buffer).
@@ -567,6 +576,13 @@ export class ColumnStore implements StorageBackend {
       group.hotCount = tsRemaining;
     } else {
       group.hotCount = 0;
+    }
+
+    // Shrink over-expanded shared timestamp buffer.
+    if (group.hotTimestamps.length > this.chunkSize && group.hotCount <= this.chunkSize) {
+      const shrunk = new BigInt64Array(this.chunkSize);
+      shrunk.set(group.hotTimestamps.subarray(0, group.hotCount));
+      group.hotTimestamps = shrunk;
     }
   }
 }
