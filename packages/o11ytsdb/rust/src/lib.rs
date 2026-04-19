@@ -854,18 +854,45 @@ fn f64_to_sortable_u64(f: f64) -> u64 {
 /// Convert sortable u64 back to f64. Inverse of f64_to_sortable_u64.
 #[inline(always)]
 fn sortable_u64_to_f64(u: u64) -> f64 {
-    let bits = if u & (1u64 << 63) != 0 {
-        u ^ (1u64 << 63) // was positive: flip sign bit back
-    } else {
-        !u // was negative: flip all bits back
-    };
-    f64::from_bits(bits)
+    // Branchless: if sign bit set → XOR 0x8000..., else flip all bits.
+    // mask = 0x8000... when positive (sign set), 0xFFFF... when negative.
+    let sign = u >> 63;              // 0 or 1
+    let mask = (sign << 63) | (sign.wrapping_sub(1)); // 0x8000... or 0xFFFF...
+    f64::from_bits(u ^ mask)
 }
 
 static POW10: [f64; 19] = [
     1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9,
     1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18,
 ];
+
+// Direct-index bit extraction: reads `bw` bits starting at bit `i * bw`
+// from a packed byte buffer. No sequential state — each call is independent.
+// Requires: bw ≤ 57 and buf has ≥ 8 bytes past the start of each value.
+#[inline(always)]
+fn extract_packed(buf: &[u8], i: usize, bw: u8) -> u64 {
+    let bit_offset = i * bw as usize;
+    let byte_pos = bit_offset >> 3;
+    let bit_pos = (bit_offset & 7) as u8;
+    // Safe: caller ensures buf has 8 bytes of read-safe padding.
+    let mut bytes = [0u8; 8];
+    bytes.copy_from_slice(&buf[byte_pos..byte_pos + 8]);
+    let raw = u64::from_be_bytes(bytes);
+    (raw << bit_pos) >> (64 - bw)
+}
+
+// Same as extract_packed but safe near end-of-buffer: pads with zeros.
+#[inline(always)]
+fn extract_packed_safe(buf: &[u8], i: usize, bw: u8) -> u64 {
+    let bit_offset = i * bw as usize;
+    let byte_pos = bit_offset >> 3;
+    let bit_pos = (bit_offset & 7) as u8;
+    let mut bytes = [0u8; 8];
+    let avail = buf.len().saturating_sub(byte_pos).min(8);
+    bytes[..avail].copy_from_slice(&buf[byte_pos..byte_pos + avail]);
+    let raw = u64::from_be_bytes(bytes);
+    (raw << bit_pos) >> (64 - bw)
+}
 
 // Temp storage for ALP (static to avoid stack/heap allocation).
 static mut ALP_INTS: [i64; ALP_MAX_CHUNK] = [0; ALP_MAX_CHUNK];
@@ -1582,12 +1609,26 @@ fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usize {
 
     let factor = POW10[e];
 
-    if bw > 0 {
+    if bw > 0 && bw <= 57 {
+        let packed = &input[pos..];
+        let inv_factor = 1.0 / factor;
+        // Use fast path for all but last 8 values (which might read past packed data).
+        let safe_limit = if n > 8 { n - 8 } else { 0 };
+        for i in 0..safe_limit {
+            let offset = extract_packed(packed, i, bw) as i64;
+            val_out[i] = (min_int + offset) as f64 * inv_factor;
+        }
+        for i in safe_limit..n {
+            let offset = extract_packed_safe(packed, i, bw) as i64;
+            val_out[i] = (min_int + offset) as f64 * inv_factor;
+        }
+        pos += (n * bw as usize + 7) / 8;
+    } else if bw > 57 {
         let mut r = BitReader::new(&input[pos..]);
+        let inv_factor = 1.0 / factor;
         for i in 0..n {
             let offset = r.read_bits(bw) as i64;
-            let int_val = min_int + offset;
-            val_out[i] = int_val as f64 / factor;
+            val_out[i] = (min_int + offset) as f64 * inv_factor;
         }
         pos += (n * bw as usize + 7) / 8;
     } else {
@@ -1616,10 +1657,18 @@ fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usize {
         let exc_bw = input[pos];
         pos += 1;
 
-        // FoR-u64 decode exceptions.
+        // FoR-u64 decode exceptions — direct-index for SIMD-friendly loops.
         if exc_count == n {
-            // All values are exceptions — no position lookup needed.
-            if exc_bw > 0 {
+            if exc_bw > 0 && exc_bw <= 57 {
+                let packed = &input[pos..];
+                let safe_limit = if n > 8 { n - 8 } else { 0 };
+                for i in 0..safe_limit {
+                    val_out[i] = sortable_u64_to_f64(min_su64 + extract_packed(packed, i, exc_bw));
+                }
+                for i in safe_limit..n {
+                    val_out[i] = sortable_u64_to_f64(min_su64 + extract_packed_safe(packed, i, exc_bw));
+                }
+            } else if exc_bw > 0 {
                 let mut r = BitReader::new(&input[pos..]);
                 for i in 0..n {
                     val_out[i] = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
@@ -1631,7 +1680,18 @@ fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usize {
                 }
             }
         } else {
-            if exc_bw > 0 {
+            if exc_bw > 0 && exc_bw <= 57 {
+                let packed = &input[pos..];
+                let safe_limit = if exc_count > 8 { exc_count - 8 } else { 0 };
+                for i in 0..safe_limit {
+                    val_out[exc_positions[i] as usize] =
+                        sortable_u64_to_f64(min_su64 + extract_packed(packed, i, exc_bw));
+                }
+                for i in safe_limit..exc_count {
+                    val_out[exc_positions[i] as usize] =
+                        sortable_u64_to_f64(min_su64 + extract_packed_safe(packed, i, exc_bw));
+                }
+            } else if exc_bw > 0 {
                 let mut r = BitReader::new(&input[pos..]);
                 for i in 0..exc_count {
                     val_out[exc_positions[i] as usize] =
