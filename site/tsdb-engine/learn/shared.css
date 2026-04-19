@@ -712,7 +712,7 @@ body {
   border: 1px solid var(--xp-accent);
   border-radius: 8px;
   padding: 10px 14px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.15s ease;
@@ -721,7 +721,9 @@ body {
   color: var(--xp-text, #e2e8f0);
 }
 
-.xp-tooltip.visible { opacity: 1; }
+.xp-tooltip.visible {
+  opacity: 1;
+}
 
 .xp-tooltip .xp-tooltip-term {
   font-weight: 600;
