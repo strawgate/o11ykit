@@ -44,6 +44,11 @@ export class LabelIndex {
     return this.postings.get(label, value);
   }
 
+  /** Return all series IDs where the given label matches the regex. */
+  matchLabelRegex(label: string, pattern: RegExp): SeriesId[] {
+    return this.postings.matchRegex(label, pattern);
+  }
+
   /** Retrieve the label set for a series. */
   labels(id: SeriesId): Labels | undefined {
     const pairs = this.labelPairsById[id];

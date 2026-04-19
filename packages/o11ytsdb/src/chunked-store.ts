@@ -113,6 +113,10 @@ export class ChunkedStore implements StorageBackend {
     return this.labelIndex.matchLabel(label, value);
   }
 
+  matchLabelRegex(label: string, pattern: RegExp): SeriesId[] {
+    return this.labelIndex.matchLabelRegex(label, pattern);
+  }
+
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
     // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.series[id]!;
