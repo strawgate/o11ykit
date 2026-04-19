@@ -1,3 +1,4 @@
+import { BackpressureController } from "./backpressure.js";
 import type { QueryOpts, QueryResult } from "./types.js";
 import {
   isResponseEnvelope,
@@ -27,6 +28,8 @@ interface PendingRequest {
 export interface WorkerClientOptions {
   worker: WorkerLike;
   transferStrategy?: TransferStrategy;
+  /** Max concurrent in-flight ingest requests. Defaults to 64. */
+  maxInflightIngest?: number;
 }
 
 export class WorkerClient {
@@ -34,14 +37,29 @@ export class WorkerClient {
   private readonly transferStrategy: TransferStrategy;
   private nextId: RequestId = 1;
   private readonly pending = new Map<RequestId, PendingRequest>();
+  private readonly ingestSemaphore: BackpressureController;
 
   private closed = false;
 
   constructor(opts: WorkerClientOptions) {
     this.worker = opts.worker;
     this.transferStrategy = opts.transferStrategy ?? "transferable";
+    this.ingestSemaphore = new BackpressureController(opts.maxInflightIngest ?? 64);
     this.worker.addEventListener("message", (event) => this.onMessage(event.data));
     this.worker.addEventListener("error", (event) => this.onError(event));
+  }
+
+  /** Snapshot of ingest backpressure state. */
+  get ingestBackpressure(): {
+    pending: number;
+    waiting: number;
+    maxConcurrency: number;
+  } {
+    return {
+      pending: this.ingestSemaphore.pending,
+      waiting: this.ingestSemaphore.waiting,
+      maxConcurrency: this.ingestSemaphore.maxConcurrency,
+    };
   }
 
   async init(opts?: { chunkSize?: number; precision?: number }): Promise<{ backend: string }> {
@@ -58,19 +76,24 @@ export class WorkerClient {
     timestamps: BigInt64Array,
     values: Float64Array
   ): Promise<{ seriesId: number; ingestedSamples: number }> {
-    const response = await this.send(
-      {
-        type: "ingest",
-        labels: [...labels.entries()],
-        timestamps,
-        values,
-      },
-      this.getTransferables(timestamps, values)
-    );
+    await this.ingestSemaphore.acquire();
+    try {
+      const response = await this.send(
+        {
+          type: "ingest",
+          labels: [...labels.entries()],
+          timestamps,
+          values,
+        },
+        this.getTransferables(timestamps, values)
+      );
 
-    if (response.ok === false) throw new Error(response.error);
-    if (response.type !== "ingest") throw new Error(`Unexpected response type: ${response.type}`);
-    return { seriesId: response.seriesId, ingestedSamples: response.ingestedSamples };
+      if (response.ok === false) throw new Error(response.error);
+      if (response.type !== "ingest") throw new Error(`Unexpected response type: ${response.type}`);
+      return { seriesId: response.seriesId, ingestedSamples: response.ingestedSamples };
+    } finally {
+      this.ingestSemaphore.release();
+    }
   }
 
   async query(opts: QueryOpts): Promise<QueryResult> {
@@ -103,6 +126,7 @@ export class WorkerClient {
     if (response.ok === false) throw new Error(response.error);
     if (response.type !== "close") throw new Error(`Unexpected response type: ${response.type}`);
     this.closed = true;
+    this.ingestSemaphore.dispose();
     this.worker.terminate?.();
     this.rejectAllPending(new Error("WorkerClient closed"));
   }

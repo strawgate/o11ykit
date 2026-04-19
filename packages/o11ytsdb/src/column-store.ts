@@ -254,7 +254,9 @@ export class ColumnStore implements StorageBackend {
       group.hotTimestamps[group.hotCount] = timestamp;
     }
 
-    s.hot.values[s.hot.count] = this.quantize ? this.quantize(value) : value;
+    // Skip quantization for integer values (counters, request counts, etc.)
+    s.hot.values[s.hot.count] =
+      this.quantize && value % 1 !== 0 ? this.quantize(value) : value;
     s.hot.count++;
     this._sampleCount++;
 
@@ -317,10 +319,24 @@ export class ColumnStore implements StorageBackend {
       }
 
       if (this.quantize) {
-        if (this.quantizeBatch && this.precision != null) {
+        // Auto-detect: skip quantization when all values in the batch slice
+        // are already integers — counters, request counts, etc. don't benefit
+        // from rounding and the check is cheaper than a WASM call + memcpy.
+        const slice = values.subarray(offset, offset + batch);
+        let allIntegers = true;
+        for (let i = 0; i < slice.length; i++) {
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+          if (slice[i]! % 1 !== 0) {
+            allIntegers = false;
+            break;
+          }
+        }
+        if (allIntegers) {
+          s.hot.values.set(slice, s.hot.count);
+        } else if (this.quantizeBatch && this.precision != null) {
           // WASM SIMD batch quantize — ~17× faster than per-element Math.round.
           // Copy into hot buffer first, then quantize in-place to avoid extra allocation.
-          s.hot.values.set(values.subarray(offset, offset + batch), s.hot.count);
+          s.hot.values.set(slice, s.hot.count);
           const target = s.hot.values.subarray(s.hot.count, s.hot.count + batch);
           this.quantizeBatch(target, this.precision);
         } else {

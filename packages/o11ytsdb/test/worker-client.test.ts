@@ -395,4 +395,85 @@ describe("WorkerClient", () => {
       expect(result).toEqual({ seriesCount: 0, sampleCount: 0, memoryBytes: 0 });
     });
   });
+
+  // ── Ingest backpressure ───────────────────────────────────────
+
+  describe("ingest backpressure", () => {
+    it("limits concurrent ingest calls to maxInflightIngest", async () => {
+      // Use maxInflightIngest=2 so the 3rd call must wait
+      mock = createMockWorker();
+      client = new WorkerClient({ worker: mock.worker, maxInflightIngest: 2 });
+
+      // Track which responses to send manually
+      const pendingResponses: Array<(envelope: ResponseEnvelope) => void> = [];
+      const origPostMessage = mock.worker.postMessage;
+      mock.worker.postMessage = (message: unknown, transfer?: ArrayBufferLike[]) => {
+        origPostMessage.call(mock.worker, message, transfer);
+        const req = message as RequestEnvelope;
+        pendingResponses.push((response: ResponseEnvelope) => {
+          mock.respond({ ...response, id: req.id });
+        });
+      };
+
+      const labels = new Map([["__name__", "cpu"]]);
+      const mkTs = () => BigInt64Array.from([1n]);
+      const mkVals = () => new Float64Array([1]);
+
+      // Fire 3 ingest calls concurrently
+      const p1 = client.ingest(labels, mkTs(), mkVals());
+      const p2 = client.ingest(labels, mkTs(), mkVals());
+      const p3 = client.ingest(labels, mkTs(), mkVals());
+
+      // Allow microtasks to flush so acquired slots post their messages
+      await new Promise((r) => setTimeout(r, 0));
+
+      // Only 2 should have been posted (3rd is waiting for semaphore)
+      expect(mock.posted.length).toBe(2);
+      expect(client.ingestBackpressure.pending).toBe(2);
+      expect(client.ingestBackpressure.waiting).toBe(1);
+
+      // Resolve the first request — the 3rd call should now get a slot
+      pendingResponses[0]({
+        id: (mock.posted[0].message as RequestEnvelope).id,
+        kind: "response",
+        payload: { ok: true, type: "ingest", seriesId: 0, ingestedSamples: 1 },
+      });
+      await p1;
+
+      // Allow microtasks to flush so the 3rd ingest acquires its slot and posts
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(mock.posted.length).toBe(3);
+      expect(client.ingestBackpressure.waiting).toBe(0);
+
+      // Resolve remaining
+      pendingResponses[1]({
+        id: (mock.posted[1].message as RequestEnvelope).id,
+        kind: "response",
+        payload: { ok: true, type: "ingest", seriesId: 0, ingestedSamples: 1 },
+      });
+      pendingResponses[2]({
+        id: (mock.posted[2].message as RequestEnvelope).id,
+        kind: "response",
+        payload: { ok: true, type: "ingest", seriesId: 0, ingestedSamples: 1 },
+      });
+
+      await Promise.all([p2, p3]);
+      expect(client.ingestBackpressure.pending).toBe(0);
+    });
+
+    it("ingestBackpressure getter returns correct shape", () => {
+      mock = createMockWorker();
+      client = new WorkerClient({ worker: mock.worker, maxInflightIngest: 16 });
+
+      const bp = client.ingestBackpressure;
+      expect(bp).toEqual({ pending: 0, waiting: 0, maxConcurrency: 16 });
+    });
+
+    it("defaults maxInflightIngest to 64", () => {
+      mock = createMockWorker();
+      client = new WorkerClient({ worker: mock.worker });
+      expect(client.ingestBackpressure.maxConcurrency).toBe(64);
+    });
+  });
 });
