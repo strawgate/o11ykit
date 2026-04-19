@@ -1,0 +1,65 @@
+[2026-04-19T03:02:35.856021247+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:02:35.962238073+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:02:35.962368579+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:02:36.336423769+00:00] http.list_tasks: env=<all> limit=20 cursor_in=<none> cursor_out=+RID:~G4U-AJOIzhmjh5ADALBbBA==#RT:1#TRC:20#RTD:FFMNeBmc06hP2994zep3KwV2dGZzLkJYVmVkOXM3T1lnYjJxU3hJZVY1NUtpbAAFdnRmcy5CWFZlZDlzN09ZZ2IycVN4SWVWNTVLaWwABUJkZHB2b3VWdGZzVXBEdnNzZm91RHBlZlVidGxGeXVmc29ibQAD+szOzMjRzsrRzcaqzcnEy8jEzczQyM3OxsXJ087OxM7O//qKnYuTn5mfyMWZy53KmZvFm8vOxsvMmZzKyM7Kxp2ZycmYmpjHzcz/#ISV:2#IEO:65567#QCF:8#CID:2 items=20
+[2026-04-19T03:07:42.386546786+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:07:42.401358867+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:07:42.401392957+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:07:42.644401741+00:00] http.list_tasks: env=<all> limit=20 cursor_in=<none> cursor_out=+RID:~G4U-AJOIzhmjh5ADALBbBA==#RT:1#TRC:20#RTD:FFMNeBmc06hP2994zep3KwV2dGZzLkJYVmVkOXM3T1lnYjJxU3hJZVY1NUtpbAAFdnRmcy5CWFZlZDlzN09ZZ2IycVN4SWVWNTVLaWwABUJkZHB2b3VWdGZzVXBEdnNzZm91RHBlZlVidGxGeXVmc29ibQAD+szOzMjRzsrRzcaqzcnEy8jEzczQyM3OxsXJ087OxM7O//qKnYuTn5mfyMWZy53KmZvFm8vOxsvMmZzKyM7Kxp2ZycmYmpjHzcz/#ISV:2#IEO:65567#QCF:8#CID:2 items=20
+[2026-04-19T03:07:42.700161921+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:07:42.714314969+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:07:42.714347163+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:07:43.002914289+00:00] http.list_tasks: env=<all> limit=20 cursor_in=<none> cursor_out=+RID:~G4U-AJOIzhmjh5ADALBbBA==#RT:1#TRC:20#RTD:FFMNeBmc06hP2994zep3KwV2dGZzLkJYVmVkOXM3T1lnYjJxU3hJZVY1NUtpbAAFdnRmcy5CWFZlZDlzN09ZZ2IycVN4SWVWNTVLaWwABUJkZHB2b3VWdGZzVXBEdnNzZm91RHBlZlVidGxGeXVmc29ibQAD+szOzMjRzsrRzcaqzcnEy8jEzczQyM3OxsXJ087OxM7O//qKnYuTn5mfyMWZy53KmZvFm8vOxsvMmZzKyM7Kxp2ZycmYmpjHzcz/#ISV:2#IEO:65567#QCF:8#CID:2 items=20
+[2026-04-19T03:07:47.136347092+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:07:47.151154238+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:07:47.151192028+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:07:47.403479001+00:00] http.list_tasks: env=<all> limit=20 cursor_in=<none> cursor_out=+RID:~G4U-AJOIzhmjh5ADALBbBA==#RT:1#TRC:20#RTD:FFMNeBmc06hP2994zep3KwV2dGZzLkJYVmVkOXM3T1lnYjJxU3hJZVY1NUtpbAAFdnRmcy5CWFZlZDlzN09ZZ2IycVN4SWVWNTVLaWwABUJkZHB2b3VWdGZzVXBEdnNzZm91RHBlZlVidGxGeXVmc29ibQAD+szOzMjRzsrRzcaqzcnEy8jEzczQyM3OxsXJ087OxM7O//qKnYuTn5mfyMWZy53KmZvFm8vOxsvMmZzKyM7Kxp2ZycmYmpjHzcz/#ISV:2#IEO:65567#QCF:8#CID:2 items=20
+[2026-04-19T03:08:59.813102211+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:08:59.827309766+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:08:59.827338163+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:11.758653027+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:09:11.772932324+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:11.772965976+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:12.007999750+00:00] http.list_tasks: env=<all> limit=1 cursor_in=<none> cursor_out=+RID:~G4U-AJOIzhm3vJADALBbBA==#RT:1#TRC:1#RTD:FFMNeBmc06hP2994zep3KwV2dGZzLkJYVmVkOXM3T1lnYjJxU3hJZVY1NUtpbAAFdnRmcy5CWFZlZDlzN09ZZ2IycVN4SWVWNTVLaWwABUJkZHB2b3VWdGZzVXBEdnNzZm91RHBlZlVidGxGeXVmc29ibQAD+szOzMjRzsrRzcWqzszEy8nEzcrQx8rHx8jH087OxM7O//qKnYuTn5mfyMWZysuYyMycmMubxsvMmcXNxZucmMfIzsnGzsvMxcr/#ISV:2#IEO:65567#QCF:8#CID:2 items=1
+[2026-04-19T03:09:33.371346839+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:09:33.385684056+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:33.385717324+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:33.407034111+00:00] env: parsed HTTP GitHub origin => strawgate/o11ykit
+[2026-04-19T03:09:34.013938615+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:34.208113380+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:35.339597742+00:00] new_task: created id=task_e_69e4476ed3e0832ebd633ce0a789456d env=69df2fbdf2f08191994e04fe688302c8 prompt_chars=10
+[2026-04-19T03:09:46.343811701+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:09:46.358037172+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:46.358066585+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:46.378098015+00:00] env: parsed HTTP GitHub origin => strawgate/o11ykit
+[2026-04-19T03:09:46.543576528+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:09:46.557532285+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:46.557560687+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:46.577570412+00:00] env: parsed HTTP GitHub origin => strawgate/o11ykit
+[2026-04-19T03:09:46.924888788+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:47.088777821+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:47.115978321+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:47.288048156+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:48.061499220+00:00] new_task: created id=task_e_69e4477bb2d0832e805d7f44c344008b env=69df2fbdf2f08191994e04fe688302c8 prompt_chars=5079
+[2026-04-19T03:09:48.114478006+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:09:48.128671143+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:48.128700511+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:48.148880799+00:00] env: parsed HTTP GitHub origin => strawgate/o11ykit
+[2026-04-19T03:09:48.284965103+00:00] new_task: created id=task_e_69e4477bddd8832eb52be7fadb47be38 env=69df2fbdf2f08191994e04fe688302c8 prompt_chars=4978
+[2026-04-19T03:09:48.337403564+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:09:48.351239858+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:48.351269960+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:48.371226927+00:00] env: parsed HTTP GitHub origin => strawgate/o11ykit
+[2026-04-19T03:09:48.752632031+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:48.902480999+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:48.952618657+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:49.092544021+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:49.975497651+00:00] new_task: created id=task_e_69e4477d8b38832e88eae0e92ed37587 env=69df2fbdf2f08191994e04fe688302c8 prompt_chars=4635
+[2026-04-19T03:09:50.096313941+00:00] new_task: created id=task_e_69e4477dae6c832eb6df5840484218e3 env=69df2fbdf2f08191994e04fe688302c8 prompt_chars=4630
+[2026-04-19T03:09:50.150777280+00:00] startup: base_url=https://chatgpt.com/backend-api path_style=wham
+[2026-04-19T03:09:50.164605212+00:00] auth: mode=ChatGPT account_id=11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:50.164635035+00:00] auth: set ChatGPT-Account-Id header: 11e72e59-bbd4-4d72-a4d5-918ee3e6b29a
+[2026-04-19T03:09:50.184643059+00:00] env: parsed HTTP GitHub origin => strawgate/o11ykit
+[2026-04-19T03:09:50.731296359+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:50.945760488+00:00] env: status=200 OK content-type=application/json
+[2026-04-19T03:09:53.269069742+00:00] new_task: created id=task_e_69e4477fe6f8832e98826c06084dd814 env=69df2fbdf2f08191994e04fe688302c8 prompt_chars=6246
