@@ -111,12 +111,12 @@ export class ScanEngine implements QueryEngine {
 
     // ── Compound transform + aggregation (e.g. rate().sumBy()) ──
     // Apply per-series transform first, then group + cross-series aggregate.
-    if (opts.transform && opts.agg && opts.step) {
+    if (opts.transform && opts.agg) {
       const groups = new Map<string, { labels: Labels; ranges: TimeRange[] }>();
 
       for (const id of ids) {
         let parts: TimeRange[];
-        if (storage.readParts) {
+        if (opts.step && storage.readParts) {
           parts = storage.readParts(id, opts.start, opts.end);
         } else {
           parts = [storage.read(id, opts.start, opts.end)];
@@ -281,6 +281,12 @@ function aggFinalize(values: Float64Array, counts: Float64Array, fn: AggFn): voi
 function aggregate(ranges: TimeRange[], fn: AggFn, step?: bigint): TimeRange {
   if (ranges.length === 0) {
     return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+  }
+
+  if (!step && percentileFraction(fn) !== undefined) {
+    throw new Error(
+      `Percentile aggregation '${fn}' requires step(). Use .step() to set a bucket interval.`
+    );
   }
 
   if (!step) {

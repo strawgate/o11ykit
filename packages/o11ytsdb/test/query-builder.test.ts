@@ -314,6 +314,15 @@ describe("QueryBuilder — exec()", () => {
     expect(result.series[0]!.timestamps.length).toBeGreaterThan(0);
   });
 
+  it("executes rate().sumBy() without step (no-step compound)", () => {
+    const store = populateStore();
+    const result = query().metric("cpu").range(0n, 100_000_000n).rate().sumBy("region").exec(store);
+    // Should still produce grouped results even without step
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    expect(result.series[0]!.labels.get("region")).toBe("us-east");
+  });
+
   // ── Percentile aggregations ────────────────────────────────────
 
   it("executes p50 (median) aggregation", () => {
@@ -365,5 +374,12 @@ describe("QueryBuilder — exec()", () => {
     expect(result.series.length).toBe(3);
     const hosts = result.series.map((s) => s.labels.get("host")).sort();
     expect(hosts).toEqual(["a", "b", "c"]);
+  });
+
+  it("throws for percentile without step()", () => {
+    const store = populateStore();
+    expect(() => query().metric("cpu").range(0n, 100_000_000n).p50().exec(store)).toThrow(
+      "requires step()"
+    );
   });
 });

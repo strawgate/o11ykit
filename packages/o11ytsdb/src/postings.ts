@@ -79,12 +79,17 @@ export class MemPostings {
   }
 
   matchRegex(label: string, pattern: RegExp): SeriesId[] {
+    // Strip stateful flags (/g, /y) to avoid alternating test() results.
+    const safePattern =
+      pattern.global || pattern.sticky
+        ? new RegExp(pattern.source, pattern.flags.replace(/[gy]/g, ""))
+        : pattern;
     const labelId = this.interner.intern(label);
     const values = this.byLabel.get(labelId);
     if (!values) return [];
     let acc: SeriesId[] = [];
     for (const [valueId, posting] of values) {
-      if (!pattern.test(this.interner.resolve(valueId))) continue;
+      if (!safePattern.test(this.interner.resolve(valueId))) continue;
       acc = acc.length === 0 ? posting.slice() : this.union(acc, posting);
     }
     return acc;
