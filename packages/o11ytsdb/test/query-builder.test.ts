@@ -242,21 +242,45 @@ describe("QueryBuilder — exec()", () => {
     }
   });
 
+  // ── Regex & negative matchers ────────────────────────────────────
+
+  it("filters with =~ regex matcher", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .where("host", "=~", "a|b")
+      .range(0n, 100_000_000n)
+      .exec(store);
+    expect(result.series.length).toBe(2);
+    const hosts = result.series.map((s) => s.labels.get("host")).sort();
+    expect(hosts).toEqual(["a", "b"]);
+  });
+
+  it("filters with != negative matcher", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .where("host", "!=", "c")
+      .range(0n, 100_000_000n)
+      .exec(store);
+    expect(result.series.length).toBe(2);
+    const hosts = result.series.map((s) => s.labels.get("host")).sort();
+    expect(hosts).toEqual(["a", "b"]);
+  });
+
+  it("filters with !~ negative regex matcher", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .where("host", "!~", "^c$")
+      .range(0n, 100_000_000n)
+      .exec(store);
+    expect(result.series.length).toBe(2);
+    const hosts = result.series.map((s) => s.labels.get("host")).sort();
+    expect(hosts).toEqual(["a", "b"]);
+  });
+
   // ── Unsupported operations ─────────────────────────────────────
-
-  it("throws for regex matcher (not yet supported)", () => {
-    const store = populateStore();
-    expect(() =>
-      query().metric("cpu").where("host", "=~", "a|b").range(0n, 100_000_000n).exec(store)
-    ).toThrow("Matcher operator '=~' is not yet supported");
-  });
-
-  it("throws for != matcher (not yet supported)", () => {
-    const store = populateStore();
-    expect(() =>
-      query().metric("cpu").where("host", "!=", "c").range(0n, 100_000_000n).exec(store)
-    ).toThrow("Matcher operator '!=' is not yet supported");
-  });
 
   it("throws for compound rate() + sum() (not yet supported)", () => {
     const store = populateStore();

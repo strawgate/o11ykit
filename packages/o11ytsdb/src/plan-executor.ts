@@ -3,8 +3,7 @@
  *
  * V1 strategy: extract parameters from the plan, map to the existing
  * ScanEngine.query() interface. Advanced features (compound transforms,
- * regex matchers, binary ops) will be handled natively as the executor
- * matures.
+ * binary ops) will be handled natively as the executor matures.
  */
 
 import type {
@@ -99,21 +98,11 @@ function flattenPlan(root: PlanNode): FlatPlan {
 // ── Matcher mapping ──────────────────────────────────────────────────
 
 /**
- * Convert PlanMatchers to the current Matcher type (equality only).
- * Throws for operators not yet supported by the engine.
+ * Convert PlanMatchers to the current Matcher type.
+ * All four operators (=, !=, =~, !~) are now supported.
  */
 function toEngineMatchers(planMatchers: readonly PlanMatcher[]): Matcher[] {
-  const out: Matcher[] = [];
-  for (const m of planMatchers) {
-    if (m.op !== "=") {
-      throw new Error(
-        `Matcher operator '${m.op}' is not yet supported (label=${m.label}, value=${m.value}). ` +
-          `Only '=' is supported in the current executor.`
-      );
-    }
-    out.push({ label: m.label, value: m.value });
-  }
-  return out;
+  return planMatchers.map((m) => ({ label: m.label, op: m.op, value: m.value }));
 }
 
 // ── Aggregation mapping ──────────────────────────────────────────────
@@ -155,9 +144,8 @@ const engine = new ScanEngine();
  * Execute a query plan against a storage backend.
  *
  * V1: flattens the plan tree and delegates to ScanEngine.query().
- * Supports: = matchers, all 6 aggregations ± step ± groupBy, rate().
- * Not yet supported: !=, =~, !~ matchers; compound transforms;
- * binary ops; increase, irate, abs, etc.
+ * Supports: =, !=, =~, !~ matchers, all 6 aggregations ± step ± groupBy, rate().
+ * Not yet supported: compound transforms; binary ops; increase, irate, abs, etc.
  */
 export function executePlan(plan: PlanNode, storage: StorageBackend): QueryResult {
   const flat = flattenPlan(plan);

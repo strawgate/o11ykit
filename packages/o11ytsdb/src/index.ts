@@ -46,6 +46,7 @@ export type {
   Codec,
   Labels,
   Matcher,
+  MatchOp,
   QueryEngine,
   QueryOpts,
   QueryResult,

@@ -9,9 +9,11 @@
 import type {
   AggFn,
   Labels,
+  Matcher,
   QueryEngine,
   QueryOpts,
   QueryResult,
+  SeriesId,
   SeriesResult,
   StorageBackend,
   TimeRange,
@@ -56,6 +58,37 @@ function sortedIntersect(a: number[], b: number[]): number[] {
   return out;
 }
 
+/** Remove elements of b from a (both sorted). */
+function sortedDifference(a: number[], b: number[]): number[] {
+  if (b.length === 0) return a;
+  if (a.length === 0) return [];
+  const out: number[] = [];
+  let j = 0;
+  for (let i = 0; i < a.length; i++) {
+    const v = a[i]!;
+    j = gallopLowerBound(b, v, j);
+    if (j < b.length && b[j] === v) continue;
+    out.push(v);
+  }
+  return out;
+}
+
+/** Resolve a matcher against a storage backend, returning matched series IDs. */
+function matcherIds(storage: StorageBackend, m: Matcher): SeriesId[] {
+  if (m.op === "=" || m.op === "!=") {
+    return storage.matchLabel(m.label, m.value);
+  }
+  // Regex match — compile pattern and use matchLabelRegex if available
+  const pattern = new RegExp(m.value);
+  if (storage.matchLabelRegex) {
+    return storage.matchLabelRegex(m.label, pattern);
+  }
+  // Fallback: not available on this backend
+  throw new Error(
+    `Storage backend '${storage.name}' does not support regex matchers (matchLabelRegex).`
+  );
+}
+
 export class ScanEngine implements QueryEngine {
   readonly name = "scan";
 
@@ -64,7 +97,13 @@ export class ScanEngine implements QueryEngine {
     let ids = storage.matchLabel("__name__", opts.metric);
     if (opts.matchers) {
       for (const m of opts.matchers) {
-        ids = sortedIntersect(ids, storage.matchLabel(m.label, m.value));
+        const matched = matcherIds(storage, m);
+        if (m.op === "=" || m.op === "=~") {
+          ids = sortedIntersect(ids, matched);
+        } else {
+          // != or !~ → remove matched series
+          ids = sortedDifference(ids, matched);
+        }
       }
     }
 
