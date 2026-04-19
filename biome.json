@@ -10,8 +10,10 @@
       "!**/.site",
       "!**/playwright-report",
       "!**/test-results",
+      "!**/target",
       "!octo11y",
-      "!packages/o11ytsdb/bench"
+      "!packages/o11ytsdb/bench",
+      "!research"
     ]
   },
   "formatter": {

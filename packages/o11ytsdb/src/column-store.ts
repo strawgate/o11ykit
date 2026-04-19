@@ -83,6 +83,8 @@ export class ColumnStore implements StorageBackend {
   private labelIndex: LabelIndex;
   private _sampleCount = 0;
   private quantize: ((v: number) => number) | undefined;
+  private quantizeBatch: ((values: Float64Array, precision: number) => void) | undefined;
+  private precision: number | undefined;
 
   /**
    * @param valuesCodec - Codec for values-only compression.
@@ -94,6 +96,8 @@ export class ColumnStore implements StorageBackend {
    * @param rangeCodec - Optional fused range-decode codec (ALP fast-path).
    * @param precision - Optional decimal precision for value quantization (e.g. 3 → round to 0.001).
    *                    When set, values are rounded on ingest to guarantee ALP-clean encoding.
+   * @param quantizeBatch - Optional WASM SIMD batch quantize function.
+   *                        When provided with precision, appendBatch uses SIMD instead of per-element Math.round.
    */
   constructor(
     valuesCodec: ValuesCodec,
@@ -103,7 +107,8 @@ export class ColumnStore implements StorageBackend {
     tsCodec?: TimestampCodec,
     rangeCodec?: RangeDecodeCodec,
     labelIndex?: LabelIndex,
-    precision?: number
+    precision?: number,
+    quantizeBatch?: (values: Float64Array, precision: number) => void
   ) {
     if (!Number.isFinite(chunkSize) || !Number.isInteger(chunkSize) || chunkSize < 1) {
       throw new RangeError(`chunkSize must be a finite integer >= 1, got ${chunkSize}`);
@@ -114,6 +119,8 @@ export class ColumnStore implements StorageBackend {
     this.chunkSize = chunkSize;
     this.name = name ?? `column-${this.valuesCodec.name}-${chunkSize}`;
     this.labelIndex = labelIndex ?? new LabelIndex();
+    this.precision = precision;
+    this.quantizeBatch = quantizeBatch;
     if (precision != null) {
       const scale = 10 ** precision;
       this.quantize = (v: number) => Math.round(v * scale) / scale;
@@ -228,10 +235,18 @@ export class ColumnStore implements StorageBackend {
       }
 
       if (this.quantize) {
-        const q = this.quantize;
-        for (let i = 0; i < batch; i++) {
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          s.hot.values[s.hot.count + i] = q(values[offset + i]!);
+        if (this.quantizeBatch && this.precision != null) {
+          // WASM SIMD batch quantize — ~17× faster than per-element Math.round.
+          // Copy into hot buffer first, then quantize in-place to avoid extra allocation.
+          s.hot.values.set(values.subarray(offset, offset + batch), s.hot.count);
+          const target = s.hot.values.subarray(s.hot.count, s.hot.count + batch);
+          this.quantizeBatch(target, this.precision);
+        } else {
+          const q = this.quantize;
+          for (let i = 0; i < batch; i++) {
+            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+            s.hot.values[s.hot.count + i] = q(values[offset + i]!);
+          }
         }
       } else {
         s.hot.values.set(values.subarray(offset, offset + batch), s.hot.count);

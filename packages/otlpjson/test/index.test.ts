@@ -8,6 +8,7 @@ import {
   detectSignal,
   durationNanos,
   flattenAttributes,
+  forEachAttribute,
   isLogsDocument,
   isMetricsDocument,
   isTracesDocument,
@@ -96,6 +97,45 @@ describe("@otlpkit/otlpjson", () => {
       },
     });
     expect(attributeValueToJs({ unknown: true })).toBeNull();
+  });
+
+  it("iterates flattened attributes without allocating a record", () => {
+    const entries: Array<[string, unknown]> = [];
+    forEachAttribute(
+      [
+        { key: "name", value: { stringValue: "svc" } },
+        {
+          key: "nested",
+          value: {
+            kvlistValue: {
+              values: [{ key: "ok", value: { boolValue: true } }],
+            },
+          },
+        },
+        {
+          key: "arr",
+          value: {
+            arrayValue: {
+              values: [{ intValue: "2" }, { doubleValue: 3.5 }],
+            },
+          },
+        },
+      ],
+      (key, value) => {
+        entries.push([key, value]);
+      }
+    );
+    expect(entries).toEqual([
+      ["name", "svc"],
+      ["nested", { ok: true }],
+      ["arr", [2, 3.5]],
+    ]);
+
+    const emptyEntries: Array<[string, unknown]> = [];
+    forEachAttribute(undefined, (key, value) => {
+      emptyEntries.push([key, value]);
+    });
+    expect(emptyEntries).toEqual([]);
   });
 
   it("materializes metrics, traces, and logs into typed records", () => {
