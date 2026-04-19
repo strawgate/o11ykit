@@ -372,7 +372,7 @@ describe("@otlpkit/views", () => {
         },
       ],
     });
-    expect(waterfall.traces[0]?.spans).toHaveLength(2);
+    expect(waterfall.traces[0]?.spans.map((s) => s.spanId).sort()).toEqual(["a", "b"]);
 
     const logEvents = buildEventTimelineFrame(
       {
@@ -391,7 +391,7 @@ describe("@otlpkit/views", () => {
       },
       { signal: "logs" }
     );
-    expect(logEvents.events).toHaveLength(2);
+    expect(logEvents.events.map((e) => e.body).sort()).toEqual(["first", "second"]);
 
     const traceEvents = buildEventTimelineFrame({
       resourceSpans: [
@@ -413,7 +413,7 @@ describe("@otlpkit/views", () => {
         },
       ],
     });
-    expect(traceEvents.events).toHaveLength(2);
+    expect(traceEvents.events.map((e) => e.name).sort()).toEqual(["evt-a", "evt-b"]);
   });
 
   it("matches batch frame output through an incremental store", () => {
