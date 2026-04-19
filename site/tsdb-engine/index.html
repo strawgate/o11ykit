@@ -395,7 +395,7 @@ New window       → '11' + 6L + 6M   (14 + N bits)</code></pre>
       <!-- ─── Query Engine ────────────────────────────────────── -->
       <section class="panel" id="query-engine">
         <h2>Query Engine</h2>
-        <p class="section-intro">The scan engine supports label matching, time windowing, six aggregation functions, groupBy, and rate computation. A 18–30% optimization pass in April 2026 improved step-aggregation throughput across all backends.</p>
+        <p class="section-intro">The scan engine supports label matching, time windowing, six aggregation functions, groupBy, and rate computation. An 18–30% optimization pass in April 2026 improved step-aggregation throughput across all backends.</p>
 
         <div class="grid grid-2">
           <div class="query-feature">
@@ -540,16 +540,19 @@ const result2 = ingestOtlpObject(parsedDocument, store);
       <!-- ─── Worker Isolation ────────────────────────────────── -->
       <section class="panel code-panel">
         <h2>Web Worker Isolation</h2>
-        <p class="section-intro">Move all TSDB operations off the main thread. The worker protocol sends OTLP payloads as transferable <code>Uint8Array</code> buffers — <strong>main-thread blocking drops from ~19ms to ~1.9ms</strong> for a 10K-point batch.</p>
+        <p class="section-intro">Move all TSDB operations off the main thread. Callers parse OTLP data into typed arrays and pass them to the worker — timestamps and values are transferred as zero-copy <code>BigInt64Array</code>/<code>Float64Array</code> buffers. <strong>Main-thread blocking drops from ~19ms to ~1.9ms</strong> for a 10K-point batch.</p>
 
 <pre><code>import { WorkerClient } from 'o11ytsdb';
 
 const client = new WorkerClient(new Worker('./tsdb-worker.js'));
 await client.init({ chunkSize: 1024 });
 
-// Ingest an OTLP JSON payload off the main thread
-// Data is encoded as a transferable Uint8Array — zero-copy to worker
-await client.ingest(otlpPayload);
+// Ingest pre-parsed time series data off the main thread.
+// timestamps and values buffers are zero-copy transferred to the worker.
+const labels = new Map([['__name__', 'http_requests'], ['host', 'web-01']]);
+const timestamps = new BigInt64Array([1_700_000_000_000_000_000n, 1_700_000_001_000_000_000n]);
+const values = new Float64Array([42.0, 43.5]);
+await client.ingest(labels, timestamps, values);
 
 // Query returns results back to main thread
 const result = await client.query({
