@@ -2,6 +2,8 @@ import { ColumnStore } from './column-store.js';
 import { ingestOtlpJson } from './ingest.js';
 import { ScanEngine } from './query.js';
 import type { QueryEngine, StorageBackend, ValuesCodec } from './types.js';
+import type { WasmCodecs } from './wasm-codecs.js';
+import { initWasmCodecs } from './wasm-codecs.js';
 import {
   err,
   ok,
@@ -49,6 +51,50 @@ function createValuesCodec(): ValuesCodec {
   };
 }
 
+/**
+ * Try to load the WASM binary from the co-located wasm/ directory.
+ * Returns null if WASM is not available (browser without fetch, missing binary, etc).
+ */
+async function tryLoadWasm(): Promise<WasmCodecs | null> {
+  try {
+    // Node.js path — use dynamic import to avoid bundler issues.
+    const dynamicImport = new Function('s', 'return import(s)') as (specifier: string) => Promise<any>;
+
+    // Try to locate the .wasm file relative to this module.
+    const nodeFs = await dynamicImport('node:fs').catch(() => null);
+    const nodePath = await dynamicImport('node:path').catch(() => null);
+    const nodeUrl = await dynamicImport('node:url').catch(() => null);
+
+    if (nodeFs && nodePath && nodeUrl) {
+      // Resolve wasm path relative to this file: ../wasm/o11ytsdb-rust.wasm
+      const thisDir = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url));
+      const wasmPath = nodePath.join(thisDir, '..', 'wasm', 'o11ytsdb-rust.wasm');
+      if (nodeFs.existsSync(wasmPath)) {
+        const bytes = nodeFs.readFileSync(wasmPath);
+        const module = new WebAssembly.Module(bytes);
+        return initWasmCodecs(module);
+      }
+    }
+  } catch {
+    // Fall through to plain codec.
+  }
+
+  try {
+    // Browser path — use fetch with a relative URL.
+    if (typeof fetch === 'function') {
+      const resp = await fetch(new URL('../wasm/o11ytsdb-rust.wasm', import.meta.url));
+      if (resp.ok) {
+        const module = await WebAssembly.compileStreaming(resp);
+        return initWasmCodecs(module);
+      }
+    }
+  } catch {
+    // Fall through to plain codec.
+  }
+
+  return null;
+}
+
 function resolveEndpoint(): WorkerLikeEndpoint {
   const maybeSelf = globalThis as {
     self?: WorkerLikeEndpoint;
@@ -82,14 +128,25 @@ export interface WorkerRuntimeConfig {
 export class O11yWorkerRuntime {
   private readonly endpoint: WorkerLikeEndpoint;
   private readonly engine: QueryEngine;
-  private readonly createStore: (chunkSize: number) => StorageBackend;
+  private createStore: (chunkSize: number) => StorageBackend;
   private store: StorageBackend;
+  private wasmCodecs: WasmCodecs | null = null;
+  private wasmReady: Promise<void>;
   constructor(endpoint?: WorkerLikeEndpoint, config?: WorkerRuntimeConfig) {
     this.endpoint = endpoint ?? resolveEndpoint();
     const codec = createValuesCodec();
     this.createStore = config?.createStore ?? ((cs: number) => new ColumnStore(codec, cs));
     this.engine = config?.queryEngine ?? new ScanEngine();
     this.store = this.createStore(1024);
+
+    // Load WASM codecs in the background. First message that needs them will await.
+    this.wasmReady = tryLoadWasm().then((wc) => {
+      if (wc) {
+        this.wasmCodecs = wc;
+        this.createStore = (cs: number) => new ColumnStore(wc.valuesCodec, cs, undefined, undefined, wc.tsCodec, wc.rangeCodec);
+        this.store = this.createStore(1024);
+      }
+    }).catch(() => { /* WASM not available — continue with plain codec */ });
   }
 
   start(): void {
@@ -120,6 +177,8 @@ export class O11yWorkerRuntime {
     try {
       switch (payload.type) {
         case 'init': {
+          // Ensure WASM codecs are loaded before re-creating the store.
+          await this.wasmReady;
           const chunkSize = payload.chunkSize ?? 1024;
           this.store = this.createStore(chunkSize);
           this.send(ok(id, { ok: true, type: 'init', backend: this.store.name }, meta));
@@ -127,7 +186,7 @@ export class O11yWorkerRuntime {
         }
         case 'ingest': {
           const jsonPayload = decodeUtf8(payload.payload);
-          const result = ingestOtlpJson(jsonPayload, this.store);
+          const result = ingestOtlpJson(jsonPayload, this.store, this.wasmCodecs?.msToNs);
           this.send(ok(id, { ok: true, type: 'ingest', result }, meta));
           return;
         }

@@ -42,6 +42,10 @@ export { LabelIndex } from './label-index.js';
 export { ingestOtlpJson, ingestOtlpObject, parseOtlpToSamples, flushSamplesToStorage } from './ingest.js';
 export type { IngestResult, ParsedOtlpResult, PendingSeriesSamples, OtlpMetricsDocument } from './ingest.js';
 
+// WASM codec loader (ALP + XOR-delta + SIMD accelerators)
+export { initWasmCodecs } from './wasm-codecs.js';
+export type { WasmCodecs } from './wasm-codecs.js';
+
 // Worker isolation + transfer protocol
 export { WorkerClient } from './worker-client.js';
 export type {
