@@ -181,7 +181,9 @@ export class ColumnStore implements StorageBackend {
 
   appendBatch(id: SeriesId, timestamps: BigInt64Array, values: Float64Array): void {
     if (timestamps.length !== values.length) {
-      throw new RangeError(`appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`);
+      throw new RangeError(
+        `appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`
+      );
     }
     if (timestamps.length === 0) return;
     // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
