@@ -198,16 +198,16 @@ function _buildChunkDetailHTML(
   const html = `
       <div class="chunk-detail-header">
         <div class="chunk-nav">
-          <button class="chunk-nav-btn" id="chunkPrev" ${hasPrev ? "" : "disabled"} title="Previous chunk">‹</button>
+          <button type="button" class="chunk-nav-btn" id="chunkPrev" ${hasPrev ? "" : "disabled"} title="Previous chunk">‹</button>
           <span class="chunk-nav-label">Chunk ${chunkIndex} of ${totalFrozen}</span>
-          <button class="chunk-nav-btn" id="chunkNext" ${hasNext ? "" : "disabled"} title="Next chunk">›</button>
+          <button type="button" class="chunk-nav-btn" id="chunkNext" ${hasNext ? "" : "disabled"} title="Next chunk">›</button>
         </div>
         <div class="chunk-detail-title">
           <span class="tag-frozen">Frozen</span> ${metricName}
           <span class="chunk-detail-labels">{${labelStr}}</span>
           <span class="tag-codec">${codecName}</span>
         </div>
-        <button class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
+        <button type="button" class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
       </div>
       <div class="chunk-sparkline-container">
         <h4>Decoded Values</h4>
@@ -319,7 +319,7 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
           <span class="tag-hot">Hot Buffer</span> — ${metricName}
           <span class="chunk-detail-labels">{${labelStr}}</span>
         </div>
-        <button class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
+        <button type="button" class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
       </div>
       <div class="chunk-detail-grid">
         <div class="detail-stat">

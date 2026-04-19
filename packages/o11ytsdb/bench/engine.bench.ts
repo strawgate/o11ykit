@@ -477,8 +477,8 @@ export default async function (): Promise<BenchReport> {
       for (let s = 0; s < NUM_SERIES; s++) {
         fresh.appendBatch(
           ids[s]!,
-          data.timestamps[s]?.subarray(offset, end),
-          data.values[s]?.subarray(offset, end)
+          data.timestamps[s]!.subarray(offset, end),
+          data.values[s]!.subarray(offset, end)
         );
       }
     }

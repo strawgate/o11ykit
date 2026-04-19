@@ -127,6 +127,9 @@ export class ColumnStore implements StorageBackend {
     if (!isNew) return id;
 
     const groupId = this.groupResolver(labels);
+    if (!Number.isInteger(groupId) || groupId < 0) {
+      throw new RangeError(`groupResolver must return a non-negative integer, got ${groupId}`);
+    }
 
     // Ensure group exists.
     while (this.groups.length <= groupId) {
@@ -177,6 +180,10 @@ export class ColumnStore implements StorageBackend {
   }
 
   appendBatch(id: SeriesId, timestamps: BigInt64Array, values: Float64Array): void {
+    if (timestamps.length !== values.length) {
+      throw new RangeError(`appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`);
+    }
+    if (timestamps.length === 0) return;
     // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.allSeries[id]!;
     // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction

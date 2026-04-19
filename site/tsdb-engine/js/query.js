@@ -119,12 +119,18 @@ export class ScanEngine {
   _stepAggregate(ranges, fn, step) {
     let minT = BigInt("9223372036854775807");
     let maxT = -minT;
+    let hasSamples = false;
+
     for (const r of ranges) {
       if (r.timestamps.length === 0) continue;
+      hasSamples = true;
       if (r.timestamps[0] < minT) minT = r.timestamps[0];
       if (r.timestamps[r.timestamps.length - 1] > maxT)
         maxT = r.timestamps[r.timestamps.length - 1];
     }
+
+    if (!hasSamples) return [];
+
     const bucketCount = Number((maxT - minT) / step) + 1;
     const timestamps = new BigInt64Array(bucketCount);
     const values = new Float64Array(bucketCount);

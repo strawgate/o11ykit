@@ -2,7 +2,10 @@ import type { ChunkStats } from "./types.js";
 
 export function computeStats(values: Float64Array): ChunkStats {
   const n = values.length;
-  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+  if (n === 0) {
+    throw new RangeError("computeStats requires at least one sample");
+  }
+  // biome-ignore lint/style/noNonNullAssertion: bounds-checked above
   let minV = values[0]!;
   // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
   let maxV = values[0]!;

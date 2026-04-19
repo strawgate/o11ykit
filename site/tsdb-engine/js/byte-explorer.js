@@ -251,13 +251,24 @@ function _setupBitInteraction(container, bitLookup, explorer) {
     }
   });
 
-  // Escape to clear
-  function onKeyDown(e) {
-    if (e.key === "Escape") {
-      highlightBitRange(null);
+  // Escape to clear — use AbortController so the listener is removed when the bit-view is destroyed
+  var keyAbort = new AbortController();
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Escape") highlightBitRange(null);
+    },
+    { signal: keyAbort.signal }
+  );
+  container.addEventListener("remove", () => keyAbort.abort());
+  // MutationObserver watches for the bit-view being removed from the DOM
+  var keyCleanupObserver = new MutationObserver(() => {
+    if (!container.isConnected) {
+      keyAbort.abort();
+      keyCleanupObserver.disconnect();
     }
-  }
-  document.addEventListener("keydown", onKeyDown);
+  });
+  keyCleanupObserver.observe(document.body, { childList: true, subtree: true });
 
   explorer.querySelector("#regionDetail").before(decodePanel);
   explorer.querySelector("#regionDetail").before(container);
@@ -294,9 +305,9 @@ function _buildExplorerShell(explorer, bytes, insightHtml) {
     bytes.length.toLocaleString() +
     " bytes</span></h4>" +
     '<div class="byte-explorer-controls">' +
-    '<button class="active" data-view="hex">Hex</button>' +
-    '<button data-view="decimal">Dec</button>' +
-    '<button data-view="bits">Bits</button>' +
+    '<button type="button" class="active" data-view="hex">Hex</button>' +
+    '<button type="button" data-view="decimal">Dec</button>' +
+    '<button type="button" data-view="bits">Bits</button>' +
     "</div>" +
     "</div>" +
     '<div id="codecInsight">' +
@@ -1132,9 +1143,9 @@ export function renderByteExplorerTs(tsBlob, sampleCount) {
     totalBytes.toLocaleString() +
     " bytes</span></h4>" +
     '<div class="byte-explorer-controls">' +
-    '<button class="active" data-view="hex">Hex</button>' +
-    '<button data-view="decimal">Dec</button>' +
-    '<button data-view="bits">Bits</button>' +
+    '<button type="button" class="active" data-view="hex">Hex</button>' +
+    '<button type="button" data-view="decimal">Dec</button>' +
+    '<button type="button" data-view="bits">Bits</button>' +
     "</div>" +
     "</div>" +
     '<div class="byte-minimap" id="byteMinimapTs"></div>' +

@@ -40,9 +40,10 @@ export function isMonitorMetric(metric: string): boolean {
 }
 
 export function defaultMonitorMetricLabel(metric: string): string {
-  const raw = metric
-    .replace(new RegExp(`^${SERIES_MONITOR_PREFIX.replace("/", "\\/")}`), "")
-    .replace(new RegExp(`^${MONITOR_METRIC_PREFIX.replace(".", "\\.")}`), "");
+  let raw = metric.startsWith(SERIES_MONITOR_PREFIX)
+    ? metric.slice(SERIES_MONITOR_PREFIX.length)
+    : metric;
+  raw = raw.startsWith(MONITOR_METRIC_PREFIX) ? raw.slice(MONITOR_METRIC_PREFIX.length) : raw;
   if (MONITOR_METRIC_LABELS[raw]) {
     return MONITOR_METRIC_LABELS[raw];
   }

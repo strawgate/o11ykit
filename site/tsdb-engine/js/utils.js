@@ -49,6 +49,7 @@ export function autoSelectQueryStep(intervalMs, numPoints) {
   const stepOptions = [...stepSelect.options]
     .map((o) => parseInt(o.value, 10))
     .filter((v) => v > 0);
+  if (stepOptions.length === 0) return;
   let bestStep = stepOptions[0];
   let bestDiff = Infinity;
   for (const s of stepOptions) {

@@ -17,7 +17,6 @@ export const METRICS = ["http_requests_total", "cpu_usage_percent", "memory_usag
 
 export function generateValue(pattern, i, seriesIdx, total) {
   const phase = seriesIdx * 0.7;
-  const _t = i / total;
   switch (pattern) {
     case "sine":
       return (
