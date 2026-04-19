@@ -270,7 +270,10 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   if (fn === "rate") {
     _stepAggregateRate(ranges, values, counts, bucketCount, minT, minTN, stepN);
   } else {
-    const accumulate = _makeAccumulator(fn, values, counts, minTN, stepN);
+    // Track timestamps for "last" aggregation to ensure temporal correctness
+    // when chunks from multiple series contribute to the same bucket.
+    const lastTsTracker = fn === "last" ? new Float64Array(bucketCount).fill(-Infinity) : undefined;
+    const accumulate = _makeAccumulator(fn, values, counts, minTN, stepN, lastTsTracker);
     for (let ri = 0; ri < ranges.length; ri++) {
       const r = ranges[ri]!;
       if (r.stats && r.chunkMinT !== undefined && r.chunkMaxT !== undefined) {
@@ -280,7 +283,7 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
         const bucketHi = ((chunkMaxTN - minTN) / stepN) | 0;
         if (bucketLo === bucketHi) {
           // Entire chunk maps to one bucket — fold stats directly.
-          _foldStats(fn, r.stats, values, counts, bucketLo);
+          _foldStats(fn, r.stats, values, counts, bucketLo, chunkMaxTN, lastTsTracker);
           continue;
         }
         // Chunk spans multiple buckets — decode and accumulate inline.
@@ -316,7 +319,9 @@ function _foldStats(
   st: NonNullable<TimeRange["stats"]>,
   values: Float64Array,
   counts: Float64Array,
-  bucket: number
+  bucket: number,
+  chunkMaxTN?: number,
+  lastTsTracker?: Float64Array
 ): void {
   switch (fn) {
     case "min":
@@ -333,7 +338,15 @@ function _foldStats(
       values[bucket]! += st.count;
       break;
     case "last":
-      values[bucket] = st.lastV;
+      // Use chunk maxT to ensure temporally-last value wins across series.
+      if (lastTsTracker && chunkMaxTN !== undefined) {
+        if (chunkMaxTN >= lastTsTracker[bucket]!) {
+          lastTsTracker[bucket] = chunkMaxTN;
+          values[bucket] = st.lastV;
+        }
+      } else {
+        values[bucket] = st.lastV;
+      }
       break;
   }
   counts[bucket]! += st.count;
@@ -348,7 +361,8 @@ function _makeAccumulator(
   values: Float64Array,
   counts: Float64Array,
   minTN: number,
-  stepN: number
+  stepN: number,
+  lastTsTracker?: Float64Array
 ): (ts: BigInt64Array, vs: Float64Array, chunkMinTN?: number, chunkMaxTN?: number) => void {
   // Read a single i64 timestamp from BigInt64Array via DataView.
   const readTs = (dv: DataView, i: number): number => {
@@ -385,6 +399,35 @@ function _makeAccumulator(
     const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
     for (let i = 0; i < len; i++) {
       fold(((readTs(dv, i) - minTN) / stepN) | 0, vs[i]!);
+    }
+  };
+
+  // Timestamp-aware accumulate for "last" — tracks per-sample timestamps.
+  const accumulateWithTs = (
+    ts: BigInt64Array,
+    vs: Float64Array,
+    fold: (bucket: number, v: number, t: number) => void,
+    chunkMinTN?: number,
+    chunkMaxTN?: number
+  ): void => {
+    const len = ts.length;
+    if (len === 0) return;
+    if (len >= 2 && chunkMinTN !== undefined && chunkMaxTN !== undefined) {
+      const span = chunkMaxTN - chunkMinTN;
+      if (span > 0 && span % (len - 1) === 0) {
+        const interval = span / (len - 1);
+        const base = chunkMinTN - minTN;
+        for (let i = 0; i < len; i++) {
+          const t = chunkMinTN + i * interval;
+          fold(((base + i * interval) / stepN) | 0, vs[i]!, t);
+        }
+        return;
+      }
+    }
+    const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
+    for (let i = 0; i < len; i++) {
+      const t = readTs(dv, i);
+      fold(((t - minTN) / stepN) | 0, vs[i]!, t);
     }
   };
 
@@ -439,6 +482,22 @@ function _makeAccumulator(
           cMax
         );
     case "last":
+      if (lastTsTracker) {
+        return (ts, vs, cMin, cMax) =>
+          accumulateWithTs(
+            ts,
+            vs,
+            (bucket, v, t) => {
+              if (t >= lastTsTracker[bucket]!) {
+                lastTsTracker[bucket] = t;
+                values[bucket] = v;
+              }
+              counts[bucket]!++;
+            },
+            cMin,
+            cMax
+          );
+      }
       return (ts, vs, cMin, cMax) =>
         accumulate(
           ts,
