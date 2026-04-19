@@ -384,6 +384,9 @@ pub extern "C" fn alp_convert_scalar(
 ) {
     let n = count as usize;
     let e = exponent as usize;
+    if e >= POW10.len() {
+        return;
+    }
     let vals = unsafe { core::slice::from_raw_parts(val_ptr, n) };
     let ints = unsafe { core::slice::from_raw_parts_mut(int_ptr, n) };
     let meta = unsafe { core::slice::from_raw_parts_mut(meta_ptr, 3) };
@@ -435,14 +438,16 @@ pub extern "C" fn alp_convert_simd(
     use core::arch::wasm32::*;
     let n = count as usize;
     let e = exponent as usize;
+    if e >= POW10.len() {
+        return;
+    }
     let vals = unsafe { core::slice::from_raw_parts(val_ptr, n) };
     let ints = unsafe { core::slice::from_raw_parts_mut(int_ptr, n) };
     let meta = unsafe { core::slice::from_raw_parts_mut(meta_ptr, 3) };
 
     let factor = POW10[e];
     let factor_v = f64x2_splat(factor);
-    let half_v = f64x2_splat(0.5);
-    let neg_half_v = f64x2_splat(-0.5);
+    // half_v/neg_half_v reserved for future SIMD rounding path (see comment below).
     let mut min_int: i64 = i64::MAX;
     let mut max_int: i64 = i64::MIN;
     let mut exc_count: i64 = 0;
@@ -653,7 +658,7 @@ pub extern "C" fn quantize_simd(
     let inv_scale = 1.0 / scale;
     for i in (quads * 4)..n {
         let scaled = vals[i] * scale;
-        // Use same rounding as SIMD for consistency
+        // Use round-half-away (≠ SIMD round-to-even, but matches Math.round semantics)
         let rounded = if scaled >= 0.0 {
             (scaled + 0.5) as i64 as f64
         } else {

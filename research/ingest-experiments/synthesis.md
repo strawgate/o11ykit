@@ -74,14 +74,17 @@ Both attempts on each multi-attempt task converged on the same approach and dire
 ## Recommendations
 
 ### Adopt now
+
 1. **flatten bypass** — Apply attempt 1 diff. Adds `forEachAttribute()` to otlpjson, removes cachedFlattenAttributes from ingest, passes point.attributes directly. +12% p50, +29% p99. Low risk, clean code improvement.
 
 2. **worker ingest (as opt-in)** — Apply attempt 1 diff. Adds `ingest` operation to worker protocol. Keep sync path as default; expose `WorkerClient.ingest()` for UI-facing usage. Follow up with backpressure controls.
 
 ### Adopt selectively
+
 3. **direct-to-storage reserve-and-write** — Apply to FlatStore as optional fast path. Also extract the `pending` Map → flat array iteration pattern from attempt 2 as a separate, simpler optimization.
 
 ### Defer
+
 4. **codegen** — Add shape-stability instrumentation to generic ingest path first. If real workloads show 80%+ shape-repeat rates, revisit.
 
 5. **WASM** — Revisit only if/when a true single-pass schema-aware scanner is built (not substring search). The 2.8KB binary size proves the packaging story works; the parser needs a complete rewrite.

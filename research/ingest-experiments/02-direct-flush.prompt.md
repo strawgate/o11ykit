@@ -50,7 +50,7 @@ Read at least these:
 Key context:
 - `PendingSeriesSamples` has `timestamps: number[]` (milliseconds) and `values: number[]`
 - `flushSamplesToStorage` converts ms→ns via `BigInt(msArr[i]) * 1_000_000n` and creates `Float64Array.from(batch.values)`
-- FlatStore stores each series as `{ timestamps: BigInt64Array, values: Float64Array, length: number }` with grow-by-doubling
+- FlatStore stores each series as `{ timestamps: BigInt64Array, values: Float64Array, count: number }` with grow-by-doubling
 - ChunkedStore accumulates into a chunk buffer then compresses
 - The `StorageBackend` interface is a public API — any changes should be backward-compatible (add new methods, don't break existing ones)
 - ~256 unique series in the benchmark workload, ~39 samples per series for 10K points
