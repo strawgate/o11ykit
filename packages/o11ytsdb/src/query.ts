@@ -78,7 +78,9 @@ function matcherIds(storage: StorageBackend, m: Matcher): SeriesId[] {
   if (m.op === "=" || m.op === "!=") {
     return storage.matchLabel(m.label, m.value);
   }
-  // Regex match — compile pattern and use matchLabelRegex if available
+  // Regex match — compile pattern and use matchLabelRegex if available.
+  // Note: patterns originate from the query builder (developer-authored), not
+  // untrusted end-user input. The length guard is a defense-in-depth measure.
   if (m.value.length > 200) {
     throw new Error(`Regex pattern too long (${m.value.length} chars, max 200)`);
   }
