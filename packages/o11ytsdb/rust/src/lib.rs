@@ -2040,21 +2040,24 @@ pub extern "C" fn msToNs(in_ptr: *const f64, out_ptr: *mut i64, count: u32) {
         let n = count as usize;
         let input = unsafe { core::slice::from_raw_parts(in_ptr, n) };
         let output = unsafe { core::slice::from_raw_parts_mut(out_ptr, n) };
-        let mul_vec = i64x2_splat(1_000_000);
 
+        // Multiply f64 by 1_000_000.0 first, then truncate to i64.
+        // This preserves fractional millisecond precision.
         let pairs = n / 2;
+        let scale = f64x2_splat(1_000_000.0);
         for i in 0..pairs {
             let idx = i * 2;
-            let a = input[idx] as i64;
-            let b = input[idx + 1] as i64;
-            let v = i64x2_replace_lane::<1>(i64x2_splat(a), b);
-            let result = i64x2_mul(v, mul_vec);
+            let v = unsafe { v128_load(input.as_ptr().add(idx) as *const v128) };
+            let scaled = f64x2_mul(v, scale);
+            let a = f64x2_extract_lane::<0>(scaled) as i64;
+            let b = f64x2_extract_lane::<1>(scaled) as i64;
+            let result = i64x2_replace_lane::<1>(i64x2_splat(a), b);
             unsafe {
                 v128_store(output.as_mut_ptr().add(idx) as *mut v128, result);
             }
         }
         if n % 2 != 0 {
-            output[n - 1] = (input[n - 1] as i64) * 1_000_000;
+            output[n - 1] = (input[n - 1] * 1_000_000.0) as i64;
         }
     }
 
@@ -2064,7 +2067,7 @@ pub extern "C" fn msToNs(in_ptr: *const f64, out_ptr: *mut i64, count: u32) {
         let input = unsafe { core::slice::from_raw_parts(in_ptr, n) };
         let output = unsafe { core::slice::from_raw_parts_mut(out_ptr, n) };
         for i in 0..n {
-            output[i] = (input[i] as i64) * 1_000_000;
+            output[i] = (input[i] * 1_000_000.0) as i64;
         }
     }
 }

@@ -237,10 +237,10 @@ export class ColumnStore implements StorageBackend {
       if (this.quantize) {
         if (this.quantizeBatch && this.precision != null) {
           // WASM SIMD batch quantize — ~17× faster than per-element Math.round.
-          const slice = values.subarray(offset, offset + batch);
-          const tmp = new Float64Array(slice);
-          this.quantizeBatch(tmp, this.precision);
-          s.hot.values.set(tmp, s.hot.count);
+          // Copy into hot buffer first, then quantize in-place to avoid extra allocation.
+          s.hot.values.set(values.subarray(offset, offset + batch), s.hot.count);
+          const target = s.hot.values.subarray(s.hot.count, s.hot.count + batch);
+          this.quantizeBatch(target, this.precision);
         } else {
           const q = this.quantize;
           for (let i = 0; i < batch; i++) {
