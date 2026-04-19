@@ -17,6 +17,16 @@ export type SeriesId = number;
 export interface TimeRange {
   timestamps: BigInt64Array;
   values: Float64Array;
+  /** Pre-computed chunk statistics (when available, query engine may skip sample iteration). */
+  stats?: ChunkStats;
+  /** Minimum timestamp in the original chunk (for bucket-fit checks). */
+  chunkMinT?: bigint;
+  /** Maximum timestamp in the original chunk (for bucket-fit checks). */
+  chunkMaxT?: bigint;
+  /** Lazy decode callback for stats-only parts.
+   *  When a stats-only part can't be folded (spans multiple buckets),
+   *  the query engine calls this to retrieve the full sample data. */
+  decode?: () => TimeRange;
 }
 
 // ── Codec (encode/decode strategy) ───────────────────────────────────
@@ -36,7 +46,9 @@ export interface ValuesCodec {
   /** Optional: encode values and compute block stats in one pass (WASM fast-path). */
   encodeValuesWithStats?(values: Float64Array): { compressed: Uint8Array; stats: ChunkStats };
   /** Optional: batch-encode N arrays in a single WASM call, returning compressed blobs + stats. */
-  encodeBatchValuesWithStats?(arrays: Float64Array[]): Array<{ compressed: Uint8Array; stats: ChunkStats }>;
+  encodeBatchValuesWithStats?(
+    arrays: Float64Array[]
+  ): Array<{ compressed: Uint8Array; stats: ChunkStats }>;
   /** Optional: batch-decode N compressed blobs in a single WASM call. */
   decodeBatchValues?(blobs: Uint8Array[], chunkSize: number): Float64Array[];
 }
@@ -64,7 +76,7 @@ export interface RangeDecodeCodec {
     compressedTimestamps: Uint8Array,
     compressedValues: Uint8Array,
     startT: bigint,
-    endT: bigint,
+    endT: bigint
   ): RangeDecodeResult;
 }
 
@@ -78,14 +90,6 @@ export interface ChunkStats {
   lastV: number;
   sumOfSquares: number;
   resetCount: number;
-}
-
-/** Codec that also computes block stats during encoding. */
-export interface StatsCodec extends Codec {
-  encodeWithStats(timestamps: BigInt64Array, values: Float64Array): {
-    compressed: Uint8Array;
-    stats: ChunkStats;
-  };
 }
 
 // ── Storage backend ──────────────────────────────────────────────────
@@ -112,6 +116,9 @@ export interface StorageBackend {
   /** Read decoded samples in [start, end] for a series. */
   read(id: SeriesId, start: bigint, end: bigint): TimeRange;
 
+  /** Read decoded samples as individual chunk parts (avoids concatenation). */
+  readParts?(id: SeriesId, start: bigint, end: bigint): TimeRange[];
+
   /** Retrieve the label set for a series. */
   labels(id: SeriesId): Labels | undefined;
 
@@ -126,7 +133,7 @@ export interface StorageBackend {
 
 // ── Query engine ─────────────────────────────────────────────────────
 
-export type AggFn = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'last' | 'rate';
+export type AggFn = "sum" | "avg" | "min" | "max" | "count" | "last" | "rate";
 
 export interface Matcher {
   label: string;

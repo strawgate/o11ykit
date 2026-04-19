@@ -17,19 +17,25 @@
  * where does our specialized codec sit?"
  */
 
-import { Suite, printReport, fmtBytes, fmt } from './harness.js';
-import type { BenchReport } from './harness.js';
-import { allGenerators } from './vectors.js';
-import type { ChunkData } from './vectors.js';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { gzipSync, gunzipSync, brotliCompressSync, brotliDecompressSync, constants as zlibConstants } from 'node:zlib';
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  brotliCompressSync,
+  brotliDecompressSync,
+  gunzipSync,
+  gzipSync,
+  constants as zlibConstants,
+} from "node:zlib";
+import type { BenchReport } from "./harness.js";
+import { printReport, Suite } from "./harness.js";
+import type { ChunkData } from "./vectors.js";
+import { allGenerators } from "./vectors.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── Load our codec ───────────────────────────────────────────────────
 
-const codecPath = join(__dirname, '..', '..', 'dist', 'codec.js');
+const codecPath = join(__dirname, "..", "..", "dist", "codec.js");
 const { encodeChunk, decodeChunk } = await import(codecPath);
 
 // ── Competitor implementations ───────────────────────────────────────
@@ -46,7 +52,10 @@ function rawEncode(data: ChunkData): Uint8Array {
   return new Uint8Array(buf);
 }
 
-function rawDecode(buf: Uint8Array, n: number): { timestamps: BigInt64Array; values: Float64Array } {
+function rawDecode(
+  buf: Uint8Array,
+  n: number
+): { timestamps: BigInt64Array; values: Float64Array } {
   const f64 = new Float64Array(buf.buffer, buf.byteOffset, n * 2);
   const timestamps = new BigInt64Array(n);
   const values = new Float64Array(n);
@@ -60,7 +69,7 @@ function rawDecode(buf: Uint8Array, n: number): { timestamps: BigInt64Array; val
 /** 2. JSON: what people actually do. */
 function jsonEncode(data: ChunkData): Uint8Array {
   const obj = {
-    timestamps: Array.from(data.timestamps, t => Number(t)),
+    timestamps: Array.from(data.timestamps, (t) => Number(t)),
     values: Array.from(data.values),
   };
   return new TextEncoder().encode(JSON.stringify(obj));
@@ -80,7 +89,10 @@ function gzipRawEncode(data: ChunkData): Uint8Array {
   return gzipSync(raw, { level: 6 });
 }
 
-function gzipRawDecode(buf: Uint8Array, n: number): { timestamps: BigInt64Array; values: Float64Array } {
+function gzipRawDecode(
+  buf: Uint8Array,
+  n: number
+): { timestamps: BigInt64Array; values: Float64Array } {
   const raw = gunzipSync(buf);
   return rawDecode(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength), n);
 }
@@ -93,7 +105,10 @@ function brotliRawEncode(data: ChunkData): Uint8Array {
   });
 }
 
-function brotliRawDecode(buf: Uint8Array, n: number): { timestamps: BigInt64Array; values: Float64Array } {
+function brotliRawDecode(
+  buf: Uint8Array,
+  n: number
+): { timestamps: BigInt64Array; values: Float64Array } {
   const raw = brotliDecompressSync(buf);
   return rawDecode(new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength), n);
 }
@@ -142,32 +157,52 @@ interface Competitor {
 }
 
 const competitors: Competitor[] = [
-  { name: 'raw', encode: rawEncode, decode: rawDecode, needsCount: true },
-  { name: 'json', encode: jsonEncode, decode: (buf) => jsonDecode(buf), needsCount: false },
-  { name: 'gzip-raw', encode: gzipRawEncode, decode: (buf, n) => gzipRawDecode(buf, n), needsCount: true },
-  { name: 'brotli-raw', encode: brotliRawEncode, decode: (buf, n) => brotliRawDecode(buf, n), needsCount: true },
-  { name: 'xor-delta', encode: xorEncode, decode: (buf) => xorDecode(buf), needsCount: false },
-  { name: 'xor+gzip', encode: xorGzipEncode, decode: (buf) => xorGzipDecode(buf), needsCount: false },
-  { name: 'xor+brotli', encode: xorBrotliEncode, decode: (buf) => xorBrotliDecode(buf), needsCount: false },
+  { name: "raw", encode: rawEncode, decode: rawDecode, needsCount: true },
+  { name: "json", encode: jsonEncode, decode: (buf) => jsonDecode(buf), needsCount: false },
+  {
+    name: "gzip-raw",
+    encode: gzipRawEncode,
+    decode: (buf, n) => gzipRawDecode(buf, n),
+    needsCount: true,
+  },
+  {
+    name: "brotli-raw",
+    encode: brotliRawEncode,
+    decode: (buf, n) => brotliRawDecode(buf, n),
+    needsCount: true,
+  },
+  { name: "xor-delta", encode: xorEncode, decode: (buf) => xorDecode(buf), needsCount: false },
+  {
+    name: "xor+gzip",
+    encode: xorGzipEncode,
+    decode: (buf) => xorGzipDecode(buf),
+    needsCount: false,
+  },
+  {
+    name: "xor+brotli",
+    encode: xorBrotliEncode,
+    decode: (buf) => xorBrotliDecode(buf),
+    needsCount: false,
+  },
 ];
 
 // ── Main ─────────────────────────────────────────────────────────────
 
 export default async function (): Promise<BenchReport> {
-  const suite = new Suite('competitive');
+  const suite = new Suite("competitive");
   const generators = allGenerators(1024);
 
-  console.log('  Competitors:', competitors.map(c => c.name).join(', '));
+  console.log("  Competitors:", competitors.map((c) => c.name).join(", "));
   console.log();
 
   // ── Compression comparison table (custom, not the suite's) ──
-  console.log('  ── Compression comparison ──\n');
+  console.log("  ── Compression comparison ──\n");
 
   // Header.
-  let hdr = '    Vector'.padEnd(24);
+  let hdr = "    Vector".padEnd(24);
   for (const c of competitors) hdr += c.name.padStart(12);
-  console.log(hdr + '  (bytes/point)');
-  console.log('    ' + '─'.repeat(hdr.length - 4 + 16));
+  console.log(`${hdr}  (bytes/point)`);
+  console.log(`    ${"─".repeat(hdr.length - 4 + 16)}`);
 
   for (const gen of generators) {
     let line = `    ${gen.name}`.padEnd(24);
@@ -177,8 +212,11 @@ export default async function (): Promise<BenchReport> {
       line += bpp.toFixed(2).padStart(12);
       // Also register in the suite for JSON output.
       suite.addCompression(
-        gen.name, c.name, gen.timestamps.length,
-        gen.timestamps.length * 16, encoded.length,
+        gen.name,
+        c.name,
+        gen.timestamps.length,
+        gen.timestamps.length * 16,
+        encoded.length
       );
     }
     console.log(line);
@@ -186,10 +224,10 @@ export default async function (): Promise<BenchReport> {
   console.log();
 
   // Ratio table.
-  hdr = '    Vector'.padEnd(24);
+  hdr = "    Vector".padEnd(24);
   for (const c of competitors) hdr += c.name.padStart(12);
-  console.log(hdr + '  (compression ratio)');
-  console.log('    ' + '─'.repeat(hdr.length - 4 + 20));
+  console.log(`${hdr}  (compression ratio)`);
+  console.log(`    ${"─".repeat(hdr.length - 4 + 20)}`);
 
   for (const gen of generators) {
     let line = `    ${gen.name}`.padEnd(24);
@@ -206,14 +244,19 @@ export default async function (): Promise<BenchReport> {
   // ── Encode throughput ──
   for (const c of competitors) {
     for (const gen of generators) {
-      suite.add(`encode_${gen.name}`, c.name, () => {
-        c.encode(gen);
-      }, {
-        unit: 'samples/sec',
-        itemsPerCall: gen.timestamps.length,
-        iterations: 200,
-        warmup: 50,
-      });
+      suite.add(
+        `encode_${gen.name}`,
+        c.name,
+        () => {
+          c.encode(gen);
+        },
+        {
+          unit: "samples/sec",
+          itemsPerCall: gen.timestamps.length,
+          iterations: 200,
+          warmup: 50,
+        }
+      );
     }
   }
 
@@ -222,14 +265,19 @@ export default async function (): Promise<BenchReport> {
     for (const gen of generators) {
       const encoded = c.encode(gen);
       const n = gen.timestamps.length;
-      suite.add(`decode_${gen.name}`, c.name, () => {
-        c.decode(encoded, n);
-      }, {
-        unit: 'samples/sec',
-        itemsPerCall: n,
-        iterations: 200,
-        warmup: 50,
-      });
+      suite.add(
+        `decode_${gen.name}`,
+        c.name,
+        () => {
+          c.decode(encoded, n);
+        },
+        {
+          unit: "samples/sec",
+          itemsPerCall: n,
+          iterations: 200,
+          warmup: 50,
+        }
+      );
     }
   }
 

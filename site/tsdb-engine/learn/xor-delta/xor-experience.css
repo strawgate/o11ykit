@@ -1,0 +1,529 @@
+/* ─── XOR-Delta Experience ────────────────────────────────────────── */
+
+/* ─── Sparkline Canvas ────────────────────────────────────────────── */
+#sparkline-canvas {
+  width: 100%;
+  height: 64px;
+  display: block;
+  margin-top: 12px;
+}
+
+/* ─── Table ───────────────────────────────────────────────────────── */
+.xor-table-wrap {
+  padding: 0;
+  overflow: hidden;
+}
+
+.xor-table-scroll {
+  overflow-x: auto;
+}
+
+.xor-table {
+  min-width: 820px;
+}
+
+.xor-table td {
+  font-family: var(--xp-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.xor-table td.xor-idx {
+  color: var(--xp-text-dim);
+  font-weight: 600;
+  width: 32px;
+}
+
+.xor-table td.xor-val {
+  color: var(--xp-text);
+}
+
+.xor-table td.xor-na {
+  color: var(--xp-text-dim);
+  font-style: italic;
+  font-family: var(--xp-font);
+}
+
+.xor-table td.xor-num {
+  text-align: center;
+  color: var(--xp-text-muted);
+}
+
+.xor-table td.xor-cost {
+  font-weight: 600;
+}
+
+/* Row encoding left-border accent */
+.xor-table tr.xor-enc-first td:first-child {
+  border-left: 3px solid var(--region-header);
+}
+.xor-table tr.xor-enc-identical td:first-child {
+  border-left: 3px solid var(--tier-0);
+}
+.xor-table tr.xor-enc-reuse td:first-child {
+  border-left: 3px solid var(--tier-1);
+}
+.xor-table tr.xor-enc-new td:first-child {
+  border-left: 3px solid var(--tier-3);
+}
+
+.xor-table tr.xor-row {
+  cursor: pointer;
+  transition: background 120ms;
+}
+
+.xor-table tr.xor-row:hover td {
+  background: var(--xp-accent-glow);
+}
+
+.xor-table tr.xor-selected td {
+  background: rgba(96, 165, 250, 0.12);
+}
+
+/* ─── Mini XOR bits in table cell ─────────────────────────────────── */
+.xor-mini-bits {
+  display: inline-flex;
+  gap: 0;
+  font-family: var(--xp-mono);
+  font-size: 8px;
+  line-height: 1;
+  letter-spacing: -0.5px;
+}
+
+.xor-mini-bit {
+  width: 7px;
+  text-align: center;
+  transition: opacity 120ms;
+}
+
+.xor-mini-bit.xor-zero {
+  opacity: 0.15;
+}
+
+.xor-mini-bit.xor-meaningful {
+  color: var(--xp-accent-light);
+  font-weight: 600;
+}
+
+/* ─── Encoding Badges ─────────────────────────────────────────────── */
+/* Encoding badge — base from .xp-badge in shared.css */
+.xor-enc-badge {
+  letter-spacing: 0.02em;
+}
+
+.xor-enc-badge.enc-first {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--region-header);
+}
+.xor-enc-badge.enc-identical {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--tier-0);
+}
+.xor-enc-badge.enc-reuse {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--tier-1);
+}
+.xor-enc-badge.enc-new {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--tier-3);
+}
+
+/* ─── Detail Panel (expanded row) ─────────────────────────────────── */
+.xor-table tr.xor-detail-row > td {
+  padding: 0;
+  border-bottom: 1px solid var(--xp-border-strong);
+  background: var(--xp-surface);
+}
+
+.xor-table tr.xor-detail-row:hover > td {
+  background: var(--xp-surface);
+}
+
+.xor-detail-panel {
+  padding: 20px 16px;
+}
+
+.xor-detail-panel h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--xp-text);
+  margin: 0 0 16px;
+}
+
+/* ─── 64-Bit Grid ─────────────────────────────────────────────────── */
+.xor-bitgrid-wrap {
+  margin-bottom: 14px;
+}
+
+.xor-bitgrid-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--xp-text-dim);
+  margin-bottom: 4px;
+}
+
+.xor-bitgrid {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+}
+
+.xor-bitgrid .xp-bit {
+  width: 18px;
+  height: 22px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.xor-bitgrid .xp-bit.xor-bit-faded {
+  opacity: 0.15;
+}
+
+.xor-bitgrid .xp-bit.xor-bit-meaningful {
+  background: rgba(96, 165, 250, 0.22);
+  color: var(--xp-accent-light);
+  font-weight: 600;
+  outline: 1px solid rgba(96, 165, 250, 0.35);
+  outline-offset: -1px;
+}
+
+.xor-bitgrid .xp-bit.xor-bit-window {
+  background: rgba(96, 165, 250, 0.1);
+  color: var(--xp-text-muted);
+}
+
+/* ─── Bit Grid Markers ────────────────────────────────────────────── */
+.xor-bitgrid-markers {
+  position: relative;
+  height: 18px;
+  margin-top: 2px;
+  font-size: 9px;
+  font-family: var(--xp-mono);
+}
+
+.xor-marker {
+  position: absolute;
+  text-align: center;
+  color: var(--xp-text-dim);
+  padding-top: 2px;
+  border-top: 1px solid rgba(100, 116, 139, 0.3);
+}
+
+/* ─── Encoded Bits Section ────────────────────────────────────────── */
+.xor-encoded-section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--xp-border);
+}
+
+.xor-encoded-bits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 8px 0;
+}
+
+.xor-enc-bit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 22px;
+  font-family: var(--xp-mono);
+  font-size: 11px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.xor-enc-bit.enc-ctrl {
+  background: rgba(248, 113, 113, 0.2);
+  color: var(--xp-error);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+}
+
+.xor-enc-bit.enc-meta {
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.xor-enc-bit.enc-meta2 {
+  background: rgba(6, 182, 212, 0.2);
+  color: #22d3ee;
+  border: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+.xor-enc-bit.enc-data {
+  background: rgba(96, 165, 250, 0.2);
+  color: var(--xp-accent-light);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+}
+
+.xor-enc-bit.enc-raw {
+  background: var(--xp-surface-raised);
+  color: var(--xp-text-muted);
+}
+
+.xor-enc-annotation {
+  font-size: 12px;
+  color: var(--xp-text-muted);
+  line-height: 1.6;
+  margin-top: 4px;
+}
+
+/* Legend row under encoded bits */
+.xor-enc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--xp-text-dim);
+}
+
+.xor-enc-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.xor-enc-legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ─── Decision Tree ───────────────────────────────────────────────── */
+.dt-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 8px 0;
+}
+
+.dt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dt-node {
+  padding: 10px 16px;
+  background: var(--xp-surface-raised);
+  border: 1px solid var(--xp-border-strong);
+  border-radius: var(--xp-radius-sm);
+  font-size: 13px;
+  color: var(--xp-text);
+  transition: all 200ms;
+  min-width: 120px;
+}
+
+.dt-node code {
+  font-family: var(--xp-mono);
+  background: rgba(96, 165, 250, 0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--xp-accent-light);
+  font-size: 12px;
+}
+
+.dt-node .dt-label {
+  display: block;
+  font-weight: 600;
+}
+
+.dt-node .dt-cost {
+  display: block;
+  font-size: 11px;
+  color: var(--xp-text-muted);
+  font-family: var(--xp-mono);
+  margin-top: 2px;
+}
+
+.dt-node.dt-active {
+  border-color: var(--xp-accent);
+  background: var(--xp-accent-glow);
+  box-shadow: 0 0 20px rgba(96, 165, 250, 0.15);
+}
+
+.dt-node.dt-active-green {
+  border-color: var(--xp-success);
+  background: var(--xp-success-glow);
+  box-shadow: 0 0 20px rgba(52, 211, 153, 0.15);
+}
+
+.dt-node.dt-active-yellow {
+  border-color: var(--xp-warn);
+  background: var(--xp-warn-glow);
+  box-shadow: 0 0 20px rgba(251, 191, 36, 0.15);
+}
+
+.dt-node.dt-dim {
+  opacity: 0.25;
+}
+
+.dt-arrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--xp-text-dim);
+  font-size: 13px;
+  font-family: var(--xp-mono);
+  transition: opacity 200ms;
+}
+
+.dt-arrow .dt-lbl {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dt-arrow .dt-lbl-yes {
+  color: var(--xp-success);
+}
+.dt-arrow .dt-lbl-no {
+  color: var(--xp-error);
+}
+
+.dt-arrow .dt-arrow-line {
+  font-size: 18px;
+  color: var(--xp-text-dim);
+}
+
+.dt-arrow.dt-active .dt-arrow-line {
+  color: var(--xp-accent);
+}
+
+.dt-arrow.dt-dim {
+  opacity: 0.25;
+}
+
+.dt-vert {
+  padding: 4px 0 4px 40px;
+  font-size: 12px;
+  color: var(--xp-text-dim);
+  font-family: var(--xp-mono);
+  transition: opacity 200ms;
+}
+
+.dt-vert.dt-active {
+  color: var(--xp-accent);
+}
+
+.dt-vert.dt-dim {
+  opacity: 0.25;
+}
+
+/* ─── Cost Profile Canvas ─────────────────────────────────────────── */
+#cost-canvas {
+  width: 100%;
+  display: block;
+}
+
+/* ─── Encoding Distribution Bar ───────────────────────────────────── */
+.xor-dist-bar {
+  display: flex;
+  height: 36px;
+  border-radius: var(--xp-radius-sm);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.xor-dist-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--xp-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: #0a1624;
+  transition: flex-basis 400ms ease;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  padding: 0 8px;
+}
+
+.xor-dist-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--xp-text-muted);
+  margin-top: 8px;
+}
+
+.xor-dist-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.xor-dist-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ─── Story Box ───────────────────────────────────────────────────── */
+/* base from .xp-story in shared.css */
+
+.xor-story strong {
+  color: var(--xp-text);
+  font-weight: 600;
+}
+
+.xor-story .success {
+  color: var(--xp-success);
+}
+
+.xor-story .warn {
+  color: var(--xp-warn);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .xor-table {
+    min-width: 700px;
+  }
+
+  .xor-table td {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+
+  .dt-row {
+    gap: 8px;
+  }
+
+  .dt-node {
+    padding: 8px 12px;
+    font-size: 12px;
+    min-width: 100px;
+  }
+
+  .xor-bitgrid .xp-bit {
+    width: 14px;
+    height: 18px;
+    font-size: 9px;
+  }
+
+  .xor-enc-bit {
+    width: 14px;
+    height: 18px;
+    font-size: 9px;
+  }
+}
+
+/* ─── IEEE 754 note ───────────────────────────────────────────────── */
+
+.xor-ieee-note {
+  font-size: 0.75rem;
+  color: var(--xp-text-muted, #94a3b8);
+  margin: 4px 0 8px;
+  letter-spacing: 0.02em;
+}
+.xor-ieee-note strong { color: var(--xp-accent); }

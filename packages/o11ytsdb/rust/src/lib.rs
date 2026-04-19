@@ -1,4 +1,31 @@
-// o11ytsdb — Rust WASM XOR-delta codec
+// o11ytsdb — Rust WASM compression codecs
+//
+// Three value codecs, selected per-chunk at encode time:
+//
+//   1. XOR-Delta (Gorilla)
+//      Baseline codec for all float64 series. Leading/trailing zero
+//      tracking on XOR'd consecutive values. Timestamps use
+//      delta-of-delta with 4-tier prefix coding.
+//      Reference: Pelkonen et al., VLDB 2015.
+//
+//   2. ALP (Adaptive Lossless floating-Point)
+//      For series where most values round-trip through a decimal
+//      exponent: val × 10^e → integer → Frame-of-Reference bit-packing.
+//      Typically 1–3 B/pt on gauges and low-entropy counters.
+//      Reference: Afroozeh et al., SIGMOD 2024.
+//
+//   3. Delta-ALP
+//      Extension of ALP for monotonic integer-valued counters.
+//      Stores first value + ALP-compressed deltas. Reduces FoR
+//      bit-width dramatically (e.g. bw=17 → bw=8 on typical counters),
+//      yielding 2–3× compression over plain ALP on counter patterns.
+//      Tag byte 0xDA distinguishes from regular ALP (safe: ALP byte 0
+//      is count>>8, max 2048 → max 8; 0xDA = 218 never collides).
+//
+// Codec selection is automatic and transparent to the decoder: ALP
+// functions try delta-ALP first on counter-shaped data (reset_count==0,
+// increasing, integer-valued), fall back to plain ALP, and pick
+// whichever is smaller. The decoder dispatches on the first byte.
 //
 // Same ABI as zig/src/root.zig. The JS host calls these through WASM
 // linear memory: pass pointers to timestamp/value arrays, get back
@@ -805,7 +832,7 @@ fn encode_values_inner(vals: &[f64], out: &mut [u8]) -> usize {
 // Three-step pipeline inspired by CWI's ALP (SIGMOD 2024):
 //   1. Find best decimal exponent e such that value × 10^e round-trips
 //   2. Frame-of-Reference: subtract min integer, compute bit-width
-//   3. Bit-pack offsets; store exceptions as raw f64
+//   3. Bit-pack offsets; XOR-delta encode exceptions
 //
 // Header (14 bytes):
 //   [0-1]   count (u16 BE)
@@ -815,12 +842,38 @@ fn encode_values_inner(vals: &[f64], out: &mut [u8]) -> usize {
 //   [12-13] exception_count (u16 BE)
 // Payload:
 //   bit-packed offsets (⌈count × bit_width / 8⌉ bytes)
-//   exception positions (exc_count × u16 BE)
-//   exception raw values (exc_count × f64 BE)
+//   exception positions (exc_count × u16 BE) — omitted when exc_count == count
+//   exception min_u64 (8 bytes BE) — sortable u64 representation of min f64
+//   exception bit_width (1 byte, 0-64)
+//   FoR bit-packed exception u64 offsets (⌈exc_count × exc_bw / 8⌉ bytes)
 
 const ALP_HEADER_SIZE: usize = 14;
 const ALP_MAX_CHUNK: usize = 2048;
 const ALP_MAX_EXP: usize = 18;
+
+/// Convert f64 to a sortable u64 representation.
+/// IEEE 754 is monotonic for positive floats; this extends to negatives
+/// by flipping bits so that u64 ordering matches f64 ordering.
+#[inline(always)]
+fn f64_to_sortable_u64(f: f64) -> u64 {
+    let bits = f.to_bits();
+    if bits & (1u64 << 63) != 0 {
+        !bits // negative: flip all bits
+    } else {
+        bits ^ (1u64 << 63) // positive: flip sign bit
+    }
+}
+
+/// Convert sortable u64 back to f64. Inverse of f64_to_sortable_u64.
+#[inline(always)]
+fn sortable_u64_to_f64(u: u64) -> f64 {
+    let bits = if u & (1u64 << 63) != 0 {
+        u ^ (1u64 << 63) // was positive: flip sign bit back
+    } else {
+        !u // was negative: flip all bits back
+    };
+    f64::from_bits(bits)
+}
 
 static POW10: [f64; 19] = [
     1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9,
@@ -856,24 +909,73 @@ fn alp_try(val: f64, e: usize) -> Option<i64> {
     }
 }
 
-/// Sample values to find the best decimal exponent.
+/// Sample values to find the best decimal exponent, using a cost model
+/// that estimates total encoded size rather than just counting matches.
+///
+/// For each candidate exponent e, we estimate:
+///   match_cost  = ceil(n * bw / 8)  (bit-packed FoR offsets)
+///   pos_cost    = exc_count * 2     (u16 BE positions, 0 if all exceptions)
+///   exc_val_cost = 9 + ceil(exc_count * est_exc_bw / 8)  (FoR-u64 overhead + packed)
+///   total       = 14 + match_cost + pos_cost + exc_val_cost
+///
+/// We estimate exc_bw ≈ 22 bits (typical for metrics in a narrow range
+/// like utilization ratios). This is conservative; actual may be lower.
 fn alp_find_exponent(vals: &[f64]) -> u8 {
     let n = vals.len();
     let sample = if n <= 32 { n } else { 32 };
     let step = if n <= 32 { 1 } else { n / 32 };
 
     let mut best_e: u8 = 0;
-    let mut best_count: usize = 0;
+    let mut best_cost: usize = usize::MAX;
 
     for e in 0..=ALP_MAX_EXP {
-        let mut count: usize = 0;
+        let mut match_count: usize = 0;
+        let mut min_int: i64 = i64::MAX;
+        let mut max_int: i64 = i64::MIN;
+        // Also track sortable-u64 range of exceptions for tighter estimate.
+        let mut min_su64: u64 = u64::MAX;
+        let mut max_su64: u64 = 0;
+
         for s in 0..sample {
-            if alp_try(vals[s * step], e).is_some() {
-                count += 1;
+            let v = vals[s * step];
+            if let Some(iv) = alp_try(v, e) {
+                match_count += 1;
+                if iv < min_int { min_int = iv; }
+                if iv > max_int { max_int = iv; }
+            } else {
+                let su = f64_to_sortable_u64(v);
+                if su < min_su64 { min_su64 = su; }
+                if su > max_su64 { max_su64 = su; }
             }
         }
-        if count > best_count {
-            best_count = count;
+
+        let exc_count = sample - match_count;
+
+        // Estimate integer bit-width from sampled range.
+        let bw = if match_count >= 2 {
+            bits_needed((max_int - min_int) as u64) as usize
+        } else {
+            0
+        };
+
+        // Estimate exception bit-width from sampled u64 range.
+        let exc_bw = if exc_count >= 2 {
+            bits_needed(max_su64 - min_su64) as usize
+        } else if exc_count == 1 {
+            0 // single exception: bw=0
+        } else {
+            0
+        };
+
+        // Scale to full chunk.
+        let exc_full = exc_count * n / sample;
+        let match_bytes = (n * bw + 7) / 8;
+        let pos_bytes = if exc_full == n { 0 } else { exc_full * 2 };
+        let exc_val_bytes = if exc_full > 0 { 9 + (exc_full * exc_bw + 7) / 8 } else { 0 };
+        let cost = ALP_HEADER_SIZE + match_bytes + pos_bytes + exc_val_bytes;
+
+        if cost < best_cost {
+            best_cost = cost;
             best_e = e as u8;
         }
     }
@@ -959,19 +1061,218 @@ fn alp_encode_inner(vals: &[f64], out: &mut [u8]) -> usize {
         pos += w.bytes_written();
     }
 
-    // Step 6: Write exceptions (position u16 BE + raw f64 BE).
-    for i in 0..n {
-        if exc[i] != 0 {
-            out[pos] = (i >> 8) as u8;
-            out[pos + 1] = i as u8;
-            pos += 2;
-            let raw = f64::to_bits(vals[i]).to_be_bytes();
-            out[pos..pos + 8].copy_from_slice(&raw);
-            pos += 8;
+    // Step 6: Write exception positions (exc_count × u16 BE).
+    // When exc_count == n, every index is an exception — skip positions.
+    if exc_count > 0 && exc_count < n {
+        for i in 0..n {
+            if exc[i] != 0 {
+                out[pos] = (i >> 8) as u8;
+                out[pos + 1] = i as u8;
+                pos += 2;
+            }
+        }
+    }
+
+    // Step 7: FoR bit-pack exception values as sortable u64s.
+    // IEEE 754 is monotonic for positive floats. Reinterpreting f64 as
+    // sortable u64 and FoR-packing exploits shared high bits among
+    // nearby values (e.g. cpu.utilization in [0.01,0.10] → ~22-bit range).
+    if exc_count > 0 {
+        // Find min/max sortable u64 among exceptions.
+        let mut min_su64: u64 = u64::MAX;
+        let mut max_su64: u64 = 0;
+        for i in 0..n {
+            if exc[i] != 0 {
+                let su = f64_to_sortable_u64(vals[i]);
+                if su < min_su64 { min_su64 = su; }
+                if su > max_su64 { max_su64 = su; }
+            }
+        }
+
+        let exc_range = max_su64 - min_su64;
+        let exc_bw = bits_needed(exc_range);
+
+        // Write exception min_u64 (8 bytes) + bit_width (1 byte).
+        let min_su64_bytes = min_su64.to_be_bytes();
+        out[pos..pos + 8].copy_from_slice(&min_su64_bytes);
+        pos += 8;
+        out[pos] = exc_bw;
+        pos += 1;
+
+        // Bit-pack exception value offsets from min_su64.
+        if exc_bw > 0 {
+            let mut w = BitWriter::new(&mut out[pos..]);
+            for i in 0..n {
+                if exc[i] != 0 {
+                    w.write_bits(f64_to_sortable_u64(vals[i]) - min_su64, exc_bw);
+                }
+            }
+            pos += w.bytes_written();
         }
     }
 
     pos
+}
+
+// ── Delta-ALP codec ──────────────────────────────────────────────────
+//
+// For monotonically non-decreasing integer-valued series (counters),
+// delta-encoding before ALP dramatically reduces Frame-of-Reference
+// bit-width: e.g. monotonicCounter(640) drops from bw=17 to bw=8.
+//
+// Detection (checked by caller via stats):
+//   reset_count == 0 && first_v < last_v && all values are integer f64
+//
+// Format:
+//   [0xDA]                   — tag byte (distinguishes from regular ALP)
+//   [base_f64 (8B BE)]       — first value stored as raw f64
+//   [ALP block (variable)]   — ALP-encoded deltas (n-1 values)
+//
+// Tag 0xDA is safe because regular ALP header byte 0 = (count >> 8),
+// and count ≤ 2048 ⟹ byte 0 ≤ 8. 0xDA (218) never occurs.
+
+const DELTA_ALP_TAG: u8 = 0xDA;
+
+/// Scratch space for computing deltas before ALP encoding.
+/// Reuses ALP_INTS capacity — but we need f64 deltas.
+/// We store them in a separate static to avoid aliasing ALP_INTS
+/// which alp_encode_inner needs.
+static mut DELTA_VALS: [f64; ALP_MAX_CHUNK] = [0.0; ALP_MAX_CHUNK];
+
+/// Detect if a value array is a monotonic integer counter suitable for
+/// delta-ALP encoding. Uses pre-computed stats to avoid extra passes.
+///
+/// Returns true if:
+///   - reset_count == 0 (no value decreases)
+///   - first_v < last_v (actually increasing, not constant)
+///   - all values are integer-valued f64 (exact reconstruction guarantee)
+#[inline]
+fn is_delta_alp_candidate(vals: &[f64], reset_count: u32) -> bool {
+    let n = vals.len();
+    if n < 2 || reset_count != 0 {
+        return false;
+    }
+    if vals[0] >= vals[n - 1] {
+        return false; // constant or decreasing
+    }
+    // Check all values are integer-valued (exact for |val| < 2^53).
+    for i in 0..n {
+        let v = vals[i];
+        if v != (v as i64) as f64 || v.is_nan() || v.is_infinite() {
+            return false;
+        }
+    }
+    true
+}
+
+/// Encode values using delta-before-ALP.
+/// Stores base value + ALP-compressed deltas.
+/// Returns bytes written to out, or 0 on failure.
+fn delta_alp_encode_inner(vals: &[f64], out: &mut [u8]) -> usize {
+    let n = vals.len();
+    if n < 2 || n > ALP_MAX_CHUNK {
+        return 0;
+    }
+
+    let mut pos: usize = 0;
+
+    // Tag byte.
+    out[pos] = DELTA_ALP_TAG;
+    pos += 1;
+
+    // Base value (first element) as raw f64 bits.
+    let base_bytes = f64::to_bits(vals[0]).to_be_bytes();
+    out[pos..pos + 8].copy_from_slice(&base_bytes);
+    pos += 8;
+
+    // Compute deltas into scratch buffer.
+    let deltas = unsafe { &mut DELTA_VALS[..n - 1] };
+    for i in 0..n - 1 {
+        deltas[i] = vals[i + 1] - vals[i];
+    }
+
+    // ALP-encode the n-1 deltas.
+    let bytes_written = alp_encode_inner(deltas, &mut out[pos..]);
+    if bytes_written == 0 {
+        return 0; // ALP failed on deltas — shouldn't happen for integer deltas
+    }
+    pos += bytes_written;
+
+    pos
+}
+
+/// Decode delta-ALP values. Input must start with DELTA_ALP_TAG (0xDA).
+/// Returns number of samples decoded (n = 1 + delta_count).
+fn delta_alp_decode_inner(input: &[u8], val_out: &mut [f64]) -> usize {
+    // Minimum: 1 (tag) + 8 (base) + 14 (ALP header) = 23 bytes
+    if input.len() < 23 || input[0] != DELTA_ALP_TAG {
+        return 0;
+    }
+
+    // Read base value.
+    let mut base_bytes = [0u8; 8];
+    base_bytes.copy_from_slice(&input[1..9]);
+    let base = f64::from_bits(u64::from_be_bytes(base_bytes));
+    val_out[0] = base;
+
+    // Decode deltas from the ALP block.
+    let deltas = unsafe { &mut DELTA_VALS[..ALP_MAX_CHUNK] };
+    let delta_count = decode_values_alp_inner(&input[9..], deltas);
+    if delta_count == 0 {
+        return 1; // only base value
+    }
+
+    // Reconstruct via prefix sum. For integer-valued data this is exact.
+    let mut acc = base;
+    for i in 0..delta_count {
+        acc += deltas[i];
+        val_out[i + 1] = acc;
+    }
+
+    delta_count + 1
+}
+
+/// Decode only values[lo..hi] from a delta-ALP blob.
+/// Must compute prefix sum up to `lo`, then emit values up to `hi`.
+fn delta_alp_decode_range(input: &[u8], lo: usize, hi: usize, out: &mut [f64]) {
+    if input.len() < 23 || input[0] != DELTA_ALP_TAG { return; }
+
+    let mut base_bytes = [0u8; 8];
+    base_bytes.copy_from_slice(&input[1..9]);
+    let base = f64::from_bits(u64::from_be_bytes(base_bytes));
+
+    // Full-decode deltas (can't random-access prefix sums).
+    let deltas = unsafe { &mut DELTA_VALS[..ALP_MAX_CHUNK] };
+    let delta_count = decode_values_alp_inner(&input[9..], deltas);
+    let total_n = delta_count + 1;
+    if lo >= total_n { return; }
+
+    // Reconstruct all values up to `hi` via prefix sum.
+    let mut acc = base;
+    let effective_hi = if hi < total_n { hi } else { total_n };
+
+    // Skip values before `lo` (still must compute prefix sum).
+    for i in 0..lo {
+        if i < delta_count {
+            acc += deltas[i];
+        }
+    }
+
+    // Emit values in [lo..hi).
+    if lo == 0 {
+        out[0] = base;
+        for i in 1..(effective_hi - lo) {
+            acc += deltas[lo + i - 1];
+            out[i] = acc;
+        }
+    } else {
+        // acc is already vals[lo]
+        out[0] = acc;
+        for i in 1..(effective_hi - lo) {
+            acc += deltas[lo + i - 1];
+            out[i] = acc;
+        }
+    }
 }
 
 /// Encode values using ALP. Returns bytes written.
@@ -1047,8 +1348,25 @@ pub extern "C" fn encodeValuesALPWithStats(
     stats[6] = sum_sq;
     stats[7] = reset_count as f64;
 
-    // Encode.
+    // Encode — use delta-ALP for monotonic integer counters.
     let out = unsafe { core::slice::from_raw_parts_mut(out_ptr, out_cap as usize) };
+    if is_delta_alp_candidate(vals, reset_count) {
+        let delta_size = delta_alp_encode_inner(vals, out);
+        if delta_size > 0 {
+            // Also try plain ALP and pick the smaller one.
+            // Use a temp region at the end of `out` for the plain attempt.
+            let plain_start = delta_size;
+            if plain_start + n * 20 <= out.len() {
+                let plain_size = alp_encode_inner(vals, &mut out[plain_start..]);
+                if plain_size > 0 && plain_size < delta_size {
+                    // Plain ALP wins — copy it to the start.
+                    out.copy_within(plain_start..plain_start + plain_size, 0);
+                    return plain_size as u32;
+                }
+            }
+            return delta_size as u32;
+        }
+    }
     alp_encode_inner(vals, out) as u32
 }
 
@@ -1106,7 +1424,32 @@ pub extern "C" fn encodeBatchValuesALPWithStats(
 
         offsets[a] = total_out as u32;
         let remaining = &mut out[total_out..];
-        let bytes_written = alp_encode_inner(vals, remaining);
+
+        // Try delta-ALP for monotonic integer counters.
+        let bytes_written = if is_delta_alp_candidate(vals, reset_count) {
+            let delta_size = delta_alp_encode_inner(vals, remaining);
+            if delta_size > 0 {
+                // Also try plain ALP and pick smaller.
+                let plain_start = delta_size;
+                let cap_left = remaining.len() - plain_start;
+                if cap_left > 0 {
+                    let plain_size = alp_encode_inner(vals, &mut remaining[plain_start..]);
+                    if plain_size > 0 && plain_size < delta_size {
+                        remaining.copy_within(plain_start..plain_start + plain_size, 0);
+                        plain_size
+                    } else {
+                        delta_size
+                    }
+                } else {
+                    delta_size
+                }
+            } else {
+                alp_encode_inner(vals, remaining)
+            }
+        } else {
+            alp_encode_inner(vals, remaining)
+        };
+
         sizes[a] = bytes_written as u32;
         total_out += bytes_written;
     }
@@ -1224,7 +1567,15 @@ fn decode_values_inner(input: &[u8], val_out: &mut [f64]) -> usize {
 }
 
 /// Internal: decode ALP values from a compressed blob.
+/// Handles both regular ALP and delta-ALP (tag 0xDA) transparently.
 fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usize {
+    if input.is_empty() { return 0; }
+
+    // Dispatch delta-ALP if tagged.
+    if input[0] == DELTA_ALP_TAG {
+        return delta_alp_decode_inner(input, val_out);
+    }
+
     if input.len() < ALP_HEADER_SIZE { return 0; }
 
     let mut pos: usize = 0;
@@ -1259,13 +1610,53 @@ fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usize {
         }
     }
 
-    for _ in 0..exc_count {
-        let idx = ((input[pos] as usize) << 8) | (input[pos + 1] as usize);
-        pos += 2;
-        let mut raw_bytes = [0u8; 8];
-        raw_bytes.copy_from_slice(&input[pos..pos + 8]);
-        val_out[idx] = f64::from_bits(u64::from_be_bytes(raw_bytes));
+    // Read exception positions and FoR-u64 decode exception values.
+    if exc_count > 0 {
+        // Read positions (omitted when exc_count == n).
+        let mut exc_positions = [0u16; ALP_MAX_CHUNK];
+        if exc_count < n {
+            for i in 0..exc_count {
+                exc_positions[i] = ((input[pos] as u16) << 8) | (input[pos + 1] as u16);
+                pos += 2;
+            }
+        }
+
+        // Read exception min_u64 (8 bytes) + bit_width (1 byte).
+        let mut min_su64_bytes = [0u8; 8];
+        min_su64_bytes.copy_from_slice(&input[pos..pos + 8]);
+        let min_su64 = u64::from_be_bytes(min_su64_bytes);
         pos += 8;
+        let exc_bw = input[pos];
+        pos += 1;
+
+        // FoR-u64 decode exceptions.
+        if exc_count == n {
+            // All values are exceptions — no position lookup needed.
+            if exc_bw > 0 {
+                let mut r = BitReader::new(&input[pos..]);
+                for i in 0..n {
+                    val_out[i] = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
+                }
+            } else {
+                let base = sortable_u64_to_f64(min_su64);
+                for i in 0..n {
+                    val_out[i] = base;
+                }
+            }
+        } else {
+            if exc_bw > 0 {
+                let mut r = BitReader::new(&input[pos..]);
+                for i in 0..exc_count {
+                    val_out[exc_positions[i] as usize] =
+                        sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
+                }
+            } else {
+                let base = sortable_u64_to_f64(min_su64);
+                for i in 0..exc_count {
+                    val_out[exc_positions[i] as usize] = base;
+                }
+            }
+        }
     }
     n
 }
@@ -1320,8 +1711,16 @@ pub extern "C" fn rangeDecodeALP(
 }
 
 /// Decode only values[lo..hi] from an ALP-compressed blob.
-/// Exploits fixed-width bit-packing for random access.
+/// Handles both regular ALP and delta-ALP transparently.
 fn decode_values_alp_range(input: &[u8], lo: usize, hi: usize, out: &mut [f64]) {
+    if input.is_empty() { return; }
+
+    // Dispatch delta-ALP if tagged.
+    if input[0] == DELTA_ALP_TAG {
+        delta_alp_decode_range(input, lo, hi, out);
+        return;
+    }
+
     if input.len() < ALP_HEADER_SIZE { return; }
 
     let mut pos: usize = 0;
@@ -1365,15 +1764,65 @@ fn decode_values_alp_range(input: &[u8], lo: usize, hi: usize, out: &mut [f64]) 
         }
     }
 
-    // Patch exceptions only within [lo..hi].
-    for _ in 0..exc_count {
-        let idx = ((input[pos] as usize) << 8) | (input[pos + 1] as usize);
-        pos += 2;
-        let mut raw_bytes = [0u8; 8];
-        raw_bytes.copy_from_slice(&input[pos..pos + 8]);
+    // Patch exceptions within [lo..hi] via FoR-u64 decode (random access).
+    if exc_count > 0 {
+        // Read exception positions (omitted when exc_count == n).
+        let mut exc_positions = [0u16; ALP_MAX_CHUNK];
+        if exc_count < n {
+            for i in 0..exc_count {
+                exc_positions[i] = ((input[pos] as u16) << 8) | (input[pos + 1] as u16);
+                pos += 2;
+            }
+        }
+
+        // Read exception min_u64 (8 bytes) + bit_width (1 byte).
+        let mut min_su64_bytes = [0u8; 8];
+        min_su64_bytes.copy_from_slice(&input[pos..pos + 8]);
+        let min_su64 = u64::from_be_bytes(min_su64_bytes);
         pos += 8;
-        if idx >= lo && idx < hi {
-            out[idx - lo] = f64::from_bits(u64::from_be_bytes(raw_bytes));
+        let exc_bw = input[pos];
+        pos += 1;
+
+        if exc_count == n {
+            // All values are exceptions. Random-access decode [lo..hi).
+            if exc_bw > 0 {
+                let start_bit = lo * exc_bw as usize;
+                let byte_offset = start_bit / 8;
+                let bit_offset = (start_bit % 8) as u8;
+                let mut r = BitReader {
+                    buf: &input[pos + byte_offset..],
+                    byte_pos: 0,
+                    bit_pos: bit_offset,
+                };
+                for i in 0..(hi - lo) {
+                    out[i] = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
+                }
+            } else {
+                let base = sortable_u64_to_f64(min_su64);
+                for i in 0..(hi - lo) {
+                    out[i] = base;
+                }
+            }
+        } else {
+            // Partial exceptions — decode only those in [lo..hi).
+            if exc_bw > 0 {
+                let mut r = BitReader::new(&input[pos..]);
+                for i in 0..exc_count {
+                    let val = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
+                    let idx = exc_positions[i] as usize;
+                    if idx >= lo && idx < hi {
+                        out[idx - lo] = val;
+                    }
+                }
+            } else {
+                let base = sortable_u64_to_f64(min_su64);
+                for i in 0..exc_count {
+                    let idx = exc_positions[i] as usize;
+                    if idx >= lo && idx < hi {
+                        out[idx - lo] = base;
+                    }
+                }
+            }
         }
     }
 }
@@ -1462,6 +1911,119 @@ pub extern "C" fn allocScratch(size: u32) -> u32 {
 pub extern "C" fn resetScratch() {
     unsafe {
         BUMP_OFFSET = 0;
+    }
+}
+
+// ── M2: String interner (WASM) ─────────────────────────────────────
+
+const INTERN_MAX_STRINGS: usize = 200_000;
+const INTERN_MAX_BYTES: usize = 8 * 1024 * 1024;
+const INTERN_TABLE_SIZE: usize = 1 << 19;
+const INTERN_EMPTY: u32 = u32::MAX;
+
+static mut INTERN_BYTES: [u8; INTERN_MAX_BYTES] = [0; INTERN_MAX_BYTES];
+static mut INTERN_OFFSETS: [u32; INTERN_MAX_STRINGS + 1] = [0; INTERN_MAX_STRINGS + 1];
+static mut INTERN_TABLE: [u32; INTERN_TABLE_SIZE] = [INTERN_EMPTY; INTERN_TABLE_SIZE];
+static mut INTERN_HASHES: [u32; INTERN_TABLE_SIZE] = [0; INTERN_TABLE_SIZE];
+static mut INTERN_COUNT: u32 = 0;
+static mut INTERN_BYTES_USED: u32 = 0;
+
+#[inline(always)]
+fn fnv1a32(bytes: &[u8]) -> u32 {
+    let mut hash: u32 = 0x811c9dc5;
+    for &b in bytes {
+        hash ^= b as u32;
+        hash = hash.wrapping_mul(0x01000193);
+    }
+    hash
+}
+
+#[inline(always)]
+unsafe fn intern_equals(id: u32, bytes: &[u8]) -> bool {
+    let start = INTERN_OFFSETS[id as usize] as usize;
+    let end = INTERN_OFFSETS[id as usize + 1] as usize;
+    if end - start != bytes.len() {
+        return false;
+    }
+    for i in 0..bytes.len() {
+        if INTERN_BYTES[start + i] != bytes[i] {
+            return false;
+        }
+    }
+    true
+}
+
+#[no_mangle]
+pub extern "C" fn internerReset() {
+    unsafe {
+        INTERN_COUNT = 0;
+        INTERN_BYTES_USED = 0;
+        INTERN_OFFSETS[0] = 0;
+        for i in 0..INTERN_TABLE_SIZE {
+            INTERN_TABLE[i] = INTERN_EMPTY;
+            INTERN_HASHES[i] = 0;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn internerIntern(ptr: *const u8, len: u32) -> u32 {
+    if ptr.is_null() {
+        return u32::MAX;
+    }
+    let input = unsafe { core::slice::from_raw_parts(ptr, len as usize) };
+    let hash = fnv1a32(input);
+    let mask = (INTERN_TABLE_SIZE - 1) as u32;
+    let mut slot = hash & mask;
+
+    unsafe {
+        loop {
+            let existing = INTERN_TABLE[slot as usize];
+            if existing == INTERN_EMPTY {
+                let id = INTERN_COUNT;
+                if id as usize >= INTERN_MAX_STRINGS {
+                    return u32::MAX;
+                }
+                let start = INTERN_BYTES_USED as usize;
+                let end = start + input.len();
+                if end > INTERN_MAX_BYTES {
+                    return u32::MAX;
+                }
+                INTERN_BYTES[start..end].copy_from_slice(input);
+                INTERN_OFFSETS[id as usize] = INTERN_BYTES_USED;
+                INTERN_BYTES_USED = end as u32;
+                INTERN_OFFSETS[id as usize + 1] = INTERN_BYTES_USED;
+                INTERN_TABLE[slot as usize] = id;
+                INTERN_HASHES[slot as usize] = hash;
+                INTERN_COUNT += 1;
+                return id;
+            }
+            if INTERN_HASHES[slot as usize] == hash && intern_equals(existing, input) {
+                return existing;
+            }
+            slot = (slot + 1) & mask;
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn internerResolve(id: u32, out_ptr: *mut u8, out_cap: u32) -> u32 {
+    if out_ptr.is_null() {
+        return 0;
+    }
+    unsafe {
+        if id >= INTERN_COUNT {
+            return 0;
+        }
+        let start = INTERN_OFFSETS[id as usize] as usize;
+        let end = INTERN_OFFSETS[id as usize + 1] as usize;
+        let len = end - start;
+        if len > out_cap as usize {
+            return 0;
+        }
+        let out = core::slice::from_raw_parts_mut(out_ptr, len);
+        out.copy_from_slice(&INTERN_BYTES[start..end]);
+        len as u32
     }
 }
 

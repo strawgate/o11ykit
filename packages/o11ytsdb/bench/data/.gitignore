@@ -1,0 +1,5 @@
+# Raw JSONL files are large (hundreds of MB).
+# Compressed versions live in the o11ykit-testdata repo.
+# Run `./bench/fetch-testdata.sh` to download and decompress.
+*.jsonl
+.testdata-repo/

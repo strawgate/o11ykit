@@ -1,36 +1,65 @@
 /**
  * o11ytsdb — Browser-native time-series database for OpenTelemetry data.
  *
- * This is the public API surface. Each module is exported as it passes
- * its benchmark gate.
+ * Public API surface.
  */
 
-// M1: XOR-delta codec
+export { ChunkedStore } from "./chunked-store.js";
+export type { DecodedChunk } from "./codec.js";
+// Codec — XOR-delta (Gorilla) compression
 export {
-  encodeChunk,
-  decodeChunk,
-  BitWriter,
   BitReader,
-} from './codec.js';
-export type { DecodedChunk } from './codec.js';
-
-// Experimentation framework — pluggable core
+  BitWriter,
+  decodeChunk,
+  encodeChunk,
+} from "./codec.js";
+export { ColumnStore } from "./column-store.js";
+// Storage backends
+export { FlatStore } from "./flat-store.js";
 export type {
-  Labels, SeriesId, TimeRange, Codec, ValuesCodec, TimestampCodec, ChunkStats, StatsCodec,
-  RangeDecodeCodec, RangeDecodeResult,
-  StorageBackend, QueryEngine, QueryOpts, QueryResult,
-  SeriesResult, AggFn, Matcher,
-} from './types.js';
-export { FlatStore } from './flat-store.js';
-export { ChunkedStore } from './chunked-store.js';
-export { ColumnStore } from './column-store.js';
-export { computeStats } from './stats.js';
-export { ScanEngine } from './query.js';
+  IngestResult,
+  OtlpMetricsDocument,
+  ParsedOtlpResult,
+  PendingSeriesSamples,
+} from "./ingest.js";
+// OTLP ingest pipeline
+export { flushSamplesToStorage, ingestOtlpJson, parseOtlpToSamples } from "./ingest.js";
+export type { InternId } from "./interner.js";
 
-// M2: String interner — will export Interner once gate passes
-// M3: Inverted index — will export MemPostings once gate passes
-// M4: Chunk store — will export ChunkStore once gate passes
-// M5: Ingest pipeline — will export ingest() once gate passes
-// M6: Query executor — will export query builder once gate passes
-// M7: Histogram — will export histogram types once gate passes
-// M8: Worker + DB — will export O11yTSDB once gate passes
+// String interner + inverted index
+export { Interner } from "./interner.js";
+// Label index — shared label management for storage backends
+export { LabelIndex } from "./label-index.js";
+export { MemPostings } from "./postings.js";
+// Query engine
+export { ScanEngine } from "./query.js";
+export { computeStats } from "./stats.js";
+// Core types — pluggable interfaces for storage, codecs, and queries
+export type {
+  AggFn,
+  ChunkStats,
+  Codec,
+  Labels,
+  Matcher,
+  QueryEngine,
+  QueryOpts,
+  QueryResult,
+  RangeDecodeCodec,
+  RangeDecodeResult,
+  SeriesId,
+  SeriesResult,
+  StorageBackend,
+  TimeRange,
+  TimestampCodec,
+  ValuesCodec,
+} from "./types.js";
+
+// Worker isolation + transfer protocol
+export { WorkerClient } from "./worker-client.js";
+export type {
+  RequestEnvelope,
+  ResponseEnvelope,
+  TransferStrategy,
+  WorkerRequest,
+  WorkerResponse,
+} from "./worker-protocol.js";

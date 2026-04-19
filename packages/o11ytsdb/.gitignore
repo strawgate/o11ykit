@@ -1,5 +1,6 @@
 bench/results/
 bench/dist/
+bench/*.cpuprofile
 wasm/
 dist/
 .tsbuildinfo
