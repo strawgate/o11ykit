@@ -310,7 +310,7 @@ async function main() {
   ];
   const selectivities = [
     ["1 series", [{ label: "instance", value: "instance-0" }]],
-    ["30 series", [{ label: "host", value: "host-0" }]],
+    ["10 series", [{ label: "host", value: "host-0" }]],
     ["300 series", undefined],
   ];
 

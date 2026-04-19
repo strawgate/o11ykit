@@ -5,7 +5,7 @@ encoding with two interchangeable implementations: TypeScript and Rust→WASM.
 
 ## Status: M1 — XOR-Delta Codec ✅
 
-All three implementations pass bit-exact cross-validation (30/30 pairs).
+Both implementations pass bit-exact cross-validation (10/10 pairs).
 WASM binary is under 5 KB raw, under 1.5 KB gzipped.
 
 ## WASM Binary Size

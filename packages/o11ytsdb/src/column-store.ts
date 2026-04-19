@@ -351,7 +351,7 @@ export class ColumnStore implements StorageBackend {
               return { timestamps: ts, values: vs };
             },
           };
-          if (typeof vc.decodeValuesView === 'function') {
+          if (typeof vc.decodeValuesView === "function") {
             const decView = vc.decodeValuesView.bind(vc);
             part.decodeView = () => {
               if (!tsChunk.timestamps && tsc) {

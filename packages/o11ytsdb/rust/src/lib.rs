@@ -2119,6 +2119,7 @@ pub extern "C" fn accumInit(
     step: i64,
     agg_fn: u32,
 ) {
+    if step == 0 { return; }
     let bc = (bucket_count as usize).min(ACCUM_MAX_BUCKETS);
     unsafe {
         ACCUM_BUCKET_COUNT = bc;

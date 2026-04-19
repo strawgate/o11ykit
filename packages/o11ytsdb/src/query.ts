@@ -7,9 +7,15 @@
  */
 
 import type {
-  AggFn, Labels, QueryEngine, QueryOpts, QueryResult,
-  SeriesResult, StorageBackend, TimeRange,
-} from './types.js';
+  AggFn,
+  Labels,
+  QueryEngine,
+  QueryOpts,
+  QueryResult,
+  SeriesResult,
+  StorageBackend,
+  TimeRange,
+} from "./types.js";
 
 /** Galloping lower bound on a sorted number array. */
 function gallopLowerBound(arr: number[], target: number, from: number): number {
@@ -51,11 +57,11 @@ function sortedIntersect(a: number[], b: number[]): number[] {
 }
 
 export class ScanEngine implements QueryEngine {
-  readonly name = 'scan';
+  readonly name = "scan";
 
   query(storage: StorageBackend, opts: QueryOpts): QueryResult {
     // Find matching series using sorted-array intersection (no Set allocation).
-    let ids = storage.matchLabel('__name__', opts.metric);
+    let ids = storage.matchLabel("__name__", opts.metric);
     if (opts.matchers) {
       for (const m of opts.matchers) {
         ids = sortedIntersect(ids, storage.matchLabel(m.label, m.value));
@@ -95,13 +101,13 @@ export class ScanEngine implements QueryEngine {
       for (const p of parts) scannedSamples += p.timestamps.length || p.stats?.count || 0;
       const labels = storage.labels(id) ?? new Map();
       const groupKey = opts.groupBy
-        ? opts.groupBy.map(k => labels.get(k) ?? '').join('\0')
-        : '__all__';
+        ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0")
+        : "__all__";
 
       let group = groups.get(groupKey);
       if (!group) {
         const groupLabels = new Map<string, string>();
-        groupLabels.set('__name__', opts.metric);
+        groupLabels.set("__name__", opts.metric);
         if (opts.groupBy) {
           for (const k of opts.groupBy) {
             const v = labels.get(k);
@@ -133,26 +139,33 @@ export class ScanEngine implements QueryEngine {
 
 /** Initial accumulator value for a given aggregation function. */
 function aggInit(fn: AggFn): number {
-  if (fn === 'min') return Infinity;
-  if (fn === 'max') return -Infinity;
+  if (fn === "min") return Infinity;
+  if (fn === "max") return -Infinity;
   return 0;
 }
 
 /** Fold a new value into an accumulator for the given agg function. */
 function aggAccumulate(accum: number, v: number, fn: AggFn): number {
   switch (fn) {
-    case 'sum': case 'avg': return accum + v;
-    case 'min': return v < accum ? v : accum;
-    case 'max': return v > accum ? v : accum;
-    case 'count': return accum + 1;
-    case 'last': return v;
-    default: return accum;
+    case "sum":
+    case "avg":
+      return accum + v;
+    case "min":
+      return v < accum ? v : accum;
+    case "max":
+      return v > accum ? v : accum;
+    case "count":
+      return accum + 1;
+    case "last":
+      return v;
+    default:
+      return accum;
   }
 }
 
 /** Finalize aggregated buckets (e.g. divide by count for avg). */
 function aggFinalize(values: Float64Array, counts: Float64Array, fn: AggFn): void {
-  if (fn === 'avg') {
+  if (fn === "avg") {
     for (let i = 0; i < values.length; i++) {
       if (counts[i]! > 0) values[i]! /= counts[i]!;
     }
@@ -183,7 +196,7 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
   const timestamps = longest.timestamps;
   const values = new Float64Array(timestamps.length);
 
-  if (fn === 'rate') {
+  if (fn === "rate") {
     // Rate only makes sense per-series; use first.
     const src = ranges[0]!;
     for (let i = 1; i < src.timestamps.length; i++) {
@@ -216,7 +229,7 @@ const _le = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 
 function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange {
   // Find time bounds (account for both sample-bearing and stats-only parts).
-  let minT = BigInt('9223372036854775807');
+  let minT = BigInt("9223372036854775807");
   let maxT = -minT;
   for (const r of ranges) {
     if (r.timestamps.length > 0) {
@@ -254,7 +267,7 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   // buckets.  This avoids collecting all decoded ranges into a temporary
   // array, reducing peak memory from O(total_chunks × chunk_size) to
   // O(chunk_size) and cutting GC pressure substantially.
-  if (fn === 'rate') {
+  if (fn === "rate") {
     _stepAggregateRate(ranges, values, counts, bucketCount, minT, minTN, stepN);
   } else {
     const accumulate = _makeAccumulator(fn, values, counts, minTN, stepN);
@@ -263,8 +276,8 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
       if (r.stats && r.chunkMinT !== undefined && r.chunkMaxT !== undefined) {
         const chunkMinTN = Number(r.chunkMinT - minT) + minTN;
         const chunkMaxTN = Number(r.chunkMaxT - minT) + minTN;
-        const bucketLo = (chunkMinTN - minTN) / stepN | 0;
-        const bucketHi = (chunkMaxTN - minTN) / stepN | 0;
+        const bucketLo = ((chunkMinTN - minTN) / stepN) | 0;
+        const bucketHi = ((chunkMaxTN - minTN) / stepN) | 0;
         if (bucketLo === bucketHi) {
           // Entire chunk maps to one bucket — fold stats directly.
           _foldStats(fn, r.stats, values, counts, bucketLo);
@@ -288,7 +301,7 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
 
   // Replace init-value sentinels with NaN in empty buckets so consumers
   // see "no data" instead of Infinity / -Infinity / 0.
-  if (fn !== 'sum' && fn !== 'count') {
+  if (fn !== "sum" && fn !== "count") {
     for (let i = 0; i < bucketCount; i++) {
       if (counts[i]! === 0) values[i] = NaN;
     }
@@ -299,23 +312,27 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
 
 /** Fold pre-computed chunk stats into a single bucket. */
 function _foldStats(
-  fn: AggFn, st: NonNullable<TimeRange['stats']>,
-  values: Float64Array, counts: Float64Array, bucket: number,
+  fn: AggFn,
+  st: NonNullable<TimeRange["stats"]>,
+  values: Float64Array,
+  counts: Float64Array,
+  bucket: number
 ): void {
   switch (fn) {
-    case 'min':
+    case "min":
       if (st.minV < values[bucket]!) values[bucket] = st.minV;
       break;
-    case 'max':
+    case "max":
       if (st.maxV > values[bucket]!) values[bucket] = st.maxV;
       break;
-    case 'sum': case 'avg':
+    case "sum":
+    case "avg":
       values[bucket]! += st.sum;
       break;
-    case 'count':
+    case "count":
       values[bucket]! += st.count;
       break;
-    case 'last':
+    case "last":
       values[bucket] = st.lastV;
       break;
   }
@@ -328,8 +345,10 @@ function _foldStats(
  */
 function _makeAccumulator(
   fn: AggFn,
-  values: Float64Array, counts: Float64Array,
-  minTN: number, stepN: number,
+  values: Float64Array,
+  counts: Float64Array,
+  minTN: number,
+  stepN: number
 ): (ts: BigInt64Array, vs: Float64Array, chunkMinTN?: number, chunkMaxTN?: number) => void {
   // Read a single i64 timestamp from BigInt64Array via DataView.
   const readTs = (dv: DataView, i: number): number => {
@@ -343,7 +362,13 @@ function _makeAccumulator(
   // to derive the interval reliably: interval = (maxT - minT) / (count - 1).
   // Falls back to per-sample DataView reads when metadata is unavailable or
   // the derived interval doesn't divide evenly (irregular timestamps).
-  const accumulate = (ts: BigInt64Array, vs: Float64Array, fold: (bucket: number, v: number) => void, chunkMinTN?: number, chunkMaxTN?: number): void => {
+  const accumulate = (
+    ts: BigInt64Array,
+    vs: Float64Array,
+    fold: (bucket: number, v: number) => void,
+    chunkMinTN?: number,
+    chunkMaxTN?: number
+  ): void => {
     const len = ts.length;
     if (len === 0) return;
     if (len >= 2 && chunkMinTN !== undefined && chunkMaxTN !== undefined) {
@@ -352,48 +377,91 @@ function _makeAccumulator(
         const interval = span / (len - 1);
         const base = chunkMinTN - minTN;
         for (let i = 0; i < len; i++) {
-          fold((base + i * interval) / stepN | 0, vs[i]!);
+          fold(((base + i * interval) / stepN) | 0, vs[i]!);
         }
         return;
       }
     }
     const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
     for (let i = 0; i < len; i++) {
-      fold((readTs(dv, i) - minTN) / stepN | 0, vs[i]!);
+      fold(((readTs(dv, i) - minTN) / stepN) | 0, vs[i]!);
     }
   };
 
   switch (fn) {
-    case 'min':
-      return (ts, vs, cMin, cMax) => accumulate(ts, vs, (bucket, v) => {
-        if (v < values[bucket]!) values[bucket] = v;
-        counts[bucket]!++;
-      }, cMin, cMax);
-    case 'max':
-      return (ts, vs, cMin, cMax) => accumulate(ts, vs, (bucket, v) => {
-        if (v > values[bucket]!) values[bucket] = v;
-        counts[bucket]!++;
-      }, cMin, cMax);
-    case 'sum': case 'avg':
-      return (ts, vs, cMin, cMax) => accumulate(ts, vs, (bucket, v) => {
-        values[bucket]! += v;
-        counts[bucket]!++;
-      }, cMin, cMax);
-    case 'count':
-      return (ts, _vs, cMin, cMax) => accumulate(ts, _vs, (bucket, _v) => {
-        values[bucket]!++;
-        counts[bucket]!++;
-      }, cMin, cMax);
-    case 'last':
-      return (ts, vs, cMin, cMax) => accumulate(ts, vs, (bucket, v) => {
-        values[bucket] = v;
-        counts[bucket]!++;
-      }, cMin, cMax);
+    case "min":
+      return (ts, vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          vs,
+          (bucket, v) => {
+            if (v < values[bucket]!) values[bucket] = v;
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
+    case "max":
+      return (ts, vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          vs,
+          (bucket, v) => {
+            if (v > values[bucket]!) values[bucket] = v;
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
+    case "sum":
+    case "avg":
+      return (ts, vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          vs,
+          (bucket, v) => {
+            values[bucket]! += v;
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
+    case "count":
+      return (ts, _vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          _vs,
+          (bucket, _v) => {
+            values[bucket]!++;
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
+    case "last":
+      return (ts, vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          vs,
+          (bucket, v) => {
+            values[bucket] = v;
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
     default:
-      return (ts, vs, cMin, cMax) => accumulate(ts, vs, (bucket, v) => {
-        values[bucket] = aggAccumulate(values[bucket]!, v, fn);
-        counts[bucket]!++;
-      }, cMin, cMax);
+      return (ts, vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          vs,
+          (bucket, v) => {
+            values[bucket] = aggAccumulate(values[bucket]!, v, fn);
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
   }
 }
 
@@ -403,9 +471,12 @@ function _makeAccumulator(
  */
 function _stepAggregateRate(
   ranges: TimeRange[],
-  values: Float64Array, counts: Float64Array,
-  bucketCount: number, minT: bigint,
-  minTN: number, stepN: number,
+  values: Float64Array,
+  counts: Float64Array,
+  bucketCount: number,
+  minT: bigint,
+  minTN: number,
+  stepN: number
 ): void {
   const firstTs = new Float64Array(bucketCount).fill(Infinity);
   const firstVal = new Float64Array(bucketCount);
@@ -415,9 +486,8 @@ function _stepAggregateRate(
   for (let ri = 0; ri < ranges.length; ri++) {
     const r = ranges[ri]!;
     // Rate needs per-sample timestamps — always decode stats-only parts.
-    const decoded = r.timestamps.length === 0 && r.decode
-      ? (r.decodeView ? r.decodeView() : r.decode())
-      : r;
+    const decoded =
+      r.timestamps.length === 0 && r.decode ? (r.decodeView ? r.decodeView() : r.decode()) : r;
     const src = decoded.timestamps;
     const len = src.length;
     if (len === 0) continue;
@@ -434,10 +504,16 @@ function _stepAggregateRate(
         const base = chunkMinTN - minTN;
         for (let i = 0; i < len; i++) {
           const t = chunkMinTN + i * interval;
-          const bucket = (base + i * interval) / stepN | 0;
+          const bucket = ((base + i * interval) / stepN) | 0;
           counts[bucket]!++;
-          if (t < firstTs[bucket]!) { firstTs[bucket] = t; firstVal[bucket] = vs[i]!; }
-          if (t >= lastTs[bucket]!) { lastTs[bucket] = t; lastVal[bucket] = vs[i]!; }
+          if (t < firstTs[bucket]!) {
+            firstTs[bucket] = t;
+            firstVal[bucket] = vs[i]!;
+          }
+          if (t >= lastTs[bucket]!) {
+            lastTs[bucket] = t;
+            lastVal[bucket] = vs[i]!;
+          }
         }
         continue;
       }
@@ -449,10 +525,16 @@ function _stepAggregateRate(
     };
     for (let i = 0; i < len; i++) {
       const t = readTs(i);
-      const bucket = (t - minTN) / stepN | 0;
+      const bucket = ((t - minTN) / stepN) | 0;
       counts[bucket]!++;
-      if (t < firstTs[bucket]!) { firstTs[bucket] = t; firstVal[bucket] = vs[i]!; }
-      if (t >= lastTs[bucket]!) { lastTs[bucket] = t; lastVal[bucket] = vs[i]!; }
+      if (t < firstTs[bucket]!) {
+        firstTs[bucket] = t;
+        firstVal[bucket] = vs[i]!;
+      }
+      if (t >= lastTs[bucket]!) {
+        lastTs[bucket] = t;
+        lastVal[bucket] = vs[i]!;
+      }
     }
   }
   for (let i = 0; i < bucketCount; i++) {
