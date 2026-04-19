@@ -347,6 +347,75 @@ describe("@otlpkit/views", () => {
     expect(traceEvents.events[0]?.name).toBe("null");
   });
 
+  it("handles equal timestamps in waterfall and timeline sort comparators", () => {
+    const waterfall = buildTraceWaterfallFrame({
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: "t1",
+                  spanId: "a",
+                  startTimeUnixNano: "10",
+                  endTimeUnixNano: "20",
+                },
+                {
+                  traceId: "t1",
+                  spanId: "b",
+                  startTimeUnixNano: "10",
+                  endTimeUnixNano: "20",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(waterfall.traces[0]?.spans).toHaveLength(2);
+
+    const logEvents = buildEventTimelineFrame(
+      {
+        resourceLogs: [
+          {
+            scopeLogs: [
+              {
+                logRecords: [
+                  { body: { stringValue: "first" }, timeUnixNano: "5" },
+                  { body: { stringValue: "second" }, timeUnixNano: "5" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { signal: "logs" }
+    );
+    expect(logEvents.events).toHaveLength(2);
+
+    const traceEvents = buildEventTimelineFrame({
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: "t2",
+                  spanId: "s1",
+                  events: [
+                    { name: "evt-a", timeUnixNano: "7" },
+                    { name: "evt-b", timeUnixNano: "7" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(traceEvents.events).toHaveLength(2);
+  });
+
   it("matches batch frame output through an incremental store", () => {
     const store = createTelemetryStore();
     store.ingest(metricsDocument);
