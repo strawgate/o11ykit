@@ -587,6 +587,18 @@ export function flattenAttributes(attributes: readonly OtlpKeyValue[] | undefine
   return flattened;
 }
 
+export function forEachAttribute(
+  attributes: readonly OtlpKeyValue[] | undefined,
+  fn: (key: string, value: AttributeValue) => void,
+): void {
+  if (!attributes || attributes.length === 0) {
+    return;
+  }
+  for (const attribute of attributes) {
+    fn(attribute.key, attributeValueToJs(attribute.value));
+  }
+}
+
 export function* iterMetricPoints(document: OtlpMetricsDocument): Generator<MetricPointRecord> {
   if (!isMetricsDocument(document)) {
     throw new TypeError("Expected OTLP metrics document.");

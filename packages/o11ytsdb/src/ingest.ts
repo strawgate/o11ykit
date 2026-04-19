@@ -5,7 +5,7 @@ import type {
   OtlpMetricsDocument,
   OtlpSummaryDataPoint,
 } from '@otlpkit/otlpjson';
-import { detectSignal, flattenAttributes, isMetricsDocument, toNumber } from '@otlpkit/otlpjson';
+import { detectSignal, flattenAttributes, forEachAttribute, isMetricsDocument, toNumber } from '@otlpkit/otlpjson';
 
 import type { Labels, StorageBackend } from './types.js';
 
@@ -96,13 +96,13 @@ function fnvHashEntry(hash: number, key: string, value: string): number {
 let _phHash = 0;
 let _phCount = 0;
 
-function computePointAttrsHash(baseHash: number, pointAttrs: Record<string, unknown>): void {
+function computePointAttrsHash(baseHash: number, pointAttrs: readonly OtlpKeyValue[] | undefined): void {
   let hash = baseHash;
   let count = 0;
-  for (const key of Object.keys(pointAttrs)) {
-    hash = fnvHashEntry(hash, prefixedKey(ATTR_PREFIX_POINT, key), attributeValueToLabel(pointAttrs[key]));
+  forEachAttribute(pointAttrs, (key, value) => {
+    hash = fnvHashEntry(hash, prefixedKey(ATTR_PREFIX_POINT, key), attributeValueToLabel(value));
     count++;
-  }
+  });
   _phHash = hash;
   _phCount = count;
 }
@@ -124,7 +124,7 @@ function toFingerprint(hash: number, size: number): string {
 function buildSnapshotLabels(
   baseEntries: ReadonlyArray<readonly [string, string]>,
   metricName: string,
-  pointAttrs: Record<string, unknown>,
+  pointAttrs: readonly OtlpKeyValue[] | undefined,
 ): Map<string, string> {
   const labels = new Map<string, string>();
   for (let i = 0; i < baseEntries.length; i++) {
@@ -132,22 +132,10 @@ function buildSnapshotLabels(
     labels.set(e[0], e[1]);
   }
   labels.set('__name__', metricName);
-  for (const key of Object.keys(pointAttrs)) {
-    labels.set(prefixedKey(ATTR_PREFIX_POINT, key), attributeValueToLabel(pointAttrs[key]));
-  }
+  forEachAttribute(pointAttrs, (key, value) => {
+    labels.set(prefixedKey(ATTR_PREFIX_POINT, key), attributeValueToLabel(value));
+  });
   return labels;
-}
-
-// ── T5: flattenAttributes cache ─────────────────────────────────────
-let cachedAttrRef: readonly OtlpKeyValue[] | undefined;
-let cachedAttrResult: Record<string, unknown> = {};
-
-function cachedFlattenAttributes(attrs: readonly OtlpKeyValue[] | undefined): Record<string, unknown> {
-  if (attrs === undefined || attrs === null || attrs.length === 0) return {};
-  if (attrs === cachedAttrRef) return cachedAttrResult;
-  cachedAttrRef = attrs;
-  cachedAttrResult = flattenAttributes(attrs);
-  return cachedAttrResult;
 }
 
 // ── Core ingest functions ───────────────────────────────────────────
@@ -328,7 +316,7 @@ function ingestNumberPoints(
       continue;
     }
 
-    const pointAttrs = cachedFlattenAttributes(point.attributes);
+    const pointAttrs = point.attributes;
     computePointAttrsHash(metricHash, pointAttrs);
     const fp = toFingerprint(_phHash, metricSize + _phCount);
 
@@ -369,7 +357,7 @@ function ingestHistogramPoints(
       continue;
     }
 
-    const pointAttrs = cachedFlattenAttributes(point.attributes);
+    const pointAttrs = point.attributes;
     const bucketCounts = parseNumberArray(point.bucketCounts);
     const bounds = parseNumberArray(point.explicitBounds);
 
@@ -458,7 +446,7 @@ function ingestSummaryPoints(
       continue;
     }
 
-    const pointAttrs = cachedFlattenAttributes(point.attributes);
+    const pointAttrs = point.attributes;
     let inserted = 0;
 
     // Quantile sub-series.
@@ -551,7 +539,7 @@ function ingestExponentialHistogramPoints(
     }
 
     const scale = toNumber(point.scale ?? null);
-    const pointAttrs = cachedFlattenAttributes(point.attributes);
+    const pointAttrs = point.attributes;
     let inserted = 0;
 
     inserted += ingestExpBuckets(
@@ -629,7 +617,7 @@ function ingestExpBuckets(
   bucketName: string,
   bucketMetricHash: number,
   metricSize: number,
-  pointAttrs: Record<string, unknown>,
+  pointAttrs: readonly OtlpKeyValue[] | undefined,
   ts: number,
   scale: number | null,
   side: 'positive' | 'negative',
