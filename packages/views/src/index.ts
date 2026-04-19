@@ -73,7 +73,6 @@ export interface MergeTimeSeriesFramesOptions {
   readonly onConflict?: "replace" | "keep-existing";
 }
 
-
 export interface LatestValueRow {
   readonly key: string;
   readonly label: string;
@@ -364,11 +363,7 @@ export function buildTimeSeriesFrame(
         : signal !== null
           ? { signal }
           : {}),
-      ...(options.unit !== undefined
-        ? { unit: options.unit }
-        : unit !== null
-          ? { unit }
-          : {}),
+      ...(options.unit !== undefined ? { unit: options.unit } : unit !== null ? { unit } : {}),
     },
   };
 }
@@ -473,7 +468,7 @@ export function appendTimeSeriesFrame(
         ? { unit: baselineOptions.unit }
         : existing.unit !== null
           ? { unit: existing.unit }
-        : {}),
+          : {}),
   };
   const incoming = buildTimeSeriesFrame(incomingInput, effectiveFrameOptions);
   return mergeTimeSeriesFrames(existing, incoming, mergeOptions);
