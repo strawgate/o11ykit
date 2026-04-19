@@ -74,7 +74,7 @@ function App(): JSX.Element {
           <ResponsiveContainer>
             <BarChart data={latestValuesModel.data}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={latestValuesModel.categoryKey} />
+              <XAxis dataKey={latestValuesModel.categoryKey} type="category" />
               <YAxis unit={latestValuesModel.unit ?? ""} />
               <Tooltip />
               <Legend />
@@ -93,7 +93,7 @@ function App(): JSX.Element {
           <ResponsiveContainer>
             <BarChart data={histogramModel.data}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey={histogramModel.categoryKey} />
+              <XAxis dataKey={histogramModel.categoryKey} type="category" />
               <YAxis unit={histogramModel.unit ?? ""} />
               <Tooltip />
               <Legend />
