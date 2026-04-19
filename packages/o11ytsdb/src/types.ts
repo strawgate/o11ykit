@@ -144,7 +144,19 @@ export interface StorageBackend {
 
 // ── Query engine ─────────────────────────────────────────────────────
 
-export type AggFn = "sum" | "avg" | "min" | "max" | "count" | "last" | "rate" | "increase";
+export type AggFn =
+  | "sum"
+  | "avg"
+  | "min"
+  | "max"
+  | "count"
+  | "last"
+  | "rate"
+  | "increase"
+  | "p50"
+  | "p90"
+  | "p95"
+  | "p99";
 
 export type MatchOp = "=" | "!=" | "=~" | "!~";
 

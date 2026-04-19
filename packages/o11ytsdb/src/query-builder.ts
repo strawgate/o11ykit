@@ -180,6 +180,39 @@ export class QueryBuilder {
     return this.aggregate("last", labels);
   }
 
+  /** Aggregate: p50 (median). */
+  p50(): QueryBuilder {
+    return this.aggregate("p50");
+  }
+  /** Aggregate: p90. */
+  p90(): QueryBuilder {
+    return this.aggregate("p90");
+  }
+  /** Aggregate: p95. */
+  p95(): QueryBuilder {
+    return this.aggregate("p95");
+  }
+  /** Aggregate: p99. */
+  p99(): QueryBuilder {
+    return this.aggregate("p99");
+  }
+  /** Aggregate p50 (median), grouped by label(s). */
+  p50By(...labels: string[]): QueryBuilder {
+    return this.aggregate("p50", labels);
+  }
+  /** Aggregate p90, grouped by label(s). */
+  p90By(...labels: string[]): QueryBuilder {
+    return this.aggregate("p90", labels);
+  }
+  /** Aggregate p95, grouped by label(s). */
+  p95By(...labels: string[]): QueryBuilder {
+    return this.aggregate("p95", labels);
+  }
+  /** Aggregate p99, grouped by label(s). */
+  p99By(...labels: string[]): QueryBuilder {
+    return this.aggregate("p99", labels);
+  }
+
   // ── Compile ──────────────────────────────────────────────────────
 
   /**

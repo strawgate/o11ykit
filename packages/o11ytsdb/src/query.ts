@@ -227,6 +227,22 @@ export class ScanEngine implements QueryEngine {
 
 // ── Aggregation ──────────────────────────────────────────────────────
 
+/** Map percentile AggFn to its fractional value (0..1). */
+function percentileFraction(fn: AggFn): number | undefined {
+  switch (fn) {
+    case "p50":
+      return 0.5;
+    case "p90":
+      return 0.9;
+    case "p95":
+      return 0.95;
+    case "p99":
+      return 0.99;
+    default:
+      return undefined;
+  }
+}
+
 /** Initial accumulator value for a given aggregation function. */
 function aggInit(fn: AggFn): number {
   if (fn === "min") return Infinity;
@@ -362,8 +378,11 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   // buckets.  This avoids collecting all decoded ranges into a temporary
   // array, reducing peak memory from O(total_chunks × chunk_size) to
   // O(chunk_size) and cutting GC pressure substantially.
+  const pFrac = percentileFraction(fn);
   if (fn === "rate" || fn === "increase") {
     _stepAggregateRate(ranges, values, counts, bucketCount, minT, minTN, stepN, fn === "increase");
+  } else if (pFrac !== undefined) {
+    _stepAggregatePercentile(ranges, values, counts, bucketCount, minT, minTN, stepN, pFrac);
   } else {
     const accumulate = _makeAccumulator(fn, values, counts, minTN, stepN);
     for (let ri = 0; ri < ranges.length; ri++) {
@@ -642,5 +661,77 @@ function _stepAggregateRate(
       const dt = (lastTs[i]! - firstTs[i]!) / 1000;
       values[i] = dt > 0 ? (lastVal[i]! - firstVal[i]!) / dt : 0;
     }
+  }
+}
+
+/**
+ * Percentile aggregation — collects all values per bucket, sorts, picks percentile index.
+ * Uses the "nearest rank" method: index = ceil(p * n) - 1.
+ */
+function _stepAggregatePercentile(
+  ranges: TimeRange[],
+  values: Float64Array,
+  counts: Float64Array,
+  bucketCount: number,
+  minT: bigint,
+  minTN: number,
+  stepN: number,
+  fraction: number
+): void {
+  const buckets: number[][] = new Array(bucketCount);
+  for (let i = 0; i < bucketCount; i++) buckets[i] = [];
+
+  const readTs = (dv: DataView, i: number): number => {
+    const off = i << 3;
+    return dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
+  };
+
+  for (let ri = 0; ri < ranges.length; ri++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+    const r = ranges[ri]!;
+    // Always decode stats-only parts — we need individual values.
+    const decoded =
+      r.timestamps.length === 0 && r.decode ? (r.decodeView ? r.decodeView() : r.decode()) : r;
+    const src = decoded.timestamps;
+    const len = src.length;
+    if (len === 0) continue;
+    const vs = decoded.values;
+
+    // Use chunk metadata for arithmetic bucket indexing when available.
+    const hasChunkMeta = r.chunkMinT !== undefined && r.chunkMaxT !== undefined;
+    if (len >= 2 && hasChunkMeta) {
+      const chunkMinTN = Number(r.chunkMinT! - minT) + minTN;
+      const chunkMaxTN = Number(r.chunkMaxT! - minT) + minTN;
+      const span = chunkMaxTN - chunkMinTN;
+      if (span > 0 && span % (len - 1) === 0) {
+        const interval = span / (len - 1);
+        const base = chunkMinTN - minTN;
+        for (let i = 0; i < len; i++) {
+          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+          buckets[((base + i * interval) / stepN) | 0]!.push(vs[i]!);
+        }
+        continue;
+      }
+    }
+    const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+    for (let i = 0; i < len; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+      buckets[((readTs(dv, i) - minTN) / stepN) | 0]!.push(vs[i]!);
+    }
+  }
+
+  // Sort each bucket and pick the percentile value.
+  for (let i = 0; i < bucketCount; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+    const b = buckets[i]!;
+    counts[i] = b.length;
+    if (b.length === 0) {
+      values[i] = NaN;
+      continue;
+    }
+    b.sort((a, c) => a - c);
+    const idx = Math.min(Math.ceil(fraction * b.length) - 1, b.length - 1);
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+    values[i] = b[idx]!;
   }
 }

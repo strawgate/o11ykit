@@ -313,4 +313,57 @@ describe("QueryBuilder — exec()", () => {
     // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.timestamps.length).toBeGreaterThan(0);
   });
+
+  // ── Percentile aggregations ────────────────────────────────────
+
+  it("executes p50 (median) aggregation", () => {
+    const store = populateStore();
+    const result = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p50().exec(store);
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const vals = result.series[0]!.values;
+    expect(vals.length).toBeGreaterThan(0);
+    // Median should be a real number (not NaN) for non-empty buckets
+    const nonNan = Array.from(vals).filter((v) => !Number.isNaN(v));
+    expect(nonNan.length).toBeGreaterThan(0);
+  });
+
+  it("executes p99 aggregation", () => {
+    const store = populateStore();
+    const result = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p99().exec(store);
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const vals = result.series[0]!.values;
+    const nonNan = Array.from(vals).filter((v) => !Number.isNaN(v));
+    expect(nonNan.length).toBeGreaterThan(0);
+  });
+
+  it("p50 <= p99 for same data", () => {
+    const store = populateStore();
+    const r50 = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p50().exec(store);
+    const r99 = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p99().exec(store);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const v50 = r50.series[0]!.values;
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const v99 = r99.series[0]!.values;
+    for (let i = 0; i < v50.length; i++) {
+      if (!Number.isNaN(v50[i]!) && !Number.isNaN(v99[i]!)) {
+        expect(v50[i]!).toBeLessThanOrEqual(v99[i]!);
+      }
+    }
+  });
+
+  it("p90By groups percentiles by label", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .step(60_000n)
+      .p90By("host")
+      .exec(store);
+    // 3 hosts → 3 groups
+    expect(result.series.length).toBe(3);
+    const hosts = result.series.map((s) => s.labels.get("host")).sort();
+    expect(hosts).toEqual(["a", "b", "c"]);
+  });
 });
