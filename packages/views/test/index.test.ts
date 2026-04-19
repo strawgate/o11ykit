@@ -11,6 +11,7 @@ import {
   createTelemetryStore,
   mergeTimeSeriesFrames,
 } from "../src/index.js";
+
 describe("@otlpkit/views", () => {
   it("builds time-series frames", () => {
     const frame = buildTimeSeriesFrame(metricsDocument, {
@@ -921,5 +922,4 @@ describe("@otlpkit/views", () => {
       "4000000000",
     ]);
   });
-
 });
