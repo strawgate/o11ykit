@@ -8,9 +8,9 @@
  */
 
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgDir = join(__dirname, "..");
@@ -23,12 +23,14 @@ const T0 = 1_700_000_000_000n;
 const INTERVAL = 15_000n;
 const TOTAL = NUM_SERIES * POINTS_PER_SERIES; // 1M
 
-const CHUNK_SIZES = [64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024];
+const CHUNK_SIZES = [
+  64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024,
+];
 
 // Narrow query: last 10% of the time range.
 const FULL_START = T0;
 const FULL_END = T0 + BigInt(POINTS_PER_SERIES) * INTERVAL;
-const NARROW_START = T0 + BigInt(POINTS_PER_SERIES) * INTERVAL * 9n / 10n;
+const NARROW_START = T0 + (BigInt(POINTS_PER_SERIES) * INTERVAL * 9n) / 10n;
 const NARROW_END = FULL_END;
 
 // ── Data generation ──────────────────────────────────────────────────
@@ -98,7 +100,16 @@ async function loadCodecs() {
       const s = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + 64));
       return {
         compressed,
-        stats: { minV: s[0], maxV: s[1], sum: s[2], count: s[3], firstV: s[4], lastV: s[5], sumOfSquares: s[6], resetCount: s[7] },
+        stats: {
+          minV: s[0],
+          maxV: s[1],
+          sum: s[2],
+          count: s[3],
+          firstV: s[4],
+          lastV: s[5],
+          sumOfSquares: s[6],
+          resetCount: s[7],
+        },
       };
     },
     encodeBatchValuesWithStats(arrays) {
@@ -108,7 +119,10 @@ async function loadCodecs() {
       const valsPtr = w.allocScratch(numArrays * chunkSize * 8);
       for (let i = 0; i < numArrays; i++) {
         const arr = arrays[i];
-        mem().set(new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength), valsPtr + i * chunkSize * 8);
+        mem().set(
+          new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength),
+          valsPtr + i * chunkSize * 8
+        );
       }
       const outCap = numArrays * chunkSize * 20;
       const outPtr = w.allocScratch(outCap);
@@ -116,20 +130,37 @@ async function loadCodecs() {
       const sizesPtr = w.allocScratch(numArrays * 4);
       const statsPtr = w.allocScratch(numArrays * 64);
       w.encodeBatchValuesALPWithStats(
-        valsPtr, chunkSize, numArrays, outPtr, outCap, offsetsPtr, sizesPtr, statsPtr
+        valsPtr,
+        chunkSize,
+        numArrays,
+        outPtr,
+        outCap,
+        offsetsPtr,
+        sizesPtr,
+        statsPtr
       );
-      const offsets = new Uint32Array(w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4));
+      const offsets = new Uint32Array(
+        w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4)
+      );
       const sizes = new Uint32Array(w.memory.buffer.slice(sizesPtr, sizesPtr + numArrays * 4));
       const allStats = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
       const results = [];
       for (let i = 0; i < numArrays; i++) {
-        const compressed = new Uint8Array(w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i]));
+        const compressed = new Uint8Array(
+          w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i])
+        );
         const si = i * 8;
         results.push({
           compressed,
           stats: {
-            minV: allStats[si], maxV: allStats[si+1], sum: allStats[si+2], count: allStats[si+3],
-            firstV: allStats[si+4], lastV: allStats[si+5], sumOfSquares: allStats[si+6], resetCount: allStats[si+7],
+            minV: allStats[si],
+            maxV: allStats[si + 1],
+            sum: allStats[si + 2],
+            count: allStats[si + 3],
+            firstV: allStats[si + 4],
+            lastV: allStats[si + 5],
+            sumOfSquares: allStats[si + 6],
+            resetCount: allStats[si + 7],
           },
         });
       }
@@ -145,7 +176,10 @@ async function loadCodecs() {
       const tsPtr = w.allocScratch(n * 8);
       const outCap = n * 20;
       const outPtr = w.allocScratch(outCap);
-      mem().set(new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength), tsPtr);
+      mem().set(
+        new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength),
+        tsPtr
+      );
       const bytesWritten = w.encodeTimestamps(tsPtr, n, outPtr, outCap);
       return new Uint8Array(w.memory.buffer.slice(outPtr, outPtr + bytesWritten));
     },
@@ -171,11 +205,15 @@ async function loadCodecs() {
       const outTsPtr = w.allocScratch(maxSamples * 8);
       const outValPtr = w.allocScratch(maxSamples * 8);
       const n = w.rangeDecodeALP(
-        tsInPtr, compressedTs.length,
-        valInPtr, compressedVals.length,
-        startT, endT,
-        outTsPtr, outValPtr,
-        maxSamples,
+        tsInPtr,
+        compressedTs.length,
+        valInPtr,
+        compressedVals.length,
+        startT,
+        endT,
+        outTsPtr,
+        outValPtr,
+        maxSamples
       );
       if (n === 0) return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
       return {
@@ -196,7 +234,9 @@ function fmtRate(n) {
   return `${n.toFixed(0)}`;
 }
 
-function fmtMs(n) { return n.toFixed(1); }
+function fmtMs(n) {
+  return n.toFixed(1);
+}
 
 // ── Run one configuration ────────────────────────────────────────────
 
@@ -249,17 +289,25 @@ async function runConfig(chunkSize, data, codecs, useFused, makeGrouper, totalPt
   let ok = r0.timestamps.length === expectedLen;
   if (!ok && !runConfig._diagShown) {
     runConfig._diagShown = true;
-    console.log(`  [DIAG] chunk=${chunkSize} fused=${useFused}: expected ${expectedLen} pts, got ${r0.timestamps.length}`);
+    console.log(
+      `  [DIAG] chunk=${chunkSize} fused=${useFused}: expected ${expectedLen} pts, got ${r0.timestamps.length}`
+    );
     console.log(`         query=[${qFullStart}, ${qFullEnd}]`);
-    console.log(`         series0 range=[${data[0].timestamps[0]}, ${data[0].timestamps[data[0].timestamps.length - 1]}]`);
+    console.log(
+      `         series0 range=[${data[0].timestamps[0]}, ${data[0].timestamps[data[0].timestamps.length - 1]}]`
+    );
     if (r0.timestamps.length > 0) {
-      console.log(`         result range=[${r0.timestamps[0]}, ${r0.timestamps[r0.timestamps.length - 1]}]`);
+      console.log(
+        `         result range=[${r0.timestamps[0]}, ${r0.timestamps[r0.timestamps.length - 1]}]`
+      );
     }
   }
   if (ok) {
     for (let i = 0; i < expectedLen; i++) {
-      if (r0.timestamps[i] !== data[0].timestamps[i] ||
-          Math.abs(r0.values[i] - data[0].values[i]) > 1e-10) {
+      if (
+        r0.timestamps[i] !== data[0].timestamps[i] ||
+        Math.abs(r0.values[i] - data[0].values[i]) > 1e-10
+      ) {
         ok = false;
         break;
       }
@@ -270,11 +318,11 @@ async function runConfig(chunkSize, data, codecs, useFused, makeGrouper, totalPt
     chunkSize,
     fused: useFused,
     ingestMs,
-    ingestRate: totalPts / ingestMs * 1000,
+    ingestRate: (totalPts / ingestMs) * 1000,
     fullMs,
-    fullRate: fullRead / fullMs * 1000,
+    fullRate: (fullRead / fullMs) * 1000,
     narrowMs,
-    narrowRate: narrowRead / narrowMs * 1000,
+    narrowRate: (narrowRead / narrowMs) * 1000,
     bPerPt: store.memoryBytes() / totalPts,
     correct: ok,
     fullRead,
@@ -302,13 +350,14 @@ async function main() {
     let maxT = data[0].timestamps[data[0].timestamps.length - 1];
     for (const d of data) {
       if (d.timestamps[0] < minT) minT = d.timestamps[0];
-      if (d.timestamps[d.timestamps.length - 1] > maxT) maxT = d.timestamps[d.timestamps.length - 1];
+      if (d.timestamps[d.timestamps.length - 1] > maxT)
+        maxT = d.timestamps[d.timestamps.length - 1];
     }
     const range = maxT - minT;
     queryRange = {
       fullStart: minT,
       fullEnd: maxT,
-      narrowStart: minT + range * 9n / 10n,
+      narrowStart: minT + (range * 9n) / 10n,
       narrowEnd: maxT,
     };
     // Group by metric name + series length (series must share timestamps to share a group).
@@ -328,7 +377,9 @@ async function main() {
       let idx = 0;
       return (_labels) => seriesGroupIds[idx++];
     };
-    console.log(`\n  Chunk-size sweep (OTel ${dataset}): ${data.length} series, ${totalPts.toLocaleString()} pts${repeat > 1 ? ` (×${repeat})` : ""}`);
+    console.log(
+      `\n  Chunk-size sweep (OTel ${dataset}): ${data.length} series, ${totalPts.toLocaleString()} pts${repeat > 1 ? ` (×${repeat})` : ""}`
+    );
   } else {
     data = generateData();
     totalPts = TOTAL;
@@ -339,7 +390,9 @@ async function main() {
       narrowEnd: NARROW_END,
     };
     makeGrouper = () => () => 0;
-    console.log(`\n  Chunk-size sweep: ${NUM_SERIES} series × ${POINTS_PER_SERIES.toLocaleString()} pts = ${TOTAL.toLocaleString()} samples`);
+    console.log(
+      `\n  Chunk-size sweep: ${NUM_SERIES} series × ${POINTS_PER_SERIES.toLocaleString()} pts = ${TOTAL.toLocaleString()} samples`
+    );
   }
   console.log(`  Narrow query: last 10% of range\n`);
 
@@ -360,9 +413,15 @@ async function main() {
 
   // ── Table output ──
 
-  console.log("  ┌───────┬───────┬──────────┬──────────┬──────────┬──────────┬──────────┬───────┬────┐");
-  console.log("  │ Chunk │ Fused │  Ingest  │  Full Q  │ Full ms  │ Narrow Q │ Narrw ms │ B/pt  │ OK │");
-  console.log("  ├───────┼───────┼──────────┼──────────┼──────────┼──────────┼──────────┼───────┼────┤");
+  console.log(
+    "  ┌───────┬───────┬──────────┬──────────┬──────────┬──────────┬──────────┬───────┬────┐"
+  );
+  console.log(
+    "  │ Chunk │ Fused │  Ingest  │  Full Q  │ Full ms  │ Narrow Q │ Narrw ms │ B/pt  │ OK │"
+  );
+  console.log(
+    "  ├───────┼───────┼──────────┼──────────┼──────────┼──────────┼──────────┼───────┼────┤"
+  );
 
   for (const r of results) {
     const cs = String(r.chunkSize).padStart(5);
@@ -374,29 +433,46 @@ async function main() {
     const narrowMs = `${fmtMs(r.narrowMs)}`.padStart(8);
     const bpt = `${r.bPerPt.toFixed(1)}`.padStart(5);
     const ok = r.correct ? "✓" : "✗";
-    console.log(`  │ ${cs} │ ${fused} │ ${ingest} │ ${fullQ} │ ${fullMs} │ ${narrowQ} │ ${narrowMs} │ ${bpt} │ ${ok}  │`);
+    console.log(
+      `  │ ${cs} │ ${fused} │ ${ingest} │ ${fullQ} │ ${fullMs} │ ${narrowQ} │ ${narrowMs} │ ${bpt} │ ${ok}  │`
+    );
   }
-  console.log("  └───────┴───────┴──────────┴──────────┴──────────┴──────────┴──────────┴───────┴────┘");
+  console.log(
+    "  └───────┴───────┴──────────┴──────────┴──────────┴──────────┴──────────┴───────┴────┘"
+  );
 
   // Summary — best configs.
-  const correct = results.filter(r => r.correct);
+  const correct = results.filter((r) => r.correct);
   if (correct.length > 0) {
-    const bestFull = correct.reduce((a, b) => a.fullRate > b.fullRate ? a : b);
-    const bestNarrow = correct.reduce((a, b) => a.narrowRate > b.narrowRate ? a : b);
-    const bestIngest = correct.reduce((a, b) => a.ingestRate > b.ingestRate ? a : b);
-    const bestCompress = correct.reduce((a, b) => a.bPerPt < b.bPerPt ? a : b);
-    console.log(`\n  Best full-range query:   chunk=${bestFull.chunkSize} fused=${bestFull.fused} → ${fmtRate(bestFull.fullRate)}/s (${fmtMs(bestFull.fullMs)}ms)`);
-    console.log(`  Best narrow query:       chunk=${bestNarrow.chunkSize} fused=${bestNarrow.fused} → ${fmtRate(bestNarrow.narrowRate)}/s (${fmtMs(bestNarrow.narrowMs)}ms)`);
-    console.log(`  Best ingest:             chunk=${bestIngest.chunkSize} fused=${bestIngest.fused} → ${fmtRate(bestIngest.ingestRate)}/s`);
-    console.log(`  Best compression:        chunk=${bestCompress.chunkSize} → ${bestCompress.bPerPt.toFixed(1)} B/pt`);
+    const bestFull = correct.reduce((a, b) => (a.fullRate > b.fullRate ? a : b));
+    const bestNarrow = correct.reduce((a, b) => (a.narrowRate > b.narrowRate ? a : b));
+    const bestIngest = correct.reduce((a, b) => (a.ingestRate > b.ingestRate ? a : b));
+    const bestCompress = correct.reduce((a, b) => (a.bPerPt < b.bPerPt ? a : b));
+    console.log(
+      `\n  Best full-range query:   chunk=${bestFull.chunkSize} fused=${bestFull.fused} → ${fmtRate(bestFull.fullRate)}/s (${fmtMs(bestFull.fullMs)}ms)`
+    );
+    console.log(
+      `  Best narrow query:       chunk=${bestNarrow.chunkSize} fused=${bestNarrow.fused} → ${fmtRate(bestNarrow.narrowRate)}/s (${fmtMs(bestNarrow.narrowMs)}ms)`
+    );
+    console.log(
+      `  Best ingest:             chunk=${bestIngest.chunkSize} fused=${bestIngest.fused} → ${fmtRate(bestIngest.ingestRate)}/s`
+    );
+    console.log(
+      `  Best compression:        chunk=${bestCompress.chunkSize} → ${bestCompress.bPerPt.toFixed(1)} B/pt`
+    );
   }
 
-  const failures = results.filter(r => !r.correct);
+  const failures = results.filter((r) => !r.correct);
   if (failures.length > 0) {
-    console.log(`\n  ⚠ CORRECTNESS FAILURES: ${failures.map(r => `chunk=${r.chunkSize} fused=${r.fused}`).join(", ")}`);
+    console.log(
+      `\n  ⚠ CORRECTNESS FAILURES: ${failures.map((r) => `chunk=${r.chunkSize} fused=${r.fused}`).join(", ")}`
+    );
   }
 
   console.log();
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

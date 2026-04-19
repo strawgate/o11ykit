@@ -1,4 +1,4 @@
-import type { QueryOpts, QueryResult } from './types.js';
+import type { QueryOpts, QueryResult } from "./types.js";
 import {
   isResponseEnvelope,
   type RequestEnvelope,
@@ -7,7 +7,7 @@ import {
   type TransferStrategy,
   type WorkerRequest,
   type WorkerResponse,
-} from './worker-protocol.js';
+} from "./worker-protocol.js";
 
 interface MessageEventLike {
   data: unknown;
@@ -15,7 +15,7 @@ interface MessageEventLike {
 
 interface WorkerLike {
   postMessage(message: unknown, transfer?: ArrayBufferLike[]): void;
-  addEventListener(type: 'message', listener: (event: MessageEventLike) => void): void;
+  addEventListener(type: "message", listener: (event: MessageEventLike) => void): void;
   terminate?: () => void;
 }
 
@@ -37,76 +37,81 @@ export class WorkerClient {
 
   constructor(opts: WorkerClientOptions) {
     this.worker = opts.worker;
-    this.transferStrategy = opts.transferStrategy ?? 'transferable';
-    this.worker.addEventListener('message', (event) => this.onMessage(event.data));
+    this.transferStrategy = opts.transferStrategy ?? "transferable";
+    this.worker.addEventListener("message", (event) => this.onMessage(event.data));
   }
 
   async init(chunkSize?: number): Promise<{ backend: string }> {
-    const payload: WorkerRequest = chunkSize === undefined
-      ? { type: 'init' }
-      : { type: 'init', chunkSize };
+    const payload: WorkerRequest =
+      chunkSize === undefined ? { type: "init" } : { type: "init", chunkSize };
 
     const response = await this.send(payload);
     if (response.ok === false) throw new Error(response.error);
-    if (response.type !== 'init') throw new Error(`Unexpected response type: ${response.type}`);
+    if (response.type !== "init") throw new Error(`Unexpected response type: ${response.type}`);
     return { backend: response.backend };
   }
 
   async ingest(
     labels: ReadonlyMap<string, string>,
     timestamps: BigInt64Array,
-    values: Float64Array,
+    values: Float64Array
   ): Promise<{ seriesId: number; ingestedSamples: number }> {
-    const response = await this.send({
-      type: 'ingest',
-      labels: [...labels.entries()],
-      timestamps,
-      values,
-    }, this.getTransferables(timestamps, values));
+    const response = await this.send(
+      {
+        type: "ingest",
+        labels: [...labels.entries()],
+        timestamps,
+        values,
+      },
+      this.getTransferables(timestamps, values)
+    );
 
     if (response.ok === false) throw new Error(response.error);
-    if (response.type !== 'ingest') throw new Error(`Unexpected response type: ${response.type}`);
+    if (response.type !== "ingest") throw new Error(`Unexpected response type: ${response.type}`);
     return { seriesId: response.seriesId, ingestedSamples: response.ingestedSamples };
   }
 
   async query(opts: QueryOpts): Promise<QueryResult> {
-    const response = await this.send({ type: 'query', opts });
+    const response = await this.send({ type: "query", opts });
     if (response.ok === false) throw new Error(response.error);
-    if (response.type !== 'query') throw new Error(`Unexpected response type: ${response.type}`);
+    if (response.type !== "query") throw new Error(`Unexpected response type: ${response.type}`);
     return response.result;
   }
 
   async stats(): Promise<{ seriesCount: number; sampleCount: number; memoryBytes: number }> {
-    const response = await this.send({ type: 'stats' });
+    const response = await this.send({ type: "stats" });
     if (response.ok === false) throw new Error(response.error);
-    if (response.type !== 'stats') throw new Error(`Unexpected response type: ${response.type}`);
+    if (response.type !== "stats") throw new Error(`Unexpected response type: ${response.type}`);
     return response.stats;
   }
 
-  async echo(payload: Uint8Array, strategy: TransferStrategy = this.transferStrategy): Promise<number> {
-    const transferables = strategy === 'transferable' ? [payload.buffer] : [];
-    const response = await this.send({ type: 'echo', payload }, transferables, strategy);
+  async echo(
+    payload: Uint8Array,
+    strategy: TransferStrategy = this.transferStrategy
+  ): Promise<number> {
+    const transferables = strategy === "transferable" ? [payload.buffer] : [];
+    const response = await this.send({ type: "echo", payload }, transferables, strategy);
     if (response.ok === false) throw new Error(response.error);
-    if (response.type !== 'echo') throw new Error(`Unexpected response type: ${response.type}`);
+    if (response.type !== "echo") throw new Error(`Unexpected response type: ${response.type}`);
     return response.bytes;
   }
 
   async close(): Promise<void> {
-    const response = await this.send({ type: 'close' });
+    const response = await this.send({ type: "close" });
     if (response.ok === false) throw new Error(response.error);
-    if (response.type !== 'close') throw new Error(`Unexpected response type: ${response.type}`);
+    if (response.type !== "close") throw new Error(`Unexpected response type: ${response.type}`);
     this.worker.terminate?.();
   }
 
   private send<T extends WorkerRequest>(
     payload: T,
     transfer: ArrayBufferLike[] = [],
-    strategy: TransferStrategy = this.transferStrategy,
+    strategy: TransferStrategy = this.transferStrategy
   ): Promise<WorkerResponse> {
     const id = this.nextId++;
     const envelope: RequestEnvelope<T> = {
       id,
-      kind: 'request',
+      kind: "request",
       payload,
       meta: { strategy, sentAt: Date.now() },
     };
@@ -132,7 +137,7 @@ export class WorkerClient {
   }
 
   private getTransferables(timestamps: BigInt64Array, values: Float64Array): ArrayBufferLike[] {
-    if (this.transferStrategy !== 'transferable') return [];
+    if (this.transferStrategy !== "transferable") return [];
     return [timestamps.buffer, values.buffer];
   }
 }

@@ -54,7 +54,9 @@ export interface ValuesCodec {
   /** Optional: encode values and compute block stats in one pass (WASM fast-path). */
   encodeValuesWithStats?(values: Float64Array): { compressed: Uint8Array; stats: ChunkStats };
   /** Optional: batch-encode N arrays in a single WASM call, returning compressed blobs + stats. */
-  encodeBatchValuesWithStats?(arrays: Float64Array[]): Array<{ compressed: Uint8Array; stats: ChunkStats }>;
+  encodeBatchValuesWithStats?(
+    arrays: Float64Array[]
+  ): Array<{ compressed: Uint8Array; stats: ChunkStats }>;
   /** Optional: batch-decode N compressed blobs in a single WASM call. */
   decodeBatchValues?(blobs: Uint8Array[], chunkSize: number): Float64Array[];
 }
@@ -82,7 +84,7 @@ export interface RangeDecodeCodec {
     compressedTimestamps: Uint8Array,
     compressedValues: Uint8Array,
     startT: bigint,
-    endT: bigint,
+    endT: bigint
   ): RangeDecodeResult;
 }
 
@@ -139,7 +141,7 @@ export interface StorageBackend {
 
 // ── Query engine ─────────────────────────────────────────────────────
 
-export type AggFn = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'last' | 'rate';
+export type AggFn = "sum" | "avg" | "min" | "max" | "count" | "last" | "rate";
 
 export interface Matcher {
   label: string;

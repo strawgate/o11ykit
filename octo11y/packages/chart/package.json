@@ -17,9 +17,9 @@
     "./css": "./dist/style.css"
   },
   "scripts": {
-    "build": "tsc && cp src/style.css dist/style.css",
+    "build": "tsc -p tsconfig.build.json && cp src/style.css dist/style.css",
     "lint": "tsc --noEmit",
-    "test": "node --test dist/*.test.js"
+    "test": "tsc && node --test dist/*.test.js"
   },
   "files": [
     "dist"

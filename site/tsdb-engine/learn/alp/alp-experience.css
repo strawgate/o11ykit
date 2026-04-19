@@ -1,0 +1,450 @@
+/* ─── ALP Compression Experience ─────────────────────────────────── */
+
+/* ─── Data Values Card ────────────────────────────────────────────── */
+.alp-values-card {
+  padding: 16px;
+}
+
+.alp-values-scroll {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.alp-val-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px;
+  background: var(--xp-surface-raised);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  flex-shrink: 0;
+  min-width: 60px;
+  transition: all 200ms;
+}
+
+.alp-val-chip .idx {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--xp-text-dim);
+}
+
+.alp-val-chip .val {
+  font-family: var(--xp-mono);
+  font-size: 13px;
+  color: var(--xp-text);
+  white-space: nowrap;
+}
+
+.alp-val-chip.exception {
+  border-color: var(--xp-warn);
+  background: var(--xp-warn-glow);
+}
+
+.alp-val-chip.exception .val {
+  color: var(--xp-warn);
+}
+
+/* ─── Custom Input ────────────────────────────────────────────────── */
+.custom-input-wrap {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.alp-textarea {
+  flex: 1;
+  padding: 10px 14px;
+  font-family: var(--xp-mono);
+  font-size: 13px;
+  color: var(--xp-text);
+  background: var(--xp-surface-raised);
+  border: 1px solid var(--xp-border-strong);
+  border-radius: var(--xp-radius-sm);
+  resize: vertical;
+  outline: none;
+  transition: border-color 150ms;
+}
+
+.alp-textarea:focus {
+  border-color: var(--xp-accent);
+}
+
+/* ─── Stage Panels ────────────────────────────────────────────────── */
+.alp-panel {
+  animation: xp-fade-in 350ms ease both;
+  margin-bottom: 24px;
+}
+
+.alp-panel[hidden] {
+  display: none;
+}
+
+.alp-panel h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 0 6px;
+}
+
+.alp-panel p {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--xp-text-muted);
+  margin: 0 0 16px;
+  max-width: 65ch;
+}
+
+/* ─── Exponent Scan Table ─────────────────────────────────────────── */
+.alp-exp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.alp-exp-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: 600;
+  color: var(--xp-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 11px;
+  border-bottom: 1px solid var(--xp-border-strong);
+}
+
+.alp-exp-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--xp-border);
+  font-family: var(--xp-mono);
+  font-size: 12px;
+  color: var(--xp-text);
+}
+
+.alp-exp-table tr.winner td {
+  background: var(--xp-success-glow);
+  color: var(--xp-success);
+  font-weight: 600;
+}
+
+.alp-exp-table tr:hover td {
+  background: var(--xp-accent-glow);
+}
+
+.alp-exp-table tr.winner:hover td {
+  background: var(--xp-success-glow);
+}
+
+.alp-check {
+  color: var(--xp-success);
+}
+.alp-cross {
+  color: var(--xp-error);
+}
+
+/* ─── Quantize Two-Column ─────────────────────────────────────────── */
+.alp-quant-grid {
+  display: grid;
+  grid-template-columns: 1fr 40px 1fr;
+  gap: 6px 12px;
+  align-items: center;
+  font-family: var(--xp-mono);
+  font-size: 13px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.alp-quant-grid .arrow {
+  text-align: center;
+  color: var(--xp-accent);
+  font-size: 16px;
+}
+
+.alp-quant-grid .from,
+.alp-quant-grid .to {
+  padding: 6px 10px;
+  background: var(--xp-surface-raised);
+  border-radius: var(--xp-radius-xs);
+  transition: all 300ms ease;
+}
+
+.alp-quant-grid .to {
+  color: var(--xp-success);
+  background: var(--xp-success-glow);
+}
+
+.alp-quant-grid .hdr {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--xp-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-family: var(--xp-font);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--xp-border);
+}
+
+/* ─── Frame-of-Reference Range Bar ────────────────────────────────── */
+.alp-for-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.alp-range-bar {
+  position: relative;
+  height: 32px;
+  background: var(--xp-surface-raised);
+  border-radius: var(--xp-radius-sm);
+  overflow: hidden;
+}
+
+.alp-range-fill {
+  height: 100%;
+  border-radius: var(--xp-radius-sm);
+  display: flex;
+  align-items: center;
+  padding-left: 10px;
+  font-family: var(--xp-mono);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: width 600ms ease;
+}
+
+.alp-range-label {
+  font-size: 12px;
+  color: var(--xp-text-muted);
+  margin-bottom: 4px;
+}
+
+.alp-for-offsets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.alp-offset-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  background: var(--xp-surface-raised);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-xs);
+  font-family: var(--xp-mono);
+  font-size: 12px;
+  min-width: 50px;
+  text-align: center;
+}
+
+.alp-offset-chip .lbl {
+  font-size: 9px;
+  color: var(--xp-text-dim);
+  font-family: var(--xp-font);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ─── Bit Grid (Packing) ─────────────────────────────────────────── */
+.alp-bitpack-wrap {
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.alp-bitpack-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  font-family: var(--xp-mono);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.alp-packed-bit {
+  width: 18px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  transition: all 120ms;
+}
+
+.alp-bitpack-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--xp-text-muted);
+}
+
+.alp-bitpack-legend .swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* Alternating value colors for packed bits */
+.alp-packed-bit.v-even {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--xp-accent-light);
+}
+.alp-packed-bit.v-odd {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--xp-success);
+}
+.alp-packed-bit.v-even[data-b="0"] {
+  color: rgba(96, 165, 250, 0.35);
+}
+.alp-packed-bit.v-odd[data-b="0"] {
+  color: rgba(52, 211, 153, 0.35);
+}
+
+/* ─── Exceptions Panel ────────────────────────────────────────────── */
+.alp-exc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alp-exc-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--xp-warn-glow);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: var(--xp-radius-sm);
+  font-family: var(--xp-mono);
+  font-size: 13px;
+}
+
+.alp-exc-item .pos {
+  color: var(--xp-warn);
+  font-weight: 600;
+  min-width: 40px;
+}
+
+.alp-exc-item .raw {
+  color: var(--xp-text);
+}
+
+.alp-exc-item .cost {
+  margin-left: auto;
+  color: var(--xp-text-dim);
+  font-size: 11px;
+}
+
+/* ─── Wire Format Breakdown ───────────────────────────────────────── */
+.alp-wire-bar {
+  display: flex;
+  height: 36px;
+  border-radius: var(--xp-radius-sm);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.alp-wire-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--xp-mono);
+  font-size: 11px;
+  font-weight: 500;
+  transition: flex 400ms ease;
+  min-width: 2px;
+}
+
+.alp-wire-seg.seg-header {
+  background: var(--region-header);
+  color: #fff;
+}
+.alp-wire-seg.seg-packed {
+  background: var(--region-values);
+  color: #fff;
+}
+.alp-wire-seg.seg-exc-pos {
+  background: var(--region-exceptions);
+  color: #000;
+}
+.alp-wire-seg.seg-exc-val {
+  background: var(--xp-warn);
+  color: #000;
+}
+
+.alp-wire-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--xp-text-muted);
+}
+
+.alp-wire-legend .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* ─── Summary Stats enhancements ──────────────────────────────────── */
+.alp-ratio-highlight {
+  color: var(--xp-success);
+}
+
+/* ─── Pipeline stage cursor ───────────────────────────────────────── */
+.xp-pipe-stage.clickable {
+  cursor: pointer;
+}
+
+.xp-pipe-stage.clickable:hover {
+  border-color: var(--xp-accent);
+  background: rgba(96, 165, 250, 0.06);
+}
+
+.xp-pipe-stage.done {
+  border-color: var(--xp-success);
+  background: var(--xp-success-glow);
+}
+
+.xp-pipe-stage.done .stage-label {
+  color: var(--xp-success);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .alp-quant-grid {
+    font-size: 11px;
+    gap: 4px 8px;
+  }
+
+  .alp-quant-grid .from,
+  .alp-quant-grid .to {
+    padding: 4px 6px;
+  }
+
+  .custom-input-wrap {
+    flex-direction: column;
+  }
+
+  .alp-wire-seg {
+    font-size: 9px;
+  }
+}

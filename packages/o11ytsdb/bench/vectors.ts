@@ -78,7 +78,7 @@ export function constantGauge(n = 1024, t0 = 1_700_000_000_000n): ChunkData {
   const timestamps = makeTimes(n, t0);
   const values = new Float64Array(n);
   for (let i = 0; i < n; i++) values[i] = 42.0;
-  return { name: 'constant_gauge', timestamps, values };
+  return { name: "constant_gauge", timestamps, values };
 }
 
 /** Counter with small integer increments (disk_ops, net_packets). */
@@ -91,7 +91,7 @@ export function counterSmall(n = 1024, t0 = 1_700_000_000_000n, seed = 42): Chun
     if (rng.next() >= 0.4) counter += Math.floor(rng.next() * 10) + 1;
     values[i] = counter;
   }
-  return { name: 'counter_small', timestamps, values };
+  return { name: "counter_small", timestamps, values };
 }
 
 /** Counter with large integers (~10^10, like network bytes). */
@@ -104,7 +104,7 @@ export function counterLarge(n = 1024, t0 = 1_700_000_000_000n, seed = 42): Chun
     if (rng.next() >= 0.3) counter += Math.floor(rng.next() * 100000) + 1;
     values[i] = counter;
   }
-  return { name: 'counter_large', timestamps, values };
+  return { name: "counter_large", timestamps, values };
 }
 
 /** Gauge with 2 decimal places (cpu_time, load_average). */
@@ -118,7 +118,7 @@ export function gauge2dp(n = 1024, t0 = 1_700_000_000_000n, seed = 42): ChunkDat
     v = Math.max(0, v);
     values[i] = Math.round(v * 100) / 100;
   }
-  return { name: 'gauge_2dp', timestamps, values };
+  return { name: "gauge_2dp", timestamps, values };
 }
 
 /** Gauge with 3 decimal places (disk_io_time, operation_time). */
@@ -132,7 +132,7 @@ export function gauge3dp(n = 1024, t0 = 1_700_000_000_000n, seed = 42): ChunkDat
     v = Math.max(0, v);
     values[i] = Math.round(v * 1000) / 1000;
   }
-  return { name: 'gauge_3dp', timestamps, values };
+  return { name: "gauge_3dp", timestamps, values };
 }
 
 /** Gauge with 11 decimal places (memory.utilization). ALP-clean at e=11. */
@@ -146,7 +146,7 @@ export function gauge11dp(n = 1024, t0 = 1_700_000_000_000n, seed = 42): ChunkDa
     base = Math.max(0, Math.min(1, base));
     values[i] = Math.round(base * 1e11) / 1e11;
   }
-  return { name: 'gauge_11dp', timestamps, values };
+  return { name: "gauge_11dp", timestamps, values };
 }
 
 /** Gauge with 12 decimal places (filesystem.utilization). ALP-clean at e=12. */
@@ -160,7 +160,7 @@ export function gauge12dp(n = 1024, t0 = 1_700_000_000_000n, seed = 42): ChunkDa
     base = Math.max(0, Math.min(1, base));
     values[i] = Math.round(base * 1e12) / 1e12;
   }
-  return { name: 'gauge_12dp', timestamps, values };
+  return { name: "gauge_12dp", timestamps, values };
 }
 
 /**
@@ -179,7 +179,7 @@ export function highPrecisionRatio(n = 1024, t0 = 1_700_000_000_000n, seed = 42)
     totalTicks += 1000;
     values[i] = ticks / totalTicks;
   }
-  return { name: 'high_precision_ratio', timestamps, values };
+  return { name: "high_precision_ratio", timestamps, values };
 }
 
 /** High-variance gauge with 2dp (latency-like random walk). */
@@ -193,7 +193,7 @@ export function highVarianceGauge(n = 1024, t0 = 1_700_000_000_000n, seed = 42):
     v = Math.max(0, v);
     values[i] = Math.round(v * 100) / 100;
   }
-  return { name: 'high_variance_gauge', timestamps, values };
+  return { name: "high_variance_gauge", timestamps, values };
 }
 
 // ── Legacy generators (kept for backwards compatibility) ─────────────
@@ -201,7 +201,7 @@ export function highVarianceGauge(n = 1024, t0 = 1_700_000_000_000n, seed = 42):
 /** Slow-changing gauge (CPU %). @deprecated Use gauge2dp. */
 export function slowGauge(n = 1024, t0 = 1_700_000_000_000n, seed = 42): ChunkData {
   const data = gauge2dp(n, t0, seed);
-  return { ...data, name: 'slow_gauge' };
+  return { ...data, name: "slow_gauge" };
 }
 
 /** Monotonic counter. @deprecated Use counterSmall. */
@@ -214,7 +214,7 @@ export function monotonicCounter(n = 1024, t0 = 1_700_000_000_000n, seed = 42): 
     v += rng.int(10, 200);
     values[i] = v;
   }
-  return { name: 'monotonic_counter', timestamps, values };
+  return { name: "monotonic_counter", timestamps, values };
 }
 
 /** Spiky latency (5-2000ms). @deprecated Use highVarianceGauge. */
@@ -227,7 +227,7 @@ export function spikyLatency(n = 1024, t0 = 1_700_000_000_000n, seed = 42): Chun
     const spike = rng.next() < 0.05 ? rng.gaussian(500, 300) : 0;
     values[i] = Math.max(5, base + spike);
   }
-  return { name: 'spiky_latency', timestamps, values };
+  return { name: "spiky_latency", timestamps, values };
 }
 
 /** High entropy random. @deprecated */
@@ -236,7 +236,7 @@ export function highEntropy(n = 1024, t0 = 1_700_000_000_000n, seed = 42): Chunk
   const timestamps = makeTimes(n, t0);
   const values = new Float64Array(n);
   for (let i = 0; i < n; i++) values[i] = rng.next() * 1e6;
-  return { name: 'high_entropy', timestamps, values };
+  return { name: "high_entropy", timestamps, values };
 }
 
 /**
@@ -253,7 +253,7 @@ export function allGenerators(n = 1024): ChunkData[] {
     gauge11dp(n),
     gauge12dp(n),
     highPrecisionRatio(n),
-    { ...highPrecisionRatio(n, undefined, 99), name: 'high_precision_ratio_b' },
+    { ...highPrecisionRatio(n, undefined, 99), name: "high_precision_ratio_b" },
     highVarianceGauge(n),
   ];
 }
@@ -268,11 +268,7 @@ export interface LabelSet {
  * Generate N series with realistic label distributions.
  * Each series has `numLabels` labels. Values follow power-law cardinality.
  */
-export function generateLabelSets(
-  numSeries: number,
-  numLabels: number,
-  seed = 42,
-): LabelSet[] {
+export function generateLabelSets(numSeries: number, numLabels: number, seed = 42): LabelSet[] {
   const rng = new Rng(seed);
   const sets: LabelSet[] = [];
 

@@ -45,7 +45,7 @@ bench("BigInt sub+div", () => {
 bench("Float64 div", () => {
   buckets.fill(Infinity);
   for (let i = 0; i < N; i++) {
-    const b = (tsF[i] - minTN) / stepN | 0;
+    const b = ((tsF[i] - minTN) / stepN) | 0;
     if (vals[i] < buckets[b]) buckets[b] = vals[i];
   }
 });
@@ -54,7 +54,7 @@ bench("Float64 div", () => {
 bench("Number(BigInt) inline", () => {
   buckets.fill(Infinity);
   for (let i = 0; i < N; i++) {
-    const b = (Number(ts[i]) - minTN) / stepN | 0;
+    const b = ((Number(ts[i]) - minTN) / stepN) | 0;
     if (vals[i] < buckets[b]) buckets[b] = vals[i];
   }
 });
@@ -65,7 +65,7 @@ bench("Batch convert + loop", () => {
   for (let i = 0; i < N; i++) tsN[i] = Number(ts[i]);
   buckets.fill(Infinity);
   for (let i = 0; i < N; i++) {
-    const b = (tsN[i] - minTN) / stepN | 0;
+    const b = ((tsN[i] - minTN) / stepN) | 0;
     if (vals[i] < buckets[b]) buckets[b] = vals[i];
   }
 });
@@ -89,7 +89,7 @@ bench("DataView i64->f64", () => {
   }
   buckets.fill(Infinity);
   for (let i = 0; i < N; i++) {
-    const b = (dst[i] - minTN) / stepN | 0;
+    const b = ((dst[i] - minTN) / stepN) | 0;
     if (vals[i] < buckets[b]) buckets[b] = vals[i];
   }
 });
@@ -99,7 +99,7 @@ bench("DataView i64->f64", () => {
 bench("Float64 pre-stored (best)", () => {
   buckets.fill(Infinity);
   for (let i = 0; i < N; i++) {
-    const b = (tsF[i] - minTN) / stepN | 0;
+    const b = ((tsF[i] - minTN) / stepN) | 0;
     if (vals[i] < buckets[b]) buckets[b] = vals[i];
   }
 });

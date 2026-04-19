@@ -1,0 +1,292 @@
+/* ─── Delta-of-Delta Experience ───────────────────────────────────── */
+
+/* ─── Control Groups ──────────────────────────────────────────────── */
+.dod-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dod-slider-wide {
+  flex: 1;
+  min-width: 200px;
+}
+
+.dod-slider-wide .xp-slider {
+  width: 100%;
+}
+
+/* ─── Transformation Table ────────────────────────────────────────── */
+.dod-table-wrap {
+  padding: 0;
+  overflow: hidden;
+}
+
+.dod-table-scroll {
+  overflow-x: auto;
+}
+
+.dod-table {
+  min-width: 720px;
+}
+
+.dod-table td {
+  font-family: var(--xp-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dod-table td.dod-idx {
+  color: var(--xp-text-dim);
+  font-weight: 600;
+  width: 36px;
+}
+
+.dod-table td.dod-ts {
+  color: var(--xp-text-muted);
+  font-size: 11px;
+}
+
+.dod-table td.dod-na {
+  color: var(--xp-text-dim);
+  font-style: italic;
+  font-family: var(--xp-font);
+}
+
+.dod-table td.dod-prefix {
+  letter-spacing: 0.1em;
+}
+
+.dod-table td.dod-bits {
+  font-weight: 600;
+}
+
+/* Tier row tinting */
+.dod-table tr.tier-row-0 td {
+  border-left: 3px solid var(--tier-0);
+}
+.dod-table tr.tier-row-1 td {
+  border-left: 3px solid var(--tier-1);
+}
+.dod-table tr.tier-row-2 td {
+  border-left: 3px solid var(--tier-2);
+}
+.dod-table tr.tier-row-3 td {
+  border-left: 3px solid var(--tier-3);
+}
+.dod-table tr.tier-row-4 td {
+  border-left: 3px solid var(--tier-4);
+}
+.dod-table tr.tier-row-header td {
+  border-left: 3px solid var(--region-header);
+}
+
+.dod-table tr.tier-row-0 td:first-child {
+  border-left-width: 3px;
+}
+.dod-table tr.tier-row-1 td:first-child {
+  border-left-width: 3px;
+}
+
+/* Tier badge — base from .xp-badge in shared.css */
+.dod-tier-badge.t0 {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--tier-0);
+}
+.dod-tier-badge.t1 {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--tier-1);
+}
+.dod-tier-badge.t2 {
+  background: rgba(167, 139, 250, 0.15);
+  color: var(--tier-2);
+}
+.dod-tier-badge.t3 {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--tier-3);
+}
+.dod-tier-badge.t4 {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--tier-4);
+}
+
+/* ─── Tier Distribution Bar ───────────────────────────────────────── */
+.dod-tier-bar {
+  display: flex;
+  height: 40px;
+  border-radius: var(--xp-radius-sm);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.dod-tier-seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--xp-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  transition: flex-basis 400ms ease;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dod-tier-seg.seg-0 {
+  background: var(--tier-0);
+  color: #0a1624;
+}
+.dod-tier-seg.seg-1 {
+  background: var(--tier-1);
+  color: #0a1624;
+}
+.dod-tier-seg.seg-2 {
+  background: var(--tier-2);
+  color: #0a1624;
+}
+.dod-tier-seg.seg-3 {
+  background: var(--tier-3);
+  color: #0a1624;
+}
+.dod-tier-seg.seg-4 {
+  background: var(--tier-4);
+  color: #0a1624;
+}
+
+.dod-tier-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--xp-text-muted);
+}
+
+.dod-tier-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dod-tier-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.dod-tier-dot.d0 {
+  background: var(--tier-0);
+}
+.dod-tier-dot.d1 {
+  background: var(--tier-1);
+}
+.dod-tier-dot.d2 {
+  background: var(--tier-2);
+}
+.dod-tier-dot.d3 {
+  background: var(--tier-3);
+}
+.dod-tier-dot.d4 {
+  background: var(--tier-4);
+}
+
+/* ─── Bit Cost Profile Chart ──────────────────────────────────────── */
+.dod-bitcost-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dod-bitcost-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
+}
+
+.dod-bitcost-label {
+  font-family: var(--xp-mono);
+  font-size: 10px;
+  color: var(--xp-text-dim);
+  width: 20px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.dod-bitcost-bar-wrap {
+  flex: 1;
+  height: 14px;
+  position: relative;
+}
+
+.dod-bitcost-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 400ms ease;
+  min-width: 2px;
+  position: relative;
+}
+
+.dod-bitcost-bar.bc-0 {
+  background: var(--tier-0);
+}
+.dod-bitcost-bar.bc-1 {
+  background: var(--tier-1);
+}
+.dod-bitcost-bar.bc-2 {
+  background: var(--tier-2);
+}
+.dod-bitcost-bar.bc-3 {
+  background: var(--tier-3);
+}
+.dod-bitcost-bar.bc-4 {
+  background: var(--tier-4);
+}
+.dod-bitcost-bar.bc-header {
+  background: var(--region-header);
+}
+
+.dod-bitcost-bits {
+  font-family: var(--xp-mono);
+  font-size: 10px;
+  color: var(--xp-text-dim);
+  width: 36px;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+/* ─── Jitter Story ────────────────────────────────────────────────── */
+/* base from .xp-story in shared.css */
+
+.dod-story strong {
+  color: var(--xp-success);
+  font-weight: 600;
+}
+
+.dod-story .warn {
+  color: var(--xp-warn);
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .dod-table {
+    min-width: 580px;
+  }
+
+  .dod-table td {
+    font-size: 11px;
+    padding: 6px 8px;
+  }
+
+  .dod-tier-seg {
+    font-size: 10px;
+  }
+
+  .dod-bitcost-row {
+    height: 16px;
+  }
+
+  .dod-bitcost-bar-wrap {
+    height: 10px;
+  }
+}

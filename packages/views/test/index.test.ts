@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { logsDocument, metricsDocument, tracesDocument } from "../../otlpjson/test/fixtures.js";
 import {
+  appendTimeSeriesFrame,
   buildEventTimelineFrame,
   buildHistogramFrame,
   buildLatestValuesFrame,
   buildTimeSeriesFrame,
   buildTraceWaterfallFrame,
   createTelemetryStore,
+  mergeTimeSeriesFrames,
 } from "../src/index.js";
 
 describe("@otlpkit/views", () => {
@@ -347,6 +349,75 @@ describe("@otlpkit/views", () => {
     expect(traceEvents.events[0]?.name).toBe("null");
   });
 
+  it("handles equal timestamps in waterfall and timeline sort comparators", () => {
+    const waterfall = buildTraceWaterfallFrame({
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: "t1",
+                  spanId: "a",
+                  startTimeUnixNano: "10",
+                  endTimeUnixNano: "20",
+                },
+                {
+                  traceId: "t1",
+                  spanId: "b",
+                  startTimeUnixNano: "10",
+                  endTimeUnixNano: "20",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(waterfall.traces[0]?.spans.map((s) => s.spanId).sort()).toEqual(["a", "b"]);
+
+    const logEvents = buildEventTimelineFrame(
+      {
+        resourceLogs: [
+          {
+            scopeLogs: [
+              {
+                logRecords: [
+                  { body: { stringValue: "first" }, timeUnixNano: "5" },
+                  { body: { stringValue: "second" }, timeUnixNano: "5" },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      { signal: "logs" }
+    );
+    expect(logEvents.events.map((e) => e.body).sort()).toEqual(["first", "second"]);
+
+    const traceEvents = buildEventTimelineFrame({
+      resourceSpans: [
+        {
+          scopeSpans: [
+            {
+              spans: [
+                {
+                  traceId: "t2",
+                  spanId: "s1",
+                  events: [
+                    { name: "evt-a", timeUnixNano: "7" },
+                    { name: "evt-b", timeUnixNano: "7" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(traceEvents.events.map((e) => e.name).sort()).toEqual(["evt-a", "evt-b"]);
+  });
+
   it("matches batch frame output through an incremental store", () => {
     const store = createTelemetryStore();
     store.ingest(metricsDocument);
@@ -550,5 +621,305 @@ describe("@otlpkit/views", () => {
     expect(() => createTelemetryStore({ maxAgeMs: 0 })).toThrow(
       /maxAgeMs must be a positive number/
     );
+  });
+  it("merges time-series frames for incremental updates", () => {
+    const base = buildTimeSeriesFrame(metricsDocument, {
+      metricName: "logfwd.inflight_batches",
+      intervalMs: 1000,
+      splitBy: "output",
+    });
+
+    const incomingDoc = {
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: "logfwd.inflight_batches",
+                  gauge: {
+                    dataPoints: [
+                      {
+                        attributes: [{ key: "output", value: { stringValue: "elasticsearch" } }],
+                        timeUnixNano: "4000000000",
+                        asInt: "9",
+                      },
+                      {
+                        attributes: [{ key: "output", value: { stringValue: "kafka" } }],
+                        timeUnixNano: "4000000000",
+                        asInt: "6",
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const incoming = buildTimeSeriesFrame(incomingDoc, {
+      metricName: "logfwd.inflight_batches",
+      intervalMs: 1000,
+      splitBy: "output",
+    });
+    const merged = mergeTimeSeriesFrames(base, incoming);
+
+    expect(merged.series.map((series) => series.key).sort()).toEqual([
+      "elasticsearch",
+      "kafka",
+      "loki",
+    ]);
+    const elastic = merged.series.find((series) => series.key === "elasticsearch");
+    expect(elastic?.points.map((point) => point.value)).toEqual([3, 9]);
+  });
+
+  it("supports conflict policy when merging incremental points", () => {
+    const base = buildTimeSeriesFrame(metricsDocument, {
+      metricName: "logfwd.inflight_batches",
+      intervalMs: 1000,
+      splitBy: "output",
+    });
+
+    const conflictingDoc = {
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: "logfwd.inflight_batches",
+                  gauge: {
+                    dataPoints: [
+                      {
+                        attributes: [{ key: "output", value: { stringValue: "loki" } }],
+                        timeUnixNano: "3000000000",
+                        asInt: "44",
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const incoming = buildTimeSeriesFrame(conflictingDoc, {
+      metricName: "logfwd.inflight_batches",
+      intervalMs: 1000,
+      splitBy: "output",
+    });
+
+    const replaced = mergeTimeSeriesFrames(base, incoming);
+    const kept = mergeTimeSeriesFrames(base, incoming, { onConflict: "keep-existing" });
+
+    const replacedLoki = replaced.series.find((series) => series.key === "loki");
+    const keptLoki = kept.series.find((series) => series.key === "loki");
+    expect(replacedLoki?.points[0]?.value).toBe(44);
+    expect(keptLoki?.points[0]?.value).toBe(4);
+  });
+
+  it("appends incremental input directly onto an existing frame", () => {
+    const base = buildTimeSeriesFrame(metricsDocument, {
+      metricName: "logfwd.inflight_batches",
+      intervalMs: 1000,
+      splitBy: "output",
+    });
+
+    const nextSlice = {
+      resourceMetrics: [
+        {
+          scopeMetrics: [
+            {
+              metrics: [
+                {
+                  name: "logfwd.inflight_batches",
+                  gauge: {
+                    dataPoints: [
+                      {
+                        attributes: [{ key: "output", value: { stringValue: "loki" } }],
+                        timeUnixNano: "6000000000",
+                        asInt: "8",
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const appended = appendTimeSeriesFrame(base, nextSlice);
+
+    const loki = appended.series.find((series) => series.key === "loki");
+    expect(loki?.points.map((point) => point.value)).toEqual([4, 8]);
+    expect(appended.intervalMs).toBe(1000);
+    expect(appended.title).toBe(base.title);
+    expect(appended.buildOptions?.metricName).toBe("logfwd.inflight_batches");
+    expect(appended.buildOptions?.splitBy).toBe("output");
+  });
+
+  it("merges fallback metadata and preserves existing series labels", () => {
+    const existing = {
+      kind: "time-series" as const,
+      signal: null,
+      title: "Existing frame",
+      unit: null,
+      intervalMs: 1000,
+      series: [
+        {
+          key: "svc-a",
+          label: "Service A",
+          points: [
+            {
+              timeUnixNano: "1000000000",
+              timeMs: 1000,
+              isoTime: "1970-01-01T00:00:01.000Z",
+              value: 1,
+              samples: 1,
+            },
+          ],
+        },
+      ],
+    };
+    const incoming = {
+      kind: "time-series" as const,
+      signal: "metrics" as const,
+      title: "Incoming frame",
+      unit: "ms",
+      intervalMs: 2000,
+      series: [
+        {
+          key: "svc-a",
+          label: "",
+          points: [
+            {
+              timeUnixNano: "2000000000",
+              timeMs: 2000,
+              isoTime: "1970-01-01T00:00:02.000Z",
+              value: 3,
+              samples: 1,
+            },
+          ],
+        },
+      ],
+    };
+
+    const merged = mergeTimeSeriesFrames(existing, incoming);
+
+    expect(merged.signal).toBe("metrics");
+    expect(merged.unit).toBe("ms");
+    expect(merged.title).toBe("Existing frame");
+    expect(merged.intervalMs).toBe(1000);
+    expect(merged.series[0]?.label).toBe("Service A");
+  });
+
+  it("append supports explicit signal/unit overrides and null fallbacks", () => {
+    const emptyBase = {
+      kind: "time-series" as const,
+      signal: null,
+      title: "Empty",
+      unit: null,
+      intervalMs: 1000,
+      series: [],
+    };
+
+    const explicit = appendTimeSeriesFrame(
+      emptyBase,
+      {},
+      {
+        signal: "logs",
+        unit: "events",
+      }
+    );
+    const inferredNull = appendTimeSeriesFrame(emptyBase, {});
+
+    expect(explicit.signal).toBe("logs");
+    expect(explicit.unit).toBe("events");
+    expect(inferredNull.signal).toBeNull();
+    expect(inferredNull.unit).toBeNull();
+  });
+
+  it("append falls back to existing signal/unit when build options are absent", () => {
+    const manualBase = {
+      kind: "time-series" as const,
+      signal: "metrics" as const,
+      title: "Manual",
+      unit: "ms",
+      intervalMs: 1000,
+      series: [],
+    };
+
+    const appended = appendTimeSeriesFrame(manualBase, {});
+
+    expect(appended.signal).toBe("metrics");
+    expect(appended.unit).toBe("ms");
+  });
+
+  it("sorts merged series points when incoming data is older than existing data", () => {
+    const existing = {
+      kind: "time-series" as const,
+      signal: "metrics" as const,
+      title: "Ordered",
+      unit: "ms",
+      intervalMs: 1000,
+      series: [
+        {
+          key: "svc-a",
+          label: "Service A",
+          points: [
+            {
+              timeUnixNano: "4000000000",
+              timeMs: 4000,
+              isoTime: "1970-01-01T00:00:04.000Z",
+              value: 4,
+              samples: 1,
+            },
+          ],
+        },
+      ],
+    };
+    const incoming = {
+      kind: "time-series" as const,
+      signal: "metrics" as const,
+      title: "Ordered",
+      unit: "ms",
+      intervalMs: 1000,
+      series: [
+        {
+          key: "svc-a",
+          label: "Service A incoming",
+          points: [
+            {
+              timeUnixNano: "not-a-nanos-value",
+              timeMs: null,
+              isoTime: null,
+              value: 1,
+              samples: 1,
+            },
+            {
+              timeUnixNano: "2000000000",
+              timeMs: 2000,
+              isoTime: "1970-01-01T00:00:02.000Z",
+              value: 2,
+              samples: 1,
+            },
+          ],
+        },
+      ],
+    };
+
+    const merged = mergeTimeSeriesFrames(existing, incoming);
+
+    expect(merged.series[0]?.points.map((point) => point.timeUnixNano)).toEqual([
+      "not-a-nanos-value",
+      "2000000000",
+      "4000000000",
+    ]);
   });
 });
