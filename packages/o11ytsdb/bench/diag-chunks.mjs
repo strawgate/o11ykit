@@ -89,11 +89,11 @@ function parseALPChunk(buf) {
   }
 
   // Exception FoR-u64 block.
-  let excMinU64 = 0n;
+  let _excMinU64 = 0n;
   let excBitWidth = 0;
   let excForBytes = 0;
   if (excCount > 0) {
-    excMinU64 = dv.getBigUint64(pos);
+    _excMinU64 = dv.getBigUint64(pos);
     pos += 8;
     excBitWidth = buf[pos];
     pos += 1;
@@ -337,7 +337,7 @@ for (const [name, gen] of Object.entries(generators)) {
     String(parsed.headerBytes).padStart(5),
     String(parsed.forPayloadBytes).padStart(6),
     String(parsed.excCount).padStart(6),
-    (parsed.excPct + "%").padStart(6),
+    `${parsed.excPct}%`.padStart(6),
     String(parsed.excPosBytes).padStart(7),
     String(parsed.excForBytes).padStart(7),
     String(parsed.excBitWidth).padStart(6),

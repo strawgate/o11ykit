@@ -62,22 +62,53 @@
 }
 
 /* Tier row tinting */
-.dod-table tr.tier-row-0 td { border-left: 3px solid var(--tier-0); }
-.dod-table tr.tier-row-1 td { border-left: 3px solid var(--tier-1); }
-.dod-table tr.tier-row-2 td { border-left: 3px solid var(--tier-2); }
-.dod-table tr.tier-row-3 td { border-left: 3px solid var(--tier-3); }
-.dod-table tr.tier-row-4 td { border-left: 3px solid var(--tier-4); }
-.dod-table tr.tier-row-header td { border-left: 3px solid var(--region-header); }
+.dod-table tr.tier-row-0 td {
+  border-left: 3px solid var(--tier-0);
+}
+.dod-table tr.tier-row-1 td {
+  border-left: 3px solid var(--tier-1);
+}
+.dod-table tr.tier-row-2 td {
+  border-left: 3px solid var(--tier-2);
+}
+.dod-table tr.tier-row-3 td {
+  border-left: 3px solid var(--tier-3);
+}
+.dod-table tr.tier-row-4 td {
+  border-left: 3px solid var(--tier-4);
+}
+.dod-table tr.tier-row-header td {
+  border-left: 3px solid var(--region-header);
+}
 
-.dod-table tr.tier-row-0 td:first-child { border-left-width: 3px; }
-.dod-table tr.tier-row-1 td:first-child { border-left-width: 3px; }
+.dod-table tr.tier-row-0 td:first-child {
+  border-left-width: 3px;
+}
+.dod-table tr.tier-row-1 td:first-child {
+  border-left-width: 3px;
+}
 
 /* Tier badge — base from .xp-badge in shared.css */
-.dod-tier-badge.t0 { background: rgba(52, 211, 153, 0.15); color: var(--tier-0); }
-.dod-tier-badge.t1 { background: rgba(96, 165, 250, 0.15); color: var(--tier-1); }
-.dod-tier-badge.t2 { background: rgba(167, 139, 250, 0.15); color: var(--tier-2); }
-.dod-tier-badge.t3 { background: rgba(251, 191, 36, 0.15); color: var(--tier-3); }
-.dod-tier-badge.t4 { background: rgba(248, 113, 113, 0.15); color: var(--tier-4); }
+.dod-tier-badge.t0 {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--tier-0);
+}
+.dod-tier-badge.t1 {
+  background: rgba(96, 165, 250, 0.15);
+  color: var(--tier-1);
+}
+.dod-tier-badge.t2 {
+  background: rgba(167, 139, 250, 0.15);
+  color: var(--tier-2);
+}
+.dod-tier-badge.t3 {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--tier-3);
+}
+.dod-tier-badge.t4 {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--tier-4);
+}
 
 /* ─── Tier Distribution Bar ───────────────────────────────────────── */
 .dod-tier-bar {
@@ -101,11 +132,26 @@
   overflow: hidden;
 }
 
-.dod-tier-seg.seg-0 { background: var(--tier-0); color: #0a1624; }
-.dod-tier-seg.seg-1 { background: var(--tier-1); color: #0a1624; }
-.dod-tier-seg.seg-2 { background: var(--tier-2); color: #0a1624; }
-.dod-tier-seg.seg-3 { background: var(--tier-3); color: #0a1624; }
-.dod-tier-seg.seg-4 { background: var(--tier-4); color: #0a1624; }
+.dod-tier-seg.seg-0 {
+  background: var(--tier-0);
+  color: #0a1624;
+}
+.dod-tier-seg.seg-1 {
+  background: var(--tier-1);
+  color: #0a1624;
+}
+.dod-tier-seg.seg-2 {
+  background: var(--tier-2);
+  color: #0a1624;
+}
+.dod-tier-seg.seg-3 {
+  background: var(--tier-3);
+  color: #0a1624;
+}
+.dod-tier-seg.seg-4 {
+  background: var(--tier-4);
+  color: #0a1624;
+}
 
 .dod-tier-legend {
   display: flex;
@@ -128,11 +174,21 @@
   flex-shrink: 0;
 }
 
-.dod-tier-dot.d0 { background: var(--tier-0); }
-.dod-tier-dot.d1 { background: var(--tier-1); }
-.dod-tier-dot.d2 { background: var(--tier-2); }
-.dod-tier-dot.d3 { background: var(--tier-3); }
-.dod-tier-dot.d4 { background: var(--tier-4); }
+.dod-tier-dot.d0 {
+  background: var(--tier-0);
+}
+.dod-tier-dot.d1 {
+  background: var(--tier-1);
+}
+.dod-tier-dot.d2 {
+  background: var(--tier-2);
+}
+.dod-tier-dot.d3 {
+  background: var(--tier-3);
+}
+.dod-tier-dot.d4 {
+  background: var(--tier-4);
+}
 
 /* ─── Bit Cost Profile Chart ──────────────────────────────────────── */
 .dod-bitcost-chart {
@@ -171,12 +227,24 @@
   position: relative;
 }
 
-.dod-bitcost-bar.bc-0 { background: var(--tier-0); }
-.dod-bitcost-bar.bc-1 { background: var(--tier-1); }
-.dod-bitcost-bar.bc-2 { background: var(--tier-2); }
-.dod-bitcost-bar.bc-3 { background: var(--tier-3); }
-.dod-bitcost-bar.bc-4 { background: var(--tier-4); }
-.dod-bitcost-bar.bc-header { background: var(--region-header); }
+.dod-bitcost-bar.bc-0 {
+  background: var(--tier-0);
+}
+.dod-bitcost-bar.bc-1 {
+  background: var(--tier-1);
+}
+.dod-bitcost-bar.bc-2 {
+  background: var(--tier-2);
+}
+.dod-bitcost-bar.bc-3 {
+  background: var(--tier-3);
+}
+.dod-bitcost-bar.bc-4 {
+  background: var(--tier-4);
+}
+.dod-bitcost-bar.bc-header {
+  background: var(--region-header);
+}
 
 .dod-bitcost-bits {
   font-family: var(--xp-mono);

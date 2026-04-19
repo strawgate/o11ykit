@@ -6,7 +6,7 @@ export let wasmLoadError = null;
 
 export async function loadWasm() {
   try {
-    const wasmUrl = new URL('../o11ytsdb.wasm', import.meta.url).href;
+    const wasmUrl = new URL("../o11ytsdb.wasm", import.meta.url).href;
     const resp = await fetch(wasmUrl);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const { instance } = await WebAssembly.instantiate(await resp.arrayBuffer(), { env: {} });
@@ -15,12 +15,14 @@ export async function loadWasm() {
     return true;
   } catch (e) {
     wasmLoadError = e;
-    console.warn('WASM load failed:', e);
+    console.warn("WASM load failed:", e);
     return false;
   }
 }
 
-function wasmMem() { return new Uint8Array(wasmExports.memory.buffer); }
+function wasmMem() {
+  return new Uint8Array(wasmExports.memory.buffer);
+}
 
 export function wasmEncodeValuesALP(values) {
   const n = values.length;
@@ -49,7 +51,10 @@ export function wasmEncodeTimestamps(timestamps) {
   const tsPtr = wasmExports.allocScratch(n * 8);
   const outCap = n * 20;
   const outPtr = wasmExports.allocScratch(outCap);
-  wasmMem().set(new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength), tsPtr);
+  wasmMem().set(
+    new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength),
+    tsPtr
+  );
   const bytesWritten = wasmExports.encodeTimestamps(tsPtr, n, outPtr, outCap);
   return new Uint8Array(wasmExports.memory.buffer.slice(outPtr, outPtr + bytesWritten));
 }
