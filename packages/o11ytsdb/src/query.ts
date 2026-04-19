@@ -79,6 +79,9 @@ function matcherIds(storage: StorageBackend, m: Matcher): SeriesId[] {
     return storage.matchLabel(m.label, m.value);
   }
   // Regex match — compile pattern and use matchLabelRegex if available
+  if (m.value.length > 200) {
+    throw new Error(`Regex pattern too long (${m.value.length} chars, max 200)`);
+  }
   const pattern = new RegExp(m.value);
   if (storage.matchLabelRegex) {
     return storage.matchLabelRegex(m.label, pattern);
@@ -317,7 +320,8 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
         values[i] = delta >= 0 ? delta : src.values[i]!;
       } else {
         const dt = Number(src.timestamps[i]! - src.timestamps[i - 1]!) / 1000;
-        values[i] = dt > 0 ? (src.values[i]! - src.values[i - 1]!) / dt : 0;
+        const delta = src.values[i]! - src.values[i - 1]!;
+        values[i] = dt > 0 ? (delta >= 0 ? delta : src.values[i]!) / dt : 0;
       }
     }
     return { timestamps, values };
@@ -664,8 +668,9 @@ function _stepAggregateRate(
       const delta = lastVal[i]! - firstVal[i]!;
       values[i] = delta >= 0 ? delta : lastVal[i]!; // counter reset: use last value
     } else {
+      const delta = lastVal[i]! - firstVal[i]!;
       const dt = (lastTs[i]! - firstTs[i]!) / 1000;
-      values[i] = dt > 0 ? (lastVal[i]! - firstVal[i]!) / dt : 0;
+      values[i] = dt > 0 ? (delta >= 0 ? delta : lastVal[i]!) / dt : 0;
     }
   }
 }
