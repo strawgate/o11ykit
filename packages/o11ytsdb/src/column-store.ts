@@ -524,7 +524,7 @@ export class ColumnStore implements StorageBackend {
       for (let i = 0; i < fc.count; i++) {
         // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         bytes += fc.blobs[i]!.byteLength;
-        bytes += 64; // 8 packed stats fields × 8 bytes
+        bytes += 68; // 8 stats fields × 8 bytes + 1 tsIndex × 4 bytes
       }
     }
     bytes += this.labelIndex.memoryBytes();
