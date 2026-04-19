@@ -55,12 +55,12 @@
     "release:publish": "changeset publish"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
-    "@vercel/ncc": "^0.38.4",
     "@arethetypeswrong/cli": "^0.18.2",
     "@biomejs/biome": "^2.4.12",
     "@changesets/cli": "^2.31.0",
     "@playwright/test": "^1.54.2",
+    "@types/node": "^25.6.0",
+    "@vercel/ncc": "^0.38.4",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.4",
     "publint": "^0.3.18",
