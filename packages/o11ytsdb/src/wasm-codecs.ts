@@ -126,6 +126,29 @@ function parseStats(wasm: WasmExports, statsPtr: number): ChunkStats {
   };
 }
 
+const DELTA_ALP_TAG = 0xda;
+
+/**
+ * Read the sample count from an ALP (or delta-ALP) blob header.
+ *
+ * Regular ALP: bytes 0..1 are big-endian count.
+ * Delta-ALP:   byte 0 is 0xDA tag, bytes 1..8 are base value,
+ *              bytes 9..10 are big-endian delta count; total = deltas + 1.
+ */
+function readAlpSampleCount(buf: Uint8Array): number {
+  if (buf.length < 2) return 0;
+  if (buf[0] !== DELTA_ALP_TAG) return (buf[0]! << 8) | buf[1]!;
+  if (buf.length < 11) return 0;
+  return ((buf[9]! << 8) | buf[10]!) + 1;
+}
+
+/** Throw if the scratch allocator overflowed (returned 0). */
+function checkScratch(ptr: number, label: string): void {
+  if (ptr === 0) {
+    throw new RangeError(`WASM scratch allocator overflow in ${label}`);
+  }
+}
+
 // ── Factory ─────────────────────────────────────────────────────────
 
 /**
@@ -149,8 +172,10 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const n = values.length;
       wasm.resetScratch();
       const valPtr = wasm.allocScratch(n * 8);
+      checkScratch(valPtr, "encodeValues/valPtr");
       const outCap = n * 20;
       const outPtr = wasm.allocScratch(outCap);
+      checkScratch(outPtr, "encodeValues/outPtr");
       mem().set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), valPtr);
       const bytes = wasm.encodeValuesALP(valPtr, n, outPtr, outCap);
       return new Uint8Array(wasm.memory.buffer.slice(outPtr, outPtr + bytes));
@@ -160,9 +185,12 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       if (buf.length < 2) return new Float64Array(0);
       wasm.resetScratch();
       const inPtr = wasm.allocScratch(buf.length);
+      checkScratch(inPtr, "decodeValues/inPtr");
       mem().set(buf, inPtr);
-      const maxSamples = (buf[0]! << 8) | buf[1]!;
+      const maxSamples = readAlpSampleCount(buf);
+      if (maxSamples === 0) return new Float64Array(0);
       const valPtr = wasm.allocScratch(maxSamples * 8);
+      checkScratch(valPtr, "decodeValues/valPtr");
       const n = wasm.decodeValuesALP(inPtr, buf.length, valPtr, maxSamples);
       return new Float64Array(wasm.memory.buffer.slice(valPtr, valPtr + n * 8));
     },
@@ -171,9 +199,12 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const n = values.length;
       wasm.resetScratch();
       const valPtr = wasm.allocScratch(n * 8);
+      checkScratch(valPtr, "encodeValuesWithStats/valPtr");
       const outCap = n * 20;
       const outPtr = wasm.allocScratch(outCap);
+      checkScratch(outPtr, "encodeValuesWithStats/outPtr");
       const statsPtr = wasm.allocScratch(64);
+      checkScratch(statsPtr, "encodeValuesWithStats/statsPtr");
       mem().set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), valPtr);
       const bytes = wasm.encodeValuesALPWithStats(valPtr, n, outPtr, outCap, statsPtr);
       return {
@@ -190,6 +221,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       wasm.resetScratch();
 
       const valsPtr = wasm.allocScratch(numArrays * chunkSize * 8);
+      checkScratch(valsPtr, "encodeBatchValuesWithStats/valsPtr");
       const wasmMem = mem();
       for (let i = 0; i < numArrays; i++) {
         const arr = arrays[i]!;
@@ -201,9 +233,13 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
 
       const outCap = numArrays * chunkSize * 20;
       const outPtr = wasm.allocScratch(outCap);
+      checkScratch(outPtr, "encodeBatchValuesWithStats/outPtr");
       const offsetsPtr = wasm.allocScratch(numArrays * 4);
+      checkScratch(offsetsPtr, "encodeBatchValuesWithStats/offsetsPtr");
       const sizesPtr = wasm.allocScratch(numArrays * 4);
+      checkScratch(sizesPtr, "encodeBatchValuesWithStats/sizesPtr");
       const statsPtr = wasm.allocScratch(numArrays * 64);
+      checkScratch(statsPtr, "encodeBatchValuesWithStats/statsPtr");
 
       wasm.encodeBatchValuesALPWithStats(
         valsPtr,
@@ -254,8 +290,11 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       for (const b of blobs) totalBytes += b.length;
 
       const blobsPtr = wasm.allocScratch(totalBytes);
+      checkScratch(blobsPtr, "decodeBatchValues/blobsPtr");
       const offsetsPtr = wasm.allocScratch(numBlobs * 4);
+      checkScratch(offsetsPtr, "decodeBatchValues/offsetsPtr");
       const sizesPtr = wasm.allocScratch(numBlobs * 4);
+      checkScratch(sizesPtr, "decodeBatchValues/sizesPtr");
 
       const wasmMem = mem();
       const offsets = new Uint32Array(numBlobs);
@@ -272,6 +311,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       wasmMem.set(new Uint8Array(sizes.buffer), sizesPtr);
 
       const outPtr = wasm.allocScratch(numBlobs * chunkSize * 8);
+      checkScratch(outPtr, "decodeBatchValues/outPtr");
       wasm.decodeBatchValuesALP(blobsPtr, offsetsPtr, sizesPtr, numBlobs, outPtr, chunkSize);
 
       const results: Float64Array[] = [];
@@ -295,8 +335,10 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const n = values.length;
       wasm.resetScratch();
       const valPtr = wasm.allocScratch(n * 8);
+      checkScratch(valPtr, "xor/encodeValues/valPtr");
       const outCap = n * 20;
       const outPtr = wasm.allocScratch(outCap);
+      checkScratch(outPtr, "xor/encodeValues/outPtr");
       mem().set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), valPtr);
       const bytes = wasm.encodeValues(valPtr, n, outPtr, outCap);
       return new Uint8Array(wasm.memory.buffer.slice(outPtr, outPtr + bytes));
@@ -306,9 +348,11 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       if (buf.length < 2) return new Float64Array(0);
       wasm.resetScratch();
       const inPtr = wasm.allocScratch(buf.length);
+      checkScratch(inPtr, "xor/decodeValues/inPtr");
       mem().set(buf, inPtr);
       const maxSamples = (buf[0]! << 8) | buf[1]!;
       const valPtr = wasm.allocScratch(maxSamples * 8);
+      checkScratch(valPtr, "xor/decodeValues/valPtr");
       const n = wasm.decodeValues(inPtr, buf.length, valPtr, maxSamples);
       return new Float64Array(wasm.memory.buffer.slice(valPtr, valPtr + n * 8));
     },
@@ -317,9 +361,12 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const n = values.length;
       wasm.resetScratch();
       const valPtr = wasm.allocScratch(n * 8);
+      checkScratch(valPtr, "xor/encodeValuesWithStats/valPtr");
       const outCap = n * 20;
       const outPtr = wasm.allocScratch(outCap);
+      checkScratch(outPtr, "xor/encodeValuesWithStats/outPtr");
       const statsPtr = wasm.allocScratch(64);
+      checkScratch(statsPtr, "xor/encodeValuesWithStats/statsPtr");
       mem().set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), valPtr);
       const bytes = wasm.encodeValuesWithStats(valPtr, n, outPtr, outCap, statsPtr);
       return {
@@ -338,8 +385,10 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const n = timestamps.length;
       wasm.resetScratch();
       const tsPtr = wasm.allocScratch(n * 8);
+      checkScratch(tsPtr, "encodeTimestamps/tsPtr");
       const outCap = n * 20;
       const outPtr = wasm.allocScratch(outCap);
+      checkScratch(outPtr, "encodeTimestamps/outPtr");
       mem().set(
         new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength),
         tsPtr
@@ -352,9 +401,11 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       if (buf.length < 2) return new BigInt64Array(0);
       wasm.resetScratch();
       const inPtr = wasm.allocScratch(buf.length);
+      checkScratch(inPtr, "decodeTimestamps/inPtr");
       mem().set(buf, inPtr);
       const maxSamples = (buf[0]! << 8) | buf[1]!;
       const tsPtr = wasm.allocScratch(maxSamples * 8);
+      checkScratch(tsPtr, "decodeTimestamps/tsPtr");
       const n = wasm.decodeTimestamps(inPtr, buf.length, tsPtr, maxSamples);
       return new BigInt64Array(wasm.memory.buffer.slice(tsPtr, tsPtr + n * 8));
     },
@@ -372,14 +423,22 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       wasm.resetScratch();
 
       const tsInPtr = wasm.allocScratch(compressedTimestamps.length);
+      checkScratch(tsInPtr, "rangeDecodeValues/tsInPtr");
       mem().set(compressedTimestamps, tsInPtr);
 
       const valInPtr = wasm.allocScratch(compressedValues.length);
+      checkScratch(valInPtr, "rangeDecodeValues/valInPtr");
       mem().set(compressedValues, valInPtr);
 
-      const maxSamples = (compressedValues[0]! << 8) | compressedValues[1]!;
+      // Derive sample count from the timestamp blob (always regular ALP, never delta-ALP).
+      const maxSamples = (compressedTimestamps[0]! << 8) | compressedTimestamps[1]!;
+      if (maxSamples === 0) {
+        return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+      }
       const outTsPtr = wasm.allocScratch(maxSamples * 8);
+      checkScratch(outTsPtr, "rangeDecodeValues/outTsPtr");
       const outValPtr = wasm.allocScratch(maxSamples * 8);
+      checkScratch(outValPtr, "rangeDecodeValues/outValPtr");
 
       const n = wasm.rangeDecodeALP(
         tsInPtr,

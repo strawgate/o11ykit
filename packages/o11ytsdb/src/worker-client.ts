@@ -41,9 +41,8 @@ export class WorkerClient {
     this.worker.addEventListener("message", (event) => this.onMessage(event.data));
   }
 
-  async init(chunkSize?: number): Promise<{ backend: string }> {
-    const payload: WorkerRequest =
-      chunkSize === undefined ? { type: "init" } : { type: "init", chunkSize };
+  async init(opts?: { chunkSize?: number; precision?: number }): Promise<{ backend: string }> {
+    const payload: WorkerRequest = { type: "init", ...opts };
 
     const response = await this.send(payload);
     if (response.ok === false) throw new Error(response.error);

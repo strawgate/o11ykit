@@ -104,35 +104,62 @@ function resolveEndpoint(): WorkerLikeEndpoint {
 }
 
 export interface WorkerRuntimeConfig {
-  /** Factory to create a storage backend. Receives the chunk size from the init message. */
-  createStore?: (chunkSize: number) => StorageBackend;
+  /** Factory to create a storage backend. Receives chunk size and optional precision. */
+  createStore?: (chunkSize: number, precision?: number) => StorageBackend;
   /** Query engine instance. Defaults to ScanEngine. */
   queryEngine?: QueryEngine;
+  /** Default decimal precision for value quantization (e.g. 3 → round to 0.001). */
+  precision?: number;
 }
 
 export class O11yWorkerRuntime {
   private readonly endpoint: WorkerLikeEndpoint;
   private readonly engine: QueryEngine;
-  private createStore: (chunkSize: number) => StorageBackend;
+  private createStore: (chunkSize: number, precision?: number) => StorageBackend;
   private store: StorageBackend;
   private wasmCodecs: WasmCodecs | null = null;
   private wasmReady: Promise<void>;
+  private defaultPrecision: number | undefined;
 
   constructor(endpoint?: WorkerLikeEndpoint, config?: WorkerRuntimeConfig) {
     this.endpoint = endpoint ?? resolveEndpoint();
+    this.defaultPrecision = config?.precision;
     const codec = createValuesCodec();
-    this.createStore = config?.createStore ?? ((cs: number) => new ColumnStore(codec, cs));
+    this.createStore =
+      config?.createStore ??
+      ((cs: number, precision?: number) =>
+        new ColumnStore(
+          codec,
+          cs,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          precision
+        ));
     this.engine = config?.queryEngine ?? new ScanEngine();
-    this.store = this.createStore(1024);
+    this.store = this.createStore(1024, this.defaultPrecision);
 
-    // Load WASM codecs in the background.
+    // Load WASM codecs in the background. Only update the factory —
+    // never replace a live store that may already contain ingested data.
+    // The next `init` message will create a fresh store with WASM codecs.
     this.wasmReady = tryLoadWasm()
       .then((wc) => {
         if (wc) {
           this.wasmCodecs = wc;
-          this.createStore = (cs: number) =>
-            new ColumnStore(wc.valuesCodec, cs, undefined, undefined, wc.tsCodec, wc.rangeCodec);
-          this.store = this.createStore(1024);
+          this.createStore = (cs: number, precision?: number) =>
+            new ColumnStore(
+              wc.valuesCodec,
+              cs,
+              undefined,
+              undefined,
+              wc.tsCodec,
+              wc.rangeCodec,
+              undefined,
+              precision,
+              wc.quantizeBatch
+            );
         }
       })
       .catch(() => {
@@ -171,7 +198,8 @@ export class O11yWorkerRuntime {
           // Ensure WASM codecs are loaded before re-creating the store.
           await this.wasmReady;
           const chunkSize = payload.chunkSize ?? 1024;
-          this.store = this.createStore(chunkSize);
+          const precision = payload.precision ?? this.defaultPrecision;
+          this.store = this.createStore(chunkSize, precision);
           this.send(ok(id, { ok: true, type: "init", backend: this.store.name }, meta));
           return;
         }

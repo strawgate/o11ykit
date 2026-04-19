@@ -14,6 +14,8 @@ export interface ProtocolMeta {
 export interface InitRequest {
   type: "init";
   chunkSize?: number;
+  /** Decimal precision for value quantization (e.g. 3 → round to 0.001). */
+  precision?: number;
 }
 
 export interface IngestRequest {
