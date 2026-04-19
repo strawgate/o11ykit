@@ -210,14 +210,21 @@ export function parseOtlpToSamples(payload: unknown): ParsedOtlpResult {
  * Ingest a typed OTLP metrics document directly, skipping JSON.parse,
  * detectSignal, and isMetricsDocument. Use when the caller has already
  * validated the payload type (e.g. worker protocol).
+ *
+ * @param msToNs - Optional converter from millisecond timestamps to nanosecond
+ *   BigInt64Array. Receives a **Float64Array of milliseconds** (already
+ *   truncated by normalizeTimestamp — sub-ms precision is lost). Must return a
+ *   BigInt64Array of nanosecond epoch values. Pass `wc.msToNs` from
+ *   {@link WasmCodecs} for a SIMD-accelerated (~12×) implementation.
  */
 export function ingestOtlpObject(
   document: OtlpMetricsDocument,
-  storage: StorageBackend
+  storage: StorageBackend,
+  msToNs?: (ms: Float64Array) => BigInt64Array
 ): IngestResult {
   const result = emptyResult();
   const { pending } = ingestMetricsDocument(document, result);
-  flushSamplesToStorage(pending, storage, result);
+  flushSamplesToStorage(pending, storage, result, msToNs);
   return result;
 }
 
@@ -324,18 +331,37 @@ function ingestMetricsDocument(
   return { pending, result };
 }
 
-/** Parse and ingest OTLP metrics in one step (convenience wrapper). */
-export function ingestOtlpJson(payload: unknown, storage: StorageBackend): IngestResult {
+/**
+ * Parse and ingest OTLP metrics in one step (convenience wrapper).
+ *
+ * @param msToNs - Optional converter from millisecond timestamps to nanosecond
+ *   BigInt64Array. Receives a **Float64Array of milliseconds** (already
+ *   truncated by normalizeTimestamp — sub-ms precision is lost). Must return a
+ *   BigInt64Array of nanosecond epoch values. Pass `wc.msToNs` from
+ *   {@link WasmCodecs} for a SIMD-accelerated (~12×) implementation.
+ */
+export function ingestOtlpJson(
+  payload: unknown,
+  storage: StorageBackend,
+  msToNs?: (ms: Float64Array) => BigInt64Array
+): IngestResult {
   const { pending, result } = parseOtlpToSamples(payload);
-  flushSamplesToStorage(pending, storage, result);
+  flushSamplesToStorage(pending, storage, result, msToNs);
   return result;
 }
 
-/** Flush parsed samples to a storage backend. */
+/**
+ * Flush parsed samples to a storage backend.
+ *
+ * @param msToNs — Optional WASM SIMD accelerator that converts millisecond
+ *   timestamps (Float64Array) to nanoseconds (BigInt64Array). ~12× faster
+ *   than the scalar BigInt fallback loop.
+ */
 export function flushSamplesToStorage(
   pending: Map<string, PendingSeriesSamples>,
   storage: StorageBackend,
-  result: IngestResult
+  result: IngestResult,
+  msToNs?: (ms: Float64Array) => BigInt64Array
 ): void {
   const beforeSeries = storage.seriesCount;
 
@@ -344,10 +370,16 @@ export function flushSamplesToStorage(
     if (len === 0) continue;
 
     const id = storage.getOrCreateSeries(batch.labels);
-    // Convert ms numbers → nanosecond BigInt64Array in one pass.
-    const tsArr = new BigInt64Array(len);
     const msArr = batch.timestamps;
-    for (let i = 0; i < len; i++) tsArr[i] = BigInt(msArr[i]!) * 1_000_000n;
+
+    let tsArr: BigInt64Array;
+    if (msToNs) {
+      // WASM SIMD ms→ns — ~12× faster than BigInt loop.
+      tsArr = msToNs(Float64Array.from(msArr));
+    } else {
+      tsArr = new BigInt64Array(len);
+      for (let i = 0; i < len; i++) tsArr[i] = BigInt(msArr[i]!) * 1_000_000n;
+    }
     storage.appendBatch(id, tsArr, Float64Array.from(batch.values));
     result.samplesInserted += len;
   }

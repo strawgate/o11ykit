@@ -23,7 +23,12 @@ export type {
   PendingSeriesSamples,
 } from "./ingest.js";
 // OTLP ingest pipeline
-export { flushSamplesToStorage, ingestOtlpJson, parseOtlpToSamples } from "./ingest.js";
+export {
+  flushSamplesToStorage,
+  ingestOtlpJson,
+  ingestOtlpObject,
+  parseOtlpToSamples,
+} from "./ingest.js";
 export type { InternId } from "./interner.js";
 
 // String interner + inverted index
@@ -53,6 +58,9 @@ export type {
   TimestampCodec,
   ValuesCodec,
 } from "./types.js";
+export type { WasmCodecs } from "./wasm-codecs.js";
+// WASM codec loader (ALP + XOR-delta + SIMD accelerators)
+export { initWasmCodecs } from "./wasm-codecs.js";
 
 // Worker isolation + transfer protocol
 export { WorkerClient } from "./worker-client.js";

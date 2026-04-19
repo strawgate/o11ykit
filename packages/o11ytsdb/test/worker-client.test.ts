@@ -73,7 +73,7 @@ describe("WorkerClient", () => {
     it("sends an init request and resolves with backend name", async () => {
       mock.autoRespond({ ok: true, type: "init", backend: "column" });
 
-      const result = await client.init(640);
+      const result = await client.init({ chunkSize: 640 });
       expect(result).toEqual({ backend: "column" });
 
       const envelope = mock.posted[0].message as RequestEnvelope;
