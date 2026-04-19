@@ -2027,6 +2027,235 @@ pub extern "C" fn internerResolve(id: u32, out_ptr: *mut u8, out_cap: u32) -> u3
     }
 }
 
+// ── Query accumulator ────────────────────────────────────────────────
+//
+// Fused decode-and-bucket: JS feeds compressed (ts, val) chunk pairs;
+// Rust decodes both, computes bucket index, and accumulates into
+// bucket arrays that persist across feedChunks calls.
+//
+// Eliminates per-sample JS↔WASM boundary crossings and avoids the
+// expensive DataView.getInt32 + getUint32 → Number bucket-index pattern.
+//
+// AggFn IDs (must match JS side):
+//   0=sum  1=avg  2=min  3=max  4=count  5=last
+
+const ACCUM_AGG_SUM: u32 = 0;
+const ACCUM_AGG_AVG: u32 = 1;
+const ACCUM_AGG_MIN: u32 = 2;
+const ACCUM_AGG_MAX: u32 = 3;
+const ACCUM_AGG_COUNT: u32 = 4;
+const ACCUM_AGG_LAST: u32 = 5;
+
+const ACCUM_MAX_BUCKETS: usize = 128 * 1024; // 128K buckets max
+
+// Dedicated accumulator memory — separate from scratch so decode can
+// use scratch freely while bucket arrays persist across feedChunks calls.
+static mut ACCUM_VALUES: [f64; ACCUM_MAX_BUCKETS] = [0.0; ACCUM_MAX_BUCKETS];
+static mut ACCUM_COUNTS: [f64; ACCUM_MAX_BUCKETS] = [0.0; ACCUM_MAX_BUCKETS];
+static mut ACCUM_BUCKET_COUNT: usize = 0;
+static mut ACCUM_MIN_T: i64 = 0;
+static mut ACCUM_STEP: i64 = 0;
+static mut ACCUM_AGG_FN: u32 = 0;
+
+// Temporary decode buffers for chunks (512 samples max per chunk).
+const ACCUM_CHUNK_CAP: usize = 2048;
+static mut ACCUM_TS_BUF: [i64; ACCUM_CHUNK_CAP] = [0i64; ACCUM_CHUNK_CAP];
+static mut ACCUM_VAL_BUF: [f64; ACCUM_CHUNK_CAP] = [0.0; ACCUM_CHUNK_CAP];
+
+/// Initialize the accumulator for a new query.
+/// Must be called before feedChunks. Clears bucket arrays.
+#[no_mangle]
+pub extern "C" fn accumInit(
+    bucket_count: u32,
+    min_t: i64,
+    step: i64,
+    agg_fn: u32,
+) {
+    let bc = (bucket_count as usize).min(ACCUM_MAX_BUCKETS);
+    unsafe {
+        ACCUM_BUCKET_COUNT = bc;
+        ACCUM_MIN_T = min_t;
+        ACCUM_STEP = step;
+        ACCUM_AGG_FN = agg_fn;
+
+        let init_val = match agg_fn {
+            ACCUM_AGG_MIN => f64::INFINITY,
+            ACCUM_AGG_MAX => f64::NEG_INFINITY,
+            _ => 0.0,
+        };
+        for i in 0..bc {
+            ACCUM_VALUES[i] = init_val;
+            ACCUM_COUNTS[i] = 0.0;
+        }
+    }
+}
+
+/// Feed N compressed chunk pairs and accumulate into buckets.
+///
+/// Layout in WASM memory (all pointers set up by JS via allocScratch):
+///   ts_blobs_ptr:  concatenated compressed timestamp blobs
+///   ts_offsets:    u32[N] byte offsets into ts_blobs
+///   ts_sizes:      u32[N] byte sizes
+///   val_blobs_ptr: concatenated compressed value blobs
+///   val_offsets:   u32[N] byte offsets into val_blobs
+///   val_sizes:     u32[N] byte sizes
+///
+/// Returns number of chunks successfully processed.
+#[no_mangle]
+pub extern "C" fn accumFeedChunks(
+    ts_blobs_ptr: *const u8,
+    ts_offsets_ptr: *const u32,
+    ts_sizes_ptr: *const u32,
+    val_blobs_ptr: *const u8,
+    val_offsets_ptr: *const u32,
+    val_sizes_ptr: *const u32,
+    num_chunks: u32,
+) -> u32 {
+    let nc = num_chunks as usize;
+    let ts_offsets = unsafe { core::slice::from_raw_parts(ts_offsets_ptr, nc) };
+    let ts_sizes = unsafe { core::slice::from_raw_parts(ts_sizes_ptr, nc) };
+    let val_offsets = unsafe { core::slice::from_raw_parts(val_offsets_ptr, nc) };
+    let val_sizes = unsafe { core::slice::from_raw_parts(val_sizes_ptr, nc) };
+
+    let min_t = unsafe { ACCUM_MIN_T };
+    let step = unsafe { ACCUM_STEP };
+    let agg_fn = unsafe { ACCUM_AGG_FN };
+    let bc = unsafe { ACCUM_BUCKET_COUNT };
+
+    for c in 0..nc {
+        // Decode timestamps
+        let ts_blob = unsafe {
+            core::slice::from_raw_parts(ts_blobs_ptr.add(ts_offsets[c] as usize), ts_sizes[c] as usize)
+        };
+        let ts_buf = unsafe { &mut ACCUM_TS_BUF[..ACCUM_CHUNK_CAP] };
+        let ts_n = decode_timestamps_inner(ts_blob, ts_buf);
+
+        // Decode values (ALP)
+        let val_blob = unsafe {
+            core::slice::from_raw_parts(val_blobs_ptr.add(val_offsets[c] as usize), val_sizes[c] as usize)
+        };
+        let val_buf = unsafe { &mut ACCUM_VAL_BUF[..ACCUM_CHUNK_CAP] };
+        let val_n = decode_values_alp_inner(val_blob, val_buf);
+
+        let n = ts_n.min(val_n);
+
+        // Accumulate into buckets
+        let values = unsafe { &mut ACCUM_VALUES[..bc] };
+        let counts = unsafe { &mut ACCUM_COUNTS[..bc] };
+
+        match agg_fn {
+            ACCUM_AGG_SUM | ACCUM_AGG_AVG => {
+                for i in 0..n {
+                    let bucket = ((ts_buf[i] - min_t) / step) as usize;
+                    if bucket < bc {
+                        values[bucket] += val_buf[i];
+                        counts[bucket] += 1.0;
+                    }
+                }
+            }
+            ACCUM_AGG_MIN => {
+                for i in 0..n {
+                    let bucket = ((ts_buf[i] - min_t) / step) as usize;
+                    if bucket < bc {
+                        if val_buf[i] < values[bucket] { values[bucket] = val_buf[i]; }
+                        counts[bucket] += 1.0;
+                    }
+                }
+            }
+            ACCUM_AGG_MAX => {
+                for i in 0..n {
+                    let bucket = ((ts_buf[i] - min_t) / step) as usize;
+                    if bucket < bc {
+                        if val_buf[i] > values[bucket] { values[bucket] = val_buf[i]; }
+                        counts[bucket] += 1.0;
+                    }
+                }
+            }
+            ACCUM_AGG_COUNT => {
+                for i in 0..n {
+                    let bucket = ((ts_buf[i] - min_t) / step) as usize;
+                    if bucket < bc {
+                        values[bucket] += 1.0;
+                        counts[bucket] += 1.0;
+                    }
+                }
+            }
+            ACCUM_AGG_LAST => {
+                for i in 0..n {
+                    let bucket = ((ts_buf[i] - min_t) / step) as usize;
+                    if bucket < bc {
+                        values[bucket] = val_buf[i];
+                        counts[bucket] += 1.0;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    nc as u32
+}
+
+/// Fold pre-computed chunk stats into a single bucket.
+/// Used for chunks that fit entirely in one bucket (stats-skip optimization).
+#[no_mangle]
+pub extern "C" fn accumFoldStats(
+    bucket: u32,
+    min_v: f64,
+    max_v: f64,
+    sum: f64,
+    count: f64,
+    _first_v: f64,
+    last_v: f64,
+) {
+    let b = bucket as usize;
+    unsafe {
+        if b >= ACCUM_BUCKET_COUNT { return; }
+        match ACCUM_AGG_FN {
+            ACCUM_AGG_SUM | ACCUM_AGG_AVG => { ACCUM_VALUES[b] += sum; }
+            ACCUM_AGG_MIN => { if min_v < ACCUM_VALUES[b] { ACCUM_VALUES[b] = min_v; } }
+            ACCUM_AGG_MAX => { if max_v > ACCUM_VALUES[b] { ACCUM_VALUES[b] = max_v; } }
+            ACCUM_AGG_COUNT => { ACCUM_VALUES[b] += count; }
+            ACCUM_AGG_LAST => { ACCUM_VALUES[b] = last_v; }
+            _ => {}
+        }
+        ACCUM_COUNTS[b] += count;
+    }
+}
+
+/// Return pointer to the accumulated values array.
+/// JS reads `bucket_count` f64s starting at this pointer.
+/// For avg: divides sum by count before returning.
+/// For min/max: replaces empty buckets (count==0) with NaN.
+#[no_mangle]
+pub extern "C" fn accumFinalize() -> u32 {
+    unsafe {
+        let bc = ACCUM_BUCKET_COUNT;
+        if ACCUM_AGG_FN == ACCUM_AGG_AVG {
+            for i in 0..bc {
+                if ACCUM_COUNTS[i] > 0.0 {
+                    ACCUM_VALUES[i] /= ACCUM_COUNTS[i];
+                }
+            }
+        }
+        // Replace sentinel values in empty buckets with NaN.
+        if ACCUM_AGG_FN != ACCUM_AGG_SUM && ACCUM_AGG_FN != ACCUM_AGG_COUNT {
+            for i in 0..bc {
+                if ACCUM_COUNTS[i] == 0.0 {
+                    ACCUM_VALUES[i] = f64::NAN;
+                }
+            }
+        }
+        core::ptr::addr_of!(ACCUM_VALUES) as u32
+    }
+}
+
+/// Return pointer to the accumulated counts array.
+#[no_mangle]
+pub extern "C" fn accumCounts() -> u32 {
+    core::ptr::addr_of!(ACCUM_COUNTS) as u32
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
