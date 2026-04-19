@@ -576,6 +576,7 @@
     padding: 8px 10px;
   }
 
+  /* biome-ignore lint/style/noDescendingSpecificity: nested selector inside media query intentionally overrides base */
   #pipeline-bar .xp-pipe-stage .stage-label {
     font-size: 9px;
   }
