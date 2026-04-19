@@ -9,6 +9,7 @@
       content="Interactive documentation for o11ytsdb: a browser-native TSDB with XOR-delta compression, pluggable storage backends, and real-time query engine. Generate millions of data points and query them live."
     />
     <meta name="theme-color" content="#0a1624" />
+    <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
     <meta property="og:title" content="o11ytsdb — Browser-Native Time-Series Database Engine" />
     <meta property="og:description" content="Interactive documentation for o11ytsdb, a browser-native time-series database with ALP compression, Gorilla encoding, and real-time querying." />
     <meta property="og:type" content="website" />
@@ -34,7 +35,7 @@
 
       <!-- ─── Top Bar ─────────────────────────────────────────── -->
       <header class="topbar panel">
-        <a class="brand" href="/o11ykit/">o11ykit</a>
+        <a class="brand" href="/o11ykit/"><img class="brand-mark" src="/o11ykit/logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
         <nav class="topnav" aria-label="Primary">
           <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
           <a href="/o11ykit/tsdb-engine/" aria-current="page">TSDB Engine</a>
@@ -61,6 +62,7 @@
           </a>
         </div>
         <div class="pill-row" aria-label="Key stats">
+          <span class="pill">1.2M pts/sec OTLP ingest</span>
           <span class="pill">57× compression on constant gauges</span>
           <span class="pill">28–80× WASM encode speedup</span>
           <span class="pill">Zero external dependencies</span>
@@ -246,7 +248,7 @@
             <div class="arch-box arch-ingest">
               <div class="arch-icon">📥</div>
               <h4>Ingest Pipeline</h4>
-              <p>OTLP JSON → normalized samples with label interning &amp; inverted index</p>
+              <p>OTLP JSON → FNV-1a fingerprint → lazy label snapshot → normalized samples → storage</p>
             </div>
             <div class="arch-arrow">→</div>
             <div class="arch-box arch-storage">
@@ -257,8 +259,8 @@
             <div class="arch-arrow">→</div>
             <div class="arch-box arch-query">
               <div class="arch-icon">🔍</div>
-              <h4>Query Engine</h4>
-              <p>Label matching · time range scan · aggregation · groupBy · rate</p>
+              <h4>Query Engine + Builder</h4>
+              <p>Fluent query builder → PlanNode AST → scan engine with label matching, aggregation, groupBy, and rate</p>
             </div>
           </div>
           <div class="arch-row arch-bottom">
@@ -393,7 +395,7 @@ New window       → '11' + 6L + 6M   (14 + N bits)</code></pre>
       <!-- ─── Query Engine ────────────────────────────────────── -->
       <section class="panel" id="query-engine">
         <h2>Query Engine</h2>
-        <p class="section-intro">The scan engine supports label matching, time windowing, six aggregation functions, groupBy, and rate computation.</p>
+        <p class="section-intro">The scan engine supports label matching, time windowing, six aggregation functions, groupBy, and rate computation. A 18–30% optimization pass in April 2026 improved step-aggregation throughput across all backends.</p>
 
         <div class="grid grid-2">
           <div class="query-feature">
@@ -409,7 +411,7 @@ New window       → '11' + 6L + 6M   (14 + N bits)</code></pre>
             </div>
           </div>
           <div class="query-feature">
-            <h4>Query Options</h4>
+            <h4>Low-level QueryOpts</h4>
 <pre><code>interface QueryOpts {
   metric: string;
   matchers?: { label, value }[];
@@ -423,12 +425,70 @@ New window       → '11' + 6L + 6M   (14 + N bits)</code></pre>
         </div>
       </section>
 
+      <!-- ─── Query Builder ───────────────────────────────────── -->
+      <section class="panel code-panel" id="query-builder">
+        <h2>Fluent Query Builder</h2>
+        <p class="section-intro">The query builder compiles a typed <code>PlanNode</code> AST and executes it against any <code>StorageBackend</code>. It's the preferred high-level query API.</p>
+
+<pre><code>import { query, executePlan } from 'o11ytsdb';
+
+// Composable, immutable builder — chain any combination (exec is synchronous)
+const result = query()
+  .metric('http_request_duration_seconds')
+  .where('method', '=', 'GET')
+  .where('status', '=~', '2..')   // regex matcher
+  .range(start, end)
+  .rate()
+  .step(60_000n)                  // 1-minute buckets
+  .sumBy('endpoint')
+  .exec(storage);
+
+// Or compile to a plan first (inspect / defer / pass around)
+const plan = query()
+  .metric('cpu_usage')
+  .where('host', '!=', 'canary')
+  .range(start, end)
+  .agg('avg')
+  .groupBy(['region', 'az'])
+  .plan();
+
+// plan.kind === 'aggregate' | 'timeRange' | 'select' | 'transform'
+// Execute later with any compatible storage backend
+const { series, scannedSamples } = executePlan(plan, storage);</code></pre>
+
+        <div class="grid grid-2" style="margin-top:18px">
+          <div class="query-feature">
+            <h4>Builder Methods</h4>
+            <div class="agg-pills">
+              <span class="agg-pill">.metric(name)</span>
+              <span class="agg-pill">.where(label, op, value)</span>
+              <span class="agg-pill">.range(start, end)</span>
+              <span class="agg-pill">.step(ns)</span>
+              <span class="agg-pill">.agg(fn)</span>
+              <span class="agg-pill">.groupBy([...])</span>
+              <span class="agg-pill">.rate()</span>
+              <span class="agg-pill">.plan()</span>
+              <span class="agg-pill">.exec(storage)</span>
+            </div>
+          </div>
+          <div class="query-feature">
+            <h4>Matcher Operators</h4>
+            <div class="agg-pills">
+              <span class="agg-pill"><code>=</code> exact</span>
+              <span class="agg-pill"><code>!=</code> not equal</span>
+              <span class="agg-pill"><code>=~</code> regex match</span>
+              <span class="agg-pill"><code>!~</code> regex not-match</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- ─── Code Examples ───────────────────────────────────── -->
       <section class="panel code-panel" id="code-examples">
         <h2>Quick Start</h2>
-        <p class="section-intro">Use the TSDB engine in three steps: create a store, ingest data, and query.</p>
+        <p class="section-intro">Create a store, ingest data, and query with the fluent builder or the low-level engine.</p>
 
-<pre><code>import { FlatStore, ChunkedStore, ColumnStore, ScanEngine, encodeChunk, decodeChunk } from 'o11ytsdb';
+<pre><code>import { ChunkedStore, encodeChunk, decodeChunk, query } from 'o11ytsdb';
 
 // 1. Create a storage backend
 const store = new ChunkedStore({ name: 'xor-delta', encode: encodeChunk, decode: decodeChunk });
@@ -441,16 +501,14 @@ const timestamps = BigInt64Array.from({ length: 10000 }, (_, i) =&gt; BigInt(Dat
 const values = Float64Array.from({ length: 10000 }, (_, i) =&gt; 100 + Math.sin(i / 50) * 30 + Math.random() * 5);
 store.appendBatch(seriesId, timestamps, values);
 
-// 3. Query with aggregation
-const engine = new ScanEngine();
-const result = engine.query(store, {
-  metric: 'http_requests',
-  start: timestamps[0],
-  end: timestamps[timestamps.length - 1],
-  agg: 'avg',
-  groupBy: ['region'],
-  step: 10_000_000_000n, // 10-second buckets
-});
+// 3. Query with the fluent builder (recommended — exec is synchronous)
+const result = query()
+  .metric('http_requests')
+  .where('region', '=', 'us-east')
+  .range(timestamps[0], timestamps[timestamps.length - 1])
+  .agg('avg')
+  .step(10_000_000_000n)   // 10-second buckets
+  .exec(store);
 
 console.log(`Found ${result.series.length} groups, scanned ${result.scannedSamples} samples`);</code></pre>
       </section>
@@ -458,17 +516,20 @@ console.log(`Found ${result.series.length} groups, scanned ${result.scannedSampl
       <!-- ─── OTLP Ingest ─────────────────────────────────────── -->
       <section class="panel code-panel">
         <h2>OTLP Ingest Pipeline</h2>
-        <p class="section-intro">Ingest OpenTelemetry JSON payloads directly. Supports gauge, sum, histogram, summary, and exponential histogram metric types.</p>
+        <p class="section-intro">Ingest OpenTelemetry JSON payloads directly at up to <strong>1.2M points/sec</strong>. Supports gauge, sum, histogram, summary, and exponential histogram. FNV-1a fingerprinting + lazy label snapshots keep the hot path allocation-free.</p>
 
-<pre><code>import { ingestOtlpJson, ChunkedStore, ScanEngine } from 'o11ytsdb';
+<pre><code>import { ingestOtlpJson, ingestOtlpObject, ChunkedStore } from 'o11ytsdb';
 
 const store = new ChunkedStore(codec);
 
-// Ingest raw OTLP metrics JSON
+// From a raw JSON string (e.g., HTTP request body)
 const result = ingestOtlpJson(otlpPayload, store);
 console.log(`${result.pointsAccepted} points, ${result.seriesCreated} new series`);
 console.log(`Types: ${JSON.stringify(result.metricTypeCounts)}`);
 // → { gauge: 42, sum: 18, histogram: 6, summary: 2 }
+
+// From a pre-parsed/pre-validated OTLP object (faster — skips JSON.parse)
+const result2 = ingestOtlpObject(parsedDocument, store);
 
 // Labels are auto-extracted:
 //   resource.service.name, scope_attr.*, attr.*, __name__
@@ -479,15 +540,16 @@ console.log(`Types: ${JSON.stringify(result.metricTypeCounts)}`);
       <!-- ─── Worker Isolation ────────────────────────────────── -->
       <section class="panel code-panel">
         <h2>Web Worker Isolation</h2>
-        <p class="section-intro">Move all TSDB operations off the main thread. The worker protocol supports structured clone, transferable buffers, and SharedArrayBuffer strategies.</p>
+        <p class="section-intro">Move all TSDB operations off the main thread. The worker protocol sends OTLP payloads as transferable <code>Uint8Array</code> buffers — <strong>main-thread blocking drops from ~19ms to ~1.9ms</strong> for a 10K-point batch.</p>
 
 <pre><code>import { WorkerClient } from 'o11ytsdb';
 
 const client = new WorkerClient(new Worker('./tsdb-worker.js'));
 await client.init({ chunkSize: 1024 });
 
-// Ingest from main thread — data transfers automatically
-await client.ingest(labels, timestamps, values);
+// Ingest an OTLP JSON payload off the main thread
+// Data is encoded as a transferable Uint8Array — zero-copy to worker
+await client.ingest(otlpPayload);
 
 // Query returns results back to main thread
 const result = await client.query({
