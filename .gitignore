@@ -23,3 +23,9 @@ actions/*/lib/
 !octo11y/actions/*/dist/
 !octo11y/actions/*/dist/**
 .playwright-cli/
+
+# Research experiment artifacts
+research/**/target/
+research/**/cloud-artifacts/
+research/**/fanout-manifest.json
+error.log
