@@ -1,14 +1,21 @@
+/* ─── o11ykit — Shared Site Styles ─────────────────────────────────── */
+
 :root {
   --ink: #0a1a2a;
-  --ink-soft: #304b62;
-  --surface: rgba(250, 253, 255, 0.86);
-  --surface-strong: rgba(255, 255, 255, 0.92);
-  --line: rgba(37, 79, 108, 0.2);
-  --shadow-lg: 0 22px 58px rgba(12, 39, 63, 0.16);
-  --shadow-sm: 0 10px 24px rgba(10, 36, 56, 0.1);
-  --otlp: #f26f2d;
+  --ink-soft: #3d5468;
+  --ink-muted: #6b8499;
+  --surface: rgba(255, 255, 255, 0.92);
+  --surface-strong: rgba(255, 255, 255, 0.96);
+  --line: rgba(37, 79, 108, 0.14);
+  --line-strong: rgba(37, 79, 108, 0.25);
+  --shadow-lg: 0 16px 48px rgba(12, 39, 63, 0.1);
+  --shadow-sm: 0 6px 20px rgba(10, 36, 56, 0.06);
+  --otlp: #e85d1a;
   --octo: #058d75;
   --bench: #1259e0;
+  --tsdb: #7c3aed;
+  --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  --sans: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
 }
 
 * {
@@ -19,180 +26,209 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--ink);
-  font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
-  background: linear-gradient(150deg, #eef6ff 0%, #fff7ee 38%, #edfff6 74%, #edf4ff 100%);
+  font-family: var(--sans);
+  background: #f8fafb;
 }
 
+/* ─── Ambient background glow ──────────────────────────────────────── */
 .ambient {
   position: fixed;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(660px 500px at 8% -12%, rgba(242, 111, 45, 0.28), transparent 62%),
-    radial-gradient(700px 500px at 91% -8%, rgba(5, 141, 117, 0.25), transparent 60%),
-    radial-gradient(900px 700px at 52% 112%, rgba(18, 89, 224, 0.2), transparent 68%);
+    radial-gradient(600px 400px at 5% -8%, rgba(232, 93, 26, 0.1), transparent 55%),
+    radial-gradient(600px 400px at 95% -5%, rgba(5, 141, 117, 0.08), transparent 50%),
+    radial-gradient(800px 500px at 50% 110%, rgba(18, 89, 224, 0.06), transparent 60%);
 }
 
+/* ─── Page layout ──────────────────────────────────────────────────── */
 .page {
   position: relative;
   z-index: 1;
-  max-width: 1160px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 28px 18px 56px;
+  padding: 24px 20px 48px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
+  gap: 16px;
 }
 
+/* ─── Panel (shared card) ──────────────────────────────────────────── */
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 24px;
-  padding: 22px;
+  border-radius: 20px;
+  padding: 24px;
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(8px);
   min-width: 0;
 }
 
+/* ─── Top bar ──────────────────────────────────────────────────────── */
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding-block: 14px;
+  gap: 14px;
+  padding-block: 12px;
 }
 
 .brand {
-  color: #0d2034;
+  color: var(--ink);
   text-decoration: none;
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
+  font-family: var(--mono);
 }
 
 .topnav {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
 }
 
 .topnav a {
   text-decoration: none;
-  color: #173149;
+  color: var(--ink-soft);
   font-size: 13px;
   font-weight: 600;
-  border-radius: 999px;
-  border: 1px solid rgba(53, 93, 121, 0.22);
-  background: rgba(255, 255, 255, 0.8);
-  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  padding: 6px 11px;
   transition:
-    transform 120ms ease,
-    border-color 120ms ease;
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 .topnav a[aria-current="page"] {
-  border-color: rgba(21, 67, 97, 0.42);
-  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink);
+  border-color: var(--line-strong);
+  background: white;
 }
 
 .topnav a:hover {
-  transform: translateY(-1px);
+  color: var(--ink);
+  border-color: var(--line-strong);
 }
 
+/* ─── Hero ─────────────────────────────────────────────────────────── */
 .hero h1 {
-  margin: 8px 0 12px;
-  font-size: clamp(34px, 5.7vw, 68px);
-  line-height: 0.98;
-  letter-spacing: -0.03em;
+  margin: 6px 0 10px;
+  font-size: clamp(32px, 5.5vw, 60px);
+  line-height: 1;
+  letter-spacing: -0.035em;
 }
 
 .eyebrow {
   margin: 0;
   text-transform: uppercase;
-  letter-spacing: 0.11em;
+  letter-spacing: 0.1em;
   font-size: 11px;
   font-weight: 700;
-  color: #4d687c;
+  color: var(--ink-muted);
+  font-family: var(--mono);
 }
 
-.lede,
-.hero p {
+.lede {
   margin: 0;
   color: var(--ink-soft);
-  max-width: 72ch;
+  max-width: 68ch;
   font-size: 17px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .hero-actions {
-  margin-top: 18px;
+  margin-top: 16px;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
+/* ─── Buttons ──────────────────────────────────────────────────────── */
 .cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  color: #112a3f;
+  color: var(--ink);
   font-size: 14px;
   font-weight: 600;
-  border-radius: 999px;
-  border: 1px solid rgba(36, 76, 104, 0.24);
-  background: rgba(255, 255, 255, 0.9);
-  padding: 11px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: white;
+  padding: 10px 16px;
   transition:
-    transform 130ms ease,
-    box-shadow 130ms ease;
+    transform 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .cta:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 9px 18px rgba(22, 54, 76, 0.16);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(22, 54, 76, 0.1);
 }
 
 .cta-primary {
-  color: #f4fbff;
-  border-color: rgba(14, 55, 86, 0.72);
-  background: linear-gradient(130deg, #10314e, #0f5a89);
+  color: white;
+  border-color: transparent;
+  background: var(--ink);
 }
 
+.cta-primary:hover {
+  background: #132d44;
+}
+
+/* ─── Pill row ─────────────────────────────────────────────────────── */
 .pill-row {
-  margin-top: 16px;
+  margin-top: 14px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .pill {
   font-size: 12px;
-  font-weight: 600;
-  color: #22435a;
-  border: 1px solid rgba(45, 82, 108, 0.24);
-  background: rgba(255, 255, 255, 0.72);
-  border-radius: 999px;
-  padding: 7px 11px;
+  font-weight: 500;
+  font-family: var(--mono);
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  background: white;
+  border-radius: 6px;
+  padding: 5px 10px;
 }
 
+/* ─── Typography ───────────────────────────────────────────────────── */
 h2 {
   margin: 0 0 12px;
-  font-size: clamp(24px, 3.1vw, 38px);
-  letter-spacing: -0.02em;
+  font-size: clamp(22px, 3vw, 34px);
+  letter-spacing: -0.025em;
 }
 
 h3 {
   margin: 0;
-  font-size: 24px;
+  font-size: 20px;
   letter-spacing: -0.02em;
 }
 
+h4 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.section-intro {
+  margin: 0 0 16px;
+  color: var(--ink-soft);
+  max-width: 68ch;
+  line-height: 1.5;
+}
+
+/* ─── Grid layouts ─────────────────────────────────────────────────── */
 .grid {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .grid-2 {
@@ -200,55 +236,127 @@ h3 {
 }
 
 .grid-3 {
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
+.grid-4 {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+/* ─── Cards ────────────────────────────────────────────────────────── */
+.card {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+  animation: rise-in 380ms ease both;
+}
+
+.card:nth-child(2) {
+  animation-delay: 60ms;
+}
+.card:nth-child(3) {
+  animation-delay: 120ms;
+}
+.card:nth-child(4) {
+  animation-delay: 180ms;
+}
+
+.card p {
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+  line-height: 1.45;
+  font-size: 14px;
+}
+
+/* Legacy card classes (compat with tsdb-engine) */
 .product-card,
 .feature-card,
 .journey,
 .stack-layer {
-  background: var(--surface-strong);
-  border: 1px solid rgba(43, 80, 106, 0.2);
-  border-radius: 18px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 14px;
   padding: 16px;
   box-shadow: var(--shadow-sm);
-  animation: rise-in 420ms ease both;
+  animation: rise-in 380ms ease both;
 }
 
 .product-card:nth-child(2),
 .feature-card:nth-child(2),
 .stack-layer:nth-child(2) {
-  animation-delay: 80ms;
+  animation-delay: 60ms;
 }
 
 .product-card:nth-child(3),
 .feature-card:nth-child(3),
 .stack-layer:nth-child(3) {
-  animation-delay: 140ms;
+  animation-delay: 120ms;
 }
 
 .product-card p,
 .feature-card p,
 .journey p,
 .stack-layer p {
-  margin: 10px 0 0;
+  margin: 8px 0 0;
   color: var(--ink-soft);
-  line-height: 1.42;
+  line-height: 1.45;
+  font-size: 14px;
 }
 
-.card-label {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #577084;
+/* ─── Per-product accent colors ────────────────────────────────────── */
+.accent-otlp {
+  border-left: 4px solid var(--otlp);
+}
+.accent-octo {
+  border-left: 4px solid var(--octo);
+}
+.accent-bench {
+  border-left: 4px solid var(--bench);
+}
+.accent-tsdb {
+  border-left: 4px solid var(--tsdb);
 }
 
-.product-card h3 {
-  margin-top: 6px;
+.otlpkit h3,
+.otlpkit h2 {
+  color: var(--otlp);
+}
+.octo11y h3,
+.octo11y h2 {
+  color: var(--octo);
+}
+.benchkit h3,
+.benchkit h2 {
+  color: var(--bench);
 }
 
+/* ─── Card links ───────────────────────────────────────────────────── */
+.card-links {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.card-links a {
+  text-decoration: none;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: white;
+  padding: 7px 12px;
+  transition: border-color 120ms ease;
+}
+
+.card-links a:hover {
+  border-color: var(--ink-soft);
+}
+
+/* Legacy .actions (compat with tsdb-engine) */
 .actions {
   margin-top: 14px;
   display: grid;
@@ -257,12 +365,12 @@ h3 {
 
 .actions a {
   text-decoration: none;
-  color: #0f263a;
+  color: var(--ink);
   font-size: 14px;
   font-weight: 500;
-  border: 1px solid rgba(52, 88, 113, 0.24);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
   padding: 10px 12px;
   transition:
     transform 120ms ease,
@@ -271,92 +379,261 @@ h3 {
 
 .actions a:hover {
   transform: translateX(2px);
+  border-color: var(--line-strong);
 }
 
-.otlpkit h3,
-.otlpkit h2 {
-  color: var(--otlp);
+/* ─── Pipeline flow diagram ────────────────────────────────────────── */
+.pipeline {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  padding: 4px 0;
 }
 
-.octo11y h3,
-.octo11y h2 {
+.pipeline-stage {
+  flex: 1;
+  min-width: 140px;
+  text-align: center;
+  padding: 16px 12px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  position: relative;
+}
+
+.pipeline-stage .stage-icon {
+  font-size: 24px;
+  margin-bottom: 6px;
+}
+
+.pipeline-stage .stage-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pipeline-stage .stage-desc {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.pipeline-arrow {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  color: var(--ink-muted);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* ─── Inline mono stats ────────────────────────────────────────────── */
+.stat-inline {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* ─── Callout card ─────────────────────────────────────────────────── */
+.callout {
+  background: linear-gradient(135deg, #f6f0ff 0%, #eff6ff 100%);
+  border: 1px solid rgba(124, 58, 237, 0.15);
+  border-radius: 16px;
+  padding: 24px;
+  display: grid;
+  gap: 8px;
+}
+
+.callout h3 {
+  color: var(--tsdb);
+}
+
+.callout p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  font-size: 15px;
+}
+
+.callout .card-links {
+  margin-top: 8px;
+}
+
+/* ─── Try-it strip ─────────────────────────────────────────────────── */
+.try-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.try-strip a {
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  transition:
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+.try-strip a:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.try-strip .try-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+/* ─── Package cards ────────────────────────────────────────────────── */
+.pkg-card {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.pkg-card .pkg-name {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.pkg-card .pkg-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.pkg-card .pkg-exports {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pkg-card .pkg-exports li {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-muted);
+  background: #f4f7f9;
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+/* ─── Adapter / format strip ───────────────────────────────────────── */
+.format-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.format-strip .format-tag {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+}
+
+/* ─── Regression table ─────────────────────────────────────────────── */
+.regression-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.regression-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--line-strong);
+}
+
+.regression-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.regression-table .name-col {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.regression-table .pass {
   color: var(--octo);
 }
-
-.benchkit h3,
-.benchkit h2 {
-  color: var(--bench);
+.regression-table .fail {
+  color: #dc2626;
 }
 
-.otlpkit .actions a:hover {
-  border-color: color-mix(in oklab, var(--otlp) 48%, white);
+/* ─── Data tree ────────────────────────────────────────────────────── */
+.data-tree {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+  padding: 12px 16px;
+  background: #f8fafb;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-top: 8px;
 }
 
-.octo11y .actions a:hover {
-  border-color: color-mix(in oklab, var(--octo) 48%, white);
+.data-tree .tree-dir {
+  color: var(--ink);
+  font-weight: 600;
+}
+.data-tree .tree-file {
+  color: var(--ink-muted);
 }
 
-.benchkit .actions a:hover {
-  border-color: color-mix(in oklab, var(--bench) 48%, white);
-}
-
-.checklist {
-  margin: 10px 0 0;
-  padding-left: 18px;
-  color: #203d53;
-  line-height: 1.4;
-  display: grid;
-  gap: 6px;
-}
-
-.checklist.wide {
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  padding-left: 0;
-  list-style: none;
-}
-
-.checklist.wide li {
-  border: 1px solid rgba(52, 86, 109, 0.2);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.84);
-  padding: 10px 12px;
-}
-
-.stack-flow {
-  display: grid;
-  gap: 11px;
-}
-
-.layer-otlp {
-  border-left: 6px solid var(--otlp);
-}
-
-.layer-octo {
-  border-left: 6px solid var(--octo);
-}
-
-.layer-bench {
-  border-left: 6px solid var(--bench);
-}
-
+/* ─── Code blocks ──────────────────────────────────────────────────── */
 .code-panel pre {
   margin: 12px 0 0;
-  padding: 14px;
+  padding: 16px;
   overflow-x: auto;
-  border-radius: 14px;
-  border: 1px solid rgba(45, 74, 94, 0.35);
-  background: linear-gradient(145deg, #0c1f31, #132b42);
+  border-radius: 12px;
+  border: 1px solid rgba(45, 74, 94, 0.2);
+  background: #0c1f31;
   color: #dcf2ff;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 code {
-  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+  font-family: var(--mono);
   font-size: 12px;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(52, 90, 117, 0.22);
-  border-radius: 6px;
+  background: #f0f4f8;
+  border: 1px solid var(--line);
+  border-radius: 5px;
   padding: 2px 6px;
 }
 
@@ -367,20 +644,67 @@ code {
   color: inherit;
 }
 
+/* ─── Checklist ────────────────────────────────────────────────────── */
+.checklist {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+  display: grid;
+  gap: 4px;
+}
+
+.checklist.wide {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  padding-left: 0;
+  list-style: none;
+}
+
+.checklist.wide li {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  padding: 10px 12px;
+}
+
+/* ─── Stack flow (legacy compat with tsdb-engine) ──────────────────── */
+.stack-flow {
+  display: grid;
+  gap: 10px;
+}
+
+.layer-otlp {
+  border-left: 4px solid var(--otlp);
+}
+.layer-octo {
+  border-left: 4px solid var(--octo);
+}
+.layer-bench {
+  border-left: 4px solid var(--bench);
+}
+
+/* ─── Footer ───────────────────────────────────────────────────────── */
+.site-footer {
+  padding-top: 8px;
+}
+
 .site-footer p {
   margin: 0;
-  color: #345166;
+  color: var(--ink-muted);
   font-size: 13px;
 }
 
 .site-footer a {
-  color: #0e5d8f;
+  color: var(--ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
+/* ─── Animation ────────────────────────────────────────────────────── */
 @keyframes rise-in {
   from {
     opacity: 0;
-    transform: translateY(7px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -388,15 +712,16 @@ code {
   }
 }
 
+/* ─── Mobile ───────────────────────────────────────────────────────── */
 @media (max-width: 760px) {
   .page {
-    padding: 18px 12px 34px;
+    padding: 16px 14px 32px;
     gap: 12px;
   }
 
   .panel {
-    border-radius: 16px;
-    padding: 15px;
+    border-radius: 14px;
+    padding: 16px;
   }
 
   .topbar {
@@ -409,33 +734,46 @@ code {
   }
 
   .hero h1 {
-    font-size: clamp(30px, 10vw, 44px);
+    font-size: clamp(28px, 9vw, 40px);
   }
 
   .cta {
     width: 100%;
   }
+
+  .pipeline {
+    flex-direction: column;
+  }
+
+  .pipeline-arrow {
+    justify-content: center;
+    transform: rotate(90deg);
+    padding: 4px 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .card,
   .product-card,
   .feature-card,
   .journey,
   .stack-layer,
   .cta,
   .actions a,
-  .topnav a {
+  .card-links a,
+  .topnav a,
+  .try-strip a {
     animation: none;
     transition: none;
   }
 }
 
-/* Skip link for keyboard navigation */
+/* ─── Accessibility ────────────────────────────────────────────────── */
 .skip-link {
   position: absolute;
   top: -40px;
   left: 0;
-  background: #112a3f;
+  background: var(--ink);
   color: white;
   padding: 8px 16px;
   text-decoration: none;
@@ -443,20 +781,19 @@ code {
   font-size: 14px;
   border-radius: 0 0 8px 0;
 }
+
 .skip-link:focus {
   top: 0;
 }
 
-/* Visible focus indicators for keyboard navigation */
 *:focus-visible {
-  outline: 2px solid #1259e0;
+  outline: 2px solid var(--bench);
   outline-offset: 2px;
 }
 
 button:focus-visible,
 .cta:focus-visible,
 .topnav a:focus-visible {
-  outline: 2px solid #1259e0;
+  outline: 2px solid var(--bench);
   outline-offset: 2px;
-  border-radius: 4px;
 }

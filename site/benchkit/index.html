@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>o11ykit / benchkit</title>
+    <title>Benchkit — CI performance automation</title>
     <meta
       name="description"
-      content="Benchkit docs: monitor, parse-results, aggregate, and compare workflows for CI performance telemetry."
+      content="Benchkit: monitor host telemetry, parse benchmarks, compare against baselines, and gate regressions in CI."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -24,66 +24,104 @@
           <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
           <a href="/o11ykit/octo11y/">Octo11y</a>
           <a href="/o11ykit/benchkit/" aria-current="page">Benchkit</a>
-          <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">Playground</a>
+          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </header>
 
       <section class="hero panel">
-        <p class="eyebrow">Product docs: Benchkit</p>
-        <h1>Benchmark + monitor automation for CI performance control.</h1>
+        <p class="eyebrow">automation layer</p>
+        <h1>Catch regressions<br/>before they merge.</h1>
         <p class="lede">
-          Benchkit extends Octo11y for performance engineering teams: collect host/process telemetry,
-          parse benchmark results, aggregate historical runs, and compare candidates against recent
-          baselines to catch regressions early.
+          Monitor host telemetry during CI. Parse benchmark output from any major tool.
+          Compare against rolling baselines. Post regression summaries to PRs.
+          All as composable GitHub Actions.
         </p>
         <div class="hero-actions">
           <a class="cta cta-primary" href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">
-            Open End-to-End Playground
+            End-to-End Playground
           </a>
           <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/octo11y/actions" target="_blank" rel="noreferrer">
-            Browse Benchkit Actions
+            Browse Actions
           </a>
         </div>
       </section>
 
+      <!-- Regression example -->
       <section class="panel">
-        <h2>Who Should Use Benchkit</h2>
-        <div class="grid grid-2">
-          <article class="journey">
-            <h3>Performance Owners</h3>
-            <p>
-              Teams responsible for preventing latency and resource regressions before merge.
-            </p>
-          </article>
-          <article class="journey">
-            <h3>CI Platform Engineers</h3>
-            <p>
-              Teams building reusable workflows that need benchmark telemetry with minimal YAML.
-            </p>
-          </article>
+        <h2>What a Regression Gate Looks Like</h2>
+        <p class="section-intro">The <code>compare</code> action flags regressions beyond your threshold and posts a summary to the PR:</p>
+        <table class="regression-table">
+          <thead>
+            <tr>
+              <th>Benchmark</th>
+              <th>Baseline (avg 10 runs)</th>
+              <th>Current</th>
+              <th>Change</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="name-col">BenchmarkParse</td>
+              <td>142 ns/op</td>
+              <td>148 ns/op</td>
+              <td>+4.2%</td>
+              <td class="pass">✅ pass</td>
+            </tr>
+            <tr>
+              <td class="name-col">BenchmarkEncode</td>
+              <td>89 ns/op</td>
+              <td>87 ns/op</td>
+              <td>−2.2%</td>
+              <td class="pass">✅ pass</td>
+            </tr>
+            <tr>
+              <td class="name-col">BenchmarkQuery</td>
+              <td>1,204 ns/op</td>
+              <td>2,451 ns/op</td>
+              <td>+103.6%</td>
+              <td class="fail">❌ regression</td>
+            </tr>
+            <tr>
+              <td class="name-col">BenchmarkAlloc</td>
+              <td>48 B/op</td>
+              <td>112 B/op</td>
+              <td>+133.3%</td>
+              <td class="fail">❌ regression</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Pipeline -->
+      <section class="panel">
+        <h2>The Pipeline</h2>
+        <div class="pipeline">
+          <div class="pipeline-stage accent-bench">
+            <div class="stage-name">monitor</div>
+            <div class="stage-desc">Start OTel Collector, scrape host metrics, stash on exit</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-bench">
+            <div class="stage-name">parse-results</div>
+            <div class="stage-desc">Normalize benchmark output to OTLP, stash to data branch</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-bench">
+            <div class="stage-name">aggregate</div>
+            <div class="stage-desc">Rebuild indexes and time-series from all runs</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-bench">
+            <div class="stage-name">compare</div>
+            <div class="stage-desc">Flag regressions, post PR comment, optionally fail the step</div>
+          </div>
         </div>
       </section>
 
-      <section class="panel">
-        <h2>Core Actions</h2>
-        <div class="grid grid-3">
-          <article class="feature-card benchkit">
-            <h3>monitor</h3>
-            <p>Runs OTel Collector during CI and stashes telemetry on post-job exit.</p>
-          </article>
-          <article class="feature-card benchkit">
-            <h3>parse-results</h3>
-            <p>Converts benchmark output from files or logs into OTLP metrics and stashes by default.</p>
-          </article>
-          <article class="feature-card benchkit">
-            <h3>compare</h3>
-            <p>Compares current run against recent baselines with markdown summaries + thresholds.</p>
-          </article>
-        </div>
-      </section>
-
+      <!-- YAML quickstart -->
       <section class="panel code-panel">
-        <h2>Quickstart Workflow</h2>
+        <h2>Quickstart</h2>
 <pre><code>name: benchkit-ci
 on: [pull_request]
 
@@ -124,31 +162,43 @@ jobs:
           github-token: ${{ github.token }}</code></pre>
       </section>
 
+      <!-- Supported formats -->
       <section class="panel">
-        <h2>Modes That Matter</h2>
-        <div class="grid grid-2">
-          <article class="journey">
-            <h3>Auto Mode</h3>
-            <p>
-              Parse directly from GitHub Actions logs for low-friction setups where benchmark output
-              already appears in step logs.
-            </p>
+        <h2>Supported Formats</h2>
+        <p class="section-intro">Auto-detected or explicitly specified — <code>parse-results</code> handles them all:</p>
+        <div class="format-strip">
+          <span class="format-tag">Go bench</span>
+          <span class="format-tag">Rust cargo bench</span>
+          <span class="format-tag">Hyperfine</span>
+          <span class="format-tag">pytest-benchmark</span>
+          <span class="format-tag">benchmark-action</span>
+          <span class="format-tag">OTLP JSON</span>
+        </div>
+      </section>
+
+      <!-- Monitor details -->
+      <section class="panel">
+        <h2>What Monitor Captures</h2>
+        <div class="grid grid-3">
+          <article class="card accent-bench">
+            <h4>Host Metrics</h4>
+            <p>CPU utilization, memory usage, system load — filtered to runner-descendant processes.</p>
           </article>
-          <article class="journey">
-            <h3>File Mode</h3>
-            <p>
-              Parse known result files when you need deterministic input control across custom
-              benchmark tooling.
-            </p>
+          <article class="card accent-bench">
+            <h4>Custom Metrics</h4>
+            <p>One-liner emission via <code>benchkit-emit</code> CLI. No SDK, no configuration, just a name and value.</p>
+          </article>
+          <article class="card accent-bench">
+            <h4>Telemetry Sidecar</h4>
+            <p>Full OTLP collector with gRPC + HTTP receivers. Gzipped NDJSON stashed alongside benchmarks.</p>
           </article>
         </div>
       </section>
 
       <footer class="site-footer">
         <p>
-          Benchkit builds on Octo11y data primitives. Read
-          <a href="/o11ykit/octo11y/">Octo11y docs</a>
-          for indexing and publishing details.
+          Benchkit builds on <a href="/o11ykit/octo11y/">Octo11y</a> data primitives.
+          Part of <a href="/o11ykit/">o11ykit</a>.
         </p>
       </footer>
     </main>

@@ -1,19 +1,17 @@
 # o11ytsdb
 
 Browser-native time-series compression for OpenTelemetry data. XOR-delta
-encoding with three interchangeable implementations: TypeScript, Zig→WASM,
-and Rust→WASM.
+encoding with two interchangeable implementations: TypeScript and Rust→WASM.
 
 ## Status: M1 — XOR-Delta Codec ✅
 
-All three implementations pass bit-exact cross-validation (30/30 pairs).
-WASM binaries are under 5 KB raw, under 1.5 KB gzipped.
+Both implementations pass bit-exact cross-validation (10/10 pairs).
+WASM binary is under 5 KB raw, under 1.5 KB gzipped.
 
 ## WASM Binary Size
 
 | Runtime | Raw | Gzipped |
 |---------|-----|---------|
-| Zig 0.14.0 | **4,037 B** | **1,391 B** |
 | Rust 1.94.1 | 4,589 B | 1,509 B |
 
 Both built `#![no_std]` / freestanding, no allocator, no runtime, pure
@@ -21,31 +19,28 @@ Both built `#![no_std]` / freestanding, no allocator, no runtime, pure
 
 ## Codec Benchmark — WASM vs TypeScript
 
-All three produce identical compressed output (same algorithm, same bits).
+All two produce identical compressed output (same algorithm, same bits).
 WASM provides 28–80× throughput improvement over pure TypeScript.
 
 ### Encode Throughput (samples/sec, p50)
 
-| Vector | TypeScript | Zig→WASM | Rust→WASM | Zig speedup | Rust speedup |
-|--------|-----------|----------|-----------|-------------|--------------|
-| constant_gauge | 2.81M | **80.13M** | 67.46M | 29× | 24× |
-| slow_gauge | 120K | **9.26M** | 7.09M | 77× | 59× |
-| monotonic_counter | 299K | **22.18M** | 19.48M | 74× | 65× |
-| spiky_latency | 113K | 3.86M | **4.54M** | 34× | 40× |
-| high_entropy | 122K | 4.84M | **5.33M** | 40× | 44× |
+| Vector | TypeScript | Rust→WASM | Rust speedup |
+|--------|-----------|-----------|--------------|
+| constant_gauge | 2.81M | 67.46M | 24× |
+| slow_gauge | 120K | 7.09M | 59× |
+| monotonic_counter | 299K | 19.48M | 65× |
+| spiky_latency | 113K | **4.54M** | 40× |
+| high_entropy | 122K | **5.33M** | 44× |
 
 ### Decode Throughput (samples/sec, p50)
 
-| Vector | TypeScript | Zig→WASM | Rust→WASM | Zig speedup | Rust speedup |
-|--------|-----------|----------|-----------|-------------|--------------|
-| constant_gauge | 4.71M | **121.47M** | 111.44M | 26× | 24× |
-| slow_gauge | 166K | **12.71M** | 7.46M | 77× | 45× |
-| monotonic_counter | 574K | **26.76M** | 20.87M | 47× | 36× |
-| spiky_latency | 151K | **11.86M** | 6.93M | 79× | 46× |
-| high_entropy | 167K | **13.32M** | 7.71M | 80× | 46× |
-
-**Winner: Zig.** Smaller binary, faster encode on structured data, 1.5–2×
-faster decode across the board.
+| Vector | TypeScript | Rust→WASM | Rust speedup |
+|--------|-----------|-----------|--------------|
+| constant_gauge | 4.71M | 111.44M | 24× |
+| slow_gauge | 166K | 7.46M | 45× |
+| monotonic_counter | 574K | 20.87M | 36× |
+| spiky_latency | 151K | 6.93M | 46× |
+| high_entropy | 167K | 7.71M | 46× |
 
 ### Bun vs Node (TypeScript runtime)
 
@@ -107,21 +102,20 @@ WASM throughput is nearly identical across both runtimes (same native code).
 
 ## Cross-Validation
 
-All 30 encoder↔decoder permutations (TS↔Zig↔Rust, 5 vectors each)
-produce bit-exact round-trip output. Any two implementations serve as
-oracles for the third.
+All 10 encoder↔decoder permutations (TS↔Rust, 5 vectors each)
+produce bit-exact round-trip output. The two implementations serve as
+mutual oracles.
 
 ## Running Benchmarks
 
 ```bash
-# Build WASM (requires Zig 0.14+, Rust with wasm32-unknown-unknown target)
-cd zig && zig build -Doptimize=ReleaseSmall && cp zig-out/bin/o11ytsdb.wasm ../wasm/o11ytsdb-zig.wasm
+# Build WASM (requires Rust with wasm32-unknown-unknown target)
 cd rust && cargo build --target wasm32-unknown-unknown --release && cp target/wasm32-unknown-unknown/release/o11ytsdb.wasm ../wasm/o11ytsdb-rust.wasm
 
 # Compile TypeScript
 npx tsc -p bench/tsconfig.json
 
-# Run codec benchmark (TS + Zig + Rust)
+# Run codec benchmark (TS + Rust)
 node bench/run.mjs codec
 
 # Run competitive compression comparison
@@ -157,7 +151,6 @@ formats, detection criteria, and the codec selection pipeline.
 
 ```text
 src/codec.ts         ← TypeScript XOR-delta codec
-zig/src/root.zig     ← Zig XOR-delta codec → WASM
 rust/src/lib.rs      ← Rust codecs → WASM (XOR-delta + ALP + Delta-ALP)
 wasm/                ← Pre-built .wasm binaries
 docs/codecs.md       ← Codec reference (formats, selection, benchmarks)
@@ -185,7 +178,6 @@ bench/
    The marginal gain doesn't justify the added dependency complexity.
 
 4. **WASM is 28–80× faster than TypeScript** for the codec hot path.
-   Zig produces smaller binaries (4.0 KB vs 4.6 KB) and faster decode
-   (1.5–2× over Rust WASM). Both are well under the 20 KB target.
+   Rust produces a small binary (4.6 KB) well under the 20 KB target.
 
 5. **Bun runs TS ~2× faster than Node 18.** WASM speed is the same on both.

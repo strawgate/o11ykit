@@ -349,7 +349,7 @@ export class ColumnStore implements StorageBackend {
           const cv = chunk.compressedValues;
           const tsc = this.tsCodec;
           const tcc = tsChunk.compressed;
-          parts.push({
+          const part: TimeRange = {
             timestamps: new BigInt64Array(0),
             values: new Float64Array(0),
             stats: chunk.stats,
@@ -365,7 +365,17 @@ export class ColumnStore implements StorageBackend {
               const vs = vc.decodeValues(cv);
               return { timestamps: ts, values: vs };
             },
-          });
+          };
+          if (typeof vc.decodeValuesView === "function") {
+            const decView = vc.decodeValuesView.bind(vc);
+            part.decodeView = () => {
+              if (!tsChunk.timestamps && tsc) {
+                tsChunk.timestamps = tsc.decodeTimestamps(tcc!);
+              }
+              return { timestamps: tsChunk.timestamps!, values: decView(cv) };
+            };
+          }
+          parts.push(part);
           continue;
         }
 

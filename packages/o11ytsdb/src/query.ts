@@ -17,16 +17,54 @@ import type {
   TimeRange,
 } from "./types.js";
 
+/** Galloping lower bound on a sorted number array. */
+function gallopLowerBound(arr: number[], target: number, from: number): number {
+  if (from >= arr.length) return arr.length;
+  if (arr[from]! >= target) return from;
+  let step = 1;
+  let lo = from + 1;
+  let hi = lo;
+  while (hi < arr.length && arr[hi]! < target) {
+    lo = hi + 1;
+    step <<= 1;
+    hi = from + step;
+  }
+  if (hi >= arr.length) hi = arr.length - 1;
+  let left = lo;
+  let right = hi;
+  while (left <= right) {
+    const mid = (left + right) >>> 1;
+    if (arr[mid]! < target) left = mid + 1;
+    else right = mid - 1;
+  }
+  return left;
+}
+
+/** Intersect two sorted arrays using galloping search. */
+function sortedIntersect(a: number[], b: number[]): number[] {
+  if (a.length === 0 || b.length === 0) return [];
+  const small = a.length <= b.length ? a : b;
+  const big = a.length <= b.length ? b : a;
+  const out: number[] = [];
+  let j = 0;
+  for (let i = 0; i < small.length; i++) {
+    const v = small[i]!;
+    j = gallopLowerBound(big, v, j);
+    if (j >= big.length) break;
+    if (big[j] === v) out.push(v);
+  }
+  return out;
+}
+
 export class ScanEngine implements QueryEngine {
   readonly name = "scan";
 
   query(storage: StorageBackend, opts: QueryOpts): QueryResult {
-    // Find matching series.
+    // Find matching series using sorted-array intersection (no Set allocation).
     let ids = storage.matchLabel("__name__", opts.metric);
     if (opts.matchers) {
       for (const m of opts.matchers) {
-        const mIds = new Set(storage.matchLabel(m.label, m.value));
-        ids = ids.filter((id) => mIds.has(id));
+        ids = sortedIntersect(ids, storage.matchLabel(m.label, m.value));
       }
     }
 
@@ -129,7 +167,6 @@ function aggAccumulate(accum: number, v: number, fn: AggFn): number {
 function aggFinalize(values: Float64Array, counts: Float64Array, fn: AggFn): void {
   if (fn === "avg") {
     for (let i = 0; i < values.length; i++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       if (counts[i]! > 0) values[i]! /= counts[i]!;
     }
   }
@@ -151,7 +188,6 @@ function aggregate(ranges: TimeRange[], fn: AggFn, step?: bigint): TimeRange {
 
 function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
   // Use the longest series as the timestamp base.
-  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
   let longest = ranges[0]!;
   for (const r of ranges) {
     if (r.timestamps.length > longest.timestamps.length) longest = r;
@@ -162,12 +198,9 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
 
   if (fn === "rate") {
     // Rate only makes sense per-series; use first.
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const src = ranges[0]!;
     for (let i = 1; i < src.timestamps.length; i++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const dt = Number(src.timestamps[i]! - src.timestamps[i - 1]!) / 1000; // ms → sec
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       values[i] = dt > 0 ? (src.values[i]! - src.values[i - 1]!) / dt : 0;
     }
     return { timestamps, values };
@@ -180,9 +213,7 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
     // Simple: assume aligned timestamps. Real engine would merge-sort.
     const len = Math.min(r.values.length, timestamps.length);
     for (let i = 0; i < len; i++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       values[i] = aggAccumulate(values[i]!, r.values[i]!, fn);
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       counts[i]!++;
     }
   }
@@ -202,11 +233,8 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   let maxT = -minT;
   for (const r of ranges) {
     if (r.timestamps.length > 0) {
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       if (r.timestamps[0]! < minT) minT = r.timestamps[0]!;
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       if (r.timestamps[r.timestamps.length - 1]! > maxT)
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         maxT = r.timestamps[r.timestamps.length - 1]!;
     } else if (r.stats && r.chunkMinT !== undefined && r.chunkMaxT !== undefined) {
       if (r.chunkMinT < minT) minT = r.chunkMinT;
@@ -232,209 +260,41 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
 
   values.fill(aggInit(fn));
 
-  // ── Stats-skip: fold pre-computed chunk stats when the chunk fits in one bucket ──
-  // Remaining ranges that need sample-level iteration.
-  let sampleRanges: TimeRange[];
-  if (fn !== "rate") {
-    sampleRanges = [];
+  // ── Fused stats-skip + decode + bucket accumulation ──
+  //
+  // Process each range inline: either fold pre-computed chunk stats when the
+  // chunk fits in one bucket, or decode and immediately accumulate into
+  // buckets.  This avoids collecting all decoded ranges into a temporary
+  // array, reducing peak memory from O(total_chunks × chunk_size) to
+  // O(chunk_size) and cutting GC pressure substantially.
+  if (fn === "rate") {
+    _stepAggregateRate(ranges, values, counts, bucketCount, minT, minTN, stepN);
+  } else {
+    const accumulate = _makeAccumulator(fn, values, counts, minTN, stepN);
     for (let ri = 0; ri < ranges.length; ri++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const r = ranges[ri]!;
       if (r.stats && r.chunkMinT !== undefined && r.chunkMaxT !== undefined) {
-        const bucketLo = (Number(r.chunkMinT - minT) / stepN) | 0;
-        const bucketHi = (Number(r.chunkMaxT - minT) / stepN) | 0;
+        const chunkMinTN = Number(r.chunkMinT - minT) + minTN;
+        const chunkMaxTN = Number(r.chunkMaxT - minT) + minTN;
+        const bucketLo = ((chunkMinTN - minTN) / stepN) | 0;
+        const bucketHi = ((chunkMaxTN - minTN) / stepN) | 0;
         if (bucketLo === bucketHi) {
           // Entire chunk maps to one bucket — fold stats directly.
-          const st = r.stats;
-          switch (fn) {
-            case "min":
-              // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-              if (st.minV < values[bucketLo]!) values[bucketLo] = st.minV;
-              break;
-            case "max":
-              // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-              if (st.maxV > values[bucketLo]!) values[bucketLo] = st.maxV;
-              break;
-            case "sum":
-            case "avg":
-              // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-              values[bucketLo]! += st.sum;
-              break;
-            case "count":
-              // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-              values[bucketLo]! += st.count;
-              break;
-            case "last":
-              values[bucketLo] = st.lastV;
-              break;
-          }
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          counts[bucketLo]! += st.count;
+          _foldStats(fn, r.stats, values, counts, bucketLo);
           continue;
         }
-        // Chunk spans multiple buckets — lazy-decode to get actual samples.
+        // Chunk spans multiple buckets — decode and accumulate inline.
         if (r.decode) {
-          sampleRanges.push(r.decode());
+          const decoded = r.decodeView ? r.decodeView() : r.decode();
+          accumulate(decoded.timestamps, decoded.values, chunkMinTN, chunkMaxTN);
           continue;
         }
       }
-      sampleRanges.push(r);
+      // Already-decoded range (hot chunk or pre-filtered).
+      if (r.timestamps.length > 0) {
+        accumulate(r.timestamps, r.values);
+      }
     }
-  } else {
-    // Rate needs per-sample timestamps — always decode stats-only parts.
-    sampleRanges = ranges.map((r) => (r.timestamps.length === 0 && r.decode ? r.decode() : r));
-  }
-
-  // Fused DataView + bucket assignment: read BigInt64 timestamps directly
-  // via DataView in the accumulation loop, avoiding a separate Float64Array
-  // allocation per range.  Each range creates one lightweight DataView
-  // instead of a full Float64Array copy.
-  switch (fn) {
-    case "min":
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const bucket =
-            ((dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN) | 0;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          if (vs[i]! < values[bucket]!) values[bucket] = vs[i]!;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          counts[bucket]!++;
-        }
-      }
-      break;
-    case "max":
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const bucket =
-            ((dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN) | 0;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          if (vs[i]! > values[bucket]!) values[bucket] = vs[i]!;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          counts[bucket]!++;
-        }
-      }
-      break;
-    case "sum":
-    case "avg":
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const bucket =
-            ((dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN) | 0;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          values[bucket]! += vs[i]!;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          counts[bucket]!++;
-        }
-      }
-      break;
-    case "count":
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const bucket =
-            ((dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN) | 0;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          values[bucket]!++;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          counts[bucket]!++;
-        }
-      }
-      break;
-    case "last":
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const bucket =
-            ((dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN) | 0;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          values[bucket] = vs[i]!;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          counts[bucket]!++;
-        }
-      }
-      break;
-    case "rate": {
-      const firstTs = new Float64Array(bucketCount).fill(Infinity);
-      const firstVal = new Float64Array(bucketCount);
-      const lastTs = new Float64Array(bucketCount).fill(-Infinity);
-      const lastVal = new Float64Array(bucketCount);
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0, len = src.length; i < len; i++) {
-          const off = i << 3;
-          const t = dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
-          const bucket = ((t - minTN) / stepN) | 0;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          counts[bucket]!++;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          if (t < firstTs[bucket]!) {
-            firstTs[bucket] = t;
-            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-            firstVal[bucket] = vs[i]!;
-          }
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          if (t >= lastTs[bucket]!) {
-            lastTs[bucket] = t;
-            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-            lastVal[bucket] = vs[i]!;
-          }
-        }
-      }
-      for (let i = 0; i < bucketCount; i++) {
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const dt = (lastTs[i]! - firstTs[i]!) / 1000;
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        values[i] = dt > 0 ? (lastVal[i]! - firstVal[i]!) / dt : 0;
-      }
-      break;
-    }
-    default:
-      for (let ri = 0; ri < sampleRanges.length; ri++) {
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const src = sampleRanges[ri]!.timestamps;
-        const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const vs = sampleRanges[ri]!.values;
-        for (let i = 0; i < src.length; i++) {
-          const off = i << 3;
-          const bucket =
-            ((dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN) | 0;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          values[bucket] = aggAccumulate(values[bucket]!, vs[i]!, fn);
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          counts[bucket]!++;
-        }
-      }
   }
 
   aggFinalize(values, counts, fn);
@@ -443,10 +303,242 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   // see "no data" instead of Infinity / -Infinity / 0.
   if (fn !== "sum" && fn !== "count") {
     for (let i = 0; i < bucketCount; i++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       if (counts[i]! === 0) values[i] = NaN;
     }
   }
 
   return { timestamps, values };
+}
+
+/** Fold pre-computed chunk stats into a single bucket. */
+function _foldStats(
+  fn: AggFn,
+  st: NonNullable<TimeRange["stats"]>,
+  values: Float64Array,
+  counts: Float64Array,
+  bucket: number
+): void {
+  switch (fn) {
+    case "min":
+      if (st.minV < values[bucket]!) values[bucket] = st.minV;
+      break;
+    case "max":
+      if (st.maxV > values[bucket]!) values[bucket] = st.maxV;
+      break;
+    case "sum":
+    case "avg":
+      values[bucket]! += st.sum;
+      break;
+    case "count":
+      values[bucket]! += st.count;
+      break;
+    case "last":
+      values[bucket] = st.lastV;
+      break;
+  }
+  counts[bucket]! += st.count;
+}
+
+/**
+ * Return a closure that accumulates a decoded range into buckets.
+ * The switch on `fn` happens once at construction time (not per-sample).
+ */
+function _makeAccumulator(
+  fn: AggFn,
+  values: Float64Array,
+  counts: Float64Array,
+  minTN: number,
+  stepN: number
+): (ts: BigInt64Array, vs: Float64Array, chunkMinTN?: number, chunkMaxTN?: number) => void {
+  // Read a single i64 timestamp from BigInt64Array via DataView.
+  const readTs = (dv: DataView, i: number): number => {
+    const off = i << 3;
+    return dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
+  };
+
+  // For regular-interval chunks (the common case: fixed scrape interval),
+  // compute bucket indices arithmetically from sample index instead of
+  // reading every timestamp via DataView. Uses chunk metadata (minT, maxT)
+  // to derive the interval reliably: interval = (maxT - minT) / (count - 1).
+  // Falls back to per-sample DataView reads when metadata is unavailable or
+  // the derived interval doesn't divide evenly (irregular timestamps).
+  const accumulate = (
+    ts: BigInt64Array,
+    vs: Float64Array,
+    fold: (bucket: number, v: number) => void,
+    chunkMinTN?: number,
+    chunkMaxTN?: number
+  ): void => {
+    const len = ts.length;
+    if (len === 0) return;
+    if (len >= 2 && chunkMinTN !== undefined && chunkMaxTN !== undefined) {
+      const span = chunkMaxTN - chunkMinTN;
+      if (span > 0 && span % (len - 1) === 0) {
+        const interval = span / (len - 1);
+        const base = chunkMinTN - minTN;
+        for (let i = 0; i < len; i++) {
+          fold(((base + i * interval) / stepN) | 0, vs[i]!);
+        }
+        return;
+      }
+    }
+    const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
+    for (let i = 0; i < len; i++) {
+      fold(((readTs(dv, i) - minTN) / stepN) | 0, vs[i]!);
+    }
+  };
+
+  switch (fn) {
+    case "min":
+      return (ts, vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          vs,
+          (bucket, v) => {
+            if (v < values[bucket]!) values[bucket] = v;
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
+    case "max":
+      return (ts, vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          vs,
+          (bucket, v) => {
+            if (v > values[bucket]!) values[bucket] = v;
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
+    case "sum":
+    case "avg":
+      return (ts, vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          vs,
+          (bucket, v) => {
+            values[bucket]! += v;
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
+    case "count":
+      return (ts, _vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          _vs,
+          (bucket, _v) => {
+            values[bucket]!++;
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
+    case "last":
+      return (ts, vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          vs,
+          (bucket, v) => {
+            values[bucket] = v;
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
+    default:
+      return (ts, vs, cMin, cMax) =>
+        accumulate(
+          ts,
+          vs,
+          (bucket, v) => {
+            values[bucket] = aggAccumulate(values[bucket]!, v, fn);
+            counts[bucket]!++;
+          },
+          cMin,
+          cMax
+        );
+  }
+}
+
+/**
+ * Rate aggregation — needs per-bucket first/last tracking.
+ * Handles stats-only parts by decoding them inline.
+ */
+function _stepAggregateRate(
+  ranges: TimeRange[],
+  values: Float64Array,
+  counts: Float64Array,
+  bucketCount: number,
+  minT: bigint,
+  minTN: number,
+  stepN: number
+): void {
+  const firstTs = new Float64Array(bucketCount).fill(Infinity);
+  const firstVal = new Float64Array(bucketCount);
+  const lastTs = new Float64Array(bucketCount).fill(-Infinity);
+  const lastVal = new Float64Array(bucketCount);
+
+  for (let ri = 0; ri < ranges.length; ri++) {
+    const r = ranges[ri]!;
+    // Rate needs per-sample timestamps — always decode stats-only parts.
+    const decoded =
+      r.timestamps.length === 0 && r.decode ? (r.decodeView ? r.decodeView() : r.decode()) : r;
+    const src = decoded.timestamps;
+    const len = src.length;
+    if (len === 0) continue;
+    const vs = decoded.values;
+
+    // Use chunk metadata to derive interval when available.
+    const hasChunkMeta = r.chunkMinT !== undefined && r.chunkMaxT !== undefined;
+    if (len >= 2 && hasChunkMeta) {
+      const chunkMinTN = Number(r.chunkMinT! - minT) + minTN;
+      const chunkMaxTN = Number(r.chunkMaxT! - minT) + minTN;
+      const span = chunkMaxTN - chunkMinTN;
+      if (span > 0 && span % (len - 1) === 0) {
+        const interval = span / (len - 1);
+        const base = chunkMinTN - minTN;
+        for (let i = 0; i < len; i++) {
+          const t = chunkMinTN + i * interval;
+          const bucket = ((base + i * interval) / stepN) | 0;
+          counts[bucket]!++;
+          if (t < firstTs[bucket]!) {
+            firstTs[bucket] = t;
+            firstVal[bucket] = vs[i]!;
+          }
+          if (t >= lastTs[bucket]!) {
+            lastTs[bucket] = t;
+            lastVal[bucket] = vs[i]!;
+          }
+        }
+        continue;
+      }
+    }
+    const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+    const readTs = (j: number): number => {
+      const off = j << 3;
+      return dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
+    };
+    for (let i = 0; i < len; i++) {
+      const t = readTs(i);
+      const bucket = ((t - minTN) / stepN) | 0;
+      counts[bucket]!++;
+      if (t < firstTs[bucket]!) {
+        firstTs[bucket] = t;
+        firstVal[bucket] = vs[i]!;
+      }
+      if (t >= lastTs[bucket]!) {
+        lastTs[bucket] = t;
+        lastVal[bucket] = vs[i]!;
+      }
+    }
+  }
+  for (let i = 0; i < bucketCount; i++) {
+    const dt = (lastTs[i]! - firstTs[i]!) / 1000;
+    values[i] = dt > 0 ? (lastVal[i]! - firstVal[i]!) / dt : 0;
+  }
 }
