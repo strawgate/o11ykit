@@ -589,7 +589,7 @@ export function flattenAttributes(attributes: readonly OtlpKeyValue[] | undefine
 
 export function forEachAttribute(
   attributes: readonly OtlpKeyValue[] | undefined,
-  fn: (key: string, value: AttributeValue) => void,
+  fn: (key: string, value: AttributeValue) => void
 ): void {
   if (!attributes || attributes.length === 0) {
     return;

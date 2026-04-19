@@ -214,7 +214,7 @@ export function parseOtlpToSamples(payload: unknown): ParsedOtlpResult {
 export function ingestOtlpObject(
   document: OtlpMetricsDocument,
   storage: StorageBackend,
-  msToNs?: (ms: Float64Array) => BigInt64Array,
+  msToNs?: (ms: Float64Array) => BigInt64Array
 ): IngestResult {
   const result = emptyResult();
   const { pending } = ingestMetricsDocument(document, result);
@@ -326,7 +326,11 @@ function ingestMetricsDocument(
 }
 
 /** Parse and ingest OTLP metrics in one step (convenience wrapper). */
-export function ingestOtlpJson(payload: unknown, storage: StorageBackend, msToNs?: (ms: Float64Array) => BigInt64Array): IngestResult {
+export function ingestOtlpJson(
+  payload: unknown,
+  storage: StorageBackend,
+  msToNs?: (ms: Float64Array) => BigInt64Array
+): IngestResult {
   const { pending, result } = parseOtlpToSamples(payload);
   flushSamplesToStorage(pending, storage, result, msToNs);
   return result;
@@ -337,7 +341,7 @@ export function flushSamplesToStorage(
   pending: Map<string, PendingSeriesSamples>,
   storage: StorageBackend,
   result: IngestResult,
-  msToNs?: (ms: Float64Array) => BigInt64Array,
+  msToNs?: (ms: Float64Array) => BigInt64Array
 ): void {
   const beforeSeries = storage.seriesCount;
 

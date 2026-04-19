@@ -2075,6 +2075,11 @@ pub extern "C" fn msToNs(in_ptr: *const f64, out_ptr: *mut i64, count: u32) {
 /// Quantize an array of f64 values to a given decimal precision.
 /// Equivalent to: out[i] = round(in[i] * scale) / scale
 /// Uses SIMD f64x2_nearest for ~17× speedup over JS Math.round.
+///
+/// Note: f64x2_nearest uses IEEE 754 round-half-to-even (banker's rounding),
+/// while JS Math.round uses round-half-away-from-zero. The difference only
+/// manifests when (value * scale) lands exactly on .5, which is acceptable
+/// for metric quantization.
 #[no_mangle]
 pub extern "C" fn quantizeBatch(
     in_ptr: *const f64,

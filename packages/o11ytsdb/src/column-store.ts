@@ -108,7 +108,7 @@ export class ColumnStore implements StorageBackend {
     rangeCodec?: RangeDecodeCodec,
     labelIndex?: LabelIndex,
     precision?: number,
-    quantizeBatch?: (values: Float64Array, precision: number) => void,
+    quantizeBatch?: (values: Float64Array, precision: number) => void
   ) {
     if (!Number.isFinite(chunkSize) || !Number.isInteger(chunkSize) || chunkSize < 1) {
       throw new RangeError(`chunkSize must be a finite integer >= 1, got ${chunkSize}`);

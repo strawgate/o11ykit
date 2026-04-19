@@ -11,7 +11,13 @@
  *   const store = new ColumnStore(codecs.valuesCodec, 640, ..., codecs.tsCodec, codecs.rangeCodec);
  */
 
-import type { ChunkStats, RangeDecodeCodec, RangeDecodeResult, TimestampCodec, ValuesCodec } from './types.js';
+import type {
+  ChunkStats,
+  RangeDecodeCodec,
+  RangeDecodeResult,
+  TimestampCodec,
+  ValuesCodec,
+} from "./types.js";
 
 // ── Raw WASM export signatures ──────────────────────────────────────
 
@@ -22,18 +28,56 @@ interface WasmExports {
   // XOR-delta values
   encodeValues: (val_ptr: number, count: number, out_ptr: number, out_cap: number) => number;
   decodeValues: (in_ptr: number, in_len: number, val_ptr: number, max: number) => number;
-  encodeValuesWithStats: (val_ptr: number, count: number, out_ptr: number, out_cap: number, stats_ptr: number) => number;
+  encodeValuesWithStats: (
+    val_ptr: number,
+    count: number,
+    out_ptr: number,
+    out_cap: number,
+    stats_ptr: number
+  ) => number;
   // ALP values
   encodeValuesALP: (val_ptr: number, count: number, out_ptr: number, out_cap: number) => number;
   decodeValuesALP: (in_ptr: number, in_len: number, val_ptr: number, max: number) => number;
-  encodeValuesALPWithStats: (val_ptr: number, count: number, out_ptr: number, out_cap: number, stats_ptr: number) => number;
-  encodeBatchValuesALPWithStats: (vals_ptr: number, chunkSize: number, numArrays: number, out_ptr: number, out_cap: number, offsets_ptr: number, sizes_ptr: number, stats_ptr: number) => number;
-  decodeBatchValuesALP: (blobs_ptr: number, offsets_ptr: number, sizes_ptr: number, num_blobs: number, out_ptr: number, chunkSize: number) => number;
+  encodeValuesALPWithStats: (
+    val_ptr: number,
+    count: number,
+    out_ptr: number,
+    out_cap: number,
+    stats_ptr: number
+  ) => number;
+  encodeBatchValuesALPWithStats: (
+    vals_ptr: number,
+    chunkSize: number,
+    numArrays: number,
+    out_ptr: number,
+    out_cap: number,
+    offsets_ptr: number,
+    sizes_ptr: number,
+    stats_ptr: number
+  ) => number;
+  decodeBatchValuesALP: (
+    blobs_ptr: number,
+    offsets_ptr: number,
+    sizes_ptr: number,
+    num_blobs: number,
+    out_ptr: number,
+    chunkSize: number
+  ) => number;
   // Timestamps
   encodeTimestamps: (ts_ptr: number, count: number, out_ptr: number, out_cap: number) => number;
   decodeTimestamps: (in_ptr: number, in_len: number, ts_ptr: number, max: number) => number;
   // Fused range decode
-  rangeDecodeALP: (ts_ptr: number, ts_len: number, val_ptr: number, val_len: number, start_t: bigint, end_t: bigint, out_ts_ptr: number, out_val_ptr: number, max_out: number) => number;
+  rangeDecodeALP: (
+    ts_ptr: number,
+    ts_len: number,
+    val_ptr: number,
+    val_len: number,
+    start_t: bigint,
+    end_t: bigint,
+    out_ts_ptr: number,
+    out_val_ptr: number,
+    max_out: number
+  ) => number;
   // SIMD accelerators
   msToNs: (in_ptr: number, out_ptr: number, count: number) => void;
   quantizeBatch: (in_ptr: number, out_ptr: number, count: number, scale: number) => void;
@@ -71,8 +115,14 @@ export interface WasmCodecs {
 function parseStats(wasm: WasmExports, statsPtr: number): ChunkStats {
   const s = new Float64Array(wasm.memory.buffer.slice(statsPtr, statsPtr + 64));
   return {
-    minV: s[0]!, maxV: s[1]!, sum: s[2]!, count: s[3]!,
-    firstV: s[4]!, lastV: s[5]!, sumOfSquares: s[6]!, resetCount: s[7]!,
+    minV: s[0]!,
+    maxV: s[1]!,
+    sum: s[2]!,
+    count: s[3]!,
+    firstV: s[4]!,
+    lastV: s[5]!,
+    sumOfSquares: s[6]!,
+    resetCount: s[7]!,
   };
 }
 
@@ -93,7 +143,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
   // ── ALP ValuesCodec ──────────────────────────────────────────────
 
   const valuesCodec: ValuesCodec = {
-    name: 'alp-wasm',
+    name: "alp-wasm",
 
     encodeValues(values: Float64Array): Uint8Array {
       const n = values.length;
@@ -107,6 +157,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
     },
 
     decodeValues(buf: Uint8Array): Float64Array {
+      if (buf.length < 2) return new Float64Array(0);
       wasm.resetScratch();
       const inPtr = wasm.allocScratch(buf.length);
       mem().set(buf, inPtr);
@@ -131,6 +182,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       };
     },
 
+    /** All arrays must have identical length (column-store invariant). */
     encodeBatchValuesWithStats(arrays: Float64Array[]) {
       const numArrays = arrays.length;
       if (numArrays === 0) return [];
@@ -141,7 +193,10 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const wasmMem = mem();
       for (let i = 0; i < numArrays; i++) {
         const arr = arrays[i]!;
-        wasmMem.set(new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength), valsPtr + i * chunkSize * 8);
+        wasmMem.set(
+          new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength),
+          valsPtr + i * chunkSize * 8
+        );
       }
 
       const outCap = numArrays * chunkSize * 20;
@@ -150,20 +205,41 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const sizesPtr = wasm.allocScratch(numArrays * 4);
       const statsPtr = wasm.allocScratch(numArrays * 64);
 
-      wasm.encodeBatchValuesALPWithStats(valsPtr, chunkSize, numArrays, outPtr, outCap, offsetsPtr, sizesPtr, statsPtr);
+      wasm.encodeBatchValuesALPWithStats(
+        valsPtr,
+        chunkSize,
+        numArrays,
+        outPtr,
+        outCap,
+        offsetsPtr,
+        sizesPtr,
+        statsPtr
+      );
 
-      const offsets = new Uint32Array(wasm.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4));
+      const offsets = new Uint32Array(
+        wasm.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4)
+      );
       const sizes = new Uint32Array(wasm.memory.buffer.slice(sizesPtr, sizesPtr + numArrays * 4));
-      const allStats = new Float64Array(wasm.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
+      const allStats = new Float64Array(
+        wasm.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64)
+      );
 
       const results: Array<{ compressed: Uint8Array; stats: ChunkStats }> = [];
       for (let i = 0; i < numArrays; i++) {
         const si = i * 8;
         results.push({
-          compressed: new Uint8Array(wasm.memory.buffer.slice(outPtr + offsets[i]!, outPtr + offsets[i]! + sizes[i]!)),
+          compressed: new Uint8Array(
+            wasm.memory.buffer.slice(outPtr + offsets[i]!, outPtr + offsets[i]! + sizes[i]!)
+          ),
           stats: {
-            minV: allStats[si]!, maxV: allStats[si + 1]!, sum: allStats[si + 2]!, count: allStats[si + 3]!,
-            firstV: allStats[si + 4]!, lastV: allStats[si + 5]!, sumOfSquares: allStats[si + 6]!, resetCount: allStats[si + 7]!,
+            minV: allStats[si]!,
+            maxV: allStats[si + 1]!,
+            sum: allStats[si + 2]!,
+            count: allStats[si + 3]!,
+            firstV: allStats[si + 4]!,
+            lastV: allStats[si + 5]!,
+            sumOfSquares: allStats[si + 6]!,
+            resetCount: allStats[si + 7]!,
           },
         });
       }
@@ -200,7 +276,11 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
 
       const results: Float64Array[] = [];
       for (let i = 0; i < numBlobs; i++) {
-        results.push(new Float64Array(wasm.memory.buffer.slice(outPtr + i * chunkSize * 8, outPtr + (i + 1) * chunkSize * 8)));
+        results.push(
+          new Float64Array(
+            wasm.memory.buffer.slice(outPtr + i * chunkSize * 8, outPtr + (i + 1) * chunkSize * 8)
+          )
+        );
       }
       return results;
     },
@@ -209,7 +289,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
   // ── XOR-delta ValuesCodec ────────────────────────────────────────
 
   const xorValuesCodec: ValuesCodec = {
-    name: 'xor-wasm',
+    name: "xor-wasm",
 
     encodeValues(values: Float64Array): Uint8Array {
       const n = values.length;
@@ -223,6 +303,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
     },
 
     decodeValues(buf: Uint8Array): Float64Array {
+      if (buf.length < 2) return new Float64Array(0);
       wasm.resetScratch();
       const inPtr = wasm.allocScratch(buf.length);
       mem().set(buf, inPtr);
@@ -251,7 +332,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
   // ── Timestamp codec ──────────────────────────────────────────────
 
   const tsCodec: TimestampCodec = {
-    name: 'dod-wasm',
+    name: "dod-wasm",
 
     encodeTimestamps(timestamps: BigInt64Array): Uint8Array {
       const n = timestamps.length;
@@ -259,12 +340,16 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const tsPtr = wasm.allocScratch(n * 8);
       const outCap = n * 20;
       const outPtr = wasm.allocScratch(outCap);
-      mem().set(new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength), tsPtr);
+      mem().set(
+        new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength),
+        tsPtr
+      );
       const bytes = wasm.encodeTimestamps(tsPtr, n, outPtr, outCap);
       return new Uint8Array(wasm.memory.buffer.slice(outPtr, outPtr + bytes));
     },
 
     decodeTimestamps(buf: Uint8Array): BigInt64Array {
+      if (buf.length < 2) return new BigInt64Array(0);
       wasm.resetScratch();
       const inPtr = wasm.allocScratch(buf.length);
       mem().set(buf, inPtr);
@@ -282,7 +367,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       compressedTimestamps: Uint8Array,
       compressedValues: Uint8Array,
       startT: bigint,
-      endT: bigint,
+      endT: bigint
     ): RangeDecodeResult {
       wasm.resetScratch();
 
@@ -297,11 +382,15 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const outValPtr = wasm.allocScratch(maxSamples * 8);
 
       const n = wasm.rangeDecodeALP(
-        tsInPtr, compressedTimestamps.length,
-        valInPtr, compressedValues.length,
-        startT, endT,
-        outTsPtr, outValPtr,
-        maxSamples,
+        tsInPtr,
+        compressedTimestamps.length,
+        valInPtr,
+        compressedValues.length,
+        startT,
+        endT,
+        outTsPtr,
+        outValPtr,
+        maxSamples
       );
 
       if (n === 0) {
