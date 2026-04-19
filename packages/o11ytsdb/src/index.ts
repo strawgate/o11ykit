@@ -57,6 +57,7 @@ export type {
   StorageBackend,
   TimeRange,
   TimestampCodec,
+  TransformOp,
   ValuesCodec,
 } from "./types.js";
 export type { WasmCodecs } from "./wasm-codecs.js";

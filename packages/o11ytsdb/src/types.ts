@@ -144,7 +144,7 @@ export interface StorageBackend {
 
 // ── Query engine ─────────────────────────────────────────────────────
 
-export type AggFn = "sum" | "avg" | "min" | "max" | "count" | "last" | "rate";
+export type AggFn = "sum" | "avg" | "min" | "max" | "count" | "last" | "rate" | "increase";
 
 export type MatchOp = "=" | "!=" | "=~" | "!~";
 
@@ -154,6 +154,8 @@ export interface Matcher {
   value: string;
 }
 
+export type TransformOp = "rate" | "increase";
+
 export interface QueryOpts {
   metric: string;
   matchers?: Matcher[];
@@ -161,6 +163,7 @@ export interface QueryOpts {
   end: bigint;
   step?: bigint;
   agg?: AggFn;
+  transform?: TransformOp;
   groupBy?: string[];
 }
 

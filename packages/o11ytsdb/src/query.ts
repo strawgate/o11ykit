@@ -109,6 +109,57 @@ export class ScanEngine implements QueryEngine {
 
     let scannedSamples = 0;
 
+    // ── Compound transform + aggregation (e.g. rate().sumBy()) ──
+    // Apply per-series transform first, then group + cross-series aggregate.
+    if (opts.transform && opts.agg && opts.step) {
+      const groups = new Map<string, { labels: Labels; ranges: TimeRange[] }>();
+
+      for (const id of ids) {
+        let parts: TimeRange[];
+        if (storage.readParts) {
+          parts = storage.readParts(id, opts.start, opts.end);
+        } else {
+          parts = [storage.read(id, opts.start, opts.end)];
+        }
+        for (const p of parts) scannedSamples += p.timestamps.length || p.stats?.count || 0;
+
+        // Apply per-series transform → step-aligned bucketed result.
+        const transformed = aggregate(parts, opts.transform, opts.step);
+
+        const labels = storage.labels(id) ?? new Map();
+        const groupKey = opts.groupBy
+          ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0")
+          : "__all__";
+
+        let group = groups.get(groupKey);
+        if (!group) {
+          const groupLabels = new Map<string, string>();
+          groupLabels.set("__name__", opts.metric);
+          if (opts.groupBy) {
+            for (const k of opts.groupBy) {
+              const v = labels.get(k);
+              if (v !== undefined) groupLabels.set(k, v);
+            }
+          }
+          group = { labels: groupLabels, ranges: [] };
+          groups.set(groupKey, group);
+        }
+        group.ranges.push(transformed);
+      }
+
+      // Cross-series aggregation on the transformed results.
+      const series: SeriesResult[] = [];
+      for (const [, group] of groups) {
+        const result = aggregate(group.ranges, opts.agg, opts.step);
+        series.push({
+          labels: group.labels,
+          timestamps: result.timestamps,
+          values: result.values,
+        });
+      }
+      return { series, scannedSeries: ids.length, scannedSamples };
+    }
+
     if (!opts.agg) {
       // No aggregation — return raw series.
       const series: SeriesResult[] = [];
@@ -235,12 +286,17 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
   const timestamps = longest.timestamps;
   const values = new Float64Array(timestamps.length);
 
-  if (fn === "rate") {
-    // Rate only makes sense per-series; use first.
+  if (fn === "rate" || fn === "increase") {
+    // Rate/increase only makes sense per-series; use first.
     const src = ranges[0]!;
     for (let i = 1; i < src.timestamps.length; i++) {
-      const dt = Number(src.timestamps[i]! - src.timestamps[i - 1]!) / 1000; // ms → sec
-      values[i] = dt > 0 ? (src.values[i]! - src.values[i - 1]!) / dt : 0;
+      if (fn === "increase") {
+        const delta = src.values[i]! - src.values[i - 1]!;
+        values[i] = delta >= 0 ? delta : src.values[i]!;
+      } else {
+        const dt = Number(src.timestamps[i]! - src.timestamps[i - 1]!) / 1000;
+        values[i] = dt > 0 ? (src.values[i]! - src.values[i - 1]!) / dt : 0;
+      }
     }
     return { timestamps, values };
   }
@@ -306,8 +362,8 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   // buckets.  This avoids collecting all decoded ranges into a temporary
   // array, reducing peak memory from O(total_chunks × chunk_size) to
   // O(chunk_size) and cutting GC pressure substantially.
-  if (fn === "rate") {
-    _stepAggregateRate(ranges, values, counts, bucketCount, minT, minTN, stepN);
+  if (fn === "rate" || fn === "increase") {
+    _stepAggregateRate(ranges, values, counts, bucketCount, minT, minTN, stepN, fn === "increase");
   } else {
     const accumulate = _makeAccumulator(fn, values, counts, minTN, stepN);
     for (let ri = 0; ri < ranges.length; ri++) {
@@ -505,8 +561,9 @@ function _makeAccumulator(
 }
 
 /**
- * Rate aggregation — needs per-bucket first/last tracking.
+ * Rate/increase aggregation — needs per-bucket first/last tracking.
  * Handles stats-only parts by decoding them inline.
+ * When isIncrease is true, returns delta (last - first) without dividing by time.
  */
 function _stepAggregateRate(
   ranges: TimeRange[],
@@ -515,7 +572,8 @@ function _stepAggregateRate(
   bucketCount: number,
   minT: bigint,
   minTN: number,
-  stepN: number
+  stepN: number,
+  isIncrease = false
 ): void {
   const firstTs = new Float64Array(bucketCount).fill(Infinity);
   const firstVal = new Float64Array(bucketCount);
@@ -577,7 +635,12 @@ function _stepAggregateRate(
     }
   }
   for (let i = 0; i < bucketCount; i++) {
-    const dt = (lastTs[i]! - firstTs[i]!) / 1000;
-    values[i] = dt > 0 ? (lastVal[i]! - firstVal[i]!) / dt : 0;
+    if (isIncrease) {
+      const delta = lastVal[i]! - firstVal[i]!;
+      values[i] = delta >= 0 ? delta : lastVal[i]!; // counter reset: use last value
+    } else {
+      const dt = (lastTs[i]! - firstTs[i]!) / 1000;
+      values[i] = dt > 0 ? (lastVal[i]! - firstVal[i]!) / dt : 0;
+    }
   }
 }

@@ -280,12 +280,37 @@ describe("QueryBuilder — exec()", () => {
     expect(hosts).toEqual(["a", "b"]);
   });
 
-  // ── Unsupported operations ─────────────────────────────────────
+  // ── Compound transforms ────────────────────────────────────────
 
-  it("throws for compound rate() + sum() (not yet supported)", () => {
+  it("executes rate().sumBy() compound transform", () => {
     const store = populateStore();
-    expect(() =>
-      query().metric("cpu").range(0n, 100_000_000n).rate().step(60_000n).sumBy("host").exec(store)
-    ).toThrow("Compound rate() + sum() is not yet supported");
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .rate()
+      .step(60_000n)
+      .sumBy("region")
+      .exec(store);
+    // 3 series with region=us-east → should produce 1 group
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    expect(result.series[0]!.labels.get("region")).toBe("us-east");
+    // Should have step-aligned timestamps
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    expect(result.series[0]!.timestamps.length).toBeGreaterThan(0);
+  });
+
+  it("executes rate().avgBy() compound transform", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .rate()
+      .step(60_000n)
+      .avgBy("region")
+      .exec(store);
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    expect(result.series[0]!.timestamps.length).toBeGreaterThan(0);
   });
 });
