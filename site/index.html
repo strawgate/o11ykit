@@ -43,12 +43,121 @@
           </a>
         </div>
         <div class="pill-row" aria-label="Who this is for">
-          <span class="pill">App engineers</span>
-          <span class="pill">Platform teams</span>
-          <span class="pill">OSS maintainers</span>
-          <span class="pill">Performance owners</span>
+          <span class="pill">app_engineers</span>
+          <span class="pill">platform_teams</span>
+          <span class="pill">oss_maintainers</span>
+          <span class="pill">perf_owners</span>
         </div>
       </section>
+
+      <section class="panel">
+        <h2>Choose Your Starting Product</h2>
+        <div class="grid grid-3">
+          <article class="product-card otlpkit">
+            <p class="card-label">// Product 1</p>
+            <h3>OtlpKit</h3>
+            <p>
+              For teams instrumenting apps with OpenTelemetry who need immediate browser-based
+              diagnostics from OTLP metrics, traces, and logs.
+            </p>
+            <ul class="checklist">
+              <li>Parse OTLP JSON in the client</li>
+              <li>Build frames for charts, tables, and waterfalls</li>
+              <li>Adapt data to Chart.js, ECharts, Recharts, or uPlot</li>
+            </ul>
+            <div class="actions">
+              <a href="/o11ykit/otlpkit-docs/">Open OtlpKit Docs</a>
+              <a href="/o11ykit/otlpkit/">Launch OtlpKit Demo</a>
+              <a href="https://www.npmjs.com/search?q=%40otlpkit" target="_blank" rel="noreferrer">View npm Packages</a>
+            </div>
+          </article>
+
+          <article class="product-card octo11y">
+            <p class="card-label">// Product 2</p>
+            <h3>Octo11y</h3>
+            <p>
+              For maintainers and platform engineers who want GitHub run activity transformed into
+              durable metrics history and dashboard-ready artifacts.
+            </p>
+            <ul class="checklist">
+              <li>Extract benchmark data from files or run logs</li>
+              <li>Aggregate run history into indexes and series</li>
+              <li>Publish metrics views from a lightweight data branch</li>
+            </ul>
+            <div class="actions">
+              <a href="/o11ykit/octo11y/">Open Octo11y Docs</a>
+              <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">Explore Playground</a>
+              <a href="https://github.com/strawgate/o11ykit/tree/main/octo11y" target="_blank" rel="noreferrer">Browse Source</a>
+            </div>
+          </article>
+
+          <article class="product-card benchkit">
+            <p class="card-label">// Product 3</p>
+            <h3>Benchkit</h3>
+            <p>
+              For teams running performance-sensitive CI pipelines who need benchmark + host metrics,
+              regression checks, and trend reporting in one flow.
+            </p>
+            <ul class="checklist">
+              <li>Capture monitor telemetry during CI jobs</li>
+              <li>Convert benchmark output to metrics automatically</li>
+              <li>Compare candidate runs against recent baselines</li>
+            </ul>
+            <div class="actions">
+              <a href="/o11ykit/benchkit/">Open Benchkit Docs</a>
+              <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">Run End-to-End Examples</a>
+              <a href="https://github.com/strawgate/o11ykit/tree/main/octo11y/actions" target="_blank" rel="noreferrer">Browse Actions</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>How The Stack Fits Together</h2>
+        <div class="stack-flow">
+          <article class="stack-layer layer-otlp">
+            <h3>@otlpkit/*</h3>
+            <p>Data model + query + view shaping for OTLP metrics, traces, and logs.</p>
+          </article>
+          <article class="stack-layer layer-octo">
+            <h3>@octo11y/*</h3>
+            <p>GitHub actions and run artifact model for telemetry pipelines.</p>
+          </article>
+          <article class="stack-layer layer-bench">
+            <h3>@benchkit/*</h3>
+            <p>Performance workflows on top: monitor, parse-results, aggregate, compare.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Common Team Journeys</h2>
+        <div class="grid grid-2">
+          <article class="journey">
+            <h3>App Diagnostics Journey</h3>
+            <p>
+              Instrument your app with OpenTelemetry, expose recent OTLP payloads through an API,
+              and render a zero-backend diagnostics dashboard in the browser with OtlpKit.
+            </p>
+          </article>
+          <article class="journey">
+            <h3>CI Performance Journey</h3>
+            <p>
+              Capture monitor metrics in CI, parse benchmark output from logs or files, aggregate to
+              a data branch, and gate regressions with compare summaries and trend pages.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <footer class="site-footer">
+        <p>
+          Opinionated layering:
+          <code>@benchkit/* → @octo11y/* → @otlpkit/*</code>
+        </p>
+      </footer>
+    </main>
+  </body>
 
       <section class="panel">
         <h2>Choose Your Starting Product</h2>

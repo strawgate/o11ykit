@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="../styles.css" />
   </head>
-  <body>
+  <body class="page-benchkit">
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <div class="ambient" aria-hidden="true"></div>
     <main id="main-content" class="page">
@@ -27,6 +27,178 @@
           <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">Playground</a>
         </nav>
       </header>
+
+      <section class="hero panel">
+        <p class="eyebrow">Product docs: Benchkit</p>
+        <h1>Benchmark + monitor automation for CI performance control.</h1>
+        <p class="lede">
+          Benchkit extends Octo11y for performance engineering teams: collect host/process telemetry,
+          parse benchmark results, aggregate historical runs, and compare candidates against recent
+          baselines to catch regressions early.
+        </p>
+        <div class="hero-actions">
+          <a class="cta cta-primary" href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">
+            Open End-to-End Playground
+          </a>
+          <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/octo11y/actions" target="_blank" rel="noreferrer">
+            Browse Benchkit Actions
+          </a>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>What Catching a Regression Looks Like</h2>
+        <p>The <code>compare</code> action produces a summary like this after each run:</p>
+        <table class="regression-table" aria-label="Example benchmark comparison">
+          <thead>
+            <tr>
+              <th>Benchmark</th>
+              <th>Baseline</th>
+              <th>Candidate</th>
+              <th>Δ</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="name">BenchmarkEncode/1k</td>
+              <td>142 ns/op</td>
+              <td>138 ns/op</td>
+              <td class="pass">−2.8%</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+            <tr>
+              <td class="name">BenchmarkDecode/1k</td>
+              <td>98 ns/op</td>
+              <td>201 ns/op</td>
+              <td class="fail">+105%</td>
+              <td class="fail">✗ regression</td>
+            </tr>
+            <tr>
+              <td class="name">BenchmarkQuery/scan</td>
+              <td>3.2 ms/op</td>
+              <td>3.4 ms/op</td>
+              <td class="warn">+6.3%</td>
+              <td class="warn">⚠ warn</td>
+            </tr>
+            <tr>
+              <td class="name">BenchmarkIngest/10k</td>
+              <td>12.1 ms/op</td>
+              <td>11.8 ms/op</td>
+              <td class="pass">−2.5%</td>
+              <td class="pass">✓ pass</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="panel">
+        <h2>Who Should Use Benchkit</h2>
+        <div class="grid grid-2">
+          <article class="journey">
+            <h3>Performance Owners</h3>
+            <p>
+              Teams responsible for preventing latency and resource regressions before merge.
+            </p>
+          </article>
+          <article class="journey">
+            <h3>CI Platform Engineers</h3>
+            <p>
+              Teams building reusable workflows that need benchmark telemetry with minimal YAML.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel benchkit">
+        <h2>Core Actions</h2>
+        <div class="grid grid-3">
+          <article class="feature-card benchkit">
+            <h3>monitor</h3>
+            <p>Runs OTel Collector during CI and stashes telemetry on post-job exit.</p>
+          </article>
+          <article class="feature-card benchkit">
+            <h3>parse-results</h3>
+            <p>Converts benchmark output from files or logs into OTLP metrics and stashes by default.</p>
+          </article>
+          <article class="feature-card benchkit">
+            <h3>compare</h3>
+            <p>Compares current run against recent baselines with markdown summaries + thresholds.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel code-panel">
+        <h2>Quickstart Workflow</h2>
+<pre><code>name: benchkit-ci
+on: [pull_request]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: monitor
+        uses: strawgate/o11ykit/octo11y/actions/monitor@main-dist
+        with:
+          github-token: ${{ github.token }}
+
+      - run: go test ./... -bench=. | tee bench.txt
+
+      - uses: strawgate/o11ykit/octo11y/actions/parse-results@main-dist
+        with:
+          mode: file
+          results: bench.txt
+          format: go
+          github-token: ${{ github.token }}
+
+      - uses: strawgate/o11ykit/octo11y/actions/aggregate@main-dist
+        with:
+          github-token: ${{ github.token }}
+
+      - uses: strawgate/o11ykit/octo11y/actions/compare@main-dist
+        with:
+          results: bench.txt
+          format: go
+          baseline-runs: 10
+          threshold: 5
+          github-token: ${{ github.token }}</code></pre>
+      </section>
+
+      <section class="panel">
+        <h2>Modes That Matter</h2>
+        <div class="grid grid-2">
+          <article class="journey">
+            <h3>Auto Mode</h3>
+            <p>
+              Parse directly from GitHub Actions logs for low-friction setups where benchmark output
+              already appears in step logs.
+            </p>
+          </article>
+          <article class="journey">
+            <h3>File Mode</h3>
+            <p>
+              Parse known result files when you need deterministic input control across custom
+              benchmark tooling.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <footer class="site-footer">
+        <p>
+          Benchkit builds on Octo11y data primitives. Read
+          <a href="/o11ykit/octo11y/">Octo11y docs</a>
+          for indexing and publishing details.
+        </p>
+      </footer>
+    </main>
+  </body>
 
       <section class="hero panel">
         <p class="eyebrow">Product docs: Benchkit</p>

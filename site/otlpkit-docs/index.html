@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="../styles.css" />
   </head>
-  <body>
+  <body class="page-otlpkit">
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <div class="ambient" aria-hidden="true"></div>
     <main id="main-content" class="page">
@@ -42,9 +42,14 @@
             View @otlpkit Packages
           </a>
         </div>
+        <div class="stat-row">
+          <div class="stat-badge"><span class="stat-value">3</span><span class="stat-label">Signal types</span></div>
+          <div class="stat-badge"><span class="stat-value">4</span><span class="stat-label">Chart adapters</span></div>
+          <div class="stat-badge"><span class="stat-value">0</span><span class="stat-label">Backend deps</span></div>
+        </div>
       </section>
 
-      <section class="panel">
+      <section class="panel otlpkit">
         <h2>What You Can Build</h2>
         <div class="grid grid-3">
           <article class="feature-card otlpkit">
@@ -61,6 +66,73 @@
           </article>
         </div>
       </section>
+
+      <section class="panel code-panel">
+        <h2>5-Minute Integration Sketch</h2>
+        <p>
+          Pull OTLP JSON from your API, shape it with <code>@otlpkit/views</code>, then feed your
+          charting library via an adapter.
+        </p>
+<pre><code>import { buildTimeSeriesFrame, buildLatestValuesFrame } from "@otlpkit/views";
+import { toEChartsTimeSeriesOption } from "@otlpkit/adapters/echarts";
+
+const metricsDoc = await fetch("/api/telemetry/metrics").then((r) =&gt; r.json());
+
+const latency = buildTimeSeriesFrame(metricsDoc, {
+  signal: "metrics",
+  metricName: "http.server.duration",
+  splitBy: "resource.service.name",
+  intervalMs: 10_000,
+  title: "P95 latency by service",
+});
+
+const latest = buildLatestValuesFrame(metricsDoc, {
+  signal: "metrics",
+  metricName: "http.server.active_requests",
+  splitBy: "resource.service.name",
+  title: "Active requests now",
+});
+
+const option = toEChartsTimeSeriesOption(latency);</code></pre>
+      </section>
+
+      <section class="panel">
+        <h2>Who Should Use OtlpKit</h2>
+        <div class="grid grid-2">
+          <article class="journey">
+            <h3>Application Teams</h3>
+            <p>
+              You already instrument with OpenTelemetry and need embeddable diagnostics in internal
+              tools, admin pages, or incident UIs.
+            </p>
+          </article>
+          <article class="journey">
+            <h3>Platform / Runtime Teams</h3>
+            <p>
+              You need portable visualizations over raw telemetry in CI previews, staging clusters,
+              and edge deployments where heavyweight stacks are unnecessary.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Advanced Practice</h2>
+        <p>
+          If your runtime captures OTLP into a ring buffer (for example, a local processor in front
+          of your telemetry pipeline), OtlpKit can render that buffered data over a simple API for
+          instant diagnostics without waiting on external storage pipelines.
+        </p>
+      </section>
+
+      <footer class="site-footer">
+        <p>
+          Continue the story with GitHub telemetry automation:
+          <a href="/o11ykit/octo11y/">Octo11y docs</a>
+        </p>
+      </footer>
+    </main>
+  </body>
 
       <section class="panel code-panel">
         <h2>5-Minute Integration Sketch</h2>

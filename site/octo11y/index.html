@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
     <link rel="stylesheet" href="../styles.css" />
   </head>
-  <body>
+  <body class="page-octo11y">
     <a href="#main-content" class="skip-link">Skip to main content</a>
     <div class="ambient" aria-hidden="true"></div>
     <main id="main-content" class="page">
@@ -27,6 +27,141 @@
           <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">Playground</a>
         </nav>
       </header>
+
+      <section class="hero panel">
+        <p class="eyebrow">Product docs: Octo11y</p>
+        <h1>Turn GitHub activity into telemetry you can graph.</h1>
+        <p class="lede">
+          Octo11y is for repository maintainers and platform teams that want to convert workflow
+          logs, benchmark outputs, and repo metadata into structured run history and published views.
+        </p>
+        <div class="hero-actions">
+          <a class="cta cta-primary" href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">
+            Open Live Playground
+          </a>
+          <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/octo11y" target="_blank" rel="noreferrer">
+            Browse Source
+          </a>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>The Pipeline</h2>
+        <p>Every Octo11y workflow follows the same path from raw run data to published metrics.</p>
+        <div class="pipeline" role="list" aria-label="Octo11y pipeline steps">
+          <div class="pipeline-step" role="listitem">
+            <span class="step-icon">⚙️</span>
+            <span class="step-name">workflow run</span>
+            <span class="step-desc">GitHub Actions</span>
+          </div>
+          <span class="pipeline-arrow" aria-hidden="true">→</span>
+          <div class="pipeline-step" role="listitem">
+            <span class="step-icon">🔍</span>
+            <span class="step-name">parse-results</span>
+            <span class="step-desc">logs or files</span>
+          </div>
+          <span class="pipeline-arrow" aria-hidden="true">→</span>
+          <div class="pipeline-step" role="listitem">
+            <span class="step-icon">📦</span>
+            <span class="step-name">aggregate</span>
+            <span class="step-desc">run history</span>
+          </div>
+          <span class="pipeline-arrow" aria-hidden="true">→</span>
+          <div class="pipeline-step" role="listitem">
+            <span class="step-icon">🌿</span>
+            <span class="step-name">data branch</span>
+            <span class="step-desc">OTLP artifacts</span>
+          </div>
+          <span class="pipeline-arrow" aria-hidden="true">→</span>
+          <div class="pipeline-step" role="listitem">
+            <span class="step-icon">📈</span>
+            <span class="step-name">dashboard</span>
+            <span class="step-desc">trend charts</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Where Octo11y Fits</h2>
+        <div class="grid grid-2">
+          <article class="journey">
+            <h3>Who Uses It</h3>
+            <p>
+              OSS maintainers, CI owners, and developer productivity teams who want objective
+              trend data across pull requests and releases.
+            </p>
+          </article>
+          <article class="journey">
+            <h3>What You Get</h3>
+            <p>
+              A clean data branch with run artifacts, indexes, and per-metric series files that can
+              be consumed by dashboards, badges, and custom reports.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel octo11y">
+        <h2>Core Capabilities</h2>
+        <div class="grid grid-3">
+          <article class="feature-card octo11y">
+            <h3>Parse Results</h3>
+            <p>Read benchmark outputs from files or workflow logs and convert to OTLP metrics.</p>
+          </article>
+          <article class="feature-card octo11y">
+            <h3>Aggregate History</h3>
+            <p>Produce run indexes, refs/PR views, and per-metric time-series artifacts.</p>
+          </article>
+          <article class="feature-card octo11y">
+            <h3>Repository Metrics</h3>
+            <p>Collect stars, forks, workflow health, and language distribution as telemetry.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel code-panel">
+        <h2>Quickstart Workflow</h2>
+<pre><code>name: benchmark-pipeline
+on: [workflow_dispatch]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  run-benchmarks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: go test ./... -bench=. | tee bench.txt
+      - uses: strawgate/o11ykit/octo11y/actions/parse-results@main-dist
+        with:
+          mode: file
+          results: bench.txt
+          format: go
+          github-token: ${{ github.token }}
+      - uses: strawgate/o11ykit/octo11y/actions/aggregate@main-dist
+        with:
+          github-token: ${{ github.token }}</code></pre>
+      </section>
+
+      <section class="panel">
+        <h2>Typical Outcomes</h2>
+        <ul class="checklist wide">
+          <li>Trend charts for benchmark and repository metrics over time</li>
+          <li>Consistent metric history per branch, PR, and commit</li>
+          <li>Data artifacts that power public or internal pages</li>
+        </ul>
+      </section>
+
+      <footer class="site-footer">
+        <p>
+          Need performance-specific automation on top?
+          <a href="/o11ykit/benchkit/">Go to Benchkit docs</a>
+        </p>
+      </footer>
+    </main>
+  </body>
 
       <section class="hero panel">
         <p class="eyebrow">Product docs: Octo11y</p>
