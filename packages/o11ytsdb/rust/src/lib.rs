@@ -2055,6 +2055,7 @@ static mut ACCUM_COUNTS: [f64; ACCUM_MAX_BUCKETS] = [0.0; ACCUM_MAX_BUCKETS];
 static mut ACCUM_BUCKET_COUNT: usize = 0;
 static mut ACCUM_MIN_T: i64 = 0;
 static mut ACCUM_STEP: i64 = 0;
+static mut ACCUM_INV_STEP: f64 = 0.0; // reciprocal for fast bucket index
 static mut ACCUM_AGG_FN: u32 = 0;
 
 // Temporary decode buffers for chunks (512 samples max per chunk).
@@ -2076,6 +2077,7 @@ pub extern "C" fn accumInit(
         ACCUM_BUCKET_COUNT = bc;
         ACCUM_MIN_T = min_t;
         ACCUM_STEP = step;
+        ACCUM_INV_STEP = 1.0 / (step as f64);
         ACCUM_AGG_FN = agg_fn;
 
         let init_val = match agg_fn {
@@ -2088,6 +2090,89 @@ pub extern "C" fn accumInit(
             ACCUM_COUNTS[i] = 0.0;
         }
     }
+}
+
+/// Feed a single compressed chunk pair and accumulate into buckets.
+/// Simpler API than accumFeedChunks — no offset/size arrays needed.
+/// JS just copies compressed ts + val blobs into scratch and passes pointers.
+#[no_mangle]
+pub extern "C" fn accumFeedChunk(
+    ts_ptr: *const u8,
+    ts_len: u32,
+    val_ptr: *const u8,
+    val_len: u32,
+) -> u32 {
+    let min_t = unsafe { ACCUM_MIN_T };
+    let inv_step = unsafe { ACCUM_INV_STEP };
+    let agg_fn = unsafe { ACCUM_AGG_FN };
+    let bc = unsafe { ACCUM_BUCKET_COUNT };
+
+    // Decode timestamps
+    let ts_blob = unsafe { core::slice::from_raw_parts(ts_ptr, ts_len as usize) };
+    let ts_buf = unsafe { &mut ACCUM_TS_BUF[..ACCUM_CHUNK_CAP] };
+    let ts_n = decode_timestamps_inner(ts_blob, ts_buf);
+
+    // Decode values (ALP)
+    let val_blob = unsafe { core::slice::from_raw_parts(val_ptr, val_len as usize) };
+    let val_buf = unsafe { &mut ACCUM_VAL_BUF[..ACCUM_CHUNK_CAP] };
+    let val_n = decode_values_alp_inner(val_blob, val_buf);
+
+    let n = ts_n.min(val_n);
+    let values = unsafe { &mut ACCUM_VALUES[..bc] };
+    let counts = unsafe { &mut ACCUM_COUNTS[..bc] };
+
+    // Use f64 reciprocal multiply instead of i64 division for bucket index.
+    // f64 division: ~10 cycles. i64 idiv: ~40-90 cycles.
+    match agg_fn {
+        ACCUM_AGG_SUM | ACCUM_AGG_AVG => {
+            for i in 0..n {
+                let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                if bucket < bc {
+                    values[bucket] += val_buf[i];
+                    counts[bucket] += 1.0;
+                }
+            }
+        }
+        ACCUM_AGG_MIN => {
+            for i in 0..n {
+                let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                if bucket < bc {
+                    if val_buf[i] < values[bucket] { values[bucket] = val_buf[i]; }
+                    counts[bucket] += 1.0;
+                }
+            }
+        }
+        ACCUM_AGG_MAX => {
+            for i in 0..n {
+                let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                if bucket < bc {
+                    if val_buf[i] > values[bucket] { values[bucket] = val_buf[i]; }
+                    counts[bucket] += 1.0;
+                }
+            }
+        }
+        ACCUM_AGG_COUNT => {
+            for i in 0..n {
+                let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                if bucket < bc {
+                    values[bucket] += 1.0;
+                    counts[bucket] += 1.0;
+                }
+            }
+        }
+        ACCUM_AGG_LAST => {
+            for i in 0..n {
+                let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                if bucket < bc {
+                    values[bucket] = val_buf[i];
+                    counts[bucket] += 1.0;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    n as u32
 }
 
 /// Feed N compressed chunk pairs and accumulate into buckets.
@@ -2118,7 +2203,7 @@ pub extern "C" fn accumFeedChunks(
     let val_sizes = unsafe { core::slice::from_raw_parts(val_sizes_ptr, nc) };
 
     let min_t = unsafe { ACCUM_MIN_T };
-    let step = unsafe { ACCUM_STEP };
+    let inv_step = unsafe { ACCUM_INV_STEP };
     let agg_fn = unsafe { ACCUM_AGG_FN };
     let bc = unsafe { ACCUM_BUCKET_COUNT };
 
@@ -2146,7 +2231,7 @@ pub extern "C" fn accumFeedChunks(
         match agg_fn {
             ACCUM_AGG_SUM | ACCUM_AGG_AVG => {
                 for i in 0..n {
-                    let bucket = ((ts_buf[i] - min_t) / step) as usize;
+                    let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
                     if bucket < bc {
                         values[bucket] += val_buf[i];
                         counts[bucket] += 1.0;
@@ -2155,7 +2240,7 @@ pub extern "C" fn accumFeedChunks(
             }
             ACCUM_AGG_MIN => {
                 for i in 0..n {
-                    let bucket = ((ts_buf[i] - min_t) / step) as usize;
+                    let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
                     if bucket < bc {
                         if val_buf[i] < values[bucket] { values[bucket] = val_buf[i]; }
                         counts[bucket] += 1.0;
@@ -2164,7 +2249,7 @@ pub extern "C" fn accumFeedChunks(
             }
             ACCUM_AGG_MAX => {
                 for i in 0..n {
-                    let bucket = ((ts_buf[i] - min_t) / step) as usize;
+                    let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
                     if bucket < bc {
                         if val_buf[i] > values[bucket] { values[bucket] = val_buf[i]; }
                         counts[bucket] += 1.0;
@@ -2173,7 +2258,7 @@ pub extern "C" fn accumFeedChunks(
             }
             ACCUM_AGG_COUNT => {
                 for i in 0..n {
-                    let bucket = ((ts_buf[i] - min_t) / step) as usize;
+                    let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
                     if bucket < bc {
                         values[bucket] += 1.0;
                         counts[bucket] += 1.0;
@@ -2182,7 +2267,7 @@ pub extern "C" fn accumFeedChunks(
             }
             ACCUM_AGG_LAST => {
                 for i in 0..n {
-                    let bucket = ((ts_buf[i] - min_t) / step) as usize;
+                    let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
                     if bucket < bc {
                         values[bucket] = val_buf[i];
                         counts[bucket] += 1.0;
