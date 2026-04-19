@@ -5,6 +5,8 @@ Build reusable telemetry view frames from OTLP JSON inputs.
 ## What It Provides
 
 - `buildTimeSeriesFrame`
+- `mergeTimeSeriesFrames`
+- `appendTimeSeriesFrame`
 - `buildLatestValuesFrame`
 - `buildHistogramFrame`
 - `buildTraceWaterfallFrame`
@@ -58,3 +60,42 @@ Store selectors map directly to existing frame builders:
 - `selectHistogram`
 - `selectTraceWaterfall`
 - `selectEventTimeline`
+
+## Incremental Updates
+
+When new telemetry slices arrive, you can merge them into an existing frame instead of rebuilding
+from your full history on every update.
+
+```ts
+import {
+  appendTimeSeriesFrame,
+  buildTimeSeriesFrame,
+  mergeTimeSeriesFrames,
+} from "@otlpkit/views";
+
+const base = buildTimeSeriesFrame(initialDoc, {
+  metricName: "http.server.duration",
+  splitBy: "resource.service.name",
+  intervalMs: 10_000,
+});
+
+// Option 1: append raw incoming OTLP input directly.
+// Reuses the base frame's captured options by default.
+const updated = appendTimeSeriesFrame(base, newDocSlice);
+
+// Optional override for a specific append.
+const updatedWithOverride = appendTimeSeriesFrame(base, newDocSlice, {
+  splitBy: "resource.deployment.environment",
+});
+
+// Option 2: build a delta frame, then merge explicitly.
+const delta = buildTimeSeriesFrame(newDocSlice, {
+  metricName: "http.server.duration",
+  splitBy: "resource.service.name",
+  intervalMs: 10_000,
+});
+
+const merged = mergeTimeSeriesFrames(base, delta, {
+  onConflict: "replace", // default
+});
+```
