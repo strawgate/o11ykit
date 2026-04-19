@@ -67,12 +67,7 @@ function createFrozenColumns(initialCap = 16): FrozenColumns {
   };
 }
 
-function frozenPush(
-  fc: FrozenColumns,
-  blob: Uint8Array,
-  tsIndex: number,
-  stats: ChunkStats
-): void {
+function frozenPush(fc: FrozenColumns, blob: Uint8Array, tsIndex: number, stats: ChunkStats): void {
   if (fc.count === fc.capacity) {
     const newCap = fc.capacity * 2;
     const newTsIdx = new Uint32Array(newCap);
