@@ -185,28 +185,18 @@ impl<'a> BitReader<'a> {
 
     #[inline(always)]
     fn read_bits(&mut self, count: u8) -> u64 {
-        // Fast path: byte-aligned reads for 64 and 16 bits.
-        if self.bit_pos == 0 {
-            match count {
-                64 => {
-                    let mut bytes = [0u8; 8];
-                    bytes.copy_from_slice(&self.buf[self.byte_pos..self.byte_pos + 8]);
-                    self.byte_pos += 8;
-                    return u64::from_be_bytes(bytes);
-                }
-                16 => {
-                    let mut bytes = [0u8; 2];
-                    bytes.copy_from_slice(&self.buf[self.byte_pos..self.byte_pos + 2]);
-                    self.byte_pos += 2;
-                    return u16::from_be_bytes(bytes) as u64;
-                }
-                8 => {
-                    let v = self.buf[self.byte_pos] as u64;
-                    self.byte_pos += 1;
-                    return v;
-                }
-                _ => {}
-            }
+        // Fast path: load a single u64 and extract bits with 2 shifts.
+        // Works for count ≤ 57 (max bit_pos=7 + count=57 = 64 bits in one u64).
+        // This covers the hot path: FoR-u64 exception decode at bw=50-55.
+        if count <= 57 && self.byte_pos + 8 <= self.buf.len() {
+            let mut bytes = [0u8; 8];
+            bytes.copy_from_slice(&self.buf[self.byte_pos..self.byte_pos + 8]);
+            let raw = u64::from_be_bytes(bytes);
+            let value = (raw << self.bit_pos) >> (64 - count);
+            let total = self.bit_pos as usize + count as usize;
+            self.byte_pos += total / 8;
+            self.bit_pos = (total % 8) as u8;
+            return value;
         }
 
         // Medium path: fits within current byte.
@@ -222,11 +212,10 @@ impl<'a> BitReader<'a> {
             return val;
         }
 
-        // General path: read across byte boundaries.
+        // General path: read across byte boundaries (count > 57 or near end of buffer).
         let mut value: u64 = 0;
         let mut bits_left = count;
 
-        // Read remaining bits from current byte.
         if self.bit_pos > 0 {
             let fill = remaining;
             value = (self.buf[self.byte_pos] as u64) & ((1u64 << fill) - 1);
@@ -235,14 +224,12 @@ impl<'a> BitReader<'a> {
             self.bit_pos = 0;
         }
 
-        // Read whole bytes.
         while bits_left >= 8 {
             value = (value << 8) | (self.buf[self.byte_pos] as u64);
             self.byte_pos += 1;
             bits_left -= 8;
         }
 
-        // Read remaining bits.
         if bits_left > 0 {
             value = (value << bits_left)
                 | ((self.buf[self.byte_pos] >> (8 - bits_left)) as u64 & ((1u64 << bits_left) - 1));
@@ -867,18 +854,45 @@ fn f64_to_sortable_u64(f: f64) -> u64 {
 /// Convert sortable u64 back to f64. Inverse of f64_to_sortable_u64.
 #[inline(always)]
 fn sortable_u64_to_f64(u: u64) -> f64 {
-    let bits = if u & (1u64 << 63) != 0 {
-        u ^ (1u64 << 63) // was positive: flip sign bit back
-    } else {
-        !u // was negative: flip all bits back
-    };
-    f64::from_bits(bits)
+    // Branchless: if sign bit set → XOR 0x8000..., else flip all bits.
+    // mask = 0x8000... when positive (sign set), 0xFFFF... when negative.
+    let sign = u >> 63;              // 0 or 1
+    let mask = (sign << 63) | (sign.wrapping_sub(1)); // 0x8000... or 0xFFFF...
+    f64::from_bits(u ^ mask)
 }
 
 static POW10: [f64; 19] = [
     1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9,
     1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18,
 ];
+
+// Direct-index bit extraction: reads `bw` bits starting at bit `i * bw`
+// from a packed byte buffer. No sequential state — each call is independent.
+// Requires: bw ≤ 57 and buf has ≥ 8 bytes past the start of each value.
+#[inline(always)]
+fn extract_packed(buf: &[u8], i: usize, bw: u8) -> u64 {
+    let bit_offset = i * bw as usize;
+    let byte_pos = bit_offset >> 3;
+    let bit_pos = (bit_offset & 7) as u8;
+    // Safe: caller ensures buf has 8 bytes of read-safe padding.
+    let mut bytes = [0u8; 8];
+    bytes.copy_from_slice(&buf[byte_pos..byte_pos + 8]);
+    let raw = u64::from_be_bytes(bytes);
+    (raw << bit_pos) >> (64 - bw)
+}
+
+// Same as extract_packed but safe near end-of-buffer: pads with zeros.
+#[inline(always)]
+fn extract_packed_safe(buf: &[u8], i: usize, bw: u8) -> u64 {
+    let bit_offset = i * bw as usize;
+    let byte_pos = bit_offset >> 3;
+    let bit_pos = (bit_offset & 7) as u8;
+    let mut bytes = [0u8; 8];
+    let avail = buf.len().saturating_sub(byte_pos).min(8);
+    bytes[..avail].copy_from_slice(&buf[byte_pos..byte_pos + avail]);
+    let raw = u64::from_be_bytes(bytes);
+    (raw << bit_pos) >> (64 - bw)
+}
 
 // Temp storage for ALP (static to avoid stack/heap allocation).
 static mut ALP_INTS: [i64; ALP_MAX_CHUNK] = [0; ALP_MAX_CHUNK];
@@ -1595,12 +1609,26 @@ fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usize {
 
     let factor = POW10[e];
 
-    if bw > 0 {
+    if bw > 0 && bw <= 57 {
+        let packed = &input[pos..];
+        let inv_factor = 1.0 / factor;
+        // Use fast path for all but last 8 values (which might read past packed data).
+        let safe_limit = if n > 8 { n - 8 } else { 0 };
+        for i in 0..safe_limit {
+            let offset = extract_packed(packed, i, bw) as i64;
+            val_out[i] = (min_int + offset) as f64 * inv_factor;
+        }
+        for i in safe_limit..n {
+            let offset = extract_packed_safe(packed, i, bw) as i64;
+            val_out[i] = (min_int + offset) as f64 * inv_factor;
+        }
+        pos += (n * bw as usize + 7) / 8;
+    } else if bw > 57 {
         let mut r = BitReader::new(&input[pos..]);
+        let inv_factor = 1.0 / factor;
         for i in 0..n {
             let offset = r.read_bits(bw) as i64;
-            let int_val = min_int + offset;
-            val_out[i] = int_val as f64 / factor;
+            val_out[i] = (min_int + offset) as f64 * inv_factor;
         }
         pos += (n * bw as usize + 7) / 8;
     } else {
@@ -1629,10 +1657,18 @@ fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usize {
         let exc_bw = input[pos];
         pos += 1;
 
-        // FoR-u64 decode exceptions.
+        // FoR-u64 decode exceptions — direct-index for SIMD-friendly loops.
         if exc_count == n {
-            // All values are exceptions — no position lookup needed.
-            if exc_bw > 0 {
+            if exc_bw > 0 && exc_bw <= 57 {
+                let packed = &input[pos..];
+                let safe_limit = if n > 8 { n - 8 } else { 0 };
+                for i in 0..safe_limit {
+                    val_out[i] = sortable_u64_to_f64(min_su64 + extract_packed(packed, i, exc_bw));
+                }
+                for i in safe_limit..n {
+                    val_out[i] = sortable_u64_to_f64(min_su64 + extract_packed_safe(packed, i, exc_bw));
+                }
+            } else if exc_bw > 0 {
                 let mut r = BitReader::new(&input[pos..]);
                 for i in 0..n {
                     val_out[i] = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
@@ -1644,7 +1680,18 @@ fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usize {
                 }
             }
         } else {
-            if exc_bw > 0 {
+            if exc_bw > 0 && exc_bw <= 57 {
+                let packed = &input[pos..];
+                let safe_limit = if exc_count > 8 { exc_count - 8 } else { 0 };
+                for i in 0..safe_limit {
+                    val_out[exc_positions[i] as usize] =
+                        sortable_u64_to_f64(min_su64 + extract_packed(packed, i, exc_bw));
+                }
+                for i in safe_limit..exc_count {
+                    val_out[exc_positions[i] as usize] =
+                        sortable_u64_to_f64(min_su64 + extract_packed_safe(packed, i, exc_bw));
+                }
+            } else if exc_bw > 0 {
                 let mut r = BitReader::new(&input[pos..]);
                 for i in 0..exc_count {
                     val_out[exc_positions[i] as usize] =
@@ -2025,6 +2072,321 @@ pub extern "C" fn internerResolve(id: u32, out_ptr: *mut u8, out_cap: u32) -> u3
         out.copy_from_slice(&INTERN_BYTES[start..end]);
         len as u32
     }
+}
+
+// ── Query accumulator ────────────────────────────────────────────────
+//
+// Fused decode-and-bucket: JS feeds compressed (ts, val) chunk pairs;
+// Rust decodes both, computes bucket index, and accumulates into
+// bucket arrays that persist across feedChunks calls.
+//
+// Eliminates per-sample JS↔WASM boundary crossings and avoids the
+// expensive DataView.getInt32 + getUint32 → Number bucket-index pattern.
+//
+// AggFn IDs (must match JS side):
+//   0=sum  1=avg  2=min  3=max  4=count  5=last
+
+const ACCUM_AGG_SUM: u32 = 0;
+const ACCUM_AGG_AVG: u32 = 1;
+const ACCUM_AGG_MIN: u32 = 2;
+const ACCUM_AGG_MAX: u32 = 3;
+const ACCUM_AGG_COUNT: u32 = 4;
+const ACCUM_AGG_LAST: u32 = 5;
+
+const ACCUM_MAX_BUCKETS: usize = 128 * 1024; // 128K buckets max
+
+// Dedicated accumulator memory — separate from scratch so decode can
+// use scratch freely while bucket arrays persist across feedChunks calls.
+static mut ACCUM_VALUES: [f64; ACCUM_MAX_BUCKETS] = [0.0; ACCUM_MAX_BUCKETS];
+static mut ACCUM_COUNTS: [f64; ACCUM_MAX_BUCKETS] = [0.0; ACCUM_MAX_BUCKETS];
+static mut ACCUM_BUCKET_COUNT: usize = 0;
+static mut ACCUM_MIN_T: i64 = 0;
+static mut ACCUM_STEP: i64 = 0;
+static mut ACCUM_INV_STEP: f64 = 0.0; // reciprocal for fast bucket index
+static mut ACCUM_AGG_FN: u32 = 0;
+
+// Temporary decode buffers for chunks (512 samples max per chunk).
+const ACCUM_CHUNK_CAP: usize = 2048;
+static mut ACCUM_TS_BUF: [i64; ACCUM_CHUNK_CAP] = [0i64; ACCUM_CHUNK_CAP];
+static mut ACCUM_VAL_BUF: [f64; ACCUM_CHUNK_CAP] = [0.0; ACCUM_CHUNK_CAP];
+
+/// Initialize the accumulator for a new query.
+/// Must be called before feedChunks. Clears bucket arrays.
+#[no_mangle]
+pub extern "C" fn accumInit(
+    bucket_count: u32,
+    min_t: i64,
+    step: i64,
+    agg_fn: u32,
+) {
+    if step == 0 { return; }
+    let bc = (bucket_count as usize).min(ACCUM_MAX_BUCKETS);
+    unsafe {
+        ACCUM_BUCKET_COUNT = bc;
+        ACCUM_MIN_T = min_t;
+        ACCUM_STEP = step;
+        ACCUM_INV_STEP = 1.0 / (step as f64);
+        ACCUM_AGG_FN = agg_fn;
+
+        let init_val = match agg_fn {
+            ACCUM_AGG_MIN => f64::INFINITY,
+            ACCUM_AGG_MAX => f64::NEG_INFINITY,
+            _ => 0.0,
+        };
+        for i in 0..bc {
+            ACCUM_VALUES[i] = init_val;
+            ACCUM_COUNTS[i] = 0.0;
+        }
+    }
+}
+
+/// Feed a single compressed chunk pair and accumulate into buckets.
+/// Simpler API than accumFeedChunks — no offset/size arrays needed.
+/// JS just copies compressed ts + val blobs into scratch and passes pointers.
+#[no_mangle]
+pub extern "C" fn accumFeedChunk(
+    ts_ptr: *const u8,
+    ts_len: u32,
+    val_ptr: *const u8,
+    val_len: u32,
+) -> u32 {
+    let min_t = unsafe { ACCUM_MIN_T };
+    let inv_step = unsafe { ACCUM_INV_STEP };
+    let agg_fn = unsafe { ACCUM_AGG_FN };
+    let bc = unsafe { ACCUM_BUCKET_COUNT };
+
+    // Decode timestamps
+    let ts_blob = unsafe { core::slice::from_raw_parts(ts_ptr, ts_len as usize) };
+    let ts_buf = unsafe { &mut ACCUM_TS_BUF[..ACCUM_CHUNK_CAP] };
+    let ts_n = decode_timestamps_inner(ts_blob, ts_buf);
+
+    // Decode values (ALP)
+    let val_blob = unsafe { core::slice::from_raw_parts(val_ptr, val_len as usize) };
+    let val_buf = unsafe { &mut ACCUM_VAL_BUF[..ACCUM_CHUNK_CAP] };
+    let val_n = decode_values_alp_inner(val_blob, val_buf);
+
+    let n = ts_n.min(val_n);
+    let values = unsafe { &mut ACCUM_VALUES[..bc] };
+    let counts = unsafe { &mut ACCUM_COUNTS[..bc] };
+
+    // Use f64 reciprocal multiply instead of i64 division for bucket index.
+    // f64 division: ~10 cycles. i64 idiv: ~40-90 cycles.
+    match agg_fn {
+        ACCUM_AGG_SUM | ACCUM_AGG_AVG => {
+            for i in 0..n {
+                let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                if bucket < bc {
+                    values[bucket] += val_buf[i];
+                    counts[bucket] += 1.0;
+                }
+            }
+        }
+        ACCUM_AGG_MIN => {
+            for i in 0..n {
+                let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                if bucket < bc {
+                    if val_buf[i] < values[bucket] { values[bucket] = val_buf[i]; }
+                    counts[bucket] += 1.0;
+                }
+            }
+        }
+        ACCUM_AGG_MAX => {
+            for i in 0..n {
+                let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                if bucket < bc {
+                    if val_buf[i] > values[bucket] { values[bucket] = val_buf[i]; }
+                    counts[bucket] += 1.0;
+                }
+            }
+        }
+        ACCUM_AGG_COUNT => {
+            for i in 0..n {
+                let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                if bucket < bc {
+                    values[bucket] += 1.0;
+                    counts[bucket] += 1.0;
+                }
+            }
+        }
+        ACCUM_AGG_LAST => {
+            for i in 0..n {
+                let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                if bucket < bc {
+                    values[bucket] = val_buf[i];
+                    counts[bucket] += 1.0;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    n as u32
+}
+
+/// Feed N compressed chunk pairs and accumulate into buckets.
+///
+/// Layout in WASM memory (all pointers set up by JS via allocScratch):
+///   ts_blobs_ptr:  concatenated compressed timestamp blobs
+///   ts_offsets:    u32[N] byte offsets into ts_blobs
+///   ts_sizes:      u32[N] byte sizes
+///   val_blobs_ptr: concatenated compressed value blobs
+///   val_offsets:   u32[N] byte offsets into val_blobs
+///   val_sizes:     u32[N] byte sizes
+///
+/// Returns number of chunks successfully processed.
+#[no_mangle]
+pub extern "C" fn accumFeedChunks(
+    ts_blobs_ptr: *const u8,
+    ts_offsets_ptr: *const u32,
+    ts_sizes_ptr: *const u32,
+    val_blobs_ptr: *const u8,
+    val_offsets_ptr: *const u32,
+    val_sizes_ptr: *const u32,
+    num_chunks: u32,
+) -> u32 {
+    let nc = num_chunks as usize;
+    let ts_offsets = unsafe { core::slice::from_raw_parts(ts_offsets_ptr, nc) };
+    let ts_sizes = unsafe { core::slice::from_raw_parts(ts_sizes_ptr, nc) };
+    let val_offsets = unsafe { core::slice::from_raw_parts(val_offsets_ptr, nc) };
+    let val_sizes = unsafe { core::slice::from_raw_parts(val_sizes_ptr, nc) };
+
+    let min_t = unsafe { ACCUM_MIN_T };
+    let inv_step = unsafe { ACCUM_INV_STEP };
+    let agg_fn = unsafe { ACCUM_AGG_FN };
+    let bc = unsafe { ACCUM_BUCKET_COUNT };
+
+    for c in 0..nc {
+        // Decode timestamps
+        let ts_blob = unsafe {
+            core::slice::from_raw_parts(ts_blobs_ptr.add(ts_offsets[c] as usize), ts_sizes[c] as usize)
+        };
+        let ts_buf = unsafe { &mut ACCUM_TS_BUF[..ACCUM_CHUNK_CAP] };
+        let ts_n = decode_timestamps_inner(ts_blob, ts_buf);
+
+        // Decode values (ALP)
+        let val_blob = unsafe {
+            core::slice::from_raw_parts(val_blobs_ptr.add(val_offsets[c] as usize), val_sizes[c] as usize)
+        };
+        let val_buf = unsafe { &mut ACCUM_VAL_BUF[..ACCUM_CHUNK_CAP] };
+        let val_n = decode_values_alp_inner(val_blob, val_buf);
+
+        let n = ts_n.min(val_n);
+
+        // Accumulate into buckets
+        let values = unsafe { &mut ACCUM_VALUES[..bc] };
+        let counts = unsafe { &mut ACCUM_COUNTS[..bc] };
+
+        match agg_fn {
+            ACCUM_AGG_SUM | ACCUM_AGG_AVG => {
+                for i in 0..n {
+                    let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                    if bucket < bc {
+                        values[bucket] += val_buf[i];
+                        counts[bucket] += 1.0;
+                    }
+                }
+            }
+            ACCUM_AGG_MIN => {
+                for i in 0..n {
+                    let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                    if bucket < bc {
+                        if val_buf[i] < values[bucket] { values[bucket] = val_buf[i]; }
+                        counts[bucket] += 1.0;
+                    }
+                }
+            }
+            ACCUM_AGG_MAX => {
+                for i in 0..n {
+                    let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                    if bucket < bc {
+                        if val_buf[i] > values[bucket] { values[bucket] = val_buf[i]; }
+                        counts[bucket] += 1.0;
+                    }
+                }
+            }
+            ACCUM_AGG_COUNT => {
+                for i in 0..n {
+                    let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                    if bucket < bc {
+                        values[bucket] += 1.0;
+                        counts[bucket] += 1.0;
+                    }
+                }
+            }
+            ACCUM_AGG_LAST => {
+                for i in 0..n {
+                    let bucket = ((ts_buf[i] - min_t) as f64 * inv_step) as usize;
+                    if bucket < bc {
+                        values[bucket] = val_buf[i];
+                        counts[bucket] += 1.0;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    nc as u32
+}
+
+/// Fold pre-computed chunk stats into a single bucket.
+/// Used for chunks that fit entirely in one bucket (stats-skip optimization).
+#[no_mangle]
+pub extern "C" fn accumFoldStats(
+    bucket: u32,
+    min_v: f64,
+    max_v: f64,
+    sum: f64,
+    count: f64,
+    _first_v: f64,
+    last_v: f64,
+) {
+    let b = bucket as usize;
+    unsafe {
+        if b >= ACCUM_BUCKET_COUNT { return; }
+        match ACCUM_AGG_FN {
+            ACCUM_AGG_SUM | ACCUM_AGG_AVG => { ACCUM_VALUES[b] += sum; }
+            ACCUM_AGG_MIN => { if min_v < ACCUM_VALUES[b] { ACCUM_VALUES[b] = min_v; } }
+            ACCUM_AGG_MAX => { if max_v > ACCUM_VALUES[b] { ACCUM_VALUES[b] = max_v; } }
+            ACCUM_AGG_COUNT => { ACCUM_VALUES[b] += count; }
+            ACCUM_AGG_LAST => { ACCUM_VALUES[b] = last_v; }
+            _ => {}
+        }
+        ACCUM_COUNTS[b] += count;
+    }
+}
+
+/// Return pointer to the accumulated values array.
+/// JS reads `bucket_count` f64s starting at this pointer.
+/// For avg: divides sum by count before returning.
+/// For min/max: replaces empty buckets (count==0) with NaN.
+#[no_mangle]
+pub extern "C" fn accumFinalize() -> u32 {
+    unsafe {
+        let bc = ACCUM_BUCKET_COUNT;
+        if ACCUM_AGG_FN == ACCUM_AGG_AVG {
+            for i in 0..bc {
+                if ACCUM_COUNTS[i] > 0.0 {
+                    ACCUM_VALUES[i] /= ACCUM_COUNTS[i];
+                }
+            }
+        }
+        // Replace sentinel values in empty buckets with NaN.
+        if ACCUM_AGG_FN != ACCUM_AGG_SUM && ACCUM_AGG_FN != ACCUM_AGG_COUNT {
+            for i in 0..bc {
+                if ACCUM_COUNTS[i] == 0.0 {
+                    ACCUM_VALUES[i] = f64::NAN;
+                }
+            }
+        }
+        core::ptr::addr_of!(ACCUM_VALUES) as u32
+    }
+}
+
+/// Return pointer to the accumulated counts array.
+#[no_mangle]
+pub extern "C" fn accumCounts() -> u32 {
+    core::ptr::addr_of!(ACCUM_COUNTS) as u32
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
