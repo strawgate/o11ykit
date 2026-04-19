@@ -124,6 +124,7 @@
   font-size: 11px;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: intentional modifier class */
 .tooltip-row strong {
   font-family: "IBM Plex Mono", monospace;
   font-size: 12px;

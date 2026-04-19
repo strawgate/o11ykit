@@ -1,14 +1,14 @@
-import { Suite, printReport, type BenchReport } from './harness.js';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { type BenchReport, printReport, Suite } from "./harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 function pkgPath(rel: string): string {
-  return join(__dirname, '..', '..', rel);
+  return join(__dirname, "..", "..", rel);
 }
 
-type OtlpMetric = import('@otlpkit/otlpjson').OtlpMetric;
-type OtlpMetricsDocument = import('@otlpkit/otlpjson').OtlpMetricsDocument;
+type OtlpMetric = import("@otlpkit/otlpjson").OtlpMetric;
+type OtlpMetricsDocument = import("@otlpkit/otlpjson").OtlpMetricsDocument;
 
 const METRIC_BATCHES = [100, 1_000, 10_000];
 
@@ -24,8 +24,8 @@ function buildSyntheticPayload(metricCount: number): OtlpMetricsDocument {
           {
             timeUnixNano: (baseTs + BigInt(i) * 1_000_000_000n).toString(),
             attributes: [
-              { key: 'host.name', value: { stringValue: `node-${i % 256}` } },
-              { key: 'cpu', value: { stringValue: String(i % 8) } },
+              { key: "host.name", value: { stringValue: `node-${i % 256}` } },
+              { key: "cpu", value: { stringValue: String(i % 8) } },
             ],
             asDouble: 0.25 + (i % 100) / 100,
           },
@@ -39,15 +39,15 @@ function buildSyntheticPayload(metricCount: number): OtlpMetricsDocument {
       {
         resource: {
           attributes: [
-            { key: 'service.name', value: { stringValue: 'o11ytsdb-ingest-bench' } },
-            { key: 'service.instance.id', value: { stringValue: 'bench-1' } },
+            { key: "service.name", value: { stringValue: "o11ytsdb-ingest-bench" } },
+            { key: "service.instance.id", value: { stringValue: "bench-1" } },
           ],
         },
         scopeMetrics: [
           {
             scope: {
-              name: 'bench.ingest',
-              version: '0.0.1',
+              name: "bench.ingest",
+              version: "0.0.1",
             },
             metrics,
           },
@@ -58,16 +58,16 @@ function buildSyntheticPayload(metricCount: number): OtlpMetricsDocument {
 }
 
 export default async function (): Promise<BenchReport> {
-  const suite = new Suite('ingest');
-  const { FlatStore } = await import(pkgPath('dist/flat-store.js'));
-  const { ingestOtlpJson } = await import(pkgPath('dist/ingest.js'));
+  const suite = new Suite("ingest");
+  const { FlatStore } = await import(pkgPath("dist/flat-store.js"));
+  const { ingestOtlpJson } = await import(pkgPath("dist/ingest.js"));
 
   for (const metricCount of METRIC_BATCHES) {
     const payload = buildSyntheticPayload(metricCount);
 
     suite.add(
       `ingest_${metricCount}_metrics`,
-      'ts',
+      "ts",
       () => {
         const storage = new FlatStore();
         ingestOtlpJson(payload, storage);
@@ -76,8 +76,8 @@ export default async function (): Promise<BenchReport> {
         warmup: 10,
         iterations: 30,
         itemsPerCall: metricCount,
-        unit: 'samples/sec',
-      },
+        unit: "samples/sec",
+      }
     );
   }
 

@@ -28,7 +28,9 @@
   padding: 16px;
   text-align: center;
   box-shadow: var(--shadow-sm);
-  transition: transform 200ms ease, box-shadow 200ms ease;
+  transition:
+    transform 200ms ease,
+    box-shadow 200ms ease;
 }
 
 .arch-box:hover {
@@ -62,12 +64,24 @@
   flex-shrink: 0;
 }
 
-.arch-ingest { border-top: 3px solid var(--otlp); }
-.arch-storage { border-top: 3px solid var(--octo); }
-.arch-query { border-top: 3px solid var(--bench); }
-.arch-codec { border-top: 3px solid var(--region-header); }
-.arch-labels { border-top: 3px solid #ec4899; }
-.arch-worker { border-top: 3px solid var(--region-exceptions); }
+.arch-ingest {
+  border-top: 3px solid var(--otlp);
+}
+.arch-storage {
+  border-top: 3px solid var(--octo);
+}
+.arch-query {
+  border-top: 3px solid var(--bench);
+}
+.arch-codec {
+  border-top: 3px solid var(--region-header);
+}
+.arch-labels {
+  border-top: 3px solid #ec4899;
+}
+.arch-worker {
+  border-top: 3px solid var(--region-exceptions);
+}
 
 /* ─── Backend Cards ───────────────────────────────────────────────── */
 
@@ -87,9 +101,18 @@
   margin-bottom: 8px;
 }
 
-.backend-badge.flat { background: var(--badge-flat-bg); color: var(--badge-flat-text); }
-.backend-badge.chunked { background: var(--badge-chunked-bg); color: var(--badge-chunked-text); }
-.backend-badge.column { background: var(--badge-column-bg); color: var(--badge-column-text); }
+.backend-badge.flat {
+  background: var(--badge-flat-bg);
+  color: var(--badge-flat-text);
+}
+.backend-badge.chunked {
+  background: var(--badge-chunked-bg);
+  color: var(--badge-chunked-text);
+}
+.backend-badge.column {
+  background: var(--badge-column-bg);
+  color: var(--badge-column-text);
+}
 
 .backend-stat {
   display: grid;

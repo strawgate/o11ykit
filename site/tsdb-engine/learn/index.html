@@ -105,6 +105,37 @@
         .hub-intro { grid-template-columns: 1fr; }
         .hub-intro-diagram { display: none; }
       }
+      .xp-difficulty {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 999px;
+        margin-bottom: 8px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+      .xp-difficulty.beginner {
+        background: rgba(34, 197, 94, 0.15);
+        color: #86efac;
+        border: 1px solid rgba(34, 197, 94, 0.3);
+      }
+      .xp-difficulty.intermediate {
+        background: rgba(251, 191, 36, 0.15);
+        color: #fde68a;
+        border: 1px solid rgba(251, 191, 36, 0.3);
+      }
+      .xp-start-here {
+        background: rgba(99, 102, 241, 0.1);
+        border: 1px solid rgba(99, 102, 241, 0.25);
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 24px;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        color: var(--xp-text-muted, #94a3b8);
+      }
+      .xp-start-here a { color: var(--xp-accent); }
     </style>
   </head>
   <body>
@@ -114,7 +145,7 @@
 
       <nav class="xp-topbar" aria-label="Breadcrumb">
         <div class="xp-breadcrumb">
-          <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+          <a href="../">TSDB Engine</a>
           <span class="sep">›</span>
           <span class="current">Learn</span>
         </div>
@@ -151,10 +182,15 @@ Answer in &lt;1ms</div>
       <section>
         <h2 style="color:#fff; margin-bottom: 4px;">Compression</h2>
         <p style="color: var(--xp-text-muted); font-size: 14px; margin-bottom: 16px;">How raw numbers become tiny bit streams</p>
+        <p class="xp-start-here">
+          💡 New here? Start with <a href="string-interning/">String Interning</a> or 
+          <a href="chunk-stats/">Chunk Stats</a> — they explain the foundations everything else builds on.
+        </p>
         <div class="hub-grid">
 
           <a href="alp/" class="hub-card" style="--card-accent: #10b981; --card-glow: rgba(16, 185, 129, 0.1);">
             <div class="hub-icon" style="--card-glow: rgba(16, 185, 129, 0.1);">📐</div>
+            <span class="xp-difficulty intermediate">Intermediate</span>
             <h3>ALP Compression</h3>
             <p>Watch floating-point numbers get quantized to integers, bit-packed, and compressed to a fraction of their size — with lossless round-trip.</p>
             <span class="hub-tag" style="--card-accent: #10b981; --card-glow: rgba(16, 185, 129, 0.1);">Values</span>
@@ -162,6 +198,7 @@ Answer in &lt;1ms</div>
 
           <a href="delta-of-delta/" class="hub-card" style="--card-accent: #06b6d4; --card-glow: rgba(6, 182, 212, 0.1);">
             <div class="hub-icon" style="--card-glow: rgba(6, 182, 212, 0.1);">⏱️</div>
+            <span class="xp-difficulty beginner">Beginner</span>
             <h3>Delta-of-Delta</h3>
             <p>Regular timestamps compress to almost nothing — just 1 bit per sample when the interval is constant. Watch the math unfold.</p>
             <span class="hub-tag" style="--card-accent: #06b6d4; --card-glow: rgba(6, 182, 212, 0.1);">Timestamps</span>
@@ -169,6 +206,7 @@ Answer in &lt;1ms</div>
 
           <a href="xor-delta/" class="hub-card" style="--card-accent: #a78bfa; --card-glow: rgba(167, 139, 250, 0.1);">
             <div class="hub-icon" style="--card-glow: rgba(167, 139, 250, 0.1);">⊕</div>
+            <span class="xp-difficulty intermediate">Intermediate</span>
             <h3>XOR-Delta</h3>
             <p>Values that barely change need barely any bits. XOR two floats, find the meaningful window, and store just that.</p>
             <span class="hub-tag" style="--card-accent: #a78bfa; --card-glow: rgba(167, 139, 250, 0.1);">Values</span>
@@ -184,6 +222,7 @@ Answer in &lt;1ms</div>
 
           <a href="string-interning/" class="hub-card" style="--card-accent: #f59e0b; --card-glow: rgba(245, 158, 11, 0.1);">
             <div class="hub-icon" style="--card-glow: rgba(245, 158, 11, 0.1);">🏷️</div>
+            <span class="xp-difficulty beginner">Beginner</span>
             <h3>String Interning</h3>
             <p>10,000 series × 4 labels each = 40,000 strings. Interning stores each unique string once and references it by integer ID.</p>
             <span class="hub-tag" style="--card-accent: #f59e0b; --card-glow: rgba(245, 158, 11, 0.1);">Labels</span>
@@ -191,6 +230,7 @@ Answer in &lt;1ms</div>
 
           <a href="chunk-stats/" class="hub-card" style="--card-accent: #f87171; --card-glow: rgba(248, 113, 113, 0.1);">
             <div class="hub-icon" style="--card-glow: rgba(248, 113, 113, 0.1);">📊</div>
+            <span class="xp-difficulty beginner">Beginner</span>
             <h3>Chunk Stats</h3>
             <p>Each compressed chunk stores min, max, sum, and count. Queries can skip entire chunks without decompressing — often 100× faster.</p>
             <span class="hub-tag" style="--card-accent: #f87171; --card-glow: rgba(248, 113, 113, 0.1);">Query</span>
@@ -198,8 +238,9 @@ Answer in &lt;1ms</div>
 
           <a href="query-engine/" class="hub-card" style="--card-accent: #60a5fa; --card-glow: rgba(96, 165, 250, 0.1);">
             <div class="hub-icon" style="--card-glow: rgba(96, 165, 250, 0.1);">🔍</div>
+            <span class="xp-difficulty intermediate">Intermediate</span>
             <h3>Query Engine</h3>
-            <p>From label filters to aggregated answers: postings intersection, chunk pruning, step-aligned bucketing — end to end.</p>
+            <p>From label filters to aggregated answers: finding which series match a query, skipping data outside the query's time range, grouping results into equal time intervals — end to end.</p>
             <span class="hub-tag" style="--card-accent: #60a5fa;">Pipeline</span>
           </a>
 
@@ -208,8 +249,8 @@ Answer in &lt;1ms</div>
 
       <footer style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--xp-border); text-align: center;">
         <p style="font-size: 13px; color: var(--xp-text-dim);">
-          Part of <a href="/o11ykit/" style="color: var(--xp-accent); text-decoration: none;">o11ykit</a>
-          · <a href="/o11ykit/tsdb-engine/" style="color: var(--xp-text-muted); text-decoration: none;">Back to TSDB Engine →</a>
+          Part of <a href="../../" style="color: var(--xp-accent); text-decoration: none;">o11ykit</a>
+          · <a href="../" style="color: var(--xp-text-muted); text-decoration: none;">Back to TSDB Engine →</a>
         </p>
       </footer>
 
