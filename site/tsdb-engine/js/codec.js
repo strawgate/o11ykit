@@ -11,32 +11,66 @@ export function floatToBits(f) {
 }
 
 export function bitsToFloat(bits) {
-  f64View.setUint32(0, Number((bits >> 32n) & 0xFFFFFFFFn), false);
-  f64View.setUint32(4, Number(bits & 0xFFFFFFFFn), false);
+  f64View.setUint32(0, Number((bits >> 32n) & 0xffffffffn), false);
+  f64View.setUint32(4, Number(bits & 0xffffffffn), false);
   return f64View.getFloat64(0, false);
 }
 
 export function clz64(x) {
   if (x === 0n) return 64;
   let n = 0;
-  if ((x & 0xFFFFFFFF00000000n) === 0n) { n += 32; x <<= 32n; }
-  if ((x & 0xFFFF000000000000n) === 0n) { n += 16; x <<= 16n; }
-  if ((x & 0xFF00000000000000n) === 0n) { n += 8; x <<= 8n; }
-  if ((x & 0xF000000000000000n) === 0n) { n += 4; x <<= 4n; }
-  if ((x & 0xC000000000000000n) === 0n) { n += 2; x <<= 2n; }
-  if ((x & 0x8000000000000000n) === 0n) { n += 1; }
+  if ((x & 0xffffffff00000000n) === 0n) {
+    n += 32;
+    x <<= 32n;
+  }
+  if ((x & 0xffff000000000000n) === 0n) {
+    n += 16;
+    x <<= 16n;
+  }
+  if ((x & 0xff00000000000000n) === 0n) {
+    n += 8;
+    x <<= 8n;
+  }
+  if ((x & 0xf000000000000000n) === 0n) {
+    n += 4;
+    x <<= 4n;
+  }
+  if ((x & 0xc000000000000000n) === 0n) {
+    n += 2;
+    x <<= 2n;
+  }
+  if ((x & 0x8000000000000000n) === 0n) {
+    n += 1;
+  }
   return n;
 }
 
 export function ctz64(x) {
   if (x === 0n) return 64;
   let n = 0;
-  if ((x & 0xFFFFFFFFn) === 0n) { n += 32; x >>= 32n; }
-  if ((x & 0xFFFFn) === 0n) { n += 16; x >>= 16n; }
-  if ((x & 0xFFn) === 0n) { n += 8; x >>= 8n; }
-  if ((x & 0xFn) === 0n) { n += 4; x >>= 4n; }
-  if ((x & 0x3n) === 0n) { n += 2; x >>= 2n; }
-  if ((x & 0x1n) === 0n) { n += 1; }
+  if ((x & 0xffffffffn) === 0n) {
+    n += 32;
+    x >>= 32n;
+  }
+  if ((x & 0xffffn) === 0n) {
+    n += 16;
+    x >>= 16n;
+  }
+  if ((x & 0xffn) === 0n) {
+    n += 8;
+    x >>= 8n;
+  }
+  if ((x & 0xfn) === 0n) {
+    n += 4;
+    x >>= 4n;
+  }
+  if ((x & 0x3n) === 0n) {
+    n += 2;
+    x >>= 2n;
+  }
+  if ((x & 0x1n) === 0n) {
+    n += 1;
+  }
   return n;
 }
 
@@ -54,7 +88,10 @@ export class BitWriter {
     }
     if (bit) this.buf[this.bytePos] |= 0x80 >>> this.bitPos;
     this.bitPos++;
-    if (this.bitPos === 8) { this.bitPos = 0; this.bytePos++; }
+    if (this.bitPos === 8) {
+      this.bitPos = 0;
+      this.bytePos++;
+    }
   }
   writeBits(value, count) {
     for (let i = count - 1; i >= 0; i--) this.writeBit(Number((value >> BigInt(i)) & 1n));
@@ -73,11 +110,18 @@ export class BitWriter {
 }
 
 export class BitReader {
-  constructor(buf) { this.buf = buf; this.bytePos = 0; this.bitPos = 0; }
+  constructor(buf) {
+    this.buf = buf;
+    this.bytePos = 0;
+    this.bitPos = 0;
+  }
   readBit() {
     const bit = (this.buf[this.bytePos] >>> (7 - this.bitPos)) & 1;
     this.bitPos++;
-    if (this.bitPos === 8) { this.bitPos = 0; this.bytePos++; }
+    if (this.bitPos === 8) {
+      this.bitPos = 0;
+      this.bytePos++;
+    }
     return bit;
   }
   readBits(count) {
@@ -101,12 +145,15 @@ export function encodeChunk(timestamps, values) {
   if (n === 0) return new Uint8Array(0);
   const w = new BitWriter(n * 2);
   w.writeBitsNum(n, 16);
-  w.writeBits(BigInt(timestamps[0]) & 0xFFFFFFFFFFFFFFFFn, 64);
+  w.writeBits(BigInt(timestamps[0]) & 0xffffffffffffffffn, 64);
   w.writeBits(floatToBits(values[0]), 64);
   if (n === 1) return w.finish();
 
-  let prevTs = timestamps[0], prevDelta = 0n;
-  let prevValBits = floatToBits(values[0]), prevLeading = 64, prevTrailing = 0;
+  let prevTs = timestamps[0],
+    prevDelta = 0n;
+  let prevValBits = floatToBits(values[0]),
+    prevLeading = 64,
+    prevTrailing = 0;
 
   for (let i = 1; i < n; i++) {
     const ts = timestamps[i];
@@ -118,16 +165,25 @@ export function encodeChunk(timestamps, values) {
     } else {
       const absDod = dod < 0n ? -dod : dod;
       if (absDod <= 64n) {
-        w.writeBit(1); w.writeBit(0);
-        w.writeBitsNum(Number((dod << 1n) ^ (dod >> 63n)) & 0x7F, 7);
+        w.writeBit(1);
+        w.writeBit(0);
+        w.writeBitsNum(Number((dod << 1n) ^ (dod >> 63n)) & 0x7f, 7);
       } else if (absDod <= 256n) {
-        w.writeBit(1); w.writeBit(1); w.writeBit(0);
-        w.writeBitsNum(Number((dod << 1n) ^ (dod >> 63n)) & 0x1FF, 9);
+        w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(0);
+        w.writeBitsNum(Number((dod << 1n) ^ (dod >> 63n)) & 0x1ff, 9);
       } else if (absDod <= 2048n) {
-        w.writeBit(1); w.writeBit(1); w.writeBit(1); w.writeBit(0);
-        w.writeBitsNum(Number((dod << 1n) ^ (dod >> 63n)) & 0xFFF, 12);
+        w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(0);
+        w.writeBitsNum(Number((dod << 1n) ^ (dod >> 63n)) & 0xfff, 12);
       } else {
-        w.writeBit(1); w.writeBit(1); w.writeBit(1); w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(1);
         w.writeBits(BigInt.asUintN(64, dod), 64);
       }
     }
@@ -143,11 +199,13 @@ export function encodeChunk(timestamps, values) {
       const trailing = ctz64(xor);
       const meaningful = 64 - leading - trailing;
       if (leading >= prevLeading && trailing >= prevTrailing) {
-        w.writeBit(1); w.writeBit(0);
+        w.writeBit(1);
+        w.writeBit(0);
         const prevMeaningful = 64 - prevLeading - prevTrailing;
         w.writeBits(xor >> BigInt(prevTrailing), prevMeaningful);
       } else {
-        w.writeBit(1); w.writeBit(1);
+        w.writeBit(1);
+        w.writeBit(1);
         w.writeBitsNum(leading, 6);
         w.writeBitsNum(meaningful - 1, 6);
         w.writeBits(xor >> BigInt(trailing), meaningful);
@@ -170,19 +228,25 @@ export function decodeChunk(buf) {
   values[0] = bitsToFloat(r.readBits(64));
   if (n === 1) return { timestamps, values };
 
-  let prevTs = timestamps[0], prevDelta = 0n;
-  let prevValBits = floatToBits(values[0]), prevLeading = 0, prevTrailing = 0;
+  let prevTs = timestamps[0],
+    prevDelta = 0n;
+  let prevValBits = floatToBits(values[0]),
+    prevLeading = 0,
+    prevTrailing = 0;
 
   for (let i = 1; i < n; i++) {
     let dod;
     if (r.readBit() === 0) {
       dod = 0n;
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       const zz = r.readBitsNum(7);
       dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       const zz = r.readBitsNum(9);
       dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       const zz = r.readBitsNum(12);
       dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
@@ -196,6 +260,7 @@ export function decodeChunk(buf) {
 
     if (r.readBit() === 0) {
       values[i] = bitsToFloat(prevValBits);
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       const meaningful = 64 - prevLeading - prevTrailing;
       const xor = r.readBits(meaningful) << BigInt(prevTrailing);
@@ -231,7 +296,7 @@ export function decodeChunkAnnotated(buf) {
   const bitMap = [];
 
   // Header: 16 bits count
-  const headerEnd = r.totalBits; // 16
+  const _headerEnd = r.totalBits; // 16
 
   // Sample 0: raw ts (64 bits) + raw value (64 bits)
   const ts0Start = r.totalBits;
@@ -244,14 +309,23 @@ export function decodeChunkAnnotated(buf) {
 
   bitMap.push({
     sampleIndex: 0,
-    timestamp: { startBit: ts0Start, endBit: ts0End, encoding: 'raw', bits: 64, decoded: timestamps[0] },
-    value: { startBit: val0Start, endBit: val0End, encoding: 'raw', bits: 64, decoded: values[0] },
+    timestamp: {
+      startBit: ts0Start,
+      endBit: ts0End,
+      encoding: "raw",
+      bits: 64,
+      decoded: timestamps[0],
+    },
+    value: { startBit: val0Start, endBit: val0End, encoding: "raw", bits: 64, decoded: values[0] },
   });
 
   if (n === 1) return { timestamps, values, bitMap };
 
-  let prevTs = timestamps[0], prevDelta = 0n;
-  let prevValBits = floatToBits(values[0]), prevLeading = 0, prevTrailing = 0;
+  let prevTs = timestamps[0],
+    prevDelta = 0n;
+  let prevValBits = floatToBits(values[0]),
+    prevLeading = 0,
+    prevTrailing = 0;
 
   for (let i = 1; i < n; i++) {
     // ── Timestamp ──
@@ -261,26 +335,29 @@ export function decodeChunkAnnotated(buf) {
     let tsBits;
     if (r.readBit() === 0) {
       dod = 0n;
-      tsEncoding = 'dod-zero';
+      tsEncoding = "dod-zero";
       tsBits = 1;
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       const zz = r.readBitsNum(7);
       dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
-      tsEncoding = 'dod-7bit';
+      tsEncoding = "dod-7bit";
       tsBits = 9; // 2 prefix + 7 data
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       const zz = r.readBitsNum(9);
       dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
-      tsEncoding = 'dod-9bit';
+      tsEncoding = "dod-9bit";
       tsBits = 12; // 3 prefix + 9 data
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       const zz = r.readBitsNum(12);
       dod = BigInt.asIntN(64, BigInt((zz >>> 1) ^ -(zz & 1)));
-      tsEncoding = 'dod-12bit';
+      tsEncoding = "dod-12bit";
       tsBits = 16; // 4 prefix + 12 data
     } else {
       dod = BigInt.asIntN(64, r.readBits(64));
-      tsEncoding = 'dod-64bit';
+      tsEncoding = "dod-64bit";
       tsBits = 68; // 4 prefix + 64 data
     }
     const delta = prevDelta + dod;
@@ -294,18 +371,21 @@ export function decodeChunkAnnotated(buf) {
     let valEncoding;
     let valBits;
     let xorBits = 0n;
-    let leading = 0, trailing = 0, meaningful = 0;
+    let leading = 0,
+      trailing = 0,
+      meaningful = 0;
 
     if (r.readBit() === 0) {
       values[i] = bitsToFloat(prevValBits);
-      valEncoding = 'xor-zero';
+      valEncoding = "xor-zero";
       valBits = 1;
+      // biome-ignore lint/suspicious/noDuplicateElseIf: intentional bit-width dispatch
     } else if (r.readBit() === 0) {
       meaningful = 64 - prevLeading - prevTrailing;
       xorBits = r.readBits(meaningful) << BigInt(prevTrailing);
       prevValBits ^= xorBits;
       values[i] = bitsToFloat(prevValBits);
-      valEncoding = 'xor-reuse';
+      valEncoding = "xor-reuse";
       valBits = 2 + meaningful;
       leading = prevLeading;
       trailing = prevTrailing;
@@ -316,7 +396,7 @@ export function decodeChunkAnnotated(buf) {
       xorBits = r.readBits(meaningful) << BigInt(trailing);
       prevValBits ^= xorBits;
       values[i] = bitsToFloat(prevValBits);
-      valEncoding = 'xor-new';
+      valEncoding = "xor-new";
       valBits = 2 + 6 + 6 + meaningful;
       prevLeading = leading;
       prevTrailing = trailing;
@@ -326,13 +406,24 @@ export function decodeChunkAnnotated(buf) {
     bitMap.push({
       sampleIndex: i,
       timestamp: {
-        startBit: tsStart, endBit: tsEnd, encoding: tsEncoding,
-        bits: tsBits, decoded: timestamps[i], dod: dod, delta: delta,
+        startBit: tsStart,
+        endBit: tsEnd,
+        encoding: tsEncoding,
+        bits: tsBits,
+        decoded: timestamps[i],
+        dod: dod,
+        delta: delta,
       },
       value: {
-        startBit: valStart, endBit: valEnd, encoding: valEncoding,
-        bits: valBits, decoded: values[i], xor: xorBits,
-        leading, trailing, meaningful,
+        startBit: valStart,
+        endBit: valEnd,
+        encoding: valEncoding,
+        bits: valBits,
+        decoded: values[i],
+        xor: xorBits,
+        leading,
+        trailing,
+        meaningful,
       },
     });
   }

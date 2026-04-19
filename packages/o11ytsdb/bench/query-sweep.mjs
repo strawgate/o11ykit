@@ -22,9 +22,9 @@
  */
 
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgDir = join(__dirname, "..");
@@ -35,8 +35,8 @@ const NUM_SERIES = 30;
 const POINTS_PER_SERIES = Math.ceil(5_000_000 / NUM_SERIES); // ~166,667
 const TOTAL_SAMPLES = NUM_SERIES * POINTS_PER_SERIES;
 const CHUNK_SIZE = 512;
-const T0 = 1_700_000_000_000n;           // epoch ms
-const INTERVAL = 15_000n;                 // 15s scrape interval
+const T0 = 1_700_000_000_000n; // epoch ms
+const INTERVAL = 15_000n; // 15s scrape interval
 const REGIONS = ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1", "eu-central-1"];
 
 const CHUNK_SPAN_MS = CHUNK_SIZE * Number(INTERVAL); // 7,680,000 ms = 128 min
@@ -47,16 +47,16 @@ const isQuick = args.includes("--quick");
 const filterIdx = args.indexOf("--filter");
 const filter = filterIdx >= 0 ? args[filterIdx + 1] : null;
 const WARMUP = isQuick ? 1 : 3;
-const RUNS   = isQuick ? 3 : 7;
+const RUNS = isQuick ? 3 : 7;
 
 // ── Sweep dimensions ─────────────────────────────────────────────────
 
 const STEPS = [
-  { name: "1min",  ms: 60_000n,      label: "60s"   },
-  { name: "5min",  ms: 300_000n,     label: "5m"    },
-  { name: "1h",    ms: 3_600_000n,   label: "1h"    },
-  { name: "6h",    ms: 21_600_000n,  label: "6h"    },
-  { name: "1d",    ms: 86_400_000n,  label: "1d"    },
+  { name: "1min", ms: 60_000n, label: "60s" },
+  { name: "5min", ms: 300_000n, label: "5m" },
+  { name: "1h", ms: 3_600_000n, label: "1h" },
+  { name: "6h", ms: 21_600_000n, label: "6h" },
+  { name: "1d", ms: 86_400_000n, label: "1d" },
 ];
 
 const AGG_FNS = ["min", "max", "sum", "avg", "count", "last"];
@@ -104,7 +104,9 @@ async function makeWasmCodecs() {
       const outCap = n * 20;
       const outPtr = w.allocScratch(outCap);
       mem().set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), valPtr);
-      return new Uint8Array(w.memory.buffer.slice(outPtr, outPtr + w.encodeValuesALP(valPtr, n, outPtr, outCap)));
+      return new Uint8Array(
+        w.memory.buffer.slice(outPtr, outPtr + w.encodeValuesALP(valPtr, n, outPtr, outCap))
+      );
     },
     decodeValues(buf) {
       w.resetScratch();
@@ -128,7 +130,16 @@ async function makeWasmCodecs() {
       const s = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + 64));
       return {
         compressed,
-        stats: { minV: s[0], maxV: s[1], sum: s[2], count: s[3], firstV: s[4], lastV: s[5], sumOfSquares: s[6], resetCount: s[7] },
+        stats: {
+          minV: s[0],
+          maxV: s[1],
+          sum: s[2],
+          count: s[3],
+          firstV: s[4],
+          lastV: s[5],
+          sumOfSquares: s[6],
+          resetCount: s[7],
+        },
       };
     },
     encodeBatchValuesWithStats(arrays) {
@@ -137,26 +148,48 @@ async function makeWasmCodecs() {
       w.resetScratch();
       const valsPtr = w.allocScratch(numArrays * chunkSize * 8);
       for (let i = 0; i < numArrays; i++) {
-        mem().set(new Uint8Array(arrays[i].buffer, arrays[i].byteOffset, arrays[i].byteLength), valsPtr + i * chunkSize * 8);
+        mem().set(
+          new Uint8Array(arrays[i].buffer, arrays[i].byteOffset, arrays[i].byteLength),
+          valsPtr + i * chunkSize * 8
+        );
       }
       const outCap = numArrays * chunkSize * 20;
       const outPtr = w.allocScratch(outCap);
       const offsetsPtr = w.allocScratch(numArrays * 4);
       const sizesPtr = w.allocScratch(numArrays * 4);
       const statsPtr = w.allocScratch(numArrays * 64);
-      w.encodeBatchValuesALPWithStats(valsPtr, chunkSize, numArrays, outPtr, outCap, offsetsPtr, sizesPtr, statsPtr);
-      const offsets = new Uint32Array(w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4));
+      w.encodeBatchValuesALPWithStats(
+        valsPtr,
+        chunkSize,
+        numArrays,
+        outPtr,
+        outCap,
+        offsetsPtr,
+        sizesPtr,
+        statsPtr
+      );
+      const offsets = new Uint32Array(
+        w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4)
+      );
       const sizes = new Uint32Array(w.memory.buffer.slice(sizesPtr, sizesPtr + numArrays * 4));
       const allStats = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
       const results = [];
       for (let i = 0; i < numArrays; i++) {
-        const compressed = new Uint8Array(w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i]));
+        const compressed = new Uint8Array(
+          w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i])
+        );
         const si = i * 8;
         results.push({
           compressed,
           stats: {
-            minV: allStats[si], maxV: allStats[si+1], sum: allStats[si+2], count: allStats[si+3],
-            firstV: allStats[si+4], lastV: allStats[si+5], sumOfSquares: allStats[si+6], resetCount: allStats[si+7],
+            minV: allStats[si],
+            maxV: allStats[si + 1],
+            sum: allStats[si + 2],
+            count: allStats[si + 3],
+            firstV: allStats[si + 4],
+            lastV: allStats[si + 5],
+            sumOfSquares: allStats[si + 6],
+            resetCount: allStats[si + 7],
           },
         });
       }
@@ -172,8 +205,13 @@ async function makeWasmCodecs() {
       const tsPtr = w.allocScratch(n * 8);
       const outCap = n * 20;
       const outPtr = w.allocScratch(outCap);
-      mem().set(new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength), tsPtr);
-      return new Uint8Array(w.memory.buffer.slice(outPtr, outPtr + w.encodeTimestamps(tsPtr, n, outPtr, outCap)));
+      mem().set(
+        new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength),
+        tsPtr
+      );
+      return new Uint8Array(
+        w.memory.buffer.slice(outPtr, outPtr + w.encodeTimestamps(tsPtr, n, outPtr, outCap))
+      );
     },
     decodeTimestamps(buf) {
       w.resetScratch();
@@ -197,11 +235,15 @@ async function makeWasmCodecs() {
       const outTsPtr = w.allocScratch(maxSamples * 8);
       const outValPtr = w.allocScratch(maxSamples * 8);
       const n = w.rangeDecodeALP(
-        tsInPtr, compressedTs.length,
-        valInPtr, compressedVals.length,
-        startT, endT,
-        outTsPtr, outValPtr,
-        maxSamples,
+        tsInPtr,
+        compressedTs.length,
+        valInPtr,
+        compressedVals.length,
+        startT,
+        endT,
+        outTsPtr,
+        outValPtr,
+        maxSamples
       );
       if (n === 0) return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
       return {
@@ -216,8 +258,10 @@ async function makeWasmCodecs() {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function fmtMs(n) { return n < 1 ? `${(n * 1000).toFixed(0)}µs` : `${n.toFixed(1)}ms`; }
-function fmtRate(n) {
+function _fmtMs(n) {
+  return n < 1 ? `${(n * 1000).toFixed(0)}µs` : `${n.toFixed(1)}ms`;
+}
+function _fmtRate(n) {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M/s`;
   if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K/s`;
   return `${n.toFixed(0)}/s`;
@@ -280,17 +324,32 @@ async function main() {
   const engine = new ScanEngine();
 
   console.log("  Ingesting into column-alp-fused store...");
-  const store = new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec);
-  const ids = data.map(d => store.getOrCreateSeries(d.labels));
+  const store = new ColumnStore(
+    alpValuesCodec,
+    CHUNK_SIZE,
+    () => 0,
+    undefined,
+    tsCodec,
+    alpRangeCodec
+  );
+  const ids = data.map((d) => store.getOrCreateSeries(d.labels));
   for (let s = 0; s < data.length; s++) {
     store.appendBatch(ids[s], data[s].timestamps, data[s].values);
   }
   const numChunksPerSeries = Math.ceil(POINTS_PER_SERIES / CHUNK_SIZE);
 
-  console.log(`\n  ${NUM_SERIES} series × ${POINTS_PER_SERIES.toLocaleString()} pts = ${TOTAL_SAMPLES.toLocaleString()} samples`);
-  console.log(`  Chunks: ${numChunksPerSeries}/series × ${NUM_SERIES} series = ${numChunksPerSeries * NUM_SERIES} total`);
-  console.log(`  Chunk span: ${(CHUNK_SPAN_MS / 60_000).toFixed(0)} min  |  Data span: ${(dataSpanMs / 86_400_000).toFixed(1)} days`);
-  console.log(`  Store: ${(store.memoryBytes() / 1024 / 1024).toFixed(1)} MB  (${(store.memoryBytes() / TOTAL_SAMPLES).toFixed(1)} B/pt)`);
+  console.log(
+    `\n  ${NUM_SERIES} series × ${POINTS_PER_SERIES.toLocaleString()} pts = ${TOTAL_SAMPLES.toLocaleString()} samples`
+  );
+  console.log(
+    `  Chunks: ${numChunksPerSeries}/series × ${NUM_SERIES} series = ${numChunksPerSeries * NUM_SERIES} total`
+  );
+  console.log(
+    `  Chunk span: ${(CHUNK_SPAN_MS / 60_000).toFixed(0)} min  |  Data span: ${(dataSpanMs / 86_400_000).toFixed(1)} days`
+  );
+  console.log(
+    `  Store: ${(store.memoryBytes() / 1024 / 1024).toFixed(1)} MB  (${(store.memoryBytes() / TOTAL_SAMPLES).toFixed(1)} B/pt)`
+  );
   console.log(`  Warmup: ${WARMUP}  Runs: ${RUNS}  ${filter ? `Filter: ${filter}` : ""}\n`);
 
   // ── Time ranges ──
@@ -302,8 +361,13 @@ async function main() {
   };
 
   const timeRanges = [
-    { name: "full", ...qFull,   pctLabel: "100%", expectedSamples: TOTAL_SAMPLES },
-    { name: "last10%", ...qLast10, pctLabel: "10%",  expectedSamples: Math.ceil(TOTAL_SAMPLES * 0.1) },
+    { name: "full", ...qFull, pctLabel: "100%", expectedSamples: TOTAL_SAMPLES },
+    {
+      name: "last10%",
+      ...qLast10,
+      pctLabel: "10%",
+      expectedSamples: Math.ceil(TOTAL_SAMPLES * 0.1),
+    },
   ];
 
   // ── Table header ──
@@ -359,9 +423,15 @@ async function main() {
         });
 
         const row = {
-          aggFn, step: step.name, range: range.name,
-          bucketCount, chunksPerBucket, statsSkipPossible,
-          ...stats, scanned, outputPts,
+          aggFn,
+          step: step.name,
+          range: range.name,
+          bucketCount,
+          chunksPerBucket,
+          statsSkipPossible,
+          ...stats,
+          scanned,
+          outputPts,
         };
         results.push(row);
 
@@ -399,20 +469,28 @@ async function main() {
   }
 
   // ChunkStats skip opportunity
-  const skipRows = results.filter(r => r.statsSkipPossible);
-  const noSkipRows = results.filter(r => !r.statsSkipPossible && CHUNK_STATS_ELIGIBLE.has(r.aggFn));
+  const skipRows = results.filter((r) => r.statsSkipPossible);
+  const noSkipRows = results.filter(
+    (r) => !r.statsSkipPossible && CHUNK_STATS_ELIGIBLE.has(r.aggFn)
+  );
   if (skipRows.length > 0 && noSkipRows.length > 0) {
     const skipMedian = skipRows.reduce((s, r) => s + r.median, 0) / skipRows.length;
     const noSkipMedian = noSkipRows.reduce((s, r) => s + r.median, 0) / noSkipRows.length;
     console.log(`  ChunkStats skip opportunity:`);
-    console.log(`    Eligible configs (chunk fits in 1 bucket):  ${skipRows.length} rows, avg median ${skipMedian.toFixed(1)}ms`);
-    console.log(`    Non-skip configs (chunk spans >1 bucket):   ${noSkipRows.length} rows, avg median ${noSkipMedian.toFixed(1)}ms`);
-    console.log(`    Potential savings: if stats-skip avoids decode for ${skipRows.length} configs,`);
+    console.log(
+      `    Eligible configs (chunk fits in 1 bucket):  ${skipRows.length} rows, avg median ${skipMedian.toFixed(1)}ms`
+    );
+    console.log(
+      `    Non-skip configs (chunk spans >1 bucket):   ${noSkipRows.length} rows, avg median ${noSkipMedian.toFixed(1)}ms`
+    );
+    console.log(
+      `    Potential savings: if stats-skip avoids decode for ${skipRows.length} configs,`
+    );
     console.log(`    read() phase (~50% of query time) could be largely eliminated\n`);
   }
 
   // Allocation pressure analysis
-  const fullRangeRows = results.filter(r => r.range === "full");
+  const fullRangeRows = results.filter((r) => r.range === "full");
   const avgHeap = fullRangeRows.reduce((s, r) => s + r.heapMedian, 0) / fullRangeRows.length;
   console.log(`  Allocation pressure (full-range queries):`);
   console.log(`    Average heap Δ per query: ${fmtBytes(avgHeap)}`);
@@ -421,10 +499,13 @@ async function main() {
   // Fastest/slowest per agg
   console.log(`  Per-agg median (full range, step=1min):`);
   for (const [agg, rows] of byAgg) {
-    const r = rows.find(r => r.step === "1min" && r.range === "full");
+    const r = rows.find((r) => r.step === "1min" && r.range === "full");
     if (r) console.log(`    ${agg.padEnd(6)} ${r.median.toFixed(1)}ms`);
   }
   console.log();
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

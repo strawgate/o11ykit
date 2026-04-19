@@ -6,10 +6,14 @@ const MAX_LOAD = 0.7;
 const DEFAULT_MAX_CARDINALITY = 1_000_000;
 
 export class Interner {
-  private readonly encoder = new ((globalThis as unknown) as { TextEncoder: new () => { encode(input: string): Uint8Array } }).TextEncoder();
-  private readonly decoder = new ((globalThis as unknown) as {
-    TextDecoder: new () => { decode(input: Uint8Array): string };
-  }).TextDecoder();
+  private readonly encoder = new (
+    globalThis as unknown as { TextEncoder: new () => { encode(input: string): Uint8Array } }
+  ).TextEncoder();
+  private readonly decoder = new (
+    globalThis as unknown as {
+      TextDecoder: new () => { decode(input: Uint8Array): string };
+    }
+  ).TextDecoder();
 
   private bytes = new Uint8Array(1024);
   private bytesUsed = 0;
@@ -34,6 +38,7 @@ export class Interner {
   bulkIntern(strings: string[]): Uint32Array {
     const ids = new Uint32Array(strings.length);
     for (let i = 0; i < strings.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       ids[i] = this.intern(strings[i]!);
     }
     return ids;
@@ -43,7 +48,9 @@ export class Interner {
     if (id < 0 || id >= this.count) {
       throw new RangeError(`invalid intern id: ${id}`);
     }
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const start = this.offsets[id]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const end = this.offsets[id + 1]!;
     return this.decoder.decode(this.bytes.subarray(start, end));
   }
@@ -53,7 +60,12 @@ export class Interner {
   }
 
   memoryBytes(): number {
-    return this.bytes.byteLength + this.offsets.byteLength + this.slots.byteLength + this.hashes.byteLength;
+    return (
+      this.bytes.byteLength +
+      this.offsets.byteLength +
+      this.slots.byteLength +
+      this.hashes.byteLength
+    );
   }
 
   private internBytes(encoded: Uint8Array): InternId {
@@ -63,13 +75,14 @@ export class Interner {
     const hash = fnv1a(encoded) || 1;
     let slot = hash & this.mask;
     while (true) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const existing = this.slots[slot]!;
       if (existing === 0) {
         if (this.count >= this.maxCardinality) {
           throw new RangeError(
             `Interner cardinality limit reached (${this.maxCardinality}). ` +
-            'This likely indicates high-entropy label values (e.g. request IDs, timestamps). ' +
-            'Increase maxCardinality if this is intentional.',
+              "This likely indicates high-entropy label values (e.g. request IDs, timestamps). " +
+              "Increase maxCardinality if this is intentional."
           );
         }
         return this.insert(slot, hash, encoded);
@@ -83,7 +96,9 @@ export class Interner {
   }
 
   private equalsBytes(id: number, candidate: Uint8Array): boolean {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const start = this.offsets[id]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const end = this.offsets[id + 1]!;
     if (end - start !== candidate.length) return false;
     for (let i = 0; i < candidate.length; i++) {
@@ -131,8 +146,10 @@ export class Interner {
     const hashes = new Uint32Array(newSize);
     const mask = newSize - 1;
     for (let i = 0; i < this.slots.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const entry = this.slots[i]!;
       if (entry === 0) continue;
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const hash = this.hashes[i]!;
       let slot = hash & mask;
       while (slots[slot] !== 0) slot = (slot + 1) & mask;
@@ -148,6 +165,7 @@ export class Interner {
 export function fnv1a(input: Uint8Array): number {
   let hash = FNV_OFFSET >>> 0;
   for (let i = 0; i < input.length; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     hash ^= input[i]!;
     hash = Math.imul(hash, FNV_PRIME) >>> 0;
   }
