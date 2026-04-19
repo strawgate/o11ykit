@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * OTLP JSONL → benchmark data loader.
  *
@@ -15,11 +16,11 @@
  *   node bench/load-otel.mjs [path]   # prints summary
  */
 
-import { readFileSync, existsSync, createReadStream } from "node:fs";
-import { join, dirname, basename } from "node:path";
-import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
+import { createReadStream, existsSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -67,9 +68,7 @@ export async function loadOtelData(path, opts = {}) {
       console.log(`  Decompressing ${name} from testdata repo…`);
       execFileSync("zstd", ["-d", zst, "-o", path]);
     } else {
-      throw new Error(
-        `${path} not found. Run ./bench/fetch-testdata.sh to download testdata.`
-      );
+      throw new Error(`${path} not found. Run ./bench/fetch-testdata.sh to download testdata.`);
     }
   }
 
@@ -100,7 +99,10 @@ export async function loadOtelData(path, opts = {}) {
               const labels = new Map([["__name__", name]]);
               for (const a of attrs) {
                 const v = a.value;
-                labels.set(a.key, String(v.stringValue ?? v.intValue ?? v.doubleValue ?? v.boolValue ?? ""));
+                labels.set(
+                  a.key,
+                  String(v.stringValue ?? v.intValue ?? v.doubleValue ?? v.boolValue ?? "")
+                );
               }
               seriesMap.set(key, { labels, points: [] });
             }
@@ -157,7 +159,8 @@ export async function loadOtelData(path, opts = {}) {
   let globalMax = result[0].timestamps[result[0].timestamps.length - 1];
   for (const s of result) {
     if (s.timestamps[0] < globalMin) globalMin = s.timestamps[0];
-    if (s.timestamps[s.timestamps.length - 1] > globalMax) globalMax = s.timestamps[s.timestamps.length - 1];
+    if (s.timestamps[s.timestamps.length - 1] > globalMax)
+      globalMax = s.timestamps[s.timestamps.length - 1];
   }
   // Shift each repeat by (duration + 15s gap) so timestamps never overlap.
   const duration = globalMax - globalMin;
@@ -185,21 +188,23 @@ export async function loadOtelData(path, opts = {}) {
 
 // ── Standalone summary ───────────────────────────────────────────────
 
-if (process.argv[1] && process.argv[1].endsWith("load-otel.mjs")) {
+if (process.argv[1]?.endsWith("load-otel.mjs")) {
   const repeatIdx = process.argv.indexOf("--repeat");
   const repeat = repeatIdx >= 0 ? Number(process.argv[repeatIdx + 1]) : 1;
-  const args = process.argv.filter((a, i) => a !== "--repeat" && (repeatIdx < 0 || i !== repeatIdx + 1));
+  const args = process.argv.filter(
+    (a, i) => a !== "--repeat" && (repeatIdx < 0 || i !== repeatIdx + 1)
+  );
   const path = args[2] || join(__dirname, "data/host-metrics.jsonl");
   const series = await loadOtelData(path, { repeat });
 
   const totalPts = series.reduce((s, x) => s + x.timestamps.length, 0);
-  const ptsPerSeries = series.map(s => s.timestamps.length);
+  const ptsPerSeries = series.map((s) => s.timestamps.length);
   const minPts = Math.min(...ptsPerSeries);
   const maxPts = Math.max(...ptsPerSeries);
   const medPts = ptsPerSeries.sort((a, b) => a - b)[Math.floor(ptsPerSeries.length / 2)];
 
   // Unique metric names.
-  const metricNames = new Set(series.map(s => s.labels.get("__name__")));
+  const metricNames = new Set(series.map((s) => s.labels.get("__name__")));
 
   console.log(`\n  OTLP data loaded from: ${path}\n`);
   console.log(`  Series:       ${series.length}`);
@@ -212,7 +217,8 @@ if (process.argv[1] && process.argv[1].endsWith("load-otel.mjs")) {
   let globalMax = series[0].timestamps[series[0].timestamps.length - 1];
   for (const s of series) {
     if (s.timestamps[0] < globalMin) globalMin = s.timestamps[0];
-    if (s.timestamps[s.timestamps.length - 1] > globalMax) globalMax = s.timestamps[s.timestamps.length - 1];
+    if (s.timestamps[s.timestamps.length - 1] > globalMax)
+      globalMax = s.timestamps[s.timestamps.length - 1];
   }
   const durationMs = Number(globalMax - globalMin) / 1e6;
   const durationMin = durationMs / 60000;
@@ -228,14 +234,18 @@ if (process.argv[1] && process.argv[1].endsWith("load-otel.mjs")) {
   }
   console.log(`\n  Per-metric breakdown:`);
   for (const [name, info] of [...byName.entries()].sort((a, b) => b[1].pts - a[1].pts)) {
-    console.log(`    ${name.padEnd(45)} ${String(info.count).padStart(4)} series  ${info.pts.toLocaleString().padStart(8)} pts`);
+    console.log(
+      `    ${name.padEnd(45)} ${String(info.count).padStart(4)} series  ${info.pts.toLocaleString().padStart(8)} pts`
+    );
   }
 
   // Sample values from first few series.
   console.log(`\n  Sample values (first 3 series):`);
   for (const s of series.slice(0, 3)) {
     const name = s.labels.get("__name__");
-    const first5 = Array.from(s.values.slice(0, 5)).map(v => v.toFixed(4)).join(", ");
+    const first5 = Array.from(s.values.slice(0, 5))
+      .map((v) => v.toFixed(4))
+      .join(", ");
     console.log(`    ${name}: [${first5}, ...] (${s.timestamps.length} pts)`);
   }
   console.log("");

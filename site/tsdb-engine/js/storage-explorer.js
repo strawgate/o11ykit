@@ -1,13 +1,13 @@
 // ── Storage Explorer ─────────────────────────────────────────────────
 
-import { $, formatBytes, formatTimeRange, setupCanvasDPR } from './utils.js';
-import { decodeChunk } from './codec.js';
-import { wasmDecodeValuesALP, wasmDecodeTimestamps } from './wasm.js';
-import { renderByteExplorer, renderByteExplorerTs } from './byte-explorer.js';
-import { ALP_HEADER_SIZE } from './byte-explorer-logic.js';
+import { renderByteExplorer, renderByteExplorerTs } from "./byte-explorer.js";
+import { ALP_HEADER_SIZE } from "./byte-explorer-logic.js";
+import { decodeChunk } from "./codec.js";
+import { $, formatBytes, formatTimeRange, setupCanvasDPR } from "./utils.js";
+import { wasmDecodeTimestamps, wasmDecodeValuesALP } from "./wasm.js";
 
-function renderByteMap(compressed, sampleCount) {
-  const container = $('#byteMap');
+function renderByteMap(compressed, _sampleCount) {
+  const container = $("#byteMap");
   if (!container) return;
 
   const totalBytes = compressed.byteLength;
@@ -17,57 +17,64 @@ function renderByteMap(compressed, sampleCount) {
   const valXorBytes = remainingBytes - tsDeltaBytes;
 
   const segments = [
-    { label: 'Header', bytes: headerBytes, cls: 'header' },
-    { label: 'Timestamps', bytes: tsDeltaBytes, cls: 'timestamps' },
-    { label: 'XOR Values', bytes: valXorBytes, cls: 'values' },
+    { label: "Header", bytes: headerBytes, cls: "header" },
+    { label: "Timestamps", bytes: tsDeltaBytes, cls: "timestamps" },
+    { label: "XOR Values", bytes: valXorBytes, cls: "values" },
   ];
 
-  container.innerHTML = segments.map(seg => {
-    const pct = Math.max(1, (seg.bytes / totalBytes) * 100);
-    return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ''}</div>`;
-  }).join('');
+  container.innerHTML = segments
+    .map((seg) => {
+      const pct = Math.max(1, (seg.bytes / totalBytes) * 100);
+      return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ""}</div>`;
+    })
+    .join("");
 }
 
-function renderByteMapALP(compressedValues, compressedTs, sharedCount) {
-  const container = $('#byteMap');
+function renderByteMapALP(compressedValues, _compressedTs, _sharedCount) {
+  const container = $("#byteMap");
   if (!container) return;
 
   const valBytes = compressedValues.byteLength;
 
   const alpBW = valBytes >= 4 ? compressedValues[3] : 0;
   const alpCount = valBytes >= 2 ? (compressedValues[0] << 8) | compressedValues[1] : 0;
-  const alpExc = valBytes >= ALP_HEADER_SIZE ? (compressedValues[12] << 8) | compressedValues[13] : 0;
+  const alpExc =
+    valBytes >= ALP_HEADER_SIZE ? (compressedValues[12] << 8) | compressedValues[13] : 0;
   const headerBytes = Math.min(ALP_HEADER_SIZE, valBytes);
-  const bpBytes = Math.ceil(alpCount * alpBW / 8);
+  const bpBytes = Math.ceil((alpCount * alpBW) / 8);
   const excBytes = alpExc * 10;
 
   const totalBytes = headerBytes + bpBytes + excBytes;
   const segments = [
-    { label: 'Header', bytes: headerBytes, cls: 'header' },
-    { label: 'Offsets', bytes: bpBytes, cls: 'values' },
+    { label: "Header", bytes: headerBytes, cls: "header" },
+    { label: "Offsets", bytes: bpBytes, cls: "values" },
   ];
-  if (excBytes > 0) segments.push({ label: 'Exceptions', bytes: excBytes, cls: 'exceptions' });
+  if (excBytes > 0) segments.push({ label: "Exceptions", bytes: excBytes, cls: "exceptions" });
 
-  container.innerHTML = segments.map(seg => {
-    const pct = Math.max(1, (seg.bytes / totalBytes) * 100);
-    return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ''}</div>`;
-  }).join('');
+  container.innerHTML = segments
+    .map((seg) => {
+      const pct = Math.max(1, (seg.bytes / totalBytes) * 100);
+      return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ""}</div>`;
+    })
+    .join("");
 }
 
-function _renderTsByteMap(tsBlob, sharedCount) {
-  const container = document.getElementById('byteMapTs');
+function _renderTsByteMap(tsBlob, _sharedCount) {
+  const container = document.getElementById("byteMapTs");
   if (!container || !tsBlob) return;
   const tsLen = tsBlob.byteLength;
   const hdrBytes = Math.min(10, tsLen);
   const bodyBytes = tsLen - hdrBytes;
   const segments = [
-    { label: 'Header', bytes: hdrBytes, cls: 'timestamps' },
-    { label: 'Δ² Body', bytes: bodyBytes, cls: 'timestamps' },
+    { label: "Header", bytes: hdrBytes, cls: "timestamps" },
+    { label: "Δ² Body", bytes: bodyBytes, cls: "timestamps" },
   ];
-  container.innerHTML = segments.map(seg => {
-    const pct = Math.max(1, (seg.bytes / tsLen) * 100);
-    return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ''}</div>`;
-  }).join('');
+  container.innerHTML = segments
+    .map((seg) => {
+      const pct = Math.max(1, (seg.bytes / tsLen) * 100);
+      return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ""}</div>`;
+    })
+    .join("");
 }
 
 function renderSparkline(canvasId, decoded) {
@@ -82,12 +89,16 @@ function renderSparkline(canvasId, decoded) {
   const n = values.length;
   if (n === 0) return;
 
-  let minV = Infinity, maxV = -Infinity;
+  let minV = Infinity,
+    maxV = -Infinity;
   for (let i = 0; i < n; i++) {
     if (values[i] < minV) minV = values[i];
     if (values[i] > maxV) maxV = values[i];
   }
-  if (minV === maxV) { minV -= 1; maxV += 1; }
+  if (minV === maxV) {
+    minV -= 1;
+    maxV += 1;
+  }
   const vRange = maxV - minV;
   const pad = 8;
   const plotW = w - pad * 2;
@@ -95,14 +106,15 @@ function renderSparkline(canvasId, decoded) {
 
   // Gradient fill
   const grad = ctx.createLinearGradient(0, pad, 0, h - pad);
-  grad.addColorStop(0, 'rgba(59, 130, 246, 0.15)');
-  grad.addColorStop(1, 'rgba(59, 130, 246, 0.01)');
+  grad.addColorStop(0, "rgba(59, 130, 246, 0.15)");
+  grad.addColorStop(1, "rgba(59, 130, 246, 0.01)");
 
   ctx.beginPath();
   for (let i = 0; i < n; i++) {
     const x = pad + (i / (n - 1)) * plotW;
     const y = pad + ((maxV - values[i]) / vRange) * plotH;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
   }
   const lastX = pad + plotW;
   ctx.lineTo(lastX, h - pad);
@@ -116,9 +128,10 @@ function renderSparkline(canvasId, decoded) {
   for (let i = 0; i < n; i++) {
     const x = pad + (i / (n - 1)) * plotW;
     const y = pad + ((maxV - values[i]) / vRange) * plotH;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
   }
-  ctx.strokeStyle = '#3b82f6';
+  ctx.strokeStyle = "#3b82f6";
   ctx.lineWidth = 1.5;
   ctx.stroke();
 }
@@ -132,13 +145,22 @@ function _decodeChunkData(chunk, isColumn) {
   return decodeChunk(chunk.compressed);
 }
 
-function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, chunkIndex, totalFrozen) {
-  const sparkId = 'sparkline-' + Date.now();
-  const codecName = isColumn ? 'ALP' : 'XOR-Delta';
+function _buildChunkDetailHTML(
+  chunk,
+  _decoded,
+  isColumn,
+  labelStr,
+  metricName,
+  chunkIndex,
+  totalFrozen
+) {
+  const sparkId = `sparkline-${Date.now()}`;
+  const codecName = isColumn ? "ALP" : "XOR-Delta";
   const hasPrev = chunkIndex > 0;
   const hasNext = chunkIndex < totalFrozen - 1;
 
-  const columnExtra = isColumn ? `
+  const columnExtra = isColumn
+    ? `
         <div class="detail-stat">
           <div class="detail-stat-label">Values (ALP)</div>
           <div class="detail-stat-value">${formatBytes(chunk.valuesBytes)}</div>
@@ -146,18 +168,22 @@ function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, c
         <div class="detail-stat">
           <div class="detail-stat-label">Timestamps (shared)</div>
           <div class="detail-stat-value">${formatBytes(chunk.timestampBytes)} ÷ ${chunk.sharedTsSeries} = ${formatBytes(chunk.amortizedTsBytes)}</div>
-        </div>` : '';
+        </div>`
+    : "";
 
-  const byteLayoutLegend = isColumn ? `
+  const byteLayoutLegend = isColumn
+    ? `
           <span class="byte-legend-item"><span class="byte-swatch header"></span>ALP header (14 B)</span>
           <span class="byte-legend-item"><span class="byte-swatch values"></span>Bit-packed offsets</span>
           <span class="byte-legend-item"><span class="byte-swatch exceptions"></span>Exceptions</span>
-        ` : `
+        `
+    : `
           <span class="byte-legend-item"><span class="byte-swatch header"></span>Header (18 B: count + ts₀ + v₀)</span>
           <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Interleaved Δ²ts + XOR values</span>
         `;
 
-  const tsLegend = isColumn ? `
+  const tsLegend = isColumn
+    ? `
       <div class="chunk-byte-layout">
         <h4>Timestamps Store <span class="store-badge ts">Gorilla Δ² · shared ÷ ${chunk.sharedTsSeries}</span></h4>
         <div class="byte-map" id="byteMapTs"></div>
@@ -166,21 +192,22 @@ function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, c
           <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Δ² body</span>
         </div>
       </div>
-      <div class="byte-explorer" id="byteExplorerTs"></div>` : '';
+      <div class="byte-explorer" id="byteExplorerTs"></div>`
+    : "";
 
   const html = `
       <div class="chunk-detail-header">
         <div class="chunk-nav">
-          <button class="chunk-nav-btn" id="chunkPrev" ${hasPrev ? '' : 'disabled'} title="Previous chunk">‹</button>
+          <button type="button" class="chunk-nav-btn" id="chunkPrev" ${hasPrev ? "" : "disabled"} title="Previous chunk">‹</button>
           <span class="chunk-nav-label">Chunk ${chunkIndex} of ${totalFrozen}</span>
-          <button class="chunk-nav-btn" id="chunkNext" ${hasNext ? '' : 'disabled'} title="Next chunk">›</button>
+          <button type="button" class="chunk-nav-btn" id="chunkNext" ${hasNext ? "" : "disabled"} title="Next chunk">›</button>
         </div>
         <div class="chunk-detail-title">
           <span class="tag-frozen">Frozen</span> ${metricName}
           <span class="chunk-detail-labels">{${labelStr}}</span>
           <span class="tag-codec">${codecName}</span>
         </div>
-        <button class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
+        <button type="button" class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
       </div>
       <div class="chunk-sparkline-container">
         <h4>Decoded Values</h4>
@@ -215,7 +242,7 @@ function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, c
         ${columnExtra}
       </div>
       <div class="chunk-byte-layout">
-        <h4>${isColumn ? 'Values Store' : 'Byte Layout'} <span class="store-badge val">${isColumn ? 'ALP · ' + formatBytes(chunk.valuesBytes) : ''}</span></h4>
+        <h4>${isColumn ? "Values Store" : "Byte Layout"} <span class="store-badge val">${isColumn ? `ALP · ${formatBytes(chunk.valuesBytes)}` : ""}</span></h4>
         <div class="byte-map" id="byteMap"></div>
         <div class="byte-legend">
           ${byteLayoutLegend}
@@ -228,47 +255,61 @@ function _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, c
 }
 
 export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
-  const panel = $('#chunkDetailPanel');
-  panel.style.display = '';
-  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const panel = $("#chunkDetailPanel");
+  panel.style.display = "";
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
-  const metricName = seriesInfo.labels.get('__name__') || 'unknown';
+  const metricName = seriesInfo.labels.get("__name__") || "unknown";
   const labelStr = [...seriesInfo.labels]
-    .filter(([k]) => k !== '__name__')
+    .filter(([k]) => k !== "__name__")
     .map(([k, v]) => `${k}="${v}"`)
-    .join(', ');
+    .join(", ");
 
-  if (type === 'frozen') {
+  if (type === "frozen") {
     const chunk = seriesInfo.info.frozen[chunkIndex];
     const isColumn = !!chunk.compressedValues;
     const decoded = _decodeChunkData(chunk, isColumn);
     const totalFrozen = seriesInfo.info.frozen.length;
-    const { html, sparkId } = _buildChunkDetailHTML(chunk, decoded, isColumn, labelStr, metricName, chunkIndex, totalFrozen);
+    const { html, sparkId } = _buildChunkDetailHTML(
+      chunk,
+      decoded,
+      isColumn,
+      labelStr,
+      metricName,
+      chunkIndex,
+      totalFrozen
+    );
     panel.innerHTML = html;
 
     // Prev/Next navigation
-    const prevBtn = panel.querySelector('#chunkPrev');
-    const nextBtn = panel.querySelector('#chunkNext');
-    if (prevBtn) prevBtn.addEventListener('click', () => showChunkDetail(seriesInfo, chunkIndex - 1, 'frozen', store));
-    if (nextBtn) nextBtn.addEventListener('click', () => showChunkDetail(seriesInfo, chunkIndex + 1, 'frozen', store));
+    const prevBtn = panel.querySelector("#chunkPrev");
+    const nextBtn = panel.querySelector("#chunkNext");
+    if (prevBtn)
+      prevBtn.addEventListener("click", () =>
+        showChunkDetail(seriesInfo, chunkIndex - 1, "frozen", store)
+      );
+    if (nextBtn)
+      nextBtn.addEventListener("click", () =>
+        showChunkDetail(seriesInfo, chunkIndex + 1, "frozen", store)
+      );
 
     if (isColumn) {
       // Values store — ALP blob only (no timestamp concatenation)
       renderByteMapALP(chunk.compressedValues, chunk.tsChunkCompressed, chunk.sharedTsSeries);
-      renderByteExplorer(chunk.compressedValues, null, 0, chunk.count, 'alp-values');
+      renderByteExplorer(chunk.compressedValues, null, 0, chunk.count, "alp-values");
 
       // Timestamp store — separate explorer
       _renderTsByteMap(chunk.tsChunkCompressed, chunk.sharedTsSeries);
       renderByteExplorerTs(chunk.tsChunkCompressed, chunk.count);
     } else {
       renderByteMap(chunk.compressed, chunk.count);
-      renderByteExplorer(chunk.compressed, null, 0, chunk.count, 'xor');
+      renderByteExplorer(chunk.compressed, null, 0, chunk.count, "xor");
     }
 
     requestAnimationFrame(() => renderSparkline(sparkId, decoded));
   } else {
     const hot = seriesInfo.info.hot;
-    const sparkId = 'sparkline-' + Date.now();
+    const sparkId = `sparkline-${Date.now()}`;
     const minT = hot.count > 0 ? hot.timestamps[0] : 0n;
     const maxT = hot.count > 0 ? hot.timestamps[hot.count - 1] : 0n;
 
@@ -278,7 +319,7 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
           <span class="tag-hot">Hot Buffer</span> — ${metricName}
           <span class="chunk-detail-labels">{${labelStr}}</span>
         </div>
-        <button class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
+        <button type="button" class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
       </div>
       <div class="chunk-detail-grid">
         <div class="detail-stat">
@@ -287,7 +328,7 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
         </div>
         <div class="detail-stat">
           <div class="detail-stat-label">Time range</div>
-          <div class="detail-stat-value detail-stat-small">${hot.count > 0 ? formatTimeRange(minT, maxT) : '—'}</div>
+          <div class="detail-stat-value detail-stat-small">${hot.count > 0 ? formatTimeRange(minT, maxT) : "—"}</div>
         </div>
         <div class="detail-stat">
           <div class="detail-stat-label">Raw size</div>
@@ -321,14 +362,18 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
 }
 
 export function buildStorageExplorer(store) {
-  const explorer = $('#storageExplorer');
-  const overview = $('#storageOverview');
-  const seriesList = $('#storageSeriesList');
-  const detailPanel = $('#chunkDetailPanel');
-  explorer.style.display = '';
-  detailPanel.style.display = 'none';
+  const explorer = $("#storageExplorer");
+  const overview = $("#storageOverview");
+  const seriesList = $("#storageSeriesList");
+  const detailPanel = $("#chunkDetailPanel");
+  explorer.style.display = "";
+  detailPanel.style.display = "none";
 
-  let totalChunks = 0, totalFrozen = 0, totalHotSamples = 0, totalCompressedBytes = 0, totalRawBytes = 0;
+  let totalChunks = 0,
+    totalFrozen = 0,
+    _totalHotSamples = 0,
+    totalCompressedBytes = 0,
+    totalRawBytes = 0;
   const seriesInfos = [];
 
   for (let id = 0; id < store.seriesCount; id++) {
@@ -339,7 +384,7 @@ export function buildStorageExplorer(store) {
     const frozenRaw = info.frozen.reduce((s, c) => s + c.rawBytes, 0);
     totalFrozen += info.frozen.length;
     totalChunks += info.frozen.length + (info.hot.count > 0 ? 1 : 0);
-    totalHotSamples += info.hot.count;
+    _totalHotSamples += info.hot.count;
     totalCompressedBytes += frozenBytes + (info.hot.count > 0 ? info.hot.rawBytes : 0);
     totalRawBytes += frozenRaw + info.hot.rawBytes;
 
@@ -347,8 +392,9 @@ export function buildStorageExplorer(store) {
   }
 
   const firstInfo = seriesInfos.length > 0 ? seriesInfos[0].info : null;
-  const isColumnStore = firstInfo && firstInfo._isColumnStore;
-  const columnStatsHtml = isColumnStore ? `
+  const isColumnStore = firstInfo?._isColumnStore;
+  const columnStatsHtml = isColumnStore
+    ? `
       <div class="explorer-stat column-stat">
         <span class="explorer-stat-value">${firstInfo._groupMembers}</span>
         <span class="explorer-stat-label">Series sharing timestamps</span>
@@ -360,7 +406,8 @@ export function buildStorageExplorer(store) {
       <div class="explorer-stat column-stat">
         <span class="explorer-stat-value">${formatBytes(firstInfo._sharedTsTotalBytes)}</span>
         <span class="explorer-stat-label">Shared ts storage</span>
-      </div>` : '';
+      </div>`
+    : "";
 
   overview.innerHTML = `
     <div class="explorer-stats">
@@ -381,22 +428,25 @@ export function buildStorageExplorer(store) {
         <span class="explorer-stat-label">Total storage</span>
       </div>
       <div class="explorer-stat">
-        <span class="explorer-stat-value">${totalRawBytes > 0 ? (totalRawBytes / totalCompressedBytes).toFixed(1) + '×' : '—'}</span>
+        <span class="explorer-stat-value">${totalRawBytes > 0 ? `${(totalRawBytes / totalCompressedBytes).toFixed(1)}×` : "—"}</span>
         <span class="explorer-stat-label">Avg compression</span>
       </div>
       ${columnStatsHtml}
     </div>`;
 
-  seriesList.innerHTML = '';
+  seriesList.innerHTML = "";
   for (const si of seriesInfos) {
-    const row = document.createElement('div');
-    row.className = 'storage-series-row';
+    const row = document.createElement("div");
+    row.className = "storage-series-row";
 
     const labelStr = [...si.labels]
-      .filter(([k]) => k !== '__name__')
-      .map(([k, v]) => `<span class="label-pair"><span class="label-key">${k}</span>=<span class="label-val">${v}</span></span>`)
-      .join(' ');
-    const metricName = si.labels.get('__name__') || 'unknown';
+      .filter(([k]) => k !== "__name__")
+      .map(
+        ([k, v]) =>
+          `<span class="label-pair"><span class="label-key">${k}</span>=<span class="label-val">${v}</span></span>`
+      )
+      .join(" ");
+    const metricName = si.labels.get("__name__") || "unknown";
 
     const totalSamples = si.frozenSamples + si.info.hot.count;
     const totalBytes = si.frozenBytes + (si.info.hot.count > 0 ? si.info.hot.rawBytes : 0);
@@ -405,49 +455,52 @@ export function buildStorageExplorer(store) {
       <div class="series-header">
         <span class="series-metric">${metricName}</span>
         <span class="series-labels">${labelStr}</span>
-        <span class="series-summary">${totalSamples.toLocaleString()} pts · ${formatBytes(totalBytes)} · ${si.info.frozen.length} chunks${si.info.hot.count > 0 ? ' + hot' : ''}</span>
+        <span class="series-summary">${totalSamples.toLocaleString()} pts · ${formatBytes(totalBytes)} · ${si.info.frozen.length} chunks${si.info.hot.count > 0 ? " + hot" : ""}</span>
       </div>
       <div class="chunk-bar-container"></div>`;
 
-    const barContainer = row.querySelector('.chunk-bar-container');
-    const maxSamples = Math.max(...seriesInfos.map(s => s.frozenSamples + s.info.hot.count));
+    const barContainer = row.querySelector(".chunk-bar-container");
+    const maxSamples = Math.max(...seriesInfos.map((s) => s.frozenSamples + s.info.hot.count));
     const totalChunksInSeries = si.info.frozen.length + (si.info.hot.count > 0 ? 1 : 0);
     const compact = totalChunksInSeries > 40;
-    if (compact) barContainer.classList.add('compact-chunks');
+    if (compact) barContainer.classList.add("compact-chunks");
 
     const isCol = si.info._isColumnStore;
     for (let ci = 0; ci < si.info.frozen.length; ci++) {
       const chunk = si.info.frozen[ci];
-      const block = document.createElement('div');
-      block.className = isCol ? 'chunk-block frozen column-store' : 'chunk-block frozen';
+      const block = document.createElement("div");
+      block.className = isCol ? "chunk-block frozen column-store" : "chunk-block frozen";
       if (!compact) {
         const widthPct = Math.max(2, (chunk.count / maxSamples) * 100);
-        block.style.width = widthPct + '%';
+        block.style.width = `${widthPct}%`;
       }
       block.title = `Chunk ${ci}: ${chunk.count} pts, ${formatBytes(chunk.compressedBytes)}, ${chunk.ratio.toFixed(1)}× compression`;
       if (!compact) block.innerHTML = `<span class="chunk-label">${chunk.count}</span>`;
-      block.addEventListener('click', () => showChunkDetail(si, ci, 'frozen', store));
+      block.addEventListener("click", () => showChunkDetail(si, ci, "frozen", store));
       barContainer.appendChild(block);
     }
 
     if (si.info.hot.count > 0) {
-      const block = document.createElement('div');
-      block.className = 'chunk-block hot';
+      const block = document.createElement("div");
+      block.className = "chunk-block hot";
       if (!compact) {
         const widthPct = Math.max(2, (si.info.hot.count / maxSamples) * 100);
-        block.style.width = widthPct + '%';
+        block.style.width = `${widthPct}%`;
       }
       block.title = `Hot buffer: ${si.info.hot.count} pts, ${formatBytes(si.info.hot.rawBytes)} (uncompressed)`;
       if (!compact) block.innerHTML = `<span class="chunk-label">${si.info.hot.count}</span>`;
-      block.addEventListener('click', () => showChunkDetail(si, -1, 'hot', store));
+      block.addEventListener("click", () => showChunkDetail(si, -1, "hot", store));
       barContainer.appendChild(block);
     }
 
     if (compact) {
-      const summary = document.createElement('div');
-      summary.className = 'chunk-summary-bar';
-      summary.innerHTML = `<span class="chunk-count-badge">${si.info.frozen.length} frozen</span>` +
-        (si.info.hot.count > 0 ? `<span class="chunk-count-badge hot">1 hot (${si.info.hot.count.toLocaleString()} pts)</span>` : '') +
+      const summary = document.createElement("div");
+      summary.className = "chunk-summary-bar";
+      summary.innerHTML =
+        `<span class="chunk-count-badge">${si.info.frozen.length} frozen</span>` +
+        (si.info.hot.count > 0
+          ? `<span class="chunk-count-badge hot">1 hot (${si.info.hot.count.toLocaleString()} pts)</span>`
+          : "") +
         `<span>Click any block to explore</span>`;
       row.appendChild(summary);
     }

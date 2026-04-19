@@ -11,8 +11,8 @@
  *   bench/data/infra.jsonl     — everything else (disk/mem/net/fs/paging/load)
  */
 import { createReadStream, createWriteStream } from "node:fs";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
-import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -64,13 +64,15 @@ for await (const line of rl) {
     for (const [cat, scopeMetrics] of Object.entries(catMetrics)) {
       if (scopeMetrics.length === 0) continue;
       const out = {
-        resourceMetrics: [{
-          resource: rm.resource,
-          scopeMetrics,
-          schemaUrl: "https://opentelemetry.io/schemas/1.9.0",
-        }],
+        resourceMetrics: [
+          {
+            resource: rm.resource,
+            scopeMetrics,
+            schemaUrl: "https://opentelemetry.io/schemas/1.9.0",
+          },
+        ],
       };
-      writers[cat].write(JSON.stringify(out) + "\n");
+      writers[cat].write(`${JSON.stringify(out)}\n`);
       stats[cat]++;
     }
   }
