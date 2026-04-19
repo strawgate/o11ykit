@@ -329,67 +329,68 @@ function _makeAccumulator(
   values: Float64Array, counts: Float64Array,
   minTN: number, stepN: number,
 ): (ts: BigInt64Array, vs: Float64Array) => void {
+  // Read a single i64 timestamp from BigInt64Array via DataView.
+  const readTs = (dv: DataView, i: number): number => {
+    const off = i << 3;
+    return dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
+  };
+
+  // For regular-interval chunks (the common case: fixed scrape interval),
+  // compute bucket indices arithmetically from sample index instead of
+  // reading every timestamp via DataView. Detects regularity by comparing
+  // first two timestamps and spot-checking the last. Falls back to per-sample
+  // DataView reads for irregular chunks.
+  const accumulate = (ts: BigInt64Array, vs: Float64Array, fold: (bucket: number, v: number) => void): void => {
+    const len = ts.length;
+    if (len === 0) return;
+    const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
+    const t0 = readTs(dv, 0);
+    if (len >= 2) {
+      const interval = readTs(dv, 1) - t0;
+      if (interval > 0 && readTs(dv, len - 1) === t0 + (len - 1) * interval) {
+        const base = t0 - minTN;
+        for (let i = 0; i < len; i++) {
+          fold((base + i * interval) / stepN | 0, vs[i]!);
+        }
+        return;
+      }
+    }
+    for (let i = 0; i < len; i++) {
+      fold((readTs(dv, i) - minTN) / stepN | 0, vs[i]!);
+    }
+  };
+
   switch (fn) {
     case 'min':
-      return (ts, vs) => {
-        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
-        for (let i = 0, len = ts.length; i < len; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          if (vs[i]! < values[bucket]!) values[bucket] = vs[i]!;
-          counts[bucket]!++;
-        }
-      };
+      return (ts, vs) => accumulate(ts, vs, (bucket, v) => {
+        if (v < values[bucket]!) values[bucket] = v;
+        counts[bucket]!++;
+      });
     case 'max':
-      return (ts, vs) => {
-        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
-        for (let i = 0, len = ts.length; i < len; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          if (vs[i]! > values[bucket]!) values[bucket] = vs[i]!;
-          counts[bucket]!++;
-        }
-      };
+      return (ts, vs) => accumulate(ts, vs, (bucket, v) => {
+        if (v > values[bucket]!) values[bucket] = v;
+        counts[bucket]!++;
+      });
     case 'sum': case 'avg':
-      return (ts, vs) => {
-        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
-        for (let i = 0, len = ts.length; i < len; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          values[bucket]! += vs[i]!;
-          counts[bucket]!++;
-        }
-      };
+      return (ts, vs) => accumulate(ts, vs, (bucket, v) => {
+        values[bucket]! += v;
+        counts[bucket]!++;
+      });
     case 'count':
-      return (ts, _vs) => {
-        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
-        for (let i = 0, len = ts.length; i < len; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          values[bucket]!++;
-          counts[bucket]!++;
-        }
-      };
+      return (ts, _vs) => accumulate(ts, _vs, (bucket, _v) => {
+        values[bucket]!++;
+        counts[bucket]!++;
+      });
     case 'last':
-      return (ts, vs) => {
-        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
-        for (let i = 0, len = ts.length; i < len; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          values[bucket] = vs[i]!;
-          counts[bucket]!++;
-        }
-      };
+      return (ts, vs) => accumulate(ts, vs, (bucket, v) => {
+        values[bucket] = v;
+        counts[bucket]!++;
+      });
     default:
-      return (ts, vs) => {
-        const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
-        for (let i = 0; i < ts.length; i++) {
-          const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
-          values[bucket] = aggAccumulate(values[bucket]!, vs[i]!, fn);
-          counts[bucket]!++;
-        }
-      };
+      return (ts, vs) => accumulate(ts, vs, (bucket, v) => {
+        values[bucket] = aggAccumulate(values[bucket]!, v, fn);
+        counts[bucket]!++;
+      });
   }
 }
 
@@ -415,12 +416,35 @@ function _stepAggregateRate(
       ? (r.decodeView ? r.decodeView() : r.decode())
       : r;
     const src = decoded.timestamps;
-    if (src.length === 0) continue;
+    const len = src.length;
+    if (len === 0) continue;
     const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
     const vs = decoded.values;
-    for (let i = 0, len = src.length; i < len; i++) {
-      const off = i << 3;
-      const t = dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
+
+    const readTs = (j: number): number => {
+      const off = j << 3;
+      return dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
+    };
+    const t0 = readTs(0);
+
+    // Rate needs actual timestamps for first/last tracking, but bucket index
+    // can still use arithmetic for regular-interval chunks.
+    if (len >= 2) {
+      const interval = readTs(1) - t0;
+      if (interval > 0 && readTs(len - 1) === t0 + (len - 1) * interval) {
+        const base = t0 - minTN;
+        for (let i = 0; i < len; i++) {
+          const t = t0 + i * interval;
+          const bucket = (base + i * interval) / stepN | 0;
+          counts[bucket]!++;
+          if (t < firstTs[bucket]!) { firstTs[bucket] = t; firstVal[bucket] = vs[i]!; }
+          if (t >= lastTs[bucket]!) { lastTs[bucket] = t; lastVal[bucket] = vs[i]!; }
+        }
+        continue;
+      }
+    }
+    for (let i = 0; i < len; i++) {
+      const t = readTs(i);
       const bucket = (t - minTN) / stepN | 0;
       counts[bucket]!++;
       if (t < firstTs[bucket]!) { firstTs[bucket] = t; firstVal[bucket] = vs[i]!; }
