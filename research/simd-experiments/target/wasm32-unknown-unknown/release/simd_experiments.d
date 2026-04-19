@@ -1,0 +1,1 @@
+/home/bill_easton/o11ykit.worktrees/copilot-improving-ingest-performance/research/simd-experiments/target/wasm32-unknown-unknown/release/simd_experiments.wasm: /home/bill_easton/o11ykit.worktrees/copilot-improving-ingest-performance/research/simd-experiments/src/lib.rs
