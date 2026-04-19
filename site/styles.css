@@ -74,12 +74,39 @@ body {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   color: var(--ink);
   text-decoration: none;
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.03em;
   font-family: var(--mono);
+}
+
+.brand-mark {
+  flex-shrink: 0;
+}
+
+/* ─── Hero logo lockup ─────────────────────────────────────────────── */
+.hero-lockup {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 6px;
+}
+
+.hero-mark {
+  flex-shrink: 0;
+}
+
+.hero-lockup .hero-name {
+  font-family: var(--mono);
+  font-size: clamp(28px, 4vw, 42px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--ink);
 }
 
 .topnav {
