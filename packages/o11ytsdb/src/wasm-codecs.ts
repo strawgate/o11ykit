@@ -474,7 +474,9 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
     const n = ms.length;
     wasm.resetScratch();
     const inPtr = wasm.allocScratch(n * 8);
+    checkScratch(inPtr, "msToNs/inPtr");
     const outPtr = wasm.allocScratch(n * 8);
+    checkScratch(outPtr, "msToNs/outPtr");
     mem().set(new Uint8Array(ms.buffer, ms.byteOffset, ms.byteLength), inPtr);
     wasm.msToNs(inPtr, outPtr, n);
     return new BigInt64Array(wasm.memory.buffer.slice(outPtr, outPtr + n * 8));
