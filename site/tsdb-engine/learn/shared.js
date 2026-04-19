@@ -308,41 +308,73 @@ export function sleep(ms) {
 
 /* ─── Glossary Definitions ─────────────────────────────────── */
 export const GLOSSARY = {
-  "chunk": "A fixed-size block of compressed data points for one time-series — typically 120–240 samples covering a short time window (e.g. 1 hour). When a chunk is full it is sealed and its summary statistics are pre-computed.",
-  "series": "One stream of metric data with a unique set of labels — e.g. all CPU readings from a specific pod. A monitoring system may track millions of distinct series.",
-  "sample": "A single (timestamp, value) pair — one measurement at one point in time. Series are made of thousands of samples.",
-  "label": "A key=value pair that describes a metric: e.g. region=us-west-2 or job=api-server. Labels are stored as strings and used to filter and group queries.",
-  "f64": "A 64-bit floating-point number (8 bytes). The standard format for decimal values in most programming languages — e.g. 34.5 or 0.001.",
-  "postings": "A sorted list of series IDs that share a particular label value — e.g. all series where region=us-west-2. The TSDB maintains one postings list per unique label value for fast lookup.",
-  "postings list": "A sorted array of series IDs for a specific label value. Used by the query engine to quickly find matching series without scanning every series.",
-  "postings intersection": "Finding the series IDs that appear in all required postings lists simultaneously — i.e. series matching every label filter in the query.",
-  "galloping search": "A fast algorithm for intersecting two sorted lists. Instead of checking every element it jumps ahead exponentially then binary-searches back. Much faster when one list is much shorter than the other.",
-  "step-aligned aggregation": "Dividing a query's time range into equal-sized buckets ('steps') and computing one aggregate value (sum, avg, max, min) per bucket.",
-  "chunk pruning": "Discarding chunks whose time range doesn't overlap the query's time range before decompressing anything — a fast way to skip irrelevant data.",
-  "XOR": "Exclusive-OR: comparing two numbers bit-by-bit, producing a 1 only where the inputs differ. Similar floating-point values XOR to mostly zeros, which compress very efficiently.",
-  "IEEE 754": "The international standard for floating-point numbers. Every float64 is exactly 64 bits: 1 sign bit + 11 exponent bits + 52 fraction bits.",
-  "frame-of-reference": "A compression step that subtracts the minimum value from all numbers in a block, so all values become small offsets starting near zero. Smaller numbers need fewer bits.",
-  "bit-packing": "Instead of storing each number in a fixed 8 bytes, figure out the minimum bits needed and pack all values back-to-back with no gaps. Saves space when all values are small.",
-  "quantize": "Converting a decimal number to a whole number by multiplying by a power of 10 — e.g. 20.5 × 10 = 205. Integer compression then works far better than floating-point compression.",
-  "exponent": "In ALP compression: the power of 10 used to convert decimals to integers (e.g. exponent 2 means multiply by 100). Not to be confused with the IEEE 754 exponent field inside a float.",
-  "zigzag encoding": "Maps signed integers to unsigned integers so small negative and positive numbers both get small values: 0→0, −1→1, 1→2, −2→3. Allows variable-length codes to handle negatives efficiently.",
-  "zigzag": "Maps signed integers to unsigned integers so small negative and positive numbers both get small values: 0→0, −1→1, 1→2, −2→3. Allows variable-length codes to handle negatives efficiently.",
-  "tier": "In Delta-of-Delta encoding: one of 5 bit-width levels chosen based on how large the delta-of-delta value is. Tier 0 = 1 bit (no change), Tier 4 = 68 bits (large change). Most samples fall in Tier 0 or 1.",
-  "delta": "The difference between two consecutive values. For timestamps: if samples arrive at 10:00:15 and 10:00:30, the delta is 15 seconds.",
-  "delta-of-delta": "The difference between consecutive deltas. If all intervals are exactly 15 s, every delta-of-delta is 0 — which compresses to just 1 bit each.",
-  "FNV-1a": "A fast hash function that converts a string to a fixed-size integer (a 'fingerprint'). Used to decide which slot in the hash table to check first.",
-  "hash function": "A function that converts any input (like a string) to a fixed-size integer. Good hash functions spread inputs evenly across available slots.",
-  "open addressing": "A hash table collision strategy: if the target slot is occupied, try the next slot, then the next, until an empty one is found.",
-  "linear probing": "The simplest open-addressing strategy — if slot N is taken, try N+1, N+2, etc., wrapping around at the end of the table.",
-  "cardinality": "The number of unique values in a set. High cardinality labels (like pod IDs or trace IDs) have many unique values, reducing reuse and increasing memory cost.",
-  "exceptions": "In ALP compression: values that cannot be exactly represented as integers regardless of the exponent. These are stored as raw 8-byte floats alongside the bit-packed data.",
-  "wire format": "The exact byte layout used when data is written to disk or sent over a network — the 'physical' encoding including headers, offsets, and compressed payloads.",
-  "leading zeros": "The number of zero bits at the left of an XOR result. More leading zeros means fewer meaningful bits to store.",
-  "trailing zeros": "The number of zero bits at the right of an XOR result. More trailing zeros means fewer meaningful bits to store.",
-  "meaningful bits": "The bits between the leading and trailing zeros of an XOR result — the only bits that differ between consecutive values and need to be stored.",
-  "window": "In XOR-Delta encoding: the range of bit positions [leading_zeros … 63−trailing_zeros] that contained the previous non-zero XOR. If the new XOR fits in the same window, we reuse it (saves 12 bits of overhead).",
-  "frozen": "A chunk is 'frozen' (sealed) when it reaches its maximum sample count. At that point its summary statistics (min, max, sum, count) are pre-computed and stored alongside it.",
-  "aligned": "A query window is 'aligned' when it exactly covers one or more whole chunks with no partial overlap — allowing the query to be answered from pre-computed chunk statistics without decompression.",
+  chunk:
+    "A fixed-size block of compressed data points for one time-series — typically 120–240 samples covering a short time window (e.g. 1 hour). When a chunk is full it is sealed and its summary statistics are pre-computed.",
+  series:
+    "One stream of metric data with a unique set of labels — e.g. all CPU readings from a specific pod. A monitoring system may track millions of distinct series.",
+  sample:
+    "A single (timestamp, value) pair — one measurement at one point in time. Series are made of thousands of samples.",
+  label:
+    "A key=value pair that describes a metric: e.g. region=us-west-2 or job=api-server. Labels are stored as strings and used to filter and group queries.",
+  f64: "A 64-bit floating-point number (8 bytes). The standard format for decimal values in most programming languages — e.g. 34.5 or 0.001.",
+  postings:
+    "A sorted list of series IDs that share a particular label value — e.g. all series where region=us-west-2. The TSDB maintains one postings list per unique label value for fast lookup.",
+  "postings list":
+    "A sorted array of series IDs for a specific label value. Used by the query engine to quickly find matching series without scanning every series.",
+  "postings intersection":
+    "Finding the series IDs that appear in all required postings lists simultaneously — i.e. series matching every label filter in the query.",
+  "galloping search":
+    "A fast algorithm for intersecting two sorted lists. Instead of checking every element it jumps ahead exponentially then binary-searches back. Much faster when one list is much shorter than the other.",
+  "step-aligned aggregation":
+    "Dividing a query's time range into equal-sized buckets ('steps') and computing one aggregate value (sum, avg, max, min) per bucket.",
+  "chunk pruning":
+    "Discarding chunks whose time range doesn't overlap the query's time range before decompressing anything — a fast way to skip irrelevant data.",
+  XOR: "Exclusive-OR: comparing two numbers bit-by-bit, producing a 1 only where the inputs differ. Similar floating-point values XOR to mostly zeros, which compress very efficiently.",
+  "IEEE 754":
+    "The international standard for floating-point numbers. Every float64 is exactly 64 bits: 1 sign bit + 11 exponent bits + 52 fraction bits.",
+  "frame-of-reference":
+    "A compression step that subtracts the minimum value from all numbers in a block, so all values become small offsets starting near zero. Smaller numbers need fewer bits.",
+  "bit-packing":
+    "Instead of storing each number in a fixed 8 bytes, figure out the minimum bits needed and pack all values back-to-back with no gaps. Saves space when all values are small.",
+  quantize:
+    "Converting a decimal number to a whole number by multiplying by a power of 10 — e.g. 20.5 × 10 = 205. Integer compression then works far better than floating-point compression.",
+  exponent:
+    "In ALP compression: the power of 10 used to convert decimals to integers (e.g. exponent 2 means multiply by 100). Not to be confused with the IEEE 754 exponent field inside a float.",
+  "zigzag encoding":
+    "Maps signed integers to unsigned integers so small negative and positive numbers both get small values: 0→0, −1→1, 1→2, −2→3. Allows variable-length codes to handle negatives efficiently.",
+  zigzag:
+    "Maps signed integers to unsigned integers so small negative and positive numbers both get small values: 0→0, −1→1, 1→2, −2→3. Allows variable-length codes to handle negatives efficiently.",
+  tier: "In Delta-of-Delta encoding: one of 5 bit-width levels chosen based on how large the delta-of-delta value is. Tier 0 = 1 bit (no change), Tier 4 = 68 bits (large change). Most samples fall in Tier 0 or 1.",
+  delta:
+    "The difference between two consecutive values. For timestamps: if samples arrive at 10:00:15 and 10:00:30, the delta is 15 seconds.",
+  "delta-of-delta":
+    "The difference between consecutive deltas. If all intervals are exactly 15 s, every delta-of-delta is 0 — which compresses to just 1 bit each.",
+  "FNV-1a":
+    "A fast hash function that converts a string to a fixed-size integer (a 'fingerprint'). Used to decide which slot in the hash table to check first.",
+  "hash function":
+    "A function that converts any input (like a string) to a fixed-size integer. Good hash functions spread inputs evenly across available slots.",
+  "open addressing":
+    "A hash table collision strategy: if the target slot is occupied, try the next slot, then the next, until an empty one is found.",
+  "linear probing":
+    "The simplest open-addressing strategy — if slot N is taken, try N+1, N+2, etc., wrapping around at the end of the table.",
+  cardinality:
+    "The number of unique values in a set. High cardinality labels (like pod IDs or trace IDs) have many unique values, reducing reuse and increasing memory cost.",
+  exceptions:
+    "In ALP compression: values that cannot be exactly represented as integers regardless of the exponent. These are stored as raw 8-byte floats alongside the bit-packed data.",
+  "wire format":
+    "The exact byte layout used when data is written to disk or sent over a network — the 'physical' encoding including headers, offsets, and compressed payloads.",
+  "leading zeros":
+    "The number of zero bits at the left of an XOR result. More leading zeros means fewer meaningful bits to store.",
+  "trailing zeros":
+    "The number of zero bits at the right of an XOR result. More trailing zeros means fewer meaningful bits to store.",
+  "meaningful bits":
+    "The bits between the leading and trailing zeros of an XOR result — the only bits that differ between consecutive values and need to be stored.",
+  window:
+    "In XOR-Delta encoding: the range of bit positions [leading_zeros … 63−trailing_zeros] that contained the previous non-zero XOR. If the new XOR fits in the same window, we reuse it (saves 12 bits of overhead).",
+  frozen:
+    "A chunk is 'frozen' (sealed) when it reaches its maximum sample count. At that point its summary statistics (min, max, sum, count) are pre-computed and stored alongside it.",
+  aligned:
+    "A query window is 'aligned' when it exactly covers one or more whole chunks with no partial overlap — allowing the query to be answered from pre-computed chunk statistics without decompression.",
 };
 
 /** Initialise the glossary tooltip layer.
@@ -370,14 +402,14 @@ export function initGlossary() {
     bodyEl.textContent = def;
 
     const rect = anchor.getBoundingClientRect();
-    tip.style.left = Math.min(rect.left, window.innerWidth - 300) + "px";
+    tip.style.left = `${Math.min(rect.left, window.innerWidth - 300)}px`;
     // show above if close to bottom, below otherwise
     const spaceBelow = window.innerHeight - rect.bottom;
     if (spaceBelow < 140) {
-      tip.style.top = (rect.top - 8 + window.scrollY) + "px";
+      tip.style.top = `${rect.top - 8 + window.scrollY}px`;
       tip.style.transform = "translateY(-100%)";
     } else {
-      tip.style.top = (rect.bottom + 8 + window.scrollY) + "px";
+      tip.style.top = `${rect.bottom + 8 + window.scrollY}px`;
       tip.style.transform = "none";
     }
     tip.classList.add("visible");
@@ -387,14 +419,14 @@ export function initGlossary() {
     hideTimer = setTimeout(() => tip.classList.remove("visible"), 100);
   }
 
-  document.addEventListener("mouseover", e => {
+  document.addEventListener("mouseover", (e) => {
     const t = e.target.closest(".xp-term");
     if (t) show(t);
   });
-  document.addEventListener("mouseout", e => {
+  document.addEventListener("mouseout", (e) => {
     if (e.target.closest(".xp-term")) hide();
   });
-  document.addEventListener("click", e => {
+  document.addEventListener("click", (e) => {
     const t = e.target.closest(".xp-term");
     if (t) {
       // toggle on click for touch devices

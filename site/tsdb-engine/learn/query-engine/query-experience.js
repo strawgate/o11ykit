@@ -6,7 +6,18 @@
  * Stats Check → Decode → Step-Aligned Aggregation
  */
 
-import { $, $$, buildBreadcrumb, drawSparkline, el, fmt, initGlossary, revealSection, sleep, Stepper } from "../shared.js";
+import {
+  $,
+  $$,
+  buildBreadcrumb,
+  drawSparkline,
+  el,
+  fmt,
+  initGlossary,
+  revealSection,
+  Stepper,
+  sleep,
+} from "../shared.js";
 
 /* ═══════════════════════════════════════════════════════════════════════
    A. DATASET GENERATION
@@ -551,7 +562,14 @@ async function animateChunkPruning(matchedSeriesIds, queryRangeHours) {
   const summary = $("#prune-summary");
   summary.innerHTML = "";
   summary.appendChild(
-    el("div", { class: "qe-summary-chip" }, el("strong", {}, String(totalChunks)), " ", el("span", { class: "xp-term", "data-term": "chunk" }, "chunks"), " total")
+    el(
+      "div",
+      { class: "qe-summary-chip" },
+      el("strong", {}, String(totalChunks)),
+      " ",
+      el("span", { class: "xp-term", "data-term": "chunk" }, "chunks"),
+      " total"
+    )
   );
   summary.appendChild(
     el("div", { class: "qe-summary-chip" }, el("strong", {}, String(inRangeCount)), " in range")

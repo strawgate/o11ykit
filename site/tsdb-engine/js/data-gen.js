@@ -15,7 +15,7 @@ export const INSTANCES = [
 ];
 export const METRICS = ["http_requests_total", "cpu_usage_percent", "memory_usage_bytes"];
 
-export function generateValue(pattern, i, seriesIdx, total) {
+export function generateValue(pattern, i, seriesIdx, _total) {
   const phase = seriesIdx * 0.7;
   switch (pattern) {
     case "sine":
