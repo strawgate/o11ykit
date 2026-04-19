@@ -248,6 +248,17 @@ export class O11yWorkerRuntime {
           this.send(ok(id, { ok: true, type: "close" }, meta));
           return;
         }
+        default: {
+          const exhaustive: never = payload;
+          this.send(
+            err(
+              id,
+              new Error(`Unknown request type: ${(exhaustive as { type: string }).type}`),
+              meta
+            )
+          );
+          return;
+        }
       }
     } catch (error) {
       this.send(err(id, error, meta));

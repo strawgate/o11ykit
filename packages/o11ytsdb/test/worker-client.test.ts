@@ -16,7 +16,7 @@ type MessageListener = (event: { data: unknown }) => void;
 
 /** Minimal mock that captures postMessage calls and lets us send responses. */
 function createMockWorker() {
-  const listeners: MessageListener[] = [];
+  const messageListeners: MessageListener[] = [];
   const posted: Array<{ message: unknown; transfer?: ArrayBufferLike[] }> = [];
 
   return {
@@ -25,14 +25,16 @@ function createMockWorker() {
       postMessage(message: unknown, transfer?: ArrayBufferLike[]): void {
         posted.push({ message, transfer });
       },
-      addEventListener(_type: string, listener: MessageListener): void {
-        listeners.push(listener);
+      addEventListener(type: string, listener: MessageListener): void {
+        if (type === "message") messageListeners.push(listener);
+        // Silently accept other types (e.g. "error") without storing them,
+        // since the mock doesn't simulate worker crashes.
       },
       terminate: vi.fn(),
     },
     /** Simulate receiving a message from the "worker". */
     respond(data: unknown): void {
-      for (const listener of listeners) listener({ data });
+      for (const listener of messageListeners) listener({ data });
     },
     /** Auto-respond to the next postMessage with a success envelope. */
     autoRespond(payload: WorkerResponse): void {
@@ -313,8 +315,8 @@ describe("WorkerClient", () => {
       // We need to wire up manually
       let capturedListener: MessageListener | undefined;
       workerNoTerminate.addEventListener.mockImplementation(
-        (_type: string, listener: MessageListener) => {
-          capturedListener = listener;
+        (type: string, listener: MessageListener) => {
+          if (type === "message") capturedListener = listener;
         }
       );
 
@@ -330,6 +332,67 @@ describe("WorkerClient", () => {
       });
 
       await c.close(); // should not throw despite no terminate
+    });
+  });
+
+  // ── Error handling ──────────────────────────────────────────────
+
+  describe("error handling", () => {
+    it("rejects pending RPCs on worker error", async () => {
+      let errorListener: ((event: unknown) => void) | undefined;
+      const errorWorker = {
+        postMessage: vi.fn(),
+        addEventListener: vi.fn((type: string, listener: (event: unknown) => void) => {
+          if (type === "error") errorListener = listener;
+        }),
+        terminate: vi.fn(),
+      };
+
+      const c = new WorkerClient({ worker: errorWorker });
+      const promise = c.stats();
+
+      // Simulate a worker error
+      // biome-ignore lint/style/noNonNullAssertion: test code
+      errorListener!({ message: "Worker crashed" });
+
+      await expect(promise).rejects.toThrow("Worker crashed");
+    });
+
+    it("rejects subsequent calls after worker error", async () => {
+      let errorListener: ((event: unknown) => void) | undefined;
+      const errorWorker = {
+        postMessage: vi.fn(),
+        addEventListener: vi.fn((type: string, listener: (event: unknown) => void) => {
+          if (type === "error") errorListener = listener;
+        }),
+        terminate: vi.fn(),
+      };
+
+      const c = new WorkerClient({ worker: errorWorker });
+
+      // biome-ignore lint/style/noNonNullAssertion: test code
+      errorListener!({ message: "Worker crashed" });
+
+      await expect(c.stats()).rejects.toThrow("WorkerClient is closed");
+    });
+
+    it("cleans up pending map on postMessage throw", async () => {
+      const origPostMessage = mock.worker.postMessage;
+      mock.worker.postMessage = () => {
+        throw new Error("DataCloneError");
+      };
+
+      await expect(client.stats()).rejects.toThrow("DataCloneError");
+
+      // Restore original postMessage and auto-respond — subsequent calls should work
+      mock.worker.postMessage = origPostMessage;
+      mock.autoRespond({
+        ok: true,
+        type: "stats",
+        stats: { seriesCount: 0, sampleCount: 0, memoryBytes: 0 },
+      });
+      const result = await client.stats();
+      expect(result).toEqual({ seriesCount: 0, sampleCount: 0, memoryBytes: 0 });
     });
   });
 });

@@ -15,7 +15,7 @@ interface MessageEventLike {
 
 interface WorkerLike {
   postMessage(message: unknown, transfer?: ArrayBufferLike[]): void;
-  addEventListener(type: "message", listener: (event: MessageEventLike) => void): void;
+  addEventListener(type: string, listener: (event: MessageEventLike) => void): void;
   terminate?: () => void;
 }
 
@@ -35,10 +35,13 @@ export class WorkerClient {
   private nextId: RequestId = 1;
   private readonly pending = new Map<RequestId, PendingRequest>();
 
+  private closed = false;
+
   constructor(opts: WorkerClientOptions) {
     this.worker = opts.worker;
     this.transferStrategy = opts.transferStrategy ?? "transferable";
     this.worker.addEventListener("message", (event) => this.onMessage(event.data));
+    this.worker.addEventListener("error", (event) => this.onError(event));
   }
 
   async init(opts?: { chunkSize?: number; precision?: number }): Promise<{ backend: string }> {
@@ -99,7 +102,9 @@ export class WorkerClient {
     const response = await this.send({ type: "close" });
     if (response.ok === false) throw new Error(response.error);
     if (response.type !== "close") throw new Error(`Unexpected response type: ${response.type}`);
+    this.closed = true;
     this.worker.terminate?.();
+    this.rejectAllPending(new Error("WorkerClient closed"));
   }
 
   private send<T extends WorkerRequest>(
@@ -107,6 +112,9 @@ export class WorkerClient {
     transfer: ArrayBufferLike[] = [],
     strategy: TransferStrategy = this.transferStrategy
   ): Promise<WorkerResponse> {
+    if (this.closed) {
+      return Promise.reject(new Error("WorkerClient is closed"));
+    }
     const id = this.nextId++;
     const envelope: RequestEnvelope<T> = {
       id,
@@ -117,7 +125,12 @@ export class WorkerClient {
 
     return new Promise<WorkerResponse>((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.worker.postMessage(envelope, transfer);
+      try {
+        this.worker.postMessage(envelope, transfer);
+      } catch (err) {
+        this.pending.delete(id);
+        reject(err);
+      }
     });
   }
 
@@ -133,6 +146,21 @@ export class WorkerClient {
       return;
     }
     pending.resolve(response.payload);
+  }
+
+  private onError(event: unknown): void {
+    const message =
+      event && typeof event === "object" && "message" in event
+        ? String((event as { message: unknown }).message)
+        : "Worker error";
+    this.closed = true;
+    this.rejectAllPending(new Error(message));
+  }
+
+  private rejectAllPending(error: Error): void {
+    const entries = [...this.pending.values()];
+    this.pending.clear();
+    for (const p of entries) p.reject(error);
   }
 
   private getTransferables(timestamps: BigInt64Array, values: Float64Array): ArrayBufferLike[] {
