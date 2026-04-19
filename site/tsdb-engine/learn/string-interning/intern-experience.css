@@ -1,0 +1,432 @@
+/* ─── String Interning Experience ─────────────────────────────────── */
+
+/* Palette for string coloring — 12 distinct hues */
+:root {
+  --str-0: #34d399;
+  --str-1: #60a5fa;
+  --str-2: #a78bfa;
+  --str-3: #fbbf24;
+  --str-4: #f87171;
+  --str-5: #2dd4bf;
+  --str-6: #f472b6;
+  --str-7: #fb923c;
+  --str-8: #818cf8;
+  --str-9: #4ade80;
+  --str-10: #38bdf8;
+  --str-11: #e879f9;
+}
+
+/* ─── Generator Summary ──────────────────────────────────────────── */
+.intern-gen-summary {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--xp-text-muted);
+  font-family: var(--xp-mono);
+}
+
+/* ─── Split View ─────────────────────────────────────────────────── */
+.intern-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 780px) {
+  .intern-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.intern-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 520px;
+  overflow: hidden;
+}
+
+.intern-panel h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--xp-text-muted);
+}
+
+.intern-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 4px;
+  min-height: 0;
+}
+
+.intern-panel-footer {
+  padding-top: 10px;
+  border-top: 1px solid var(--xp-border);
+  font-family: var(--xp-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* ─── Naive series row ───────────────────────────────────────────── */
+.intern-naive-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.intern-str-block {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-family: var(--xp-mono);
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--xp-bg);
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* ─── Interned reference chips ───────────────────────────────────── */
+.intern-ref-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.intern-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 18px;
+  border-radius: 3px;
+  font-family: var(--xp-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+  opacity: 0.85;
+}
+
+/* ─── String Buffer Tape ─────────────────────────────────────────── */
+.intern-string-buffer-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.intern-tape {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  padding: 6px;
+  background: var(--xp-surface-raised);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  min-height: 32px;
+}
+
+.intern-tape-seg {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: 2px;
+  font-family: var(--xp-mono);
+  font-size: 9px;
+  white-space: nowrap;
+  color: var(--xp-bg);
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* ─── ID Table ───────────────────────────────────────────────────── */
+.intern-id-table-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.intern-id-table {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 3px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.intern-id-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  background: var(--xp-surface-raised);
+  border-radius: 3px;
+  font-family: var(--xp-mono);
+  font-size: 10px;
+  color: var(--xp-text-muted);
+}
+
+.intern-id-entry .id-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.intern-id-entry .id-meta {
+  color: var(--xp-text-dim);
+  font-size: 9px;
+}
+
+/* ─── Series References ──────────────────────────────────────────── */
+.intern-refs-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ─── Memory Bars ────────────────────────────────────────────────── */
+.intern-mem-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.intern-mem-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.intern-mem-bar-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--xp-text);
+}
+
+.intern-mem-bar-label .bytes {
+  font-family: var(--xp-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.intern-mem-bar-track {
+  height: 28px;
+  background: var(--xp-surface-raised);
+  border-radius: var(--xp-radius-xs);
+  overflow: hidden;
+  position: relative;
+}
+
+.intern-mem-bar-fill {
+  height: 100%;
+  border-radius: var(--xp-radius-xs);
+  transition: width 600ms cubic-bezier(0.22, 1, 0.36, 1);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-family: var(--xp-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--xp-bg);
+  white-space: nowrap;
+}
+
+.intern-mem-bar-fill.naive {
+  background: linear-gradient(90deg, var(--xp-error), #fca5a5);
+}
+
+.intern-mem-bar-fill.interned {
+  background: linear-gradient(90deg, var(--xp-success), #6ee7b7);
+}
+
+.intern-savings-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 6px 14px;
+  background: var(--xp-success-glow);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: 999px;
+  font-family: var(--xp-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--xp-success);
+}
+
+/* ─── Intern Animation ───────────────────────────────────────────── */
+.intern-anim-detail {
+  min-height: 120px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: var(--xp-surface);
+  border: 1px solid var(--xp-border);
+  border-radius: var(--xp-radius-sm);
+  font-family: var(--xp-mono);
+  font-size: 13px;
+  color: var(--xp-text);
+  line-height: 1.7;
+}
+
+.intern-anim-detail .anim-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--xp-text-dim);
+  margin-bottom: 4px;
+}
+
+.intern-anim-detail .anim-value {
+  color: var(--xp-accent-light);
+  font-weight: 500;
+}
+
+.intern-anim-detail .anim-highlight {
+  color: var(--xp-success);
+  font-weight: 600;
+}
+
+.intern-anim-detail .anim-warn {
+  color: var(--xp-warn);
+  font-weight: 600;
+}
+
+.intern-char-grid {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}
+
+.intern-char-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 28px;
+  background: var(--xp-surface-raised);
+  border: 1px solid var(--xp-border);
+  border-radius: 3px;
+  font-family: var(--xp-mono);
+  font-size: 12px;
+  color: var(--xp-accent-light);
+  transition: all 200ms;
+}
+
+.intern-char-cell.active {
+  background: var(--xp-accent-glow);
+  border-color: var(--xp-accent);
+  color: #fff;
+}
+
+/* ─── Hash Table Grid ────────────────────────────────────────────── */
+.intern-hash-table-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.intern-hash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: 3px;
+}
+
+.intern-hash-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  border-radius: var(--xp-radius-xs);
+  background: var(--xp-surface);
+  border: 1px solid var(--xp-border);
+  font-family: var(--xp-mono);
+  font-size: 9px;
+  color: var(--xp-text-dim);
+  transition: all 200ms;
+  position: relative;
+  overflow: hidden;
+}
+
+.intern-hash-cell.occupied {
+  border-color: var(--xp-border-strong);
+  color: #fff;
+  font-weight: 500;
+}
+
+.intern-hash-cell.probe-target {
+  outline: 2px solid var(--xp-accent);
+  outline-offset: -1px;
+  z-index: 1;
+}
+
+.intern-hash-cell.probe-collision {
+  outline: 2px solid var(--xp-warn);
+  outline-offset: -1px;
+  z-index: 1;
+}
+
+.intern-hash-cell.probe-found {
+  outline: 2px solid var(--xp-success);
+  outline-offset: -1px;
+  z-index: 1;
+}
+
+/* ─── Cardinality Chart ──────────────────────────────────────────── */
+.intern-chart-legend {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--xp-text-muted);
+}
+
+.intern-chart-legend .legend-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .intern-split {
+    grid-template-columns: 1fr;
+  }
+
+  .intern-id-table {
+    grid-template-columns: 1fr;
+  }
+
+  .intern-hash-grid {
+    grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
+  }
+}

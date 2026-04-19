@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.11/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
   "files": {
     "includes": [
       "**",
@@ -10,7 +10,8 @@
       "!**/.site",
       "!**/playwright-report",
       "!**/test-results",
-      "!octo11y"
+      "!octo11y",
+      "!packages/o11ytsdb/bench"
     ]
   },
   "formatter": {
@@ -31,5 +32,17 @@
       "semicolons": "always",
       "trailingCommas": "es5"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["site/tsdb-engine/js/byte-explorer.js"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noInnerDeclarations": "off"
+          }
+        }
+      }
+    }
+  ]
 }

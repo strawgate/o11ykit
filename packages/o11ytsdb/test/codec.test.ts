@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 
-import { BitWriter, BitReader, encodeChunk, decodeChunk } from '../src/codec.js';
+import { BitReader, BitWriter, decodeChunk, encodeChunk } from "../src/codec.js";
 
-describe('BitWriter / BitReader', () => {
-  it('round-trips individual bits', () => {
+describe("BitWriter / BitReader", () => {
+  it("round-trips individual bits", () => {
     const w = new BitWriter();
     w.writeBit(1);
     w.writeBit(0);
@@ -25,24 +25,24 @@ describe('BitWriter / BitReader', () => {
     expect(r.readBit()).toBe(0);
   });
 
-  it('round-trips multi-bit values', () => {
+  it("round-trips multi-bit values", () => {
     const w = new BitWriter();
-    w.writeBits(0xDEADn, 16);
+    w.writeBits(0xdeadn, 16);
     w.writeBitsNum(42, 7);
     const buf = w.finish();
     const r = new BitReader(buf);
-    expect(r.readBits(16)).toBe(0xDEADn);
+    expect(r.readBits(16)).toBe(0xdeadn);
     expect(r.readBitsNum(7)).toBe(42);
   });
 });
 
-describe('encodeChunk / decodeChunk', () => {
-  it('encodes and decodes empty array', () => {
+describe("encodeChunk / decodeChunk", () => {
+  it("encodes and decodes empty array", () => {
     const result = encodeChunk(new BigInt64Array(0), new Float64Array(0));
     expect(result.byteLength).toBe(0);
   });
 
-  it('round-trips a single sample', () => {
+  it("round-trips a single sample", () => {
     const ts = BigInt64Array.from([1_700_000_000_000n]);
     const vals = Float64Array.from([42.5]);
     const compressed = encodeChunk(ts, vals);
@@ -51,7 +51,7 @@ describe('encodeChunk / decodeChunk', () => {
     expect(decoded.values[0]).toBe(vals[0]);
   });
 
-  it('round-trips constant values (all XOR == 0)', () => {
+  it("round-trips constant values (all XOR == 0)", () => {
     const n = 100;
     const ts = new BigInt64Array(n);
     const vals = new Float64Array(n);
@@ -67,7 +67,7 @@ describe('encodeChunk / decodeChunk', () => {
     }
   });
 
-  it('round-trips monotonic counter values', () => {
+  it("round-trips monotonic counter values", () => {
     const n = 500;
     const ts = new BigInt64Array(n);
     const vals = new Float64Array(n);
@@ -84,7 +84,7 @@ describe('encodeChunk / decodeChunk', () => {
     }
   });
 
-  it('round-trips high-entropy float values', () => {
+  it("round-trips high-entropy float values", () => {
     const n = 200;
     const ts = new BigInt64Array(n);
     const vals = new Float64Array(n);
@@ -99,13 +99,13 @@ describe('encodeChunk / decodeChunk', () => {
     }
   });
 
-  it('handles irregular timestamp intervals (large DoD)', () => {
+  it("handles irregular timestamp intervals (large DoD)", () => {
     const ts = BigInt64Array.from([
       1_000_000n,
-      1_015_000n,  // delta=15000
-      1_030_000n,  // delta=15000, dod=0
-      1_100_000n,  // delta=70000, dod=55000 (large)
-      5_000_000n,  // delta=3900000, dod=3830000 (huge)
+      1_015_000n, // delta=15000
+      1_030_000n, // delta=15000, dod=0
+      1_100_000n, // delta=70000, dod=55000 (large)
+      5_000_000n, // delta=3900000, dod=3830000 (huge)
     ]);
     const vals = Float64Array.from([1.0, 2.0, 3.0, 4.0, 5.0]);
     const decoded = decodeChunk(encodeChunk(ts, vals));
@@ -115,7 +115,7 @@ describe('encodeChunk / decodeChunk', () => {
     }
   });
 
-  it('achieves good compression on constant data', () => {
+  it("achieves good compression on constant data", () => {
     const n = 1000;
     const ts = new BigInt64Array(n);
     const vals = new Float64Array(n);
@@ -129,16 +129,15 @@ describe('encodeChunk / decodeChunk', () => {
     expect(compressed.byteLength).toBeLessThan(rawSize / 4);
   });
 
-  it('rejects mismatched array lengths', () => {
-    expect(() => encodeChunk(
-      BigInt64Array.from([1n, 2n]),
-      Float64Array.from([1.0]),
-    )).toThrow('same length');
+  it("rejects mismatched array lengths", () => {
+    expect(() => encodeChunk(BigInt64Array.from([1n, 2n]), Float64Array.from([1.0]))).toThrow(
+      "same length"
+    );
   });
 
-  it('rejects arrays exceeding 65535 samples', () => {
+  it("rejects arrays exceeding 65535 samples", () => {
     const big = new BigInt64Array(70000);
     const bigV = new Float64Array(70000);
-    expect(() => encodeChunk(big, bigV)).toThrow('65535');
+    expect(() => encodeChunk(big, bigV)).toThrow("65535");
   });
 });

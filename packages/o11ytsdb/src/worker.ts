@@ -1,38 +1,19 @@
-import { ColumnStore } from './column-store.js';
-import { ingestOtlpJson } from './ingest.js';
-import { ScanEngine } from './query.js';
-import type { QueryEngine, StorageBackend, ValuesCodec } from './types.js';
-import type { WasmCodecs } from './wasm-codecs.js';
-import { initWasmCodecs } from './wasm-codecs.js';
-import {
-  err,
-  ok,
-  type RequestEnvelope,
-  type ResponseEnvelope,
-} from './worker-protocol.js';
+import { ColumnStore } from "./column-store.js";
+import { ScanEngine } from "./query.js";
+import type { QueryEngine, StorageBackend, ValuesCodec } from "./types.js";
+import type { WasmCodecs } from "./wasm-codecs.js";
+import { initWasmCodecs } from "./wasm-codecs.js";
+import { err, ok, type RequestEnvelope, type ResponseEnvelope } from "./worker-protocol.js";
 
 interface WorkerLikeEndpoint {
   postMessage(message: unknown, transfer?: ArrayBufferLike[]): void;
-  addEventListener?: (type: 'message', listener: (event: { data: unknown }) => void) => void;
-  on?: (type: 'message', listener: (data: unknown) => void) => void;
-}
-
-function decodeUtf8(payload: Uint8Array): string {
-  const nodeBuffer = (globalThis as { Buffer?: { from: (value: Uint8Array) => { toString: (encoding: string) => string } } }).Buffer;
-  if (nodeBuffer) {
-    return nodeBuffer.from(payload).toString('utf8');
-  }
-  const decoderCtor = (globalThis as { TextDecoder?: new () => { decode: (input: Uint8Array) => string } }).TextDecoder;
-  if (decoderCtor) return new decoderCtor().decode(payload);
-
-  let encoded = '';
-  for (let i = 0; i < payload.length; i++) encoded += String.fromCharCode(payload[i]!);
-  return decodeURIComponent(escape(encoded));
+  addEventListener?: (type: "message", listener: (event: { data: unknown }) => void) => void;
+  on?: (type: "message", listener: (data: unknown) => void) => void;
 }
 
 function createValuesCodec(): ValuesCodec {
   return {
-    name: 'f64-plain',
+    name: "f64-plain",
     encodeValues(values: Float64Array): Uint8Array {
       const out = new Uint8Array(4 + values.byteLength);
       new DataView(out.buffer).setUint32(0, values.length, true);
@@ -45,7 +26,11 @@ function createValuesCodec(): ValuesCodec {
       const raw = buf.subarray(4);
       const bytes = raw.byteLength - (raw.byteLength % 8);
       const copy = raw.slice(0, bytes);
-      const values = new Float64Array(copy.buffer, copy.byteOffset, Math.min(n, Math.floor(bytes / 8)));
+      const values = new Float64Array(
+        copy.buffer,
+        copy.byteOffset,
+        Math.min(n, Math.floor(bytes / 8))
+      );
       return values.slice();
     },
   };
@@ -57,18 +42,16 @@ function createValuesCodec(): ValuesCodec {
  */
 async function tryLoadWasm(): Promise<WasmCodecs | null> {
   try {
-    // Node.js path — use dynamic import to avoid bundler issues.
-    const dynamicImport = new Function('s', 'return import(s)') as (specifier: string) => Promise<any>;
-
-    // Try to locate the .wasm file relative to this module.
-    const nodeFs = await dynamicImport('node:fs').catch(() => null);
-    const nodePath = await dynamicImport('node:path').catch(() => null);
-    const nodeUrl = await dynamicImport('node:url').catch(() => null);
+    const dynamicImport = new Function("s", "return import(s)") as (
+      specifier: string
+    ) => Promise<any>;
+    const nodeFs = await dynamicImport("node:fs").catch(() => null);
+    const nodePath = await dynamicImport("node:path").catch(() => null);
+    const nodeUrl = await dynamicImport("node:url").catch(() => null);
 
     if (nodeFs && nodePath && nodeUrl) {
-      // Resolve wasm path relative to this file: ../wasm/o11ytsdb-rust.wasm
       const thisDir = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url));
-      const wasmPath = nodePath.join(thisDir, '..', 'wasm', 'o11ytsdb-rust.wasm');
+      const wasmPath = nodePath.join(thisDir, "..", "wasm", "o11ytsdb-rust.wasm");
       if (nodeFs.existsSync(wasmPath)) {
         const bytes = nodeFs.readFileSync(wasmPath);
         const module = new WebAssembly.Module(bytes);
@@ -80,9 +63,8 @@ async function tryLoadWasm(): Promise<WasmCodecs | null> {
   }
 
   try {
-    // Browser path — use fetch with a relative URL.
-    if (typeof fetch === 'function') {
-      const resp = await fetch(new URL('../wasm/o11ytsdb-rust.wasm', import.meta.url));
+    if (typeof fetch === "function") {
+      const resp = await fetch(new URL("../wasm/o11ytsdb-rust.wasm", import.meta.url));
       if (resp.ok) {
         const module = await WebAssembly.compileStreaming(resp);
         return initWasmCodecs(module);
@@ -101,21 +83,24 @@ function resolveEndpoint(): WorkerLikeEndpoint {
     postMessage?: (message: unknown, transfer?: ArrayBufferLike[]) => void;
   };
 
-  if (maybeSelf.self && typeof maybeSelf.self.postMessage === 'function') {
+  if (maybeSelf.self && typeof maybeSelf.self.postMessage === "function") {
     return maybeSelf.self;
   }
 
-  if (typeof maybeSelf.postMessage === 'function') {
+  if (typeof maybeSelf.postMessage === "function") {
     return {
       postMessage: maybeSelf.postMessage.bind(globalThis),
       addEventListener: (type, listener) => {
-        (globalThis as unknown as { addEventListener: (event: string, cb: (e: { data: unknown }) => void) => void })
-          .addEventListener(type, listener);
+        (
+          globalThis as unknown as {
+            addEventListener: (event: string, cb: (e: { data: unknown }) => void) => void;
+          }
+        ).addEventListener(type, listener);
       },
     };
   }
 
-  throw new Error('No worker endpoint available.');
+  throw new Error("No worker endpoint available.");
 }
 
 export interface WorkerRuntimeConfig {
@@ -132,6 +117,7 @@ export class O11yWorkerRuntime {
   private store: StorageBackend;
   private wasmCodecs: WasmCodecs | null = null;
   private wasmReady: Promise<void>;
+
   constructor(endpoint?: WorkerLikeEndpoint, config?: WorkerRuntimeConfig) {
     this.endpoint = endpoint ?? resolveEndpoint();
     const codec = createValuesCodec();
@@ -139,87 +125,98 @@ export class O11yWorkerRuntime {
     this.engine = config?.queryEngine ?? new ScanEngine();
     this.store = this.createStore(1024);
 
-    // Load WASM codecs in the background. First message that needs them will await.
-    this.wasmReady = tryLoadWasm().then((wc) => {
-      if (wc) {
-        this.wasmCodecs = wc;
-        this.createStore = (cs: number) => new ColumnStore(wc.valuesCodec, cs, undefined, undefined, wc.tsCodec, wc.rangeCodec);
-        this.store = this.createStore(1024);
-      }
-    }).catch(() => { /* WASM not available — continue with plain codec */ });
+    // Load WASM codecs in the background.
+    this.wasmReady = tryLoadWasm()
+      .then((wc) => {
+        if (wc) {
+          this.wasmCodecs = wc;
+          this.createStore = (cs: number) =>
+            new ColumnStore(wc.valuesCodec, cs, undefined, undefined, wc.tsCodec, wc.rangeCodec);
+          this.store = this.createStore(1024);
+        }
+      })
+      .catch(() => {
+        /* WASM not available — continue with plain codec */
+      });
   }
 
   start(): void {
     const listener = (raw: unknown): void => {
       const eventData = (raw as { data?: unknown }).data ?? raw;
-      if (!eventData || typeof eventData !== 'object') return;
+      if (!eventData || typeof eventData !== "object") return;
 
       const msg = eventData as RequestEnvelope;
-      if (msg.kind !== 'request') return;
+      if (msg.kind !== "request") return;
       void this.handle(msg);
     };
 
-    if (typeof this.endpoint.addEventListener === 'function') {
-      this.endpoint.addEventListener('message', listener);
+    if (typeof this.endpoint.addEventListener === "function") {
+      this.endpoint.addEventListener("message", listener);
       return;
     }
 
-    if (typeof this.endpoint.on === 'function') {
-      this.endpoint.on('message', listener);
+    if (typeof this.endpoint.on === "function") {
+      this.endpoint.on("message", listener);
       return;
     }
 
-    throw new Error('Worker endpoint does not support message listeners.');
+    throw new Error("Worker endpoint does not support message listeners.");
   }
 
   private async handle(msg: RequestEnvelope): Promise<void> {
     const { id, payload, meta } = msg;
     try {
       switch (payload.type) {
-        case 'init': {
+        case "init": {
           // Ensure WASM codecs are loaded before re-creating the store.
           await this.wasmReady;
           const chunkSize = payload.chunkSize ?? 1024;
           this.store = this.createStore(chunkSize);
-          this.send(ok(id, { ok: true, type: 'init', backend: this.store.name }, meta));
+          this.send(ok(id, { ok: true, type: "init", backend: this.store.name }, meta));
           return;
         }
-        case 'ingest': {
-          const jsonPayload = decodeUtf8(payload.payload);
-          const result = ingestOtlpJson(jsonPayload, this.store, this.wasmCodecs?.msToNs);
-          this.send(ok(id, { ok: true, type: 'ingest', result }, meta));
-          return;
-        }
-        case 'append': {
+        case "ingest": {
           const labels = new Map(payload.labels);
           const seriesId = this.store.getOrCreateSeries(labels);
           this.store.appendBatch(seriesId, payload.timestamps, payload.values);
-          this.send(ok(id, { ok: true, type: 'append', seriesId, ingestedSamples: payload.values.length }, meta));
+          this.send(
+            ok(
+              id,
+              { ok: true, type: "ingest", seriesId, ingestedSamples: payload.values.length },
+              meta
+            )
+          );
           return;
         }
-        case 'query': {
+        case "query": {
           const result = this.engine.query(this.store, payload.opts);
-          this.send(ok(id, { ok: true, type: 'query', result }, meta));
+          this.send(ok(id, { ok: true, type: "query", result }, meta));
           return;
         }
-        case 'stats': {
-          this.send(ok(id, {
-            ok: true,
-            type: 'stats',
-            stats: {
-              seriesCount: this.store.seriesCount,
-              sampleCount: this.store.sampleCount,
-              memoryBytes: this.store.memoryBytes(),
-            },
-          }, meta));
+        case "stats": {
+          this.send(
+            ok(
+              id,
+              {
+                ok: true,
+                type: "stats",
+                stats: {
+                  seriesCount: this.store.seriesCount,
+                  sampleCount: this.store.sampleCount,
+                  memoryBytes: this.store.memoryBytes(),
+                },
+              },
+              meta
+            )
+          );
           return;
         }
-        case 'echo': {
-          this.send(ok(id, { ok: true, type: 'echo', bytes: payload.payload.byteLength }, meta));
+        case "echo": {
+          this.send(ok(id, { ok: true, type: "echo", bytes: payload.payload.byteLength }, meta));
           return;
         }
-        case 'close': {
-          this.send(ok(id, { ok: true, type: 'close' }, meta));
+        case "close": {
+          this.send(ok(id, { ok: true, type: "close" }, meta));
           return;
         }
       }
@@ -234,18 +231,21 @@ export class O11yWorkerRuntime {
 }
 
 const endpointProbe = globalThis as { self?: unknown; onmessage?: unknown };
-if (endpointProbe.self || typeof endpointProbe.onmessage !== 'undefined') {
+if (endpointProbe.self || typeof endpointProbe.onmessage !== "undefined") {
   new O11yWorkerRuntime().start();
 } else {
-  const dynamicImport = new Function('s', 'return import(s)') as (specifier: string) => Promise<any>;
-  void dynamicImport('node:worker_threads')
+  const dynamicImport = new Function("s", "return import(s)") as (
+    specifier: string
+    // biome-ignore lint/suspicious/noExplicitAny: dynamic import requires any
+  ) => Promise<any>;
+  void dynamicImport("node:worker_threads")
     .then((wt) => {
       if (!wt.parentPort) return;
       const endpoint: WorkerLikeEndpoint = {
         postMessage: (message, transfer) => wt.parentPort.postMessage(message, transfer),
         on: (type, listener) => {
-          if (type !== 'message') return;
-          wt.parentPort.on('message', (data: unknown) => listener({ data }));
+          if (type !== "message") return;
+          wt.parentPort.on("message", (data: unknown) => listener({ data }));
         },
       };
       new O11yWorkerRuntime(endpoint).start();
