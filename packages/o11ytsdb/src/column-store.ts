@@ -31,11 +31,85 @@ import type {
 
 // ── Internal types ───────────────────────────────────────────────────
 
-interface FrozenChunk {
-  compressedValues: Uint8Array;
-  /** Index into the group's frozen timestamp chunks. */
-  tsChunkIndex: number;
-  stats: ChunkStats;
+// Stats field indices in packed Float64Array (8 fields per chunk).
+const S_MIN = 0;
+const S_MAX = 1;
+const S_SUM = 2;
+const S_COUNT = 3;
+const S_FIRST = 4;
+const S_LAST = 5;
+const S_SUMSQ = 6;
+const S_RESET = 7;
+const STATS_STRIDE = 8;
+
+/** Columnar frozen storage — replaces per-chunk JS objects with packed arrays.
+ *  Saves ~200 bytes of V8 object overhead per frozen chunk. */
+interface FrozenColumns {
+  /** Compressed value blobs, one per chunk. */
+  blobs: Uint8Array[];
+  /** Timestamp chunk indices, one per chunk. */
+  tsIndices: Uint32Array;
+  /** Packed stats: 8 Float64 fields per chunk in a single Float64Array. */
+  stats: Float64Array;
+  /** Number of frozen chunks. */
+  count: number;
+  /** Capacity (allocated slots in tsIndices/stats). */
+  capacity: number;
+}
+
+function createFrozenColumns(initialCap = 16): FrozenColumns {
+  return {
+    blobs: [],
+    tsIndices: new Uint32Array(initialCap),
+    stats: new Float64Array(initialCap * STATS_STRIDE),
+    count: 0,
+    capacity: initialCap,
+  };
+}
+
+function frozenPush(
+  fc: FrozenColumns,
+  blob: Uint8Array,
+  tsIndex: number,
+  stats: ChunkStats
+): void {
+  if (fc.count === fc.capacity) {
+    const newCap = fc.capacity * 2;
+    const newTsIdx = new Uint32Array(newCap);
+    newTsIdx.set(fc.tsIndices);
+    fc.tsIndices = newTsIdx;
+    const newStats = new Float64Array(newCap * STATS_STRIDE);
+    newStats.set(fc.stats);
+    fc.stats = newStats;
+    fc.capacity = newCap;
+  }
+  const i = fc.count;
+  fc.blobs.push(blob);
+  fc.tsIndices[i] = tsIndex;
+  const si = i * STATS_STRIDE;
+  fc.stats[si + S_MIN] = stats.minV;
+  fc.stats[si + S_MAX] = stats.maxV;
+  fc.stats[si + S_SUM] = stats.sum;
+  fc.stats[si + S_COUNT] = stats.count;
+  fc.stats[si + S_FIRST] = stats.firstV;
+  fc.stats[si + S_LAST] = stats.lastV;
+  fc.stats[si + S_SUMSQ] = stats.sumOfSquares;
+  fc.stats[si + S_RESET] = stats.resetCount;
+  fc.count++;
+}
+
+function frozenGetStats(fc: FrozenColumns, i: number): ChunkStats {
+  const si = i * STATS_STRIDE;
+  return {
+    minV: fc.stats[si + S_MIN]!,
+    maxV: fc.stats[si + S_MAX]!,
+    sum: fc.stats[si + S_SUM]!,
+    count: fc.stats[si + S_COUNT]!,
+    firstV: fc.stats[si + S_FIRST]!,
+    lastV: fc.stats[si + S_LAST]!,
+    sumOfSquares: fc.stats[si + S_SUMSQ]!,
+    resetCount: fc.stats[si + S_RESET]!,
+  };
 }
 
 interface HotValues {
@@ -46,7 +120,7 @@ interface HotValues {
 interface ColumnSeries {
   groupId: number;
   hot: HotValues;
-  frozen: FrozenChunk[];
+  frozen: FrozenColumns;
 }
 
 interface TimestampChunk {
@@ -155,7 +229,7 @@ export class ColumnStore implements StorageBackend {
     this.allSeries.push({
       groupId,
       hot: { values: new Float64Array(this.chunkSize), count: 0 },
-      frozen: [],
+      frozen: createFrozenColumns(),
     });
     return id;
   }
@@ -290,13 +364,17 @@ export class ColumnStore implements StorageBackend {
     // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const group = this.groups[s.groupId]!;
     const parts: TimeRange[] = [];
+    const fc = s.frozen;
 
     // ── Path A: Fused range-decode (best — ts decode + binary search + partial values decode in one WASM call) ──
     if (this.rangeCodec && this.tsCodec) {
-      for (const chunk of s.frozen) {
+      for (let ci = 0; ci < fc.count; ci++) {
         // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex]!;
+        const tsChunk = group.frozenTimestamps[fc.tsIndices[ci]!]!;
         if (tsChunk.maxT < start || tsChunk.minT > end) continue;
+
+        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+        const cv = fc.blobs[ci]!;
 
         // Stats-skip: when the entire chunk is within the query range,
         // emit a stats-only part so the query engine can fold pre-computed
@@ -307,11 +385,10 @@ export class ColumnStore implements StorageBackend {
           const rc = this.rangeCodec;
           // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           const tc = tsChunk.compressed!;
-          const cv = chunk.compressedValues;
           parts.push({
             timestamps: new BigInt64Array(0),
             values: new Float64Array(0),
-            stats: chunk.stats,
+            stats: frozenGetStats(fc, ci),
             chunkMinT: tsChunk.minT,
             chunkMaxT: tsChunk.maxT,
             decode: () => rc.rangeDecodeValues(tc, cv, tsChunk.minT, tsChunk.maxT),
@@ -322,7 +399,7 @@ export class ColumnStore implements StorageBackend {
         const result = this.rangeCodec.rangeDecodeValues(
           // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           tsChunk.compressed!,
-          chunk.compressedValues,
+          cv,
           start,
           end
         );
@@ -338,21 +415,24 @@ export class ColumnStore implements StorageBackend {
       }
     } else {
       // ── Path B: Individual decode (batch decode amortized by caller if needed) ──
-      for (const chunk of s.frozen) {
+      for (let ci = 0; ci < fc.count; ci++) {
         // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const tsChunk = group.frozenTimestamps[chunk.tsChunkIndex]!;
+        const tsChunk = group.frozenTimestamps[fc.tsIndices[ci]!]!;
         if (tsChunk.maxT < start || tsChunk.minT > end) continue;
+
+        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+        const cv = fc.blobs[ci]!;
 
         // Stats-skip: entire chunk within query range.
         if (tsChunk.minT >= start && tsChunk.maxT <= end) {
           const vc = this.valuesCodec;
-          const cv = chunk.compressedValues;
           const tsc = this.tsCodec;
           const tcc = tsChunk.compressed;
+          const stats = frozenGetStats(fc, ci);
           const part: TimeRange = {
             timestamps: new BigInt64Array(0),
             values: new Float64Array(0),
-            stats: chunk.stats,
+            stats,
             chunkMinT: tsChunk.minT,
             chunkMaxT: tsChunk.maxT,
             decode: () => {
@@ -385,7 +465,7 @@ export class ColumnStore implements StorageBackend {
           // biome-ignore lint/style/noNonNullAssertion lint/suspicious/noAssignInExpressions: bounds-checked by construction
           (tsChunk.timestamps = this.tsCodec!.decodeTimestamps(tsChunk.compressed!));
 
-        const values = this.valuesCodec.decodeValues(chunk.compressedValues);
+        const values = this.valuesCodec.decodeValues(cv);
         const lo = lowerBound(timestamps, start, 0, tsChunk.count);
         const hi = upperBound(timestamps, end, lo, tsChunk.count);
         if (hi > lo) {
@@ -445,9 +525,11 @@ export class ColumnStore implements StorageBackend {
     // Per-series: hot values + frozen compressed values + stats.
     for (const s of this.allSeries) {
       bytes += s.hot.count * 8;
-      for (const c of s.frozen) {
-        bytes += c.compressedValues.byteLength;
-        bytes += 72;
+      const fc = s.frozen;
+      for (let i = 0; i < fc.count; i++) {
+        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+        bytes += fc.blobs[i]!.byteLength;
+        bytes += 64; // 8 packed stats fields × 8 bytes
       }
     }
     bytes += this.labelIndex.memoryBytes();
@@ -518,7 +600,7 @@ export class ColumnStore implements StorageBackend {
             const s = this.allSeries[group.members[bStart + m]!]!;
             // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             const { compressed, stats } = results[m]!;
-            s.frozen.push({ compressedValues: compressed, tsChunkIndex, stats });
+            frozenPush(s.frozen, compressed, tsChunkIndex, stats);
           }
         }
       } else {
@@ -540,7 +622,7 @@ export class ColumnStore implements StorageBackend {
             stats = computeStats(vals);
           }
 
-          s.frozen.push({ compressedValues, tsChunkIndex, stats });
+          frozenPush(s.frozen, compressedValues, tsChunkIndex, stats);
         }
       }
     }
