@@ -4,7 +4,7 @@
  * improvement for monotonic counter patterns.
  */
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -80,12 +80,20 @@ class Rng {
     const s = this.s;
     const result = Math.imul(this.rotl(Math.imul(s[0], 5), 7), 9) >>> 0;
     const t = s[1] << 9;
-    s[2] ^= s[0]; s[3] ^= s[1]; s[1] ^= s[2]; s[0] ^= s[3];
-    s[2] ^= t; s[3] = this.rotl(s[3], 11);
+    s[2] ^= s[0];
+    s[3] ^= s[1];
+    s[1] ^= s[2];
+    s[0] ^= s[3];
+    s[2] ^= t;
+    s[3] = this.rotl(s[3], 11);
     return result / 0x100000000;
   }
-  rotl(x, k) { return ((x << k) | (x >>> (32 - k))) >>> 0; }
-  int(lo, hi) { return lo + Math.floor(this.next() * (hi - lo + 1)); }
+  rotl(x, k) {
+    return ((x << k) | (x >>> (32 - k))) >>> 0;
+  }
+  int(lo, hi) {
+    return lo + Math.floor(this.next() * (hi - lo + 1));
+  }
 }
 
 // ── Test patterns ──
@@ -97,7 +105,10 @@ const patterns = [
   (() => {
     const vals = new Float64Array(CHUNK);
     let v = 1_000_000;
-    for (let i = 0; i < CHUNK; i++) { v += rng.int(10, 200); vals[i] = v; }
+    for (let i = 0; i < CHUNK; i++) {
+      v += rng.int(10, 200);
+      vals[i] = v;
+    }
     return { name: "monotonicCounter", vals };
   })(),
   // Counter with 40% idle (same as engine.bench pattern)
@@ -142,10 +153,8 @@ const patterns = [
 // ── Run tests ──
 
 console.log(`\n  Delta-ALP codec test (chunk=${CHUNK})\n`);
-console.log(
-  "  Pattern              plainALP  deltaALP  ratio  tag  roundTrip"
-);
-console.log("  " + "─".repeat(70));
+console.log("  Pattern              plainALP  deltaALP  ratio  tag  roundTrip");
+console.log(`  ${"─".repeat(70)}`);
 
 let allOk = true;
 for (const { name, vals } of patterns) {
@@ -156,7 +165,7 @@ for (const { name, vals } of patterns) {
   const { compressed: statsBuf, stats } = alpEncodeWithStats(vals);
 
   // Check if delta-ALP was used: first byte == 0xDA
-  const isDelta = statsBuf[0] === 0xDA;
+  const isDelta = statsBuf[0] === 0xda;
 
   // Decode the stats-encoded blob
   const decoded = alpDecode(statsBuf);
@@ -172,11 +181,11 @@ for (const { name, vals } of patterns) {
 
   console.log(
     `  ${name.padEnd(22)}` +
-    `${String(plainBuf.length).padStart(6)} B  ` +
-    `${String(statsBuf.length).padStart(6)} B  ` +
-    `${ratio.toFixed(2).padStart(5)}x  ` +
-    `${isDelta ? "δALP" : " ALP"}  ` +
-    `${ok && okPlain ? "✓" : "✗ FAIL"}`
+      `${String(plainBuf.length).padStart(6)} B  ` +
+      `${String(statsBuf.length).padStart(6)} B  ` +
+      `${ratio.toFixed(2).padStart(5)}x  ` +
+      `${isDelta ? "δALP" : " ALP"}  ` +
+      `${ok && okPlain ? "✓" : "✗ FAIL"}`
   );
 }
 

@@ -517,3 +517,13 @@
     font-size: 9px;
   }
 }
+
+/* ─── IEEE 754 note ───────────────────────────────────────────────── */
+
+.xor-ieee-note {
+  font-size: 0.75rem;
+  color: var(--xp-text-muted, #94a3b8);
+  margin: 4px 0 8px;
+  letter-spacing: 0.02em;
+}
+.xor-ieee-note strong { color: var(--xp-accent); }

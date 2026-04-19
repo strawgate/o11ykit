@@ -90,8 +90,8 @@
   flex: 1;
   display: flex;
   gap: 8px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 6px;
   padding: 8px 10px;
 }
@@ -124,7 +124,7 @@
 .ci-detail {
   color: var(--dark-text-muted);
   font-size: 10px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: "IBM Plex Mono", monospace;
 }
 
 .ci-example {
@@ -137,7 +137,7 @@
 .ci-exceptions {
   margin-top: 8px;
   padding: 6px 10px;
-  background: rgba(255,255,255,0.03);
+  background: rgba(255, 255, 255, 0.03);
   border-radius: 4px;
   font-size: 11px;
   color: var(--dark-text-muted);
@@ -168,7 +168,9 @@
   border: 2px solid rgba(15, 58, 94, 0.4);
   border-radius: 2px;
   pointer-events: none;
-  transition: left 150ms ease, width 150ms ease;
+  transition:
+    left 150ms ease,
+    width 150ms ease;
   background: rgba(15, 58, 94, 0.06);
 }
 
@@ -257,8 +259,12 @@
 
 /* ── Hex-level sample mapping ── */
 /* Use opacity instead of filter:brightness — avoids per-cell compositing */
-.hex-cell.hex-mapped.hex-sample-even { opacity: 1; }
-.hex-cell.hex-mapped.hex-sample-odd  { opacity: 0.65; }
+.hex-cell.hex-mapped.hex-sample-even {
+  opacity: 1;
+}
+.hex-cell.hex-mapped.hex-sample-odd {
+  opacity: 0.65;
+}
 
 .hex-cell.hex-boundary {
   border-left: 2px solid var(--region-exceptions);
@@ -290,13 +296,38 @@
   animation: rise-in 200ms ease both;
 }
 
-.hex-decode-panel .bdp-header { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
-.hex-decode-panel .bdp-type { font-weight: 700; font-size: 13px; }
-.hex-decode-panel .bdp-type.timestamp { color: var(--region-timestamps); }
-.hex-decode-panel .bdp-type.value { color: var(--region-values); }
-.hex-decode-panel .bdp-value { font-size: 16px; font-weight: 700; color: #f1f5f9; margin: 6px 0 4px; }
-.hex-decode-panel .bdp-encoding { font-size: 11px; color: #a5b4c8; line-height: 1.6; }
-.hex-decode-panel .bdp-detail { font-size: 10px; color: var(--dark-text-dim); margin-top: 2px; }
+.hex-decode-panel .bdp-header {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.hex-decode-panel .bdp-type {
+  font-weight: 700;
+  font-size: 13px;
+}
+.hex-decode-panel .bdp-type.timestamp {
+  color: var(--region-timestamps);
+}
+.hex-decode-panel .bdp-type.value {
+  color: var(--region-values);
+}
+.hex-decode-panel .bdp-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 6px 0 4px;
+}
+.hex-decode-panel .bdp-encoding {
+  font-size: 11px;
+  color: #a5b4c8;
+  line-height: 1.6;
+}
+.hex-decode-panel .bdp-detail {
+  font-size: 10px;
+  color: var(--dark-text-dim);
+  margin-top: 2px;
+}
 
 /* Byte detail tooltip */
 .byte-tooltip {
@@ -341,9 +372,15 @@
   margin-left: 4px;
 }
 
-.byte-tooltip .bt-region.header { background: var(--region-header); }
-.byte-tooltip .bt-region.timestamps { background: var(--region-timestamps); }
-.byte-tooltip .bt-region.values { background: var(--region-values); }
+.byte-tooltip .bt-region.header {
+  background: var(--region-header);
+}
+.byte-tooltip .bt-region.timestamps {
+  background: var(--region-timestamps);
+}
+.byte-tooltip .bt-region.values {
+  background: var(--region-values);
+}
 
 .byte-tooltip .bt-sample {
   display: inline-block;
@@ -353,8 +390,12 @@
   border-radius: 3px;
   margin-left: 4px;
 }
-.byte-tooltip .bt-sample.timestamp { background: var(--region-timestamps); }
-.byte-tooltip .bt-sample.value { background: var(--region-values); }
+.byte-tooltip .bt-sample.timestamp {
+  background: var(--region-timestamps);
+}
+.byte-tooltip .bt-sample.value {
+  background: var(--region-values);
+}
 
 .byte-tooltip .bt-decoded {
   margin-top: 4px;
@@ -394,10 +435,18 @@
   color: white;
 }
 
-.region-badge.header { background: var(--region-header); }
-.region-badge.timestamps { background: var(--region-timestamps); }
-.region-badge.values { background: var(--region-values); }
-.region-badge.exceptions { background: var(--region-exceptions); }
+.region-badge.header {
+  background: var(--region-header);
+}
+.region-badge.timestamps {
+  background: var(--region-timestamps);
+}
+.region-badge.values {
+  background: var(--region-values);
+}
+.region-badge.exceptions {
+  background: var(--region-exceptions);
+}
 
 .region-detail-grid {
   display: grid;
@@ -477,7 +526,9 @@
   font-size: 8px;
   font-weight: 600;
   cursor: default;
-  transition: background 100ms ease, transform 100ms ease;
+  transition:
+    background 100ms ease,
+    transform 100ms ease;
 }
 
 .bit-row .bit.b1 {
@@ -543,12 +594,16 @@
 }
 
 .bit-row .bit.bit-highlight-ts {
+  /* biome-ignore lint/complexity/noImportantStyles: override requires !important for specificity */
   background: rgba(6, 182, 212, 0.5) !important;
+  /* biome-ignore lint/complexity/noImportantStyles: override requires !important for specificity */
   color: #e0f2fe !important;
 }
 
 .bit-row .bit.bit-highlight-val {
+  /* biome-ignore lint/complexity/noImportantStyles: override requires !important for specificity */
   background: rgba(16, 185, 129, 0.5) !important;
+  /* biome-ignore lint/complexity/noImportantStyles: override requires !important for specificity */
   color: #d1fae5 !important;
 }
 
@@ -566,6 +621,7 @@
   animation: rise-in 200ms ease both;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: intentional modifier class */
 .bdp-header {
   display: flex;
   align-items: center;
@@ -574,6 +630,7 @@
   flex-wrap: wrap;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: intentional modifier class */
 .bdp-type {
   font-weight: 700;
   font-size: 12px;
@@ -581,11 +638,13 @@
   border-radius: 4px;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: intentional modifier class */
 .bdp-type.timestamp {
   background: rgba(6, 182, 212, 0.2);
   color: #67e8f9;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: intentional modifier class */
 .bdp-type.value {
   background: rgba(16, 185, 129, 0.2);
   color: #6ee7b7;
@@ -602,6 +661,7 @@
   margin-left: auto;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: intentional modifier class */
 .bdp-value {
   font-size: 16px;
   font-weight: 700;
@@ -610,6 +670,7 @@
   word-break: break-all;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: intentional modifier class */
 .bdp-encoding {
   color: var(--dark-text-muted);
   font-size: 11px;
@@ -624,6 +685,7 @@
   font-weight: 600;
 }
 
+/* biome-ignore lint/style/noDescendingSpecificity: intentional modifier class */
 .bdp-detail {
   margin-top: 4px;
   color: var(--dark-text-dim);
