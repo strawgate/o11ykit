@@ -1,13 +1,9 @@
-import type { Labels, TimeRange } from "./types.js";
-
-export function seriesKey(labels: Labels): string {
-  const entries = [...labels.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  return entries.map(([k, v]) => `${k}=${v}`).join(",");
-}
+import type { TimeRange } from "./types.js";
 
 export function lowerBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {
   while (lo < hi) {
     const mid = (lo + hi) >>> 1;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     if (arr[mid]! < target) lo = mid + 1;
     else hi = mid;
   }
@@ -17,6 +13,7 @@ export function lowerBound(arr: BigInt64Array, target: bigint, lo: number, hi: n
 export function upperBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {
   while (lo < hi) {
     const mid = (lo + hi) >>> 1;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     if (arr[mid]! <= target) lo = mid + 1;
     else hi = mid;
   }
@@ -27,6 +24,7 @@ export function concatRanges(parts: TimeRange[]): TimeRange {
   if (parts.length === 0) {
     return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
   }
+  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
   if (parts.length === 1) return parts[0]!;
 
   let total = 0;

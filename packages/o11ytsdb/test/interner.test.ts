@@ -27,7 +27,9 @@ describe("Interner", () => {
     const interner = new Interner();
     const ids = interner.bulkIntern(["a", "b", "a", "🌊"]);
     expect(ids[0]).toBe(ids[2]);
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(interner.resolve(ids[1]!)).toBe("b");
+    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(interner.resolve(ids[3]!)).toBe("🌊");
   });
 

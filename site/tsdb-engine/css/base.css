@@ -1,0 +1,154 @@
+/* ─── TSDB Engine Docs — CSS Variable Palette ────────────────────── */
+
+:root {
+  /* Byte explorer region colors */
+  --region-header: #8b5cf6;
+  --region-timestamps: #06b6d4;
+  --region-values: #10b981;
+  --region-exceptions: #f59e0b;
+
+  /* Dark theme (byte explorer, codec insight) */
+  --dark-bg: #0a1929;
+  --dark-bg-alt: #0d2137;
+  --dark-text: #e2e8f0;
+  --dark-text-muted: #94a3b8;
+  --dark-text-dim: #64748b;
+  --dark-accent: #60a5fa;
+  --dark-accent-light: #93c5fd;
+
+  /* Highlight */
+  --highlight-primary: #3b82f6;
+  --highlight-bg: rgba(59, 130, 246, 0.15);
+
+  /* Bit states */
+  --bit-0-bg: #1e293b;
+  --bit-1-bg: #334155;
+  --bit-0-text: #64748b;
+  --bit-1-text: #e2e8f0;
+
+  /* Backend badges */
+  --badge-flat-bg: #fef3c7;
+  --badge-flat-text: #92400e;
+  --badge-chunked-bg: #dbeafe;
+  --badge-chunked-text: #1e40af;
+  --badge-column-bg: #d1fae5;
+  --badge-column-text: #065f46;
+
+  /* Z-index scale */
+  --z-cell: 1;
+  --z-highlight: 2;
+  --z-hover: 3;
+  --z-decode-panel: 10;
+  --z-tooltip: 50;
+}
+
+/* ─── TSDB Engine Docs — Base Styles ──────────────────────────────── */
+
+.section-intro {
+  margin: 0 0 18px;
+  color: var(--ink-soft);
+  max-width: 72ch;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* ─── WASM Status Badge ──────────────────────────────────────────── */
+
+.wasm-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-top: 4px;
+  font-family: var(--font-mono, monospace);
+}
+
+.wasm-ok {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.wasm-err {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+/* ─── Codec Tag ──────────────────────────────────────────────────── */
+
+.tag-codec {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-left: 8px;
+  background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%);
+  color: #fff;
+}
+
+/* ─── Responsive ──────────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  .arch-row {
+    flex-direction: column;
+  }
+
+  .arch-arrow {
+    transform: rotate(90deg);
+  }
+
+  .arch-box {
+    max-width: 100%;
+  }
+
+  .demo-controls {
+    flex-direction: column;
+  }
+
+  .control-group select {
+    min-width: 100%;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .explorer-stats {
+    flex-direction: column;
+  }
+
+  .series-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .series-summary {
+    margin-left: 0;
+  }
+
+  .chunk-detail-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .byte-legend {
+    flex-wrap: wrap;
+  }
+
+  .comp-bar-row {
+    grid-template-columns: 80px 1fr 60px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arch-box,
+  .stats-grid,
+  .chart-container,
+  .query-stats,
+  .compression-bench {
+    animation: none;
+    transition: none;
+  }
+}

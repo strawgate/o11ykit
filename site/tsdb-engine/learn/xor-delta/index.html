@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XOR-Delta Value Compression — Interactive Experience | o11ytsdb</title>
+    <meta name="description" content="See how Gorilla-style XOR encoding compresses float64 values by exploiting temporal locality — interactively explore leading/trailing zeros, window reuse, and bit-level encoding." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="../shared.css" />
+    <link rel="stylesheet" href="xor-experience.css" />
+  </head>
+  <body>
+    <a href="#main" class="xp-skip-link">Skip to content</a>
+    <div class="xp-ambient" aria-hidden="true"></div>
+    <div class="xp-page" id="main">
+
+      <div id="breadcrumb-nav"></div>
+
+      <div class="xp-hero">
+        <p class="xp-eyebrow">Value Compression</p>
+        <h1>XOR‑Delta</h1>
+        <p class="lede">
+          Metrics that change slowly — temperature, CPU&nbsp;%, latency — produce nearly
+          identical <span class="xp-term" data-term="IEEE 754">IEEE&nbsp;754</span> bit patterns.
+          XOR‑Delta exploits this: <span class="xp-term" data-term="XOR">XOR</span> consecutive
+          values, and most bits cancel out. The remaining handful of
+          <strong><span class="xp-term" data-term="meaningful bits">meaningful bits</span></strong>
+          is all you need to store.
+        </p>
+        <p class="xp-why-matters">
+          Two consecutive CPU readings like 50.0 and 51.0 are stored as 64-bit floats — but they
+          share 57 of their 64 bits. <span class="xp-term" data-term="XOR">XOR</span>-Delta stores
+          only the 7 bits that differ, plus a tiny header describing where those bits live. Most
+          metric sequences compress to 2–14 bits per sample instead of 64.
+        </p>
+        <p class="xp-why-matters">
+          The very first value is always stored as raw 64 bits. Compression applies from the second
+          value onward.
+        </p>
+      </div>
+
+      <!-- A. Signal Pattern Picker -->
+      <section class="xp-section" id="signal-section">
+        <h2>① Choose a Signal</h2>
+        <p>Pick a pattern and watch how temporal locality affects compression.</p>
+        <div class="xp-card">
+          <div class="xp-controls" id="pattern-controls"></div>
+          <canvas id="sparkline-canvas" height="64"></canvas>
+        </div>
+      </section>
+
+      <!-- B. XOR Visualization Table -->
+      <section class="xp-section" id="table-section">
+        <h2>② XOR Visualization Table</h2>
+        <p>For each value after the first, <span class="xp-term" data-term="XOR">XOR</span> it with the previous value to get only the bits that changed:</p>
+        <p>Each row shows a value XOR'd with its predecessor. Click any row to expand bit-level detail.</p>
+        <div class="xp-card xor-table-wrap">
+          <div class="xor-table-scroll xp-scroll-x">
+            <table class="xp-table xor-table" id="xor-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Value</th>
+                  <th>XOR with prev</th>
+                  <th><span class="xp-term" data-term="leading zeros">Lead 0s</span></th>
+                  <th><span class="xp-term" data-term="trailing zeros">Trail 0s</span></th>
+                  <th><span class="xp-term" data-term="meaningful bits">Meaningful</span></th>
+                  <th>Encoding</th>
+                  <th>Cost</th>
+                </tr>
+              </thead>
+              <tbody id="xor-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <p class="xor-ieee-note">
+          <span class="xp-term" data-term="IEEE 754">IEEE 754</span> float64 layout:
+          <strong>1</strong> sign bit · <strong>11</strong> exponent bits · <strong>52</strong> fraction bits
+        </p>
+      </section>
+
+      <!-- D. Encoding Decision Tree -->
+      <section class="xp-section" id="tree-section">
+        <h2>③ Encoding Decision Tree</h2>
+        <p>Based on the <span class="xp-term" data-term="XOR">XOR</span> result, the encoder picks the most efficient encoding:</p>
+        <p>Every value follows this flowchart. Click a table row above to highlight the path taken.</p>
+        <div class="xp-card" id="decision-tree"></div>
+      </section>
+
+      <!-- E. Compression Cost Profile -->
+      <section class="xp-section" id="cost-section">
+        <h2>④ Bit Cost Profile</h2>
+        <p>Each bar shows one value's encoding cost. Green = identical (1 bit), blue = window reuse, yellow = new window.</p>
+        <div class="xp-card">
+          <canvas id="cost-canvas" height="220"></canvas>
+        </div>
+      </section>
+
+      <!-- F. Pattern Comparison Summary -->
+      <section class="xp-section" id="summary-section">
+        <h2>⑤ Compression Summary</h2>
+        <div class="xp-stats-row" id="summary-stats"></div>
+        <div class="xor-encoding-bar" id="encoding-bar"></div>
+        <div class="xor-story xp-story" id="compression-story"></div>
+      </section>
+
+      <footer style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--xp-border); text-align: center;">
+        <p style="font-size: 13px; color: var(--xp-text-dim);">
+          Part of <a href="../../../" style="color: var(--xp-accent); text-decoration: none;">o11ykit</a>
+          · <a href="../" style="color: var(--xp-text-muted); text-decoration: none;">← Back to Learn</a>
+        </p>
+      </footer>
+
+    </div>
+    <script type="module" src="xor-experience.js"></script>
+  </body>
+</html>

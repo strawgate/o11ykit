@@ -9,9 +9,9 @@
  * baseline. Everything else should beat it on memory.
  */
 
-import type { Labels, SeriesId, StorageBackend, TimeRange } from './types.js';
-import { LabelIndex } from './label-index.js';
-import { lowerBound, upperBound } from './binary-search.js';
+import { lowerBound, upperBound } from "./binary-search.js";
+import { LabelIndex } from "./label-index.js";
+import type { Labels, SeriesId, StorageBackend, TimeRange } from "./types.js";
 
 interface FlatSeries {
   timestamps: BigInt64Array;
@@ -26,7 +26,7 @@ export class FlatStore implements StorageBackend {
   private labelIndex: LabelIndex;
   private _sampleCount = 0;
 
-  constructor(name = 'flat', labelIndex?: LabelIndex) {
+  constructor(name = "flat", labelIndex?: LabelIndex) {
     this.name = name;
     this.labelIndex = labelIndex ?? new LabelIndex();
   }
@@ -46,6 +46,7 @@ export class FlatStore implements StorageBackend {
   }
 
   append(id: SeriesId, timestamp: bigint, value: number): void {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.series[id]!;
     if (s.count === s.timestamps.length) {
       this.grow(s);
@@ -57,6 +58,7 @@ export class FlatStore implements StorageBackend {
   }
 
   appendBatch(id: SeriesId, timestamps: BigInt64Array, values: Float64Array): void {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.series[id]!;
     const need = s.count + timestamps.length;
     while (need > s.timestamps.length) {
@@ -75,13 +77,26 @@ export class FlatStore implements StorageBackend {
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
+    return (
+      this.readParts(id, start, end)[0] ?? {
+        timestamps: new BigInt64Array(0),
+        values: new Float64Array(0),
+      }
+    );
+  }
+
+  readParts(id: SeriesId, start: bigint, end: bigint): TimeRange[] {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.series[id]!;
     const lo = lowerBound(s.timestamps, start, 0, s.count);
     const hi = upperBound(s.timestamps, end, lo, s.count);
-    return {
-      timestamps: s.timestamps.slice(lo, hi),
-      values: s.values.slice(lo, hi),
-    };
+    if (hi <= lo) return [];
+    return [
+      {
+        timestamps: s.timestamps.slice(lo, hi),
+        values: s.values.slice(lo, hi),
+      },
+    ];
   }
 
   labels(id: SeriesId): Labels | undefined {
@@ -90,8 +105,12 @@ export class FlatStore implements StorageBackend {
 
   // ── Stats ──
 
-  get seriesCount(): number { return this.series.length; }
-  get sampleCount(): number { return this._sampleCount; }
+  get seriesCount(): number {
+    return this.series.length;
+  }
+  get sampleCount(): number {
+    return this._sampleCount;
+  }
 
   memoryBytes(): number {
     let bytes = 0;

@@ -1,5 +1,5 @@
-import type { Labels, SeriesId } from './types.js';
-import { Interner } from './interner.js';
+import { Interner } from "./interner.js";
+import type { Labels, SeriesId } from "./types.js";
 
 export class MemPostings {
   private readonly byLabel = new Map<number, Map<number, SeriesId[]>>();
@@ -41,6 +41,7 @@ export class MemPostings {
     const out: SeriesId[] = [];
     let j = 0;
     for (let i = 0; i < small.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const v = small[i]!;
       j = gallopLowerBound(big, v, j);
       if (j >= big.length) break;
@@ -54,7 +55,9 @@ export class MemPostings {
     let i = 0;
     let j = 0;
     while (i < a.length && j < b.length) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const av = a[i]!;
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
       const bv = b[j]!;
       if (av === bv) {
         out.push(av);
@@ -68,7 +71,9 @@ export class MemPostings {
         j++;
       }
     }
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     while (i < a.length) out.push(a[i++]!);
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     while (j < b.length) out.push(b[j++]!);
     return out;
   }
@@ -96,10 +101,12 @@ export class MemPostings {
 
 function gallopLowerBound(arr: number[], target: number, from: number): number {
   if (from >= arr.length) return arr.length;
+  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
   if (arr[from]! >= target) return from;
   let step = 1;
   let lo = from + 1;
   let hi = lo;
+  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
   while (hi < arr.length && arr[hi]! < target) {
     lo = hi + 1;
     step <<= 1;
@@ -110,6 +117,7 @@ function gallopLowerBound(arr: number[], target: number, from: number): number {
   let right = hi;
   while (left <= right) {
     const mid = (left + right) >>> 1;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     if (arr[mid]! < target) left = mid + 1;
     else right = mid - 1;
   }

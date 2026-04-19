@@ -1,10 +1,10 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 /**
  * Diagnostic: test correctness of column-store read for OTel process data.
  */
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgDir = join(__dirname, "..");
@@ -100,42 +100,84 @@ for (const d of data) {
 
 console.log("Query range:", minT.toString(), "->", maxT.toString());
 console.log("Series 0:", data[0].timestamps.length, "pts");
-console.log("  range:", data[0].timestamps[0].toString(), "->", data[0].timestamps[data[0].timestamps.length - 1].toString());
+console.log(
+  "  range:",
+  data[0].timestamps[0].toString(),
+  "->",
+  data[0].timestamps[data[0].timestamps.length - 1].toString()
+);
 
 const r = store.read(ids[0], minT, maxT);
 console.log("Read returned:", r.timestamps.length, "pts");
 
 if (r.timestamps.length !== data[0].timestamps.length) {
-  console.log("LENGTH MISMATCH:", data[0].timestamps.length, "expected,", r.timestamps.length, "got");
+  console.log(
+    "LENGTH MISMATCH:",
+    data[0].timestamps.length,
+    "expected,",
+    r.timestamps.length,
+    "got"
+  );
   console.log("  delta:", r.timestamps.length - data[0].timestamps.length);
 
   if (r.timestamps.length > 0) {
-    console.log("  result first:", r.timestamps[0].toString(), "last:", r.timestamps[r.timestamps.length - 1].toString());
+    console.log(
+      "  result first:",
+      r.timestamps[0].toString(),
+      "last:",
+      r.timestamps[r.timestamps.length - 1].toString()
+    );
   }
 
   // Find first divergence
   const n = Math.min(r.timestamps.length, data[0].timestamps.length);
   for (let i = 0; i < n; i++) {
     if (r.timestamps[i] !== data[0].timestamps[i]) {
-      console.log("  First ts diff at i=" + i + ":", r.timestamps[i].toString(), "vs", data[0].timestamps[i].toString());
+      console.log(
+        `  First ts diff at i=${i}:`,
+        r.timestamps[i].toString(),
+        "vs",
+        data[0].timestamps[i].toString()
+      );
       // Show context
       for (let j = Math.max(0, i - 2); j <= Math.min(n - 1, i + 2); j++) {
         const match = r.timestamps[j] === data[0].timestamps[j] ? "=" : "≠";
-        console.log("    [" + j + "] read=" + r.timestamps[j]?.toString() + " " + match + " expected=" + data[0].timestamps[j].toString());
+        console.log(
+          "    [" +
+            j +
+            "] read=" +
+            r.timestamps[j]?.toString() +
+            " " +
+            match +
+            " expected=" +
+            data[0].timestamps[j].toString()
+        );
       }
       break;
     }
     if (Math.abs(r.values[i] - data[0].values[i]) > 1e-10) {
-      console.log("  First val diff at i=" + i + ":", r.values[i], "vs", data[0].values[i]);
+      console.log(`  First val diff at i=${i}:`, r.values[i], "vs", data[0].values[i]);
       break;
     }
   }
 } else {
   let mismatches = 0;
   for (let i = 0; i < data[0].timestamps.length; i++) {
-    if (r.timestamps[i] !== data[0].timestamps[i] || Math.abs(r.values[i] - data[0].values[i]) > 1e-10) {
+    if (
+      r.timestamps[i] !== data[0].timestamps[i] ||
+      Math.abs(r.values[i] - data[0].values[i]) > 1e-10
+    ) {
       if (mismatches === 0) {
-        console.log("  First mismatch at i=" + i + ": ts", r.timestamps[i]?.toString(), "vs", data[0].timestamps[i].toString(), "val", r.values[i], "vs", data[0].values[i]);
+        console.log(
+          `  First mismatch at i=${i}: ts`,
+          r.timestamps[i]?.toString(),
+          "vs",
+          data[0].timestamps[i].toString(),
+          "val",
+          r.values[i],
+          "vs",
+          data[0].values[i]
+        );
       }
       mismatches++;
     }
