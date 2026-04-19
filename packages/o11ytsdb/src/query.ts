@@ -261,8 +261,10 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
     for (let ri = 0; ri < ranges.length; ri++) {
       const r = ranges[ri]!;
       if (r.stats && r.chunkMinT !== undefined && r.chunkMaxT !== undefined) {
-        const bucketLo = Number(r.chunkMinT - minT) / stepN | 0;
-        const bucketHi = Number(r.chunkMaxT - minT) / stepN | 0;
+        const chunkMinTN = Number(r.chunkMinT - minT) + minTN;
+        const chunkMaxTN = Number(r.chunkMaxT - minT) + minTN;
+        const bucketLo = (chunkMinTN - minTN) / stepN | 0;
+        const bucketHi = (chunkMaxTN - minTN) / stepN | 0;
         if (bucketLo === bucketHi) {
           // Entire chunk maps to one bucket — fold stats directly.
           _foldStats(fn, r.stats, values, counts, bucketLo);
@@ -271,7 +273,7 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
         // Chunk spans multiple buckets — decode and accumulate inline.
         if (r.decode) {
           const decoded = r.decodeView ? r.decodeView() : r.decode();
-          accumulate(decoded.timestamps, decoded.values);
+          accumulate(decoded.timestamps, decoded.values, chunkMinTN, chunkMaxTN);
           continue;
         }
       }
@@ -328,7 +330,7 @@ function _makeAccumulator(
   fn: AggFn,
   values: Float64Array, counts: Float64Array,
   minTN: number, stepN: number,
-): (ts: BigInt64Array, vs: Float64Array) => void {
+): (ts: BigInt64Array, vs: Float64Array, chunkMinTN?: number, chunkMaxTN?: number) => void {
   // Read a single i64 timestamp from BigInt64Array via DataView.
   const readTs = (dv: DataView, i: number): number => {
     const off = i << 3;
@@ -337,24 +339,25 @@ function _makeAccumulator(
 
   // For regular-interval chunks (the common case: fixed scrape interval),
   // compute bucket indices arithmetically from sample index instead of
-  // reading every timestamp via DataView. Detects regularity by comparing
-  // first two timestamps and spot-checking the last. Falls back to per-sample
-  // DataView reads for irregular chunks.
-  const accumulate = (ts: BigInt64Array, vs: Float64Array, fold: (bucket: number, v: number) => void): void => {
+  // reading every timestamp via DataView. Uses chunk metadata (minT, maxT)
+  // to derive the interval reliably: interval = (maxT - minT) / (count - 1).
+  // Falls back to per-sample DataView reads when metadata is unavailable or
+  // the derived interval doesn't divide evenly (irregular timestamps).
+  const accumulate = (ts: BigInt64Array, vs: Float64Array, fold: (bucket: number, v: number) => void, chunkMinTN?: number, chunkMaxTN?: number): void => {
     const len = ts.length;
     if (len === 0) return;
-    const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
-    const t0 = readTs(dv, 0);
-    if (len >= 2) {
-      const interval = readTs(dv, 1) - t0;
-      if (interval > 0 && readTs(dv, len - 1) === t0 + (len - 1) * interval) {
-        const base = t0 - minTN;
+    if (len >= 2 && chunkMinTN !== undefined && chunkMaxTN !== undefined) {
+      const span = chunkMaxTN - chunkMinTN;
+      if (span > 0 && span % (len - 1) === 0) {
+        const interval = span / (len - 1);
+        const base = chunkMinTN - minTN;
         for (let i = 0; i < len; i++) {
           fold((base + i * interval) / stepN | 0, vs[i]!);
         }
         return;
       }
     }
+    const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
     for (let i = 0; i < len; i++) {
       fold((readTs(dv, i) - minTN) / stepN | 0, vs[i]!);
     }
@@ -362,35 +365,35 @@ function _makeAccumulator(
 
   switch (fn) {
     case 'min':
-      return (ts, vs) => accumulate(ts, vs, (bucket, v) => {
+      return (ts, vs, cMin, cMax) => accumulate(ts, vs, (bucket, v) => {
         if (v < values[bucket]!) values[bucket] = v;
         counts[bucket]!++;
-      });
+      }, cMin, cMax);
     case 'max':
-      return (ts, vs) => accumulate(ts, vs, (bucket, v) => {
+      return (ts, vs, cMin, cMax) => accumulate(ts, vs, (bucket, v) => {
         if (v > values[bucket]!) values[bucket] = v;
         counts[bucket]!++;
-      });
+      }, cMin, cMax);
     case 'sum': case 'avg':
-      return (ts, vs) => accumulate(ts, vs, (bucket, v) => {
+      return (ts, vs, cMin, cMax) => accumulate(ts, vs, (bucket, v) => {
         values[bucket]! += v;
         counts[bucket]!++;
-      });
+      }, cMin, cMax);
     case 'count':
-      return (ts, _vs) => accumulate(ts, _vs, (bucket, _v) => {
+      return (ts, _vs, cMin, cMax) => accumulate(ts, _vs, (bucket, _v) => {
         values[bucket]!++;
         counts[bucket]!++;
-      });
+      }, cMin, cMax);
     case 'last':
-      return (ts, vs) => accumulate(ts, vs, (bucket, v) => {
+      return (ts, vs, cMin, cMax) => accumulate(ts, vs, (bucket, v) => {
         values[bucket] = v;
         counts[bucket]!++;
-      });
+      }, cMin, cMax);
     default:
-      return (ts, vs) => accumulate(ts, vs, (bucket, v) => {
+      return (ts, vs, cMin, cMax) => accumulate(ts, vs, (bucket, v) => {
         values[bucket] = aggAccumulate(values[bucket]!, v, fn);
         counts[bucket]!++;
-      });
+      }, cMin, cMax);
   }
 }
 
@@ -418,23 +421,19 @@ function _stepAggregateRate(
     const src = decoded.timestamps;
     const len = src.length;
     if (len === 0) continue;
-    const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
     const vs = decoded.values;
 
-    const readTs = (j: number): number => {
-      const off = j << 3;
-      return dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
-    };
-    const t0 = readTs(0);
-
-    // Rate needs actual timestamps for first/last tracking, but bucket index
-    // can still use arithmetic for regular-interval chunks.
-    if (len >= 2) {
-      const interval = readTs(1) - t0;
-      if (interval > 0 && readTs(len - 1) === t0 + (len - 1) * interval) {
-        const base = t0 - minTN;
+    // Use chunk metadata to derive interval when available.
+    const hasChunkMeta = r.chunkMinT !== undefined && r.chunkMaxT !== undefined;
+    if (len >= 2 && hasChunkMeta) {
+      const chunkMinTN = Number(r.chunkMinT! - minT) + minTN;
+      const chunkMaxTN = Number(r.chunkMaxT! - minT) + minTN;
+      const span = chunkMaxTN - chunkMinTN;
+      if (span > 0 && span % (len - 1) === 0) {
+        const interval = span / (len - 1);
+        const base = chunkMinTN - minTN;
         for (let i = 0; i < len; i++) {
-          const t = t0 + i * interval;
+          const t = chunkMinTN + i * interval;
           const bucket = (base + i * interval) / stepN | 0;
           counts[bucket]!++;
           if (t < firstTs[bucket]!) { firstTs[bucket] = t; firstVal[bucket] = vs[i]!; }
@@ -443,6 +442,11 @@ function _stepAggregateRate(
         continue;
       }
     }
+    const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+    const readTs = (j: number): number => {
+      const off = j << 3;
+      return dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
+    };
     for (let i = 0; i < len; i++) {
       const t = readTs(i);
       const bucket = (t - minTN) / stepN | 0;
