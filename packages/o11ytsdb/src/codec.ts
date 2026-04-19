@@ -88,7 +88,9 @@ export class BitReader {
   /** Read a single bit. */
   readBit(): number {
     if (this.bytePos >= this.buf.length) {
-      throw new RangeError(`BitReader: read past end of buffer (bytePos=${this.bytePos}, length=${this.buf.length})`);
+      throw new RangeError(
+        `BitReader: read past end of buffer (bytePos=${this.bytePos}, length=${this.buf.length})`
+      );
     }
     // biome-ignore lint/style/noNonNullAssertion: bounds-checked above
     const byte = this.buf[this.bytePos]!;
