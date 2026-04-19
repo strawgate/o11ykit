@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>o11ykit / otlpkit</title>
+    <title>OtlpKit — Parse, query, and render OTLP in the browser</title>
     <meta
       name="description"
-      content="OtlpKit docs: who it is for, what it does, and how to turn OTLP payloads into diagnostics dashboards."
+      content="OtlpKit: four npm packages that turn OTLP JSON into chart-ready frames for Chart.js, ECharts, Recharts, and uPlot."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -24,49 +24,103 @@
           <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
           <a href="/o11ykit/octo11y/">Octo11y</a>
           <a href="/o11ykit/benchkit/">Benchkit</a>
-          <a href="/o11ykit/otlpkit/">Live Demo</a>
+          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </header>
 
       <section class="hero panel">
-        <p class="eyebrow">Product docs: OtlpKit</p>
-        <h1>OTLP payloads into browser-native diagnostics.</h1>
+        <p class="eyebrow">foundation layer</p>
+        <h1>OTLP in. Charts out.</h1>
         <p class="lede">
-          OtlpKit is for app engineers, SREs, and platform teams who already emit OpenTelemetry and
-          want a lightweight way to explore metrics, traces, and logs without standing up a full
-          observability backend for every use case.
+          Four packages that parse OTLP JSON, filter and group records, build library-agnostic frames,
+          and project them into Chart.js, ECharts, Recharts, or uPlot configs. Zero backend required.
         </p>
         <div class="hero-actions">
-          <a class="cta cta-primary" href="/o11ykit/otlpkit/">Open OtlpKit Demo</a>
+          <a class="cta cta-primary" href="/o11ykit/otlpkit/">Open Live Demo</a>
           <a class="cta" href="https://www.npmjs.com/search?q=%40otlpkit" target="_blank" rel="noreferrer">
-            View @otlpkit Packages
+            npm Packages
           </a>
         </div>
       </section>
 
+      <!-- The pipeline -->
       <section class="panel">
-        <h2>What You Can Build</h2>
-        <div class="grid grid-3">
-          <article class="feature-card otlpkit">
-            <h3>Diagnostics Dashboards</h3>
-            <p>Render latency, throughput, and error trends directly in your app UI.</p>
-          </article>
-          <article class="feature-card otlpkit">
-            <h3>Trace Drilldowns</h3>
-            <p>Use trace waterfalls and event timelines for incident and regression analysis.</p>
-          </article>
-          <article class="feature-card otlpkit">
-            <h3>Log + Metric Correlation</h3>
-            <p>Display related logs and metrics from the same OTLP stream in one page.</p>
-          </article>
+        <h2>The Pipeline</h2>
+        <div class="pipeline">
+          <div class="pipeline-stage accent-otlp">
+            <div class="stage-name">@otlpkit/otlpjson</div>
+            <div class="stage-desc">Parse OTLP JSON, detect signals, normalize timestamps, flatten attributes</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-otlp">
+            <div class="stage-name">@otlpkit/query</div>
+            <div class="stage-desc">Filter, group, bucket time-series, select latest values</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-otlp">
+            <div class="stage-name">@otlpkit/views</div>
+            <div class="stage-desc">Build frames: time-series, latest values, histograms, trace waterfalls</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-otlp">
+            <div class="stage-name">@otlpkit/adapters</div>
+            <div class="stage-desc">Project to Chart.js, ECharts, Recharts, or uPlot native configs</div>
+          </div>
         </div>
       </section>
 
+      <!-- Packages -->
+      <section class="panel">
+        <h2>Packages</h2>
+        <div class="grid grid-2">
+          <div class="pkg-card">
+            <div class="pkg-name">@otlpkit/otlpjson</div>
+            <div class="pkg-desc">Parse raw OTLP JSON documents. Signal detection (metrics, traces, logs), timestamp normalization, attribute flattening, typed iterators.</div>
+            <ul class="pkg-exports">
+              <li>parseOtlpJson()</li>
+              <li>collectMetricPoints()</li>
+              <li>collectSpans()</li>
+              <li>collectLogRecords()</li>
+            </ul>
+          </div>
+          <div class="pkg-card">
+            <div class="pkg-name">@otlpkit/query</div>
+            <div class="pkg-desc">Materialize signals into queryable record sets. Filter by attributes, group by labels, bucket into time windows with sum/avg/min/max/count/rate.</div>
+            <ul class="pkg-exports">
+              <li>filterRecords()</li>
+              <li>groupBy()</li>
+              <li>bucketTimeSeries()</li>
+              <li>selectLatestValues()</li>
+            </ul>
+          </div>
+          <div class="pkg-card">
+            <div class="pkg-name">@otlpkit/views</div>
+            <div class="pkg-desc">Build reusable, library-agnostic frame objects. Incremental ingest store with bounded memory. Frame merging and append operations for streaming updates.</div>
+            <ul class="pkg-exports">
+              <li>buildTimeSeriesFrame()</li>
+              <li>buildLatestValuesFrame()</li>
+              <li>createTelemetryStore()</li>
+              <li>appendTimeSeriesFrame()</li>
+            </ul>
+          </div>
+          <div class="pkg-card">
+            <div class="pkg-name">@otlpkit/adapters</div>
+            <div class="pkg-desc">Minimal translation layer to each chart library's native idioms. Row-based for Recharts, dataset/encode for ECharts, columnar for uPlot.</div>
+            <ul class="pkg-exports">
+              <li>toChartJsLineConfig()</li>
+              <li>toEChartsTimeSeriesOption()</li>
+              <li>toRechartsLineData()</li>
+              <li>toUPlotTimeSeriesModel()</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- Code example -->
       <section class="panel code-panel">
-        <h2>5-Minute Integration Sketch</h2>
-        <p>
-          Pull OTLP JSON from your API, shape it with <code>@otlpkit/views</code>, then feed your
-          charting library via an adapter.
+        <h2>Integration Example</h2>
+        <p class="section-intro">
+          Fetch OTLP from your API, build a frame, render a chart — three imports, five lines of glue.
         </p>
 <pre><code>import { buildTimeSeriesFrame, buildLatestValuesFrame } from "@otlpkit/views";
 import { toEChartsTimeSeriesOption } from "@otlpkit/adapters/echarts";
@@ -81,49 +135,25 @@ const latency = buildTimeSeriesFrame(metricsDoc, {
   title: "P95 latency by service",
 });
 
-const latest = buildLatestValuesFrame(metricsDoc, {
-  signal: "metrics",
-  metricName: "http.server.active_requests",
-  splitBy: "resource.service.name",
-  title: "Active requests now",
-});
-
 const option = toEChartsTimeSeriesOption(latency);</code></pre>
       </section>
 
+      <!-- Works with -->
       <section class="panel">
-        <h2>Who Should Use OtlpKit</h2>
-        <div class="grid grid-2">
-          <article class="journey">
-            <h3>Application Teams</h3>
-            <p>
-              You already instrument with OpenTelemetry and need embeddable diagnostics in internal
-              tools, admin pages, or incident UIs.
-            </p>
-          </article>
-          <article class="journey">
-            <h3>Platform / Runtime Teams</h3>
-            <p>
-              You need portable visualizations over raw telemetry in CI previews, staging clusters,
-              and edge deployments where heavyweight stacks are unnecessary.
-            </p>
-          </article>
+        <h2>Works With</h2>
+        <div class="format-strip">
+          <span class="format-tag">Chart.js</span>
+          <span class="format-tag">ECharts</span>
+          <span class="format-tag">Recharts</span>
+          <span class="format-tag">uPlot</span>
+          <span class="format-tag">Visx</span>
         </div>
-      </section>
-
-      <section class="panel">
-        <h2>Advanced Practice</h2>
-        <p>
-          If your runtime captures OTLP into a ring buffer (for example, a local processor in front
-          of your telemetry pipeline), OtlpKit can render that buffered data over a simple API for
-          instant diagnostics without waiting on external storage pipelines.
-        </p>
       </section>
 
       <footer class="site-footer">
         <p>
-          Continue the story with GitHub telemetry automation:
-          <a href="/o11ykit/octo11y/">Octo11y docs</a>
+          OtlpKit is the foundation layer of <a href="/o11ykit/">o11ykit</a>.
+          Build telemetry pipelines on top with <a href="/o11ykit/octo11y/">Octo11y</a>.
         </p>
       </footer>
     </main>
