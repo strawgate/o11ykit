@@ -1,0 +1,10 @@
+bench/results/
+bench/dist/
+bench/*.cpuprofile
+wasm/
+dist/
+.tsbuildinfo
+zig/zig-cache/
+zig/zig-out/
+zig/.zig-cache/
+rust/target/

@@ -1,0 +1,20 @@
+[package]
+name = "o11ytsdb-wasm"
+version = "0.0.1"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = "z"      # Optimize for size
+lto = true           # Link-time optimization
+codegen-units = 1    # Single codegen unit for best optimization
+strip = true         # Strip debug info
+panic = "abort"      # No unwinding — smaller binary
+
+[dependencies]
+# No deps. We go bare-metal for smallest WASM binary.
+# wasm-bindgen is intentionally omitted — raw #[no_mangle] exports
+# keep the binary small and the ABI identical to the Zig version.

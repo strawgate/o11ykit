@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ALP Compression — Interactive Experience | o11ytsdb</title>
+    <meta name="description" content="Watch floating-point numbers get quantized, bit-packed, and compressed to a fraction of their size — interactively, step by step." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="../shared.css" />
+    <link rel="stylesheet" href="alp-experience.css" />
+  </head>
+  <body>
+    <a href="#main" class="xp-skip-link">Skip to content</a>
+    <div class="xp-ambient" aria-hidden="true"></div>
+    <div class="xp-page" id="main">
+
+      <div id="breadcrumb-nav"></div>
+
+      <div class="xp-hero">
+        <p class="xp-eyebrow">Compression</p>
+        <h1>ALP Compression</h1>
+        <p class="lede">
+          Adaptive Lossless floating-Point compression turns decimal floats into
+          tightly <span class="xp-term" data-term="bit-packing">bit-packed</span> integers — often <strong>4–8×</strong> smaller than an 8-byte float.
+          Step through the pipeline and watch every transformation.
+        </p>
+        <p class="lede" style="margin-top:12px; font-size:15px; color:var(--xp-text-muted);">
+          Metric values like CPU usage (34.5%, 35.1%, 34.8%) look like decimals, but they're actually
+          stored as 64-bit floats — 8 bytes each, most of which carry precision you never needed.
+          ALP exploits the fact that these values are secretly integers in disguise (3450, 3510, 3480)
+          and stores them in a fraction of the space.
+        </p>
+      </div>
+
+      <!-- A. Data Pattern Picker -->
+      <section class="xp-section" id="data-section">
+        <h2>① Choose Your Data</h2>
+        <div class="xp-controls" id="pattern-buttons"></div>
+        <div id="custom-input-wrap" class="custom-input-wrap" hidden>
+          <textarea id="custom-textarea" class="alp-textarea" rows="3"
+            placeholder="Enter comma-separated floats, e.g. 3.14, 2.71, 1.41, 98.6, 0.577"></textarea>
+          <button type="button" class="xp-btn xp-btn-primary" id="apply-custom">Apply</button>
+        </div>
+        <div class="xp-card alp-values-card" id="values-card">
+          <div class="alp-values-scroll xp-scroll-x" id="values-scroll"></div>
+        </div>
+      </section>
+
+      <!-- B. Pipeline Visualization -->
+      <section class="xp-section" id="pipeline-section">
+        <h2>② Compression Pipeline</h2>
+        <p>Click any stage or use the controls to step through.</p>
+        <div class="xp-pipeline" id="pipeline-bar"></div>
+        <div class="xp-controls">
+          <button type="button" class="xp-btn" id="btn-prev">← Prev</button>
+          <button type="button" class="xp-btn" id="btn-next">Next →</button>
+          <button type="button" class="xp-btn" id="btn-play">▶ Play All</button>
+          <button type="button" class="xp-btn" id="btn-reset">Reset</button>
+        </div>
+      </section>
+
+      <!-- C–G. Stage Detail Panels -->
+      <div id="stage-panels">
+        <div class="alp-panel" id="panel-orient"></div>
+        <div class="alp-panel" id="panel-scan" hidden></div>
+        <div class="alp-panel" id="panel-quantize" hidden></div>
+        <div class="alp-panel" id="panel-for" hidden></div>
+        <div class="alp-panel" id="panel-bitpack" hidden></div>
+        <div class="alp-panel" id="panel-exceptions" hidden></div>
+      </div>
+
+      <!-- H. Compression Summary -->
+      <section class="xp-section" id="summary-section" hidden>
+        <h2>③ Compression Summary</h2>
+        <div class="xp-stats-row" id="summary-stats"></div>
+        <div class="xp-card" id="wire-format-card"></div>
+      </section>
+
+      <footer style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--xp-border); text-align: center;">
+        <p style="font-size: 13px; color: var(--xp-text-dim);">
+          Part of <a href="../../../" style="color: var(--xp-accent); text-decoration: none;">o11ykit</a>
+          · <a href="../" style="color: var(--xp-text-muted); text-decoration: none;">← Back to Learn</a>
+        </p>
+      </footer>
+
+    </div>
+    <script type="module" src="alp-experience.js"></script>
+  </body>
+</html>

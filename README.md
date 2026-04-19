@@ -5,6 +5,7 @@
 Top-level projects:
 
 - `@otlpkit/*` (root `packages/*`): OTLP parsing/query/view/adapters for browser dashboards and app diagnostics.
+- `o11ytsdb` (root `packages/o11ytsdb`): browser-native time-series database for OpenTelemetry data with WASM-accelerated codecs.
 - `octo11y` (`/octo11y`): GitHub Actions-driven metrics pipeline and UI packages.
 - `benchkit` (`/octo11y`): benchmark-focused packages/actions layered on octo11y.
 
@@ -14,6 +15,10 @@ The root project currently hosts the `@otlpkit/*` JavaScript libraries:
 - `@otlpkit/query`: filter, group, and bucket materialized telemetry records
 - `@otlpkit/views`: build reusable frames such as time series, latest-value tables, histograms, trace waterfalls, and event timelines
 - `@otlpkit/adapters`: project frames into library-native Chart.js, Recharts, ECharts, and uPlot shapes
+
+And the `o11ytsdb` time-series database:
+
+- `o11ytsdb`: XOR-delta (Gorilla) codec with TypeScript, Zig→WASM, and Rust→WASM implementations; chunked and columnar storage backends; baseline query engine. See [`packages/o11ytsdb/README.md`](./packages/o11ytsdb/README.md) for benchmarks and status.
 
 The root project currently hosts this GitHub Action:
 
