@@ -27,7 +27,8 @@ export interface IngestResult {
 
 export interface PendingSeriesSamples {
   labels: Labels;
-  timestamps: bigint[];
+  /** Timestamps in milliseconds (Number, not BigInt) for fast accumulation. */
+  timestamps: number[];
   values: number[];
 }
 
@@ -288,11 +289,16 @@ export function flushSamplesToStorage(pending: Map<string, PendingSeriesSamples>
   const beforeSeries = storage.seriesCount;
 
   for (const batch of pending.values()) {
-    if (batch.timestamps.length === 0) continue;
+    const len = batch.timestamps.length;
+    if (len === 0) continue;
 
     const id = storage.getOrCreateSeries(batch.labels);
-    storage.appendBatch(id, BigInt64Array.from(batch.timestamps), Float64Array.from(batch.values));
-    result.samplesInserted += batch.timestamps.length;
+    // Convert ms numbers → nanosecond BigInt64Array in one pass.
+    const tsArr = new BigInt64Array(len);
+    const msArr = batch.timestamps;
+    for (let i = 0; i < len; i++) tsArr[i] = BigInt(msArr[i]!) * 1_000_000n;
+    storage.appendBatch(id, tsArr, Float64Array.from(batch.values));
+    result.samplesInserted += len;
   }
 
   result.seriesCreated += Math.max(0, storage.seriesCount - beforeSeries);
@@ -624,7 +630,7 @@ function ingestExpBuckets(
   bucketMetricHash: number,
   metricSize: number,
   pointAttrs: Record<string, unknown>,
-  ts: bigint,
+  ts: number,
   scale: number | null,
   side: 'positive' | 'negative',
   buckets: { offset?: string | number; bucketCounts?: readonly (string | number)[] } | undefined,
@@ -690,39 +696,51 @@ function parseNumberArray(values: readonly (string | number)[] | readonly number
   return out;
 }
 
-// ── T6: Fast-path timestamp normalization ───────────────────────────
+// ── Timestamp normalization → milliseconds as Number ────────────────
+// Returns ms-precision Number timestamps. Avoids BigInt allocation in
+// the hot path; conversion to nanosecond BigInt64Array happens once at
+// flush time. Sub-ms precision from nanosecond strings is truncated.
 
-function isAllDigits(s: string): boolean {
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 48 || c > 57) return false;
+const MS_THRESHOLD = 10_000_000_000_000; // 10^13
+
+function normalizeTimestamp(value: unknown): number | null {
+  if (typeof value === 'string') {
+    if (value.length === 0) return null;
+    // Fast path: digit-scan + manual accumulate for first 13 chars.
+    const len = value.length;
+    const end = len > 13 ? 13 : len;
+    let n = 0;
+    for (let i = 0; i < end; i++) {
+      const c = value.charCodeAt(i) - 48;
+      if (c < 0 || c > 9) {
+        // Not a pure digit string — fall back to Date.parse.
+        const ms = Date.parse(value);
+        return Number.isNaN(ms) ? null : ms;
+      }
+      n = n * 10 + c;
+    }
+    // Verify remaining digits (sub-ms portion of nanosecond strings).
+    for (let i = end; i < len; i++) {
+      const c = value.charCodeAt(i) - 48;
+      if (c < 0 || c > 9) {
+        const ms = Date.parse(value);
+        return Number.isNaN(ms) ? null : ms;
+      }
+    }
+    // n is now the first min(13, len) digits.
+    // ≤13 digits & ≤ threshold → treat as ms; otherwise n is already ms
+    // (first 13 digits of a nanosecond value).
+    return n;
   }
-  return true;
-}
-
-function normalizeTimestamp(value: unknown): bigint | null {
-  if (typeof value === 'bigint') return normalizeMagnitude(value);
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) return null;
-    return normalizeMagnitude(BigInt(Math.trunc(value)));
+    return value > MS_THRESHOLD ? Math.trunc(value / 1_000_000) : Math.trunc(value);
   }
-  if (typeof value === 'string') {
-    if (!value) return null;
-    if (isAllDigits(value)) return normalizeMagnitude(BigInt(value));
-    const ms = Date.parse(value);
-    if (Number.isNaN(ms)) return null;
-    return BigInt(ms) * 1_000_000n;
+  if (typeof value === 'bigint') {
+    const abs = value < 0n ? -value : value;
+    return Number(abs > 10_000_000_000_000n ? value / 1_000_000n : value);
   }
   return null;
-}
-
-function normalizeMagnitude(ts: bigint): bigint {
-  const abs = ts < 0n ? -ts : ts;
-  // Heuristic: values <= 10^13 are probably milliseconds.
-  if (abs <= 10_000_000_000_000n) {
-    return ts * 1_000_000n;
-  }
-  return ts;
 }
 
 export function isDeltaTemporality(aggregationTemporality: number | undefined): boolean {
