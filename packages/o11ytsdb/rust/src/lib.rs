@@ -2074,7 +2074,6 @@ pub extern "C" fn internerResolve(id: u32, out_ptr: *mut u8, out_cap: u32) -> u3
     }
 }
 
-<<<<<<< HEAD
 // ── SIMD accelerators ────────────────────────────────────────────────
 
 /// Convert an array of f64 millisecond timestamps to i64 nanosecond timestamps.
