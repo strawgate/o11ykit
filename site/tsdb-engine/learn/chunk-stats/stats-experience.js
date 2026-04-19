@@ -14,6 +14,8 @@ import {
   el,
   fmt,
   generateSamples,
+  initGlossary,
+  revealSection,
 } from "../shared.js";
 
 /* ─── Constants ───────────────────────────────────────────────────── */
@@ -183,7 +185,7 @@ function selectChunk(id) {
 
   // header
   $("#detail-header").innerHTML = `
-    <h3>Chunk ${id}</h3>
+    <h3><span class="xp-term" data-term="chunk">Chunk</span> ${id}</h3>
     <span class="time-range">${fmtTime(chunk.startTime)} – ${fmtTime(chunk.endTime)}</span>
   `;
 
@@ -243,13 +245,13 @@ function runQuery() {
 function showExecution(buckets, agg, _startChunk) {
   const execSection = $("#execution-section");
   execSection.hidden = false;
-  execSection.scrollIntoView({ behavior: "smooth", block: "start" });
+  revealSection(execSection);
 
   const resultsSection = $("#results-section");
   resultsSection.hidden = true;
 
-  $("#exec-description").textContent =
-    `Running ${agg}() over ${buckets.reduce((s, b) => s + b.chunks.length, 0)} chunks in ${buckets.length} buckets…`;
+  $("#exec-description").innerHTML =
+    `Running ${agg}() over ${buckets.reduce((s, b) => s + b.chunks.length, 0)} <span class="xp-term" data-term="chunk">chunks</span> in ${buckets.length} buckets…`;
 
   const grid = $("#exec-grid");
   grid.innerHTML = "";
@@ -503,7 +505,10 @@ function showResults(bucketResults, agg, decoded, statsOnly, skipped) {
     resultsGrid.appendChild(cell);
   });
 
-  section.scrollIntoView({ behavior: "smooth", block: "start" });
+  revealSection(section);
+
+  const skipLogic = document.getElementById("skip-logic-section");
+  if (skipLogic) skipLogic.hidden = false;
 }
 
 /* ─── Init ────────────────────────────────────────────────────────── */
@@ -539,6 +544,8 @@ function init() {
       card.classList.toggle("highlight", card.dataset.agg === agg);
     });
   });
+
+  initGlossary();
 }
 
 init();

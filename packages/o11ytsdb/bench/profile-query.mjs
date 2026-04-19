@@ -11,9 +11,9 @@
  */
 
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgDir = join(__dirname, "..");
@@ -24,10 +24,10 @@ const NUM_SERIES = 30;
 const POINTS_PER_SERIES = Math.ceil(5_000_000 / NUM_SERIES); // ~166,667 pts each → 5M total
 const TOTAL_SAMPLES = NUM_SERIES * POINTS_PER_SERIES;
 const CHUNK_SIZE = 512;
-const T0 = 1_700_000_000_000n;           // epoch ms
-const INTERVAL = 15_000n;                 // 15s scrape interval
+const T0 = 1_700_000_000_000n; // epoch ms
+const INTERVAL = 15_000n; // 15s scrape interval
 const REGIONS = ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1", "eu-central-1"];
-const AGG_STEP = 60_000n;                 // 1 minute aggregation step
+const AGG_STEP = 60_000n; // 1 minute aggregation step
 
 // ── Data generation (30 series across 5 regions) ─────────────────────
 
@@ -74,7 +74,9 @@ async function makeWasmCodecs(wasmBytes) {
       const outCap = n * 20;
       const outPtr = w.allocScratch(outCap);
       mem().set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), valPtr);
-      return new Uint8Array(w.memory.buffer.slice(outPtr, outPtr + w.encodeValuesALP(valPtr, n, outPtr, outCap)));
+      return new Uint8Array(
+        w.memory.buffer.slice(outPtr, outPtr + w.encodeValuesALP(valPtr, n, outPtr, outCap))
+      );
     },
     decodeValues(buf) {
       w.resetScratch();
@@ -98,7 +100,16 @@ async function makeWasmCodecs(wasmBytes) {
       const s = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + 64));
       return {
         compressed,
-        stats: { minV: s[0], maxV: s[1], sum: s[2], count: s[3], firstV: s[4], lastV: s[5], sumOfSquares: s[6], resetCount: s[7] },
+        stats: {
+          minV: s[0],
+          maxV: s[1],
+          sum: s[2],
+          count: s[3],
+          firstV: s[4],
+          lastV: s[5],
+          sumOfSquares: s[6],
+          resetCount: s[7],
+        },
       };
     },
     encodeBatchValuesWithStats(arrays) {
@@ -107,26 +118,48 @@ async function makeWasmCodecs(wasmBytes) {
       w.resetScratch();
       const valsPtr = w.allocScratch(numArrays * chunkSize * 8);
       for (let i = 0; i < numArrays; i++) {
-        mem().set(new Uint8Array(arrays[i].buffer, arrays[i].byteOffset, arrays[i].byteLength), valsPtr + i * chunkSize * 8);
+        mem().set(
+          new Uint8Array(arrays[i].buffer, arrays[i].byteOffset, arrays[i].byteLength),
+          valsPtr + i * chunkSize * 8
+        );
       }
       const outCap = numArrays * chunkSize * 20;
       const outPtr = w.allocScratch(outCap);
       const offsetsPtr = w.allocScratch(numArrays * 4);
       const sizesPtr = w.allocScratch(numArrays * 4);
       const statsPtr = w.allocScratch(numArrays * 64);
-      w.encodeBatchValuesALPWithStats(valsPtr, chunkSize, numArrays, outPtr, outCap, offsetsPtr, sizesPtr, statsPtr);
-      const offsets = new Uint32Array(w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4));
+      w.encodeBatchValuesALPWithStats(
+        valsPtr,
+        chunkSize,
+        numArrays,
+        outPtr,
+        outCap,
+        offsetsPtr,
+        sizesPtr,
+        statsPtr
+      );
+      const offsets = new Uint32Array(
+        w.memory.buffer.slice(offsetsPtr, offsetsPtr + numArrays * 4)
+      );
       const sizes = new Uint32Array(w.memory.buffer.slice(sizesPtr, sizesPtr + numArrays * 4));
       const allStats = new Float64Array(w.memory.buffer.slice(statsPtr, statsPtr + numArrays * 64));
       const results = [];
       for (let i = 0; i < numArrays; i++) {
-        const compressed = new Uint8Array(w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i]));
+        const compressed = new Uint8Array(
+          w.memory.buffer.slice(outPtr + offsets[i], outPtr + offsets[i] + sizes[i])
+        );
         const si = i * 8;
         results.push({
           compressed,
           stats: {
-            minV: allStats[si], maxV: allStats[si+1], sum: allStats[si+2], count: allStats[si+3],
-            firstV: allStats[si+4], lastV: allStats[si+5], sumOfSquares: allStats[si+6], resetCount: allStats[si+7],
+            minV: allStats[si],
+            maxV: allStats[si + 1],
+            sum: allStats[si + 2],
+            count: allStats[si + 3],
+            firstV: allStats[si + 4],
+            lastV: allStats[si + 5],
+            sumOfSquares: allStats[si + 6],
+            resetCount: allStats[si + 7],
           },
         });
       }
@@ -142,8 +175,13 @@ async function makeWasmCodecs(wasmBytes) {
       const tsPtr = w.allocScratch(n * 8);
       const outCap = n * 20;
       const outPtr = w.allocScratch(outCap);
-      mem().set(new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength), tsPtr);
-      return new Uint8Array(w.memory.buffer.slice(outPtr, outPtr + w.encodeTimestamps(tsPtr, n, outPtr, outCap)));
+      mem().set(
+        new Uint8Array(timestamps.buffer, timestamps.byteOffset, timestamps.byteLength),
+        tsPtr
+      );
+      return new Uint8Array(
+        w.memory.buffer.slice(outPtr, outPtr + w.encodeTimestamps(tsPtr, n, outPtr, outCap))
+      );
     },
     decodeTimestamps(buf) {
       w.resetScratch();
@@ -167,11 +205,15 @@ async function makeWasmCodecs(wasmBytes) {
       const outTsPtr = w.allocScratch(maxSamples * 8);
       const outValPtr = w.allocScratch(maxSamples * 8);
       const n = w.rangeDecodeALP(
-        tsInPtr, compressedTs.length,
-        valInPtr, compressedVals.length,
-        startT, endT,
-        outTsPtr, outValPtr,
-        maxSamples,
+        tsInPtr,
+        compressedTs.length,
+        valInPtr,
+        compressedVals.length,
+        startT,
+        endT,
+        outTsPtr,
+        outValPtr,
+        maxSamples
       );
       if (n === 0) return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
       return {
@@ -186,12 +228,14 @@ async function makeWasmCodecs(wasmBytes) {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function gcAndSnap() {
+function _gcAndSnap() {
   if (global.gc) global.gc();
   return process.memoryUsage();
 }
 
-function fmtMs(n) { return `${n.toFixed(1)}ms`; }
+function fmtMs(n) {
+  return `${n.toFixed(1)}ms`;
+}
 function fmtRate(n) {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
   if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
@@ -209,8 +253,12 @@ async function main() {
   const hasGC = typeof global.gc === "function";
   if (!hasGC) console.log("  ⚠ Run with --expose-gc for accurate memory\n");
 
-  console.log(`  Scenario: ${NUM_SERIES} series × ${POINTS_PER_SERIES.toLocaleString()} pts = ${TOTAL_SAMPLES.toLocaleString()} samples`);
-  console.log(`  Query: min agg, step=${Number(AGG_STEP)/1000}s, groupBy=[region], ${REGIONS.length} groups`);
+  console.log(
+    `  Scenario: ${NUM_SERIES} series × ${POINTS_PER_SERIES.toLocaleString()} pts = ${TOTAL_SAMPLES.toLocaleString()} samples`
+  );
+  console.log(
+    `  Query: min agg, step=${Number(AGG_STEP) / 1000}s, groupBy=[region], ${REGIONS.length} groups`
+  );
   console.log(`  Chunk size: ${CHUNK_SIZE}\n`);
 
   // ── Setup ──
@@ -222,8 +270,15 @@ async function main() {
   const { ScanEngine } = await import(join(pkgDir, "dist/query.js"));
 
   const backends = [
-    { name: "column-alp (no range)", make: () => new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec) },
-    { name: "column-alp-fused",      make: () => new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec) },
+    {
+      name: "column-alp (no range)",
+      make: () => new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec),
+    },
+    {
+      name: "column-alp-fused",
+      make: () =>
+        new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec),
+    },
   ];
 
   const engine = new ScanEngine();
@@ -237,14 +292,18 @@ async function main() {
 
     // Ingest
     const store = backend.make();
-    const ids = data.map(d => store.getOrCreateSeries(d.labels));
+    const ids = data.map((d) => store.getOrCreateSeries(d.labels));
     const tIngest0 = performance.now();
     for (let s = 0; s < data.length; s++) {
       store.appendBatch(ids[s], data[s].timestamps, data[s].values);
     }
     const tIngest1 = performance.now();
-    console.log(`    Ingest: ${fmtMs(tIngest1 - tIngest0)}  (${fmtRate(TOTAL_SAMPLES / (tIngest1 - tIngest0) * 1000)} samples/s)`);
-    console.log(`    Store:  ${fmtBytes(store.memoryBytes())}  (${(store.memoryBytes() / TOTAL_SAMPLES).toFixed(1)} B/pt)\n`);
+    console.log(
+      `    Ingest: ${fmtMs(tIngest1 - tIngest0)}  (${fmtRate((TOTAL_SAMPLES / (tIngest1 - tIngest0)) * 1000)} samples/s)`
+    );
+    console.log(
+      `    Store:  ${fmtBytes(store.memoryBytes())}  (${(store.memoryBytes() / TOTAL_SAMPLES).toFixed(1)} B/pt)\n`
+    );
 
     // ── Query 1: Raw read all series (no aggregation) ──
     if (hasGC) global.gc();
@@ -255,7 +314,9 @@ async function main() {
       readSamples += r.timestamps.length;
     }
     const tRead1 = performance.now();
-    console.log(`    Raw read (all series):    ${fmtMs(tRead1 - tRead0)}  ${fmtRate(readSamples / (tRead1 - tRead0) * 1000)} samples/s  (${readSamples.toLocaleString()} pts)`);
+    console.log(
+      `    Raw read (all series):    ${fmtMs(tRead1 - tRead0)}  ${fmtRate((readSamples / (tRead1 - tRead0)) * 1000)} samples/s  (${readSamples.toLocaleString()} pts)`
+    );
 
     // ── Query 2: ScanEngine with min agg + step + groupBy ──
     if (hasGC) global.gc();
@@ -270,21 +331,23 @@ async function main() {
     });
     const tAgg1 = performance.now();
     const outputPts = result.series.reduce((s, r) => s + r.timestamps.length, 0);
-    console.log(`    Agg query (min/1m/region): ${fmtMs(tAgg1 - tAgg0)}  scanned=${result.scannedSamples.toLocaleString()} → ${outputPts.toLocaleString()} output pts  (${result.series.length} groups)`);
+    console.log(
+      `    Agg query (min/1m/region): ${fmtMs(tAgg1 - tAgg0)}  scanned=${result.scannedSamples.toLocaleString()} → ${outputPts.toLocaleString()} output pts  (${result.series.length} groups)`
+    );
 
     // ── Break down the aggregation query into phases ──
     if (hasGC) global.gc();
 
     // Phase A: matchLabel
     const tMatch0 = performance.now();
-    let matchedIds = store.matchLabel("__name__", "cpu_usage");
+    const matchedIds = store.matchLabel("__name__", "cpu_usage");
     const tMatch1 = performance.now();
 
     // Phase B: Read all matching series (readParts when available)
     const useReadParts = typeof store.readParts === "function";
     const tReadPhase0 = performance.now();
-    const allParts = [];           // flat array of TimeRange parts
-    const partsPerSeries = [];     // count per series for groupBy
+    const allParts = []; // flat array of TimeRange parts
+    const partsPerSeries = []; // count per series for groupBy
     for (const id of matchedIds) {
       if (useReadParts) {
         const parts = store.readParts(id, qStart, qEnd);
@@ -341,7 +404,8 @@ async function main() {
         const vs = r.values;
         for (let i = 0, len = src.length; i < len; i++) {
           const off = i << 3;
-          const bucket = (dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN | 0;
+          const bucket =
+            ((dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le) - minTN) / stepN) | 0;
           if (vs[i] < values[bucket]) values[bucket] = vs[i];
         }
       }
@@ -349,12 +413,25 @@ async function main() {
     const tAggPhase1 = performance.now();
 
     console.log(`\n    Phase breakdown${useReadParts ? " (readParts)" : " (read+concat)"}:`);
-    console.log(`      matchLabel:    ${fmtMs(tMatch1 - tMatch0).padStart(10)}  (${matchedIds.length} series)`);
-    console.log(`      read():        ${fmtMs(tReadPhase1 - tReadPhase0).padStart(10)}  (${totalParts} parts, ${useReadParts ? "skip concat" : "concat"})`);
-    console.log(`      groupBy:       ${fmtMs(tGroup1 - tGroup0).padStart(10)}  (${groups.size} groups)`);
-    console.log(`      stepAggregate: ${fmtMs(tAggPhase1 - tAggPhase0).padStart(10)}  (fused DataView → bucket + min fold)`);
+    console.log(
+      `      matchLabel:    ${fmtMs(tMatch1 - tMatch0).padStart(10)}  (${matchedIds.length} series)`
+    );
+    console.log(
+      `      read():        ${fmtMs(tReadPhase1 - tReadPhase0).padStart(10)}  (${totalParts} parts, ${useReadParts ? "skip concat" : "concat"})`
+    );
+    console.log(
+      `      groupBy:       ${fmtMs(tGroup1 - tGroup0).padStart(10)}  (${groups.size} groups)`
+    );
+    console.log(
+      `      stepAggregate: ${fmtMs(tAggPhase1 - tAggPhase0).padStart(10)}  (fused DataView → bucket + min fold)`
+    );
 
-    const total = (tMatch1 - tMatch0) + (tReadPhase1 - tReadPhase0) + (tGroup1 - tGroup0) + (tAggPhase1 - tAggPhase0);
+    const total =
+      tMatch1 -
+      tMatch0 +
+      (tReadPhase1 - tReadPhase0) +
+      (tGroup1 - tGroup0) +
+      (tAggPhase1 - tAggPhase0);
     console.log(`      ─────────────────────`);
     console.log(`      total:         ${fmtMs(total).padStart(10)}`);
 
@@ -380,7 +457,7 @@ async function main() {
 
     // ── Stats-skip scenario: large step (4h) so chunks fit in 1 bucket ──
     // Chunk span ≈ 512 × 15s = 7,680s ≈ 128min.  4h step → most chunks skip decode.
-    const BIG_STEP = 14_400_000n;  // 4 hours
+    const BIG_STEP = 14_400_000n; // 4 hours
     if (hasGC) global.gc();
     const tBig0 = performance.now();
     const bigResult = engine.query(store, {
@@ -393,7 +470,9 @@ async function main() {
     });
     const tBig1 = performance.now();
     const bigPts = bigResult.series.reduce((s, r) => s + r.timestamps.length, 0);
-    console.log(`\n    Stats-skip query (min/4h/region): ${fmtMs(tBig1 - tBig0)}  scanned=${bigResult.scannedSamples.toLocaleString()} → ${bigPts.toLocaleString()} output pts`);
+    console.log(
+      `\n    Stats-skip query (min/4h/region): ${fmtMs(tBig1 - tBig0)}  scanned=${bigResult.scannedSamples.toLocaleString()} → ${bigPts.toLocaleString()} output pts`
+    );
 
     // Repeat 5x
     const bigRuns = [];
@@ -412,10 +491,15 @@ async function main() {
       bigRuns.push(t1 - t0);
     }
     bigRuns.sort((a, b) => a - b);
-    console.log(`    Repeated (5 runs): min=${fmtMs(bigRuns[0])}  median=${fmtMs(bigRuns[2])}  max=${fmtMs(bigRuns[4])}`);
+    console.log(
+      `    Repeated (5 runs): min=${fmtMs(bigRuns[0])}  median=${fmtMs(bigRuns[2])}  max=${fmtMs(bigRuns[4])}`
+    );
 
     console.log();
   }
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

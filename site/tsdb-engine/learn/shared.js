@@ -5,7 +5,7 @@
 
 /** Format a number with locale-aware thousands separators. */
 export function fmt(n, decimals = 0) {
-  return Number(n).toLocaleString('en-US', {
+  return Number(n).toLocaleString("en-US", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
@@ -30,9 +30,9 @@ export function float64ToBits(value) {
   const buf = new ArrayBuffer(8);
   new Float64Array(buf)[0] = value;
   const bytes = new Uint8Array(buf);
-  let bits = '';
+  let bits = "";
   for (let i = 7; i >= 0; i--) {
-    bits += bytes[i].toString(2).padStart(8, '0');
+    bits += bytes[i].toString(2).padStart(8, "0");
   }
   return bits;
 }
@@ -40,9 +40,9 @@ export function float64ToBits(value) {
 /** Convert a BigInt (int64) to its bit string (64 chars). */
 export function int64ToBits(value) {
   const big = BigInt(value);
-  let s = '';
+  let s = "";
   for (let i = 63; i >= 0; i--) {
-    s += (big >> BigInt(i)) & 1n ? '1' : '0';
+    s += (big >> BigInt(i)) & 1n ? "1" : "0";
   }
   return s;
 }
@@ -50,13 +50,13 @@ export function int64ToBits(value) {
 /** ZigZag encode a signed value. */
 export function zigzagEncode(n) {
   const big = BigInt(n);
-  return big >= 0n ? big * 2n : (-big) * 2n - 1n;
+  return big >= 0n ? big * 2n : -big * 2n - 1n;
 }
 
 /** ZigZag decode an unsigned value. */
 export function zigzagDecode(n) {
   const big = BigInt(n);
-  return (big & 1n) ? -(big >> 1n) - 1n : big >> 1n;
+  return big & 1n ? -(big >> 1n) - 1n : big >> 1n;
 }
 
 /** Count leading zero bits in a 64-bit value. */
@@ -101,22 +101,27 @@ export function generateSamples(pattern, count, opts = {}) {
     timestamps[i] = now - BigInt(count - i) * interval + jitterNs;
 
     switch (pattern) {
-      case 'gauge':
+      case "gauge":
         values[i] = base + Math.sin(i * 0.05) * 20 + (Math.random() - 0.5) * noise * base;
         break;
-      case 'counter':
+      case "counter":
         values[i] = i === 0 ? base : values[i - 1] + Math.random() * 5 + 1;
         break;
-      case 'percentage':
-        values[i] = Math.round(Math.max(0, Math.min(100, 50 + Math.sin(i * 0.08) * 30 + (Math.random() - 0.5) * 10)) * 10) / 10;
+      case "percentage":
+        values[i] =
+          Math.round(
+            Math.max(0, Math.min(100, 50 + Math.sin(i * 0.08) * 30 + (Math.random() - 0.5) * 10)) *
+              10
+          ) / 10;
         break;
-      case 'temperature':
-        values[i] = Math.round((20 + Math.sin(i * 0.03) * 8 + (Math.random() - 0.5) * 2) * 100) / 100;
+      case "temperature":
+        values[i] =
+          Math.round((20 + Math.sin(i * 0.03) * 8 + (Math.random() - 0.5) * 2) * 100) / 100;
         break;
-      case 'sine':
+      case "sine":
         values[i] = Math.sin(i * 0.1) * base;
         break;
-      case 'random':
+      case "random":
         values[i] = Math.random() * base * 2;
         break;
       default:
@@ -154,21 +159,33 @@ export class Stepper {
     this.onStep(this.current);
   }
 
-  next() { if (this.current < this.total - 1) this.goto(this.current + 1); }
-  prev() { if (this.current > -1) this.goto(this.current - 1); }
-  reset() { this.goto(-1); }
+  next() {
+    if (this.current < this.total - 1) this.goto(this.current + 1);
+  }
+  prev() {
+    if (this.current > -1) this.goto(this.current - 1);
+  }
+  reset() {
+    this.goto(-1);
+  }
 
   play(intervalMs = 1200) {
     this.stop();
     this.reset();
     this._timer = setInterval(() => {
-      if (this.current >= this.total - 1) { this.stop(); return; }
+      if (this.current >= this.total - 1) {
+        this.stop();
+        return;
+      }
       this.next();
     }, intervalMs);
   }
 
   stop() {
-    if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = null;
+    }
   }
 }
 
@@ -180,13 +197,13 @@ export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 export function el(tag, attrs = {}, ...children) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') e.className = v;
-    else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
-    else if (k.startsWith('on')) e.addEventListener(k.slice(2).toLowerCase(), v);
+    if (k === "class") e.className = v;
+    else if (k === "style" && typeof v === "object") Object.assign(e.style, v);
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(), v);
     else e.setAttribute(k, v);
   }
   for (const c of children) {
-    if (typeof c === 'string') e.appendChild(document.createTextNode(c));
+    if (typeof c === "string") e.appendChild(document.createTextNode(c));
     else if (c) e.appendChild(c);
   }
   return e;
@@ -197,19 +214,31 @@ export function buildBreadcrumb(title) {
   return `
     <nav class="xp-topbar" aria-label="Breadcrumb">
       <div class="xp-breadcrumb">
-        <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+        <a href="../../">TSDB Engine</a>
         <span class="sep">›</span>
-        <a href="/o11ykit/tsdb-engine/learn/">Learn</a>
+        <a href="../">Learn</a>
         <span class="sep">›</span>
         <span class="current">${title}</span>
       </div>
     </nav>`;
 }
 
+/** Gently reveal a section — only scrolls if not already visible, adds a brief highlight pulse. */
+export function revealSection(el) {
+  const rect = el.getBoundingClientRect();
+  const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+  const inView = visibleHeight / rect.height >= 0.5;
+  if (!inView) {
+    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+  el.classList.add("xp-reveal");
+  el.addEventListener("animationend", () => el.classList.remove("xp-reveal"), { once: true });
+}
+
 /** Render a sparkline to a canvas element. */
 export function drawSparkline(canvas, values, opts = {}) {
-  const { color = '#60a5fa', fillAlpha = 0.1, lineWidth = 1.5 } = opts;
-  const ctx = canvas.getContext('2d');
+  const { color = "#60a5fa", fillAlpha = 0.1, lineWidth = 1.5 } = opts;
+  const ctx = canvas.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
@@ -238,6 +267,144 @@ export function drawSparkline(canvas, values, opts = {}) {
   ctx.lineTo(w, h);
   ctx.lineTo(0, h);
   ctx.closePath();
-  ctx.fillStyle = color.replace(')', `, ${fillAlpha})`).replace('rgb', 'rgba');
+  ctx.fillStyle = color.replace(")", `, ${fillAlpha})`).replace("rgb", "rgba");
   ctx.fill();
+}
+
+/* ─── Stat Card Builder ───────────────────────────────────────────── */
+
+/**
+ * Build a standard `.xp-stat` card element.
+ * @param {string} label
+ * @param {string|number} value
+ * @param {string} [unit]
+ * @param {object} [opts]  – opts.cls (extra class on value), opts.color (inline color on value)
+ * @returns {HTMLElement}
+ */
+export function buildStat(label, value, unit = "", opts = {}) {
+  const valueEl = el(
+    "div",
+    {
+      class: ["xp-stat-value", opts.cls].filter(Boolean).join(" "),
+      ...(opts.color ? { style: { color: opts.color } } : {}),
+    },
+    String(value)
+  );
+  return el(
+    "div",
+    { class: "xp-stat" },
+    el("div", { class: "xp-stat-label" }, label),
+    valueEl,
+    unit ? el("div", { class: "xp-stat-unit" }, unit) : null
+  );
+}
+
+/* ─── Async Helpers ───────────────────────────────────────────────── */
+
+/** Promise-based sleep. */
+export function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/* ─── Glossary Definitions ─────────────────────────────────── */
+export const GLOSSARY = {
+  "chunk": "A fixed-size block of compressed data points for one time-series — typically 120–240 samples covering a short time window (e.g. 1 hour). When a chunk is full it is sealed and its summary statistics are pre-computed.",
+  "series": "One stream of metric data with a unique set of labels — e.g. all CPU readings from a specific pod. A monitoring system may track millions of distinct series.",
+  "sample": "A single (timestamp, value) pair — one measurement at one point in time. Series are made of thousands of samples.",
+  "label": "A key=value pair that describes a metric: e.g. region=us-west-2 or job=api-server. Labels are stored as strings and used to filter and group queries.",
+  "f64": "A 64-bit floating-point number (8 bytes). The standard format for decimal values in most programming languages — e.g. 34.5 or 0.001.",
+  "postings": "A sorted list of series IDs that share a particular label value — e.g. all series where region=us-west-2. The TSDB maintains one postings list per unique label value for fast lookup.",
+  "postings list": "A sorted array of series IDs for a specific label value. Used by the query engine to quickly find matching series without scanning every series.",
+  "postings intersection": "Finding the series IDs that appear in all required postings lists simultaneously — i.e. series matching every label filter in the query.",
+  "galloping search": "A fast algorithm for intersecting two sorted lists. Instead of checking every element it jumps ahead exponentially then binary-searches back. Much faster when one list is much shorter than the other.",
+  "step-aligned aggregation": "Dividing a query's time range into equal-sized buckets ('steps') and computing one aggregate value (sum, avg, max, min) per bucket.",
+  "chunk pruning": "Discarding chunks whose time range doesn't overlap the query's time range before decompressing anything — a fast way to skip irrelevant data.",
+  "XOR": "Exclusive-OR: comparing two numbers bit-by-bit, producing a 1 only where the inputs differ. Similar floating-point values XOR to mostly zeros, which compress very efficiently.",
+  "IEEE 754": "The international standard for floating-point numbers. Every float64 is exactly 64 bits: 1 sign bit + 11 exponent bits + 52 fraction bits.",
+  "frame-of-reference": "A compression step that subtracts the minimum value from all numbers in a block, so all values become small offsets starting near zero. Smaller numbers need fewer bits.",
+  "bit-packing": "Instead of storing each number in a fixed 8 bytes, figure out the minimum bits needed and pack all values back-to-back with no gaps. Saves space when all values are small.",
+  "quantize": "Converting a decimal number to a whole number by multiplying by a power of 10 — e.g. 20.5 × 10 = 205. Integer compression then works far better than floating-point compression.",
+  "exponent": "In ALP compression: the power of 10 used to convert decimals to integers (e.g. exponent 2 means multiply by 100). Not to be confused with the IEEE 754 exponent field inside a float.",
+  "zigzag encoding": "Maps signed integers to unsigned integers so small negative and positive numbers both get small values: 0→0, −1→1, 1→2, −2→3. Allows variable-length codes to handle negatives efficiently.",
+  "zigzag": "Maps signed integers to unsigned integers so small negative and positive numbers both get small values: 0→0, −1→1, 1→2, −2→3. Allows variable-length codes to handle negatives efficiently.",
+  "tier": "In Delta-of-Delta encoding: one of 5 bit-width levels chosen based on how large the delta-of-delta value is. Tier 0 = 1 bit (no change), Tier 4 = 68 bits (large change). Most samples fall in Tier 0 or 1.",
+  "delta": "The difference between two consecutive values. For timestamps: if samples arrive at 10:00:15 and 10:00:30, the delta is 15 seconds.",
+  "delta-of-delta": "The difference between consecutive deltas. If all intervals are exactly 15 s, every delta-of-delta is 0 — which compresses to just 1 bit each.",
+  "FNV-1a": "A fast hash function that converts a string to a fixed-size integer (a 'fingerprint'). Used to decide which slot in the hash table to check first.",
+  "hash function": "A function that converts any input (like a string) to a fixed-size integer. Good hash functions spread inputs evenly across available slots.",
+  "open addressing": "A hash table collision strategy: if the target slot is occupied, try the next slot, then the next, until an empty one is found.",
+  "linear probing": "The simplest open-addressing strategy — if slot N is taken, try N+1, N+2, etc., wrapping around at the end of the table.",
+  "cardinality": "The number of unique values in a set. High cardinality labels (like pod IDs or trace IDs) have many unique values, reducing reuse and increasing memory cost.",
+  "exceptions": "In ALP compression: values that cannot be exactly represented as integers regardless of the exponent. These are stored as raw 8-byte floats alongside the bit-packed data.",
+  "wire format": "The exact byte layout used when data is written to disk or sent over a network — the 'physical' encoding including headers, offsets, and compressed payloads.",
+  "leading zeros": "The number of zero bits at the left of an XOR result. More leading zeros means fewer meaningful bits to store.",
+  "trailing zeros": "The number of zero bits at the right of an XOR result. More trailing zeros means fewer meaningful bits to store.",
+  "meaningful bits": "The bits between the leading and trailing zeros of an XOR result — the only bits that differ between consecutive values and need to be stored.",
+  "window": "In XOR-Delta encoding: the range of bit positions [leading_zeros … 63−trailing_zeros] that contained the previous non-zero XOR. If the new XOR fits in the same window, we reuse it (saves 12 bits of overhead).",
+  "frozen": "A chunk is 'frozen' (sealed) when it reaches its maximum sample count. At that point its summary statistics (min, max, sum, count) are pre-computed and stored alongside it.",
+  "aligned": "A query window is 'aligned' when it exactly covers one or more whole chunks with no partial overlap — allowing the query to be answered from pre-computed chunk statistics without decompression.",
+};
+
+/** Initialise the glossary tooltip layer.
+ *  Call once on DOMContentLoaded. Wraps nothing automatically —
+ *  pages must mark terms with <span class="xp-term" data-term="chunk">chunk</span>.
+ */
+export function initGlossary() {
+  const tip = document.createElement("div");
+  tip.className = "xp-tooltip";
+  tip.innerHTML = '<span class="xp-tooltip-term"></span><span class="xp-tooltip-body"></span>';
+  document.body.appendChild(tip);
+
+  const termEl = tip.querySelector(".xp-tooltip-term");
+  const bodyEl = tip.querySelector(".xp-tooltip-body");
+
+  let hideTimer;
+
+  function show(anchor) {
+    const key = anchor.dataset.term;
+    const def = GLOSSARY[key] || GLOSSARY[key.toLowerCase()];
+    if (!def) return;
+
+    clearTimeout(hideTimer);
+    termEl.textContent = anchor.textContent;
+    bodyEl.textContent = def;
+
+    const rect = anchor.getBoundingClientRect();
+    tip.style.left = Math.min(rect.left, window.innerWidth - 300) + "px";
+    // show above if close to bottom, below otherwise
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < 140) {
+      tip.style.top = (rect.top - 8 + window.scrollY) + "px";
+      tip.style.transform = "translateY(-100%)";
+    } else {
+      tip.style.top = (rect.bottom + 8 + window.scrollY) + "px";
+      tip.style.transform = "none";
+    }
+    tip.classList.add("visible");
+  }
+
+  function hide() {
+    hideTimer = setTimeout(() => tip.classList.remove("visible"), 100);
+  }
+
+  document.addEventListener("mouseover", e => {
+    const t = e.target.closest(".xp-term");
+    if (t) show(t);
+  });
+  document.addEventListener("mouseout", e => {
+    if (e.target.closest(".xp-term")) hide();
+  });
+  document.addEventListener("click", e => {
+    const t = e.target.closest(".xp-term");
+    if (t) {
+      // toggle on click for touch devices
+      if (tip.classList.contains("visible")) {
+        tip.classList.remove("visible");
+      } else {
+        show(t);
+      }
+    } else {
+      tip.classList.remove("visible");
+    }
+  });
 }

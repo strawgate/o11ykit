@@ -1,8 +1,13 @@
 // ── Storage Backends ─────────────────────────────────────────────────
 
-import { encodeChunk, decodeChunk } from './codec.js';
-import { lowerBound, upperBound, makeLabelKey } from './utils.js';
-import { wasmEncodeValuesALP, wasmDecodeValuesALP, wasmEncodeTimestamps, wasmDecodeTimestamps } from './wasm.js';
+import { decodeChunk, encodeChunk } from "./codec.js";
+import { lowerBound, makeLabelKey, upperBound } from "./utils.js";
+import {
+  wasmDecodeTimestamps,
+  wasmDecodeValuesALP,
+  wasmEncodeTimestamps,
+  wasmEncodeValuesALP,
+} from "./wasm.js";
 
 // ── Shared helpers ───────────────────────────────────────────────────
 
@@ -26,24 +31,35 @@ function _registerLabels(id, labels, labelsList, postings) {
 
 export class FlatStore {
   constructor() {
-    this.name = 'FlatStore';
+    this.name = "FlatStore";
     this._series = [];
     this._labels = [];
     this._postings = new Map();
     this._labelKeyMap = new Map();
     this._sampleCount = 0;
   }
-  get seriesCount() { return this._series.length; }
-  get sampleCount() { return this._sampleCount; }
+  get seriesCount() {
+    return this._series.length;
+  }
+  get sampleCount() {
+    return this._sampleCount;
+  }
 
   getOrCreateSeries(labels) {
     const key = makeLabelKey(labels);
     const cached = this._labelKeyMap.get(key);
     if (cached !== undefined) return cached;
     const existing = _findExistingSeriesId(this._labels, key);
-    if (existing >= 0) { this._labelKeyMap.set(key, existing); return existing; }
+    if (existing >= 0) {
+      this._labelKeyMap.set(key, existing);
+      return existing;
+    }
     const id = this._series.length;
-    this._series.push({ timestamps: new BigInt64Array(128), values: new Float64Array(128), count: 0 });
+    this._series.push({
+      timestamps: new BigInt64Array(128),
+      values: new Float64Array(128),
+      count: 0,
+    });
     _registerLabels(id, labels, this._labels, this._postings);
     this._labelKeyMap.set(key, id);
     return id;
@@ -51,7 +67,7 @@ export class FlatStore {
 
   appendBatch(id, timestamps, values) {
     const s = this._series[id];
-    let need = s.count + timestamps.length;
+    const need = s.count + timestamps.length;
     while (need > s.timestamps.length) {
       const newLen = s.timestamps.length * 2;
       const newTs = new BigInt64Array(newLen);
@@ -78,7 +94,9 @@ export class FlatStore {
     return { timestamps: s.timestamps.slice(lo, hi), values: s.values.slice(lo, hi) };
   }
 
-  labels(id) { return this._labels[id]; }
+  labels(id) {
+    return this._labels[id];
+  }
 
   memoryBytes() {
     let bytes = 0;
@@ -103,7 +121,7 @@ export class FlatStore {
 
 export class ChunkedStore {
   constructor(chunkSize = 640) {
-    this.name = 'ChunkedStore';
+    this.name = "ChunkedStore";
     this.chunkSize = chunkSize;
     this._series = [];
     this._labels = [];
@@ -111,18 +129,29 @@ export class ChunkedStore {
     this._labelKeyMap = new Map();
     this._sampleCount = 0;
   }
-  get seriesCount() { return this._series.length; }
-  get sampleCount() { return this._sampleCount; }
+  get seriesCount() {
+    return this._series.length;
+  }
+  get sampleCount() {
+    return this._sampleCount;
+  }
 
   getOrCreateSeries(labels) {
     const key = makeLabelKey(labels);
     const cached = this._labelKeyMap.get(key);
     if (cached !== undefined) return cached;
     const existing = _findExistingSeriesId(this._labels, key);
-    if (existing >= 0) { this._labelKeyMap.set(key, existing); return existing; }
+    if (existing >= 0) {
+      this._labelKeyMap.set(key, existing);
+      return existing;
+    }
     const id = this._series.length;
     this._series.push({
-      hot: { timestamps: new BigInt64Array(this.chunkSize), values: new Float64Array(this.chunkSize), count: 0 },
+      hot: {
+        timestamps: new BigInt64Array(this.chunkSize),
+        values: new Float64Array(this.chunkSize),
+        count: 0,
+      },
       frozen: [],
     });
     _registerLabels(id, labels, this._labels, this._postings);
@@ -170,24 +199,39 @@ export class ChunkedStore {
       const decoded = decodeChunk(chunk.compressed);
       const lo = lowerBound(decoded.timestamps, start, 0, decoded.timestamps.length);
       const hi = upperBound(decoded.timestamps, end, lo, decoded.timestamps.length);
-      if (hi > lo) parts.push({ timestamps: decoded.timestamps.slice(lo, hi), values: decoded.values.slice(lo, hi) });
+      if (hi > lo)
+        parts.push({
+          timestamps: decoded.timestamps.slice(lo, hi),
+          values: decoded.values.slice(lo, hi),
+        });
     }
     if (s.hot.count > 0) {
       const lo = lowerBound(s.hot.timestamps, start, 0, s.hot.count);
       const hi = upperBound(s.hot.timestamps, end, lo, s.hot.count);
-      if (hi > lo) parts.push({ timestamps: s.hot.timestamps.slice(lo, hi), values: s.hot.values.slice(lo, hi) });
+      if (hi > lo)
+        parts.push({
+          timestamps: s.hot.timestamps.slice(lo, hi),
+          values: s.hot.values.slice(lo, hi),
+        });
     }
-    if (parts.length === 0) return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+    if (parts.length === 0)
+      return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
     if (parts.length === 1) return parts[0];
     const totalLen = parts.reduce((s, p) => s + p.timestamps.length, 0);
     const ts = new BigInt64Array(totalLen);
     const vs = new Float64Array(totalLen);
     let off = 0;
-    for (const p of parts) { ts.set(p.timestamps, off); vs.set(p.values, off); off += p.timestamps.length; }
+    for (const p of parts) {
+      ts.set(p.timestamps, off);
+      vs.set(p.values, off);
+      off += p.timestamps.length;
+    }
     return { timestamps: ts, values: vs };
   }
 
-  labels(id) { return this._labels[id]; }
+  labels(id) {
+    return this._labels[id];
+  }
 
   memoryBytes() {
     let bytes = 0;
@@ -226,7 +270,7 @@ export class ChunkedStore {
 
 export class ColumnStore {
   constructor(chunkSize = 640) {
-    this.name = 'ColumnStore (ALP)';
+    this.name = "ColumnStore (ALP)";
     this.chunkSize = chunkSize;
     this._allSeries = [];
     this._groups = [];
@@ -236,15 +280,22 @@ export class ColumnStore {
     this._sampleCount = 0;
   }
 
-  get seriesCount() { return this._allSeries.length; }
-  get sampleCount() { return this._sampleCount; }
+  get seriesCount() {
+    return this._allSeries.length;
+  }
+  get sampleCount() {
+    return this._sampleCount;
+  }
 
   getOrCreateSeries(labels) {
     const key = makeLabelKey(labels);
     const cached = this._labelKeyMap.get(key);
     if (cached !== undefined) return cached;
     const existing = _findExistingSeriesId(this._labels, key);
-    if (existing >= 0) { this._labelKeyMap.set(key, existing); return existing; }
+    if (existing >= 0) {
+      this._labelKeyMap.set(key, existing);
+      return existing;
+    }
     const id = this._allSeries.length;
 
     const groupId = 0;
@@ -408,17 +459,24 @@ export class ColumnStore {
       }
     }
 
-    if (parts.length === 0) return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+    if (parts.length === 0)
+      return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
     if (parts.length === 1) return parts[0];
     const totalLen = parts.reduce((s, p) => s + p.timestamps.length, 0);
     const ts = new BigInt64Array(totalLen);
     const vs = new Float64Array(totalLen);
     let off = 0;
-    for (const p of parts) { ts.set(p.timestamps, off); vs.set(p.values, off); off += p.timestamps.length; }
+    for (const p of parts) {
+      ts.set(p.timestamps, off);
+      vs.set(p.values, off);
+      off += p.timestamps.length;
+    }
     return { timestamps: ts, values: vs };
   }
 
-  labels(id) { return this._labels[id]; }
+  labels(id) {
+    return this._labels[id];
+  }
 
   memoryBytes() {
     let bytes = 0;
@@ -468,14 +526,19 @@ export class ColumnStore {
       hot: {
         count: s.hot.count,
         rawBytes: s.hot.count * 16,
-        allocatedBytes: (s.hot.values.byteLength) + (group.hotTimestamps.byteLength / Math.max(1, group.members.length)),
+        allocatedBytes:
+          s.hot.values.byteLength +
+          group.hotTimestamps.byteLength / Math.max(1, group.members.length),
         timestamps: group.hotTimestamps,
         values: s.hot.values,
       },
       _isColumnStore: true,
       _groupMembers: group.members.length,
       _sharedTsChunks: group.frozenTimestamps.length,
-      _sharedTsTotalBytes: group.frozenTimestamps.reduce((s, tc) => s + tc.compressed.byteLength, 0),
+      _sharedTsTotalBytes: group.frozenTimestamps.reduce(
+        (s, tc) => s + tc.compressed.byteLength,
+        0
+      ),
     };
   }
 }
