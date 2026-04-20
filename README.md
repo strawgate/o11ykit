@@ -41,10 +41,11 @@ Dependency rule: `benchkit -> octo11y -> otlpkit`.
 
 GitHub Pages publishes a small portal:
 
-- `/o11ykit/` landing page only
+- `/o11ykit/` platform overview for OtlpKit, o11ytsdb, Octo11y, and Benchkit
+- `/o11ykit/tsdb-engine/` TSDB engine site and interactive codec demos
 - `/o11ykit/otlpkit/` OtlpKit incident-story site
-- `/o11ykit/octo11y/` Octo11y handoff page
-- `/o11ykit/benchkit/` Benchkit handoff page
+- `/o11ykit/octo11y/` Octo11y guide and pipeline walkthrough
+- `/o11ykit/benchkit/` Benchkit demo and regression-automation handoff
 
 ## Development
 

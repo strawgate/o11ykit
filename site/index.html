@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>o11ykit — Observability primitives that compose</title>
+    <title>o11ykit — Telemetry building blocks for browser apps and CI</title>
     <meta
       name="description"
-      content="Parse OTLP. Shape telemetry. Gate regressions. OtlpKit, Octo11y, Benchkit, and a browser-native TSDB — all from one monorepo."
+      content="Shape OTLP, compress time-series in the browser, publish GitHub-native metrics, and gate regressions. OtlpKit, o11ytsdb, Octo11y, and Benchkit in one stack."
     />
     <meta name="theme-color" content="#f8fafb" />
     <link rel="icon" href="./logo.svg" type="image/svg+xml" />
@@ -22,133 +22,193 @@
       <header class="topbar panel">
         <a class="brand" href="/o11ykit/"><img class="brand-mark" src="./logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
         <nav class="topnav" aria-label="Primary">
-          <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
-          <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
-          <a href="/o11ykit/octo11y/">Octo11y</a>
-          <a href="/o11ykit/benchkit/">Benchkit</a>
+          <a href="#overview">Overview</a>
+          <a href="#flows">How it works</a>
+          <a href="#tsdb-engine">TSDB Engine</a>
+          <a href="/o11ykit/benchkit/">Benchkit Demo</a>
+          <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">Playground</a>
           <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </header>
 
-      <!-- Hero -->
       <section class="hero panel">
         <div class="hero-lockup">
           <img class="hero-mark" src="./logo.svg" width="48" height="48" alt="" aria-hidden="true" />
           <span class="hero-name">o11ykit</span>
         </div>
-        <p class="eyebrow">monorepo</p>
-        <h1>Observability primitives<br/>that compose.</h1>
+        <p class="eyebrow">platform overview</p>
+        <h1>Shape, store, publish,<br/>and compare telemetry.</h1>
         <p class="lede">
-          Parse OTLP JSON in the browser. Pipeline telemetry through GitHub Actions.
-          Gate performance regressions in CI. Three layers, one dependency tree.
+          OtlpKit turns OTLP into chart-ready views. o11ytsdb adds browser-native time-series
+          storage with interchangeable TypeScript and Rust→WASM codecs. Octo11y publishes metrics
+          from GitHub Actions, and Benchkit adds regression automation on top.
         </p>
         <div class="hero-actions">
-          <a class="cta cta-primary" href="/o11ykit/otlpkit-docs/">Get Started</a>
-          <a class="cta" href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">
-            Live Playground
-          </a>
+          <a class="cta cta-primary" href="/o11ykit/octo11y/">Open the Octo11y guide</a>
+          <a class="cta" href="/o11ykit/tsdb-engine/">Explore TSDB Engine</a>
+          <a class="cta" href="/o11ykit/benchkit/">Benchkit Demo</a>
+        </div>
+        <div class="pill-row" aria-label="Core capabilities">
+          <span class="pill">parse + query OTLP</span>
+          <span class="pill">browser-native TSDB</span>
+          <span class="pill">TypeScript or Rust→WASM codecs</span>
+          <span class="pill">GitHub-native metrics pipelines</span>
+          <span class="pill">CI regression gates</span>
         </div>
       </section>
 
-      <!-- Data flow pipeline -->
-      <section class="panel">
-        <h2>How Data Flows</h2>
-        <div class="pipeline">
-          <div class="pipeline-stage">
-            <div class="stage-icon">📡</div>
-            <div class="stage-name">Your App</div>
-            <div class="stage-desc">Emits OTLP metrics, traces, and logs</div>
-          </div>
-          <div class="pipeline-arrow">→</div>
-          <div class="pipeline-stage accent-otlp">
-            <div class="stage-name">@otlpkit</div>
-            <div class="stage-desc">Parse, query, shape into frames, adapt to any chart library</div>
-          </div>
-          <div class="pipeline-arrow">→</div>
-          <div class="pipeline-stage accent-octo">
-            <div class="stage-name">@octo11y</div>
-            <div class="stage-desc">Pipeline to a GitHub data branch — indexes, series, views</div>
-          </div>
-          <div class="pipeline-arrow">→</div>
-          <div class="pipeline-stage accent-bench">
-            <div class="stage-name">@benchkit</div>
-            <div class="stage-desc">Monitor CI, compare baselines, gate regressions</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Three layers -->
-      <section class="panel">
-        <h2>The Stack</h2>
-        <div class="grid grid-3">
+      <section id="overview" class="panel">
+        <h2>Choose your entry point</h2>
+        <p class="section-intro">
+          The site now treats the TSDB engine as a primary product surface alongside the OTLP,
+          pipeline, and automation layers.
+        </p>
+        <div class="grid grid-2">
           <article class="card accent-otlp">
-            <h3 class="otlpkit">OtlpKit</h3>
+            <h3>OtlpKit</h3>
             <p>
-              Parse OTLP JSON. Build time-series frames, trace waterfalls, event timelines.
-              Render with Chart.js, ECharts, Recharts, or uPlot. Incremental ingest with bounded memory.
+              Parse OTLP JSON, filter and bucket records, and project chart-ready frames into
+              Chart.js, ECharts, Recharts, or uPlot.
             </p>
             <div class="card-links">
               <a href="/o11ykit/otlpkit-docs/">Docs</a>
               <a href="/o11ykit/otlpkit/">Demo</a>
-              <a href="https://www.npmjs.com/search?q=%40otlpkit" target="_blank" rel="noreferrer">npm</a>
             </div>
           </article>
-
+          <article class="card accent-tsdb">
+            <h3>TSDB Engine</h3>
+            <p>
+              Browser-native time-series storage and compression with interchangeable TypeScript and
+              Rust→WASM codecs, multiple backends, and learnable internals.
+            </p>
+            <div class="card-links">
+              <a href="/o11ykit/tsdb-engine/">Explore the engine</a>
+              <a href="/o11ykit/tsdb-engine/learn/">Learn how it works</a>
+            </div>
+          </article>
           <article class="card accent-octo">
-            <h3 class="octo11y">Octo11y</h3>
+            <h3>Octo11y</h3>
             <p>
-              GitHub Actions that extract benchmark data from logs or files, aggregate run history,
-              and publish indexes and series to a data branch — no backend, no server, just Git.
+              Emit or extract metrics in GitHub Actions, stash them to a data branch, and aggregate
+              static views without running a backend.
             </p>
             <div class="card-links">
-              <a href="/o11ykit/octo11y/">Docs</a>
-              <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">Playground</a>
+              <a href="/o11ykit/octo11y/">Guide</a>
+              <a href="https://github.com/strawgate/o11ykit/tree/main/octo11y" target="_blank" rel="noreferrer">Source</a>
             </div>
           </article>
-
           <article class="card accent-bench">
-            <h3 class="benchkit">Benchkit</h3>
+            <h3>Benchkit</h3>
             <p>
-              Capture host telemetry during CI. Parse Go, Rust, Hyperfine, or pytest-benchmark output.
-              Compare against rolling baselines. Post regression summaries to PRs.
+              Add workflow telemetry, baselines, and PR regression gates when the metrics you emit
+              need performance-specific automation.
             </p>
             <div class="card-links">
-              <a href="/o11ykit/benchkit/">Docs</a>
+              <a href="/o11ykit/benchkit/">Demo</a>
               <a href="https://github.com/strawgate/o11ykit/tree/main/octo11y/actions" target="_blank" rel="noreferrer">Actions</a>
             </div>
           </article>
         </div>
       </section>
 
-      <!-- TSDB Engine callout -->
-      <section class="callout">
-        <h3>🔬 o11ytsdb — Browser-Native Time-Series Database</h3>
-        <p>
-          XOR-delta (Gorilla), ALP, and Delta-ALP compression in TypeScript, Zig→WASM, and Rust→WASM.
-          Three storage backends. A scan query engine. <strong>57× compression</strong> on constant gauges.
-          <strong>~4 KB WASM binary</strong>.
-        </p>
-        <div class="card-links">
-          <a href="/o11ykit/tsdb-engine/">Explore the Engine</a>
-          <a href="/o11ykit/tsdb-engine/learn/">Learn How It Works</a>
+      <section id="flows" class="panel">
+        <h2>How the stack fits together</h2>
+        <div class="pipeline">
+          <div class="pipeline-stage">
+            <div class="stage-icon">📥</div>
+            <div class="stage-name">Collect</div>
+            <div class="stage-desc">App telemetry, workflow logs, or public API output</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-otlp">
+            <div class="stage-name">Shape with OtlpKit</div>
+            <div class="stage-desc">Parse OTLP, query records, and build chart-ready frames</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-tsdb">
+            <div class="stage-name">Store with o11ytsdb</div>
+            <div class="stage-desc">Compress and query browser-local time-series with TS or WASM codecs</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-octo">
+            <div class="stage-name">Publish with Octo11y</div>
+            <div class="stage-desc">Emit metrics in Actions, stash artifacts, and aggregate static views</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-bench">
+            <div class="stage-name">Gate with Benchkit</div>
+            <div class="stage-desc">Compare baselines, capture telemetry, and flag regressions in CI</div>
+          </div>
         </div>
       </section>
 
-      <!-- Try it strip -->
+      <section id="tsdb-engine" class="panel">
+        <h2>TSDB engine, as a primary building block</h2>
+        <p class="section-intro">
+          If you need more than transient in-memory views, the TSDB engine is the storage and
+          compression layer for browser-native telemetry products.
+        </p>
+        <div class="grid grid-3">
+          <article class="card accent-tsdb">
+            <h3>Two interchangeable runtimes</h3>
+            <p>
+              Use the pure TypeScript codec for simpler deployments and lower-performance paths, or
+              switch to Rust→WASM when the hot path needs much higher throughput.
+            </p>
+          </article>
+          <article class="card accent-tsdb">
+            <h3>More than one storage shape</h3>
+            <p>
+              The engine already spans chunked and columnar backends, with XOR-delta, ALP, and
+              Delta-ALP codecs selected per chunk.
+            </p>
+          </article>
+          <article class="card accent-tsdb">
+            <h3>Built to stay explainable</h3>
+            <p>
+              The engine site includes live demos plus codec walkthroughs, so the storage layer
+              stays teachable instead of becoming an opaque binary dependency.
+            </p>
+          </article>
+        </div>
+        <div class="card-links">
+          <a href="/o11ykit/tsdb-engine/">Explore the engine</a>
+          <a href="/o11ykit/tsdb-engine/learn/">Codec walkthroughs</a>
+          <a href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ytsdb" target="_blank" rel="noreferrer">Source</a>
+        </div>
+      </section>
+
+      <section class="callout">
+        <h3>Keep OtlpKit and o11ytsdb adjacent, not merged</h3>
+        <p>
+          OtlpKit is the OTLP shaping layer. o11ytsdb is the compression and storage layer. They fit
+          together naturally, but the current split keeps the storage engine reusable and lets the
+          TypeScript implementation remain the low-friction option when WASM would be overkill.
+        </p>
+        <div class="card-links">
+          <a href="/o11ykit/otlpkit-docs/">OtlpKit docs</a>
+          <a href="/o11ykit/tsdb-engine/">TSDB engine docs</a>
+        </div>
+      </section>
+
       <section class="panel">
-        <h2>Try It</h2>
+        <h2>Where to go deeper</h2>
         <div class="try-strip">
+          <a href="/o11ykit/octo11y/">
+            <span class="try-icon">🧭</span>
+            <span>Octo11y Guide</span>
+          </a>
+          <a href="/o11ykit/benchkit/">
+            <span class="try-icon">🚀</span>
+            <span>Benchkit Demo</span>
+          </a>
           <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">
             <span class="try-icon">🎯</span>
             <span>Live Playground</span>
           </a>
           <a href="/o11ykit/tsdb-engine/#live-demo">
-            <span class="try-icon">🚀</span>
+            <span class="try-icon">💾</span>
             <span>TSDB Live Demo</span>
-          </a>
-          <a href="/o11ykit/tsdb-engine/learn/">
-            <span class="try-icon">📚</span>
-            <span>Learn Experiences</span>
           </a>
           <a href="/o11ykit/otlpkit/">
             <span class="try-icon">📊</span>
@@ -159,7 +219,8 @@
 
       <footer class="site-footer">
         <p>
-          Dependency layering: <code>@benchkit/* → @octo11y/* → @otlpkit/*</code>
+          Layering: <code>@benchkit/* → @octo11y/* → @otlpkit/*</code>, with <code>o11ytsdb</code>
+          as the browser-native storage engine beside the OTLP foundation.
         </p>
       </footer>
     </main>
