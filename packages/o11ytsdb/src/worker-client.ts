@@ -1,7 +1,9 @@
 import { BackpressureController } from "./backpressure.js";
+import type { PendingSeriesSamples } from "./ingest.js";
 import type { QueryOpts, QueryResult } from "./types.js";
 import {
   isResponseEnvelope,
+  type LabelEntries,
   type RequestEnvelope,
   type RequestId,
   type ResponseEnvelope,
@@ -91,6 +93,88 @@ export class WorkerClient {
       if (response.ok === false) throw new Error(response.error);
       if (response.type !== "ingest") throw new Error(`Unexpected response type: ${response.type}`);
       return { seriesId: response.seriesId, ingestedSamples: response.ingestedSamples };
+    } finally {
+      this.ingestSemaphore.release();
+    }
+  }
+
+  /**
+   * Batch-ingest all series from a parsed OTLP payload in a single message.
+   *
+   * Packs all timestamps and values into flat Float64Arrays with an offset
+   * table, sends one postMessage (3 transferable buffers), and the worker
+   * handles ms→ns conversion (WASM-accelerated when available).
+   *
+   * This replaces N separate `ingest()` calls with 1, eliminating per-series
+   * postMessage overhead, Promise creation, and semaphore acquire/release.
+   */
+  async ingestBatch(
+    pending: ReadonlyMap<number, PendingSeriesSamples>
+  ): Promise<{ seriesCount: number; totalSamples: number }> {
+    const count = pending.size;
+    if (count === 0) return { seriesCount: 0, totalSamples: 0 };
+
+    // Compute total sample count for pre-allocation.
+    let totalLen = 0;
+    for (const batch of pending.values()) {
+      if (batch.timestamps.length !== batch.values.length) {
+        throw new Error(
+          `Timestamp/value length mismatch: ${batch.timestamps.length} vs ${batch.values.length}`
+        );
+      }
+      totalLen += batch.timestamps.length;
+    }
+
+    if (totalLen > 0xffffffff) {
+      throw new Error(`Batch too large for Uint32Array offsets: ${totalLen} samples`);
+    }
+
+    const allTimestampsMs = new Float64Array(totalLen);
+    const allValues = new Float64Array(totalLen);
+    const offsets = new Uint32Array(count * 2);
+    const labels: LabelEntries[] = [];
+
+    let pos = 0;
+    let idx = 0;
+    for (const batch of pending.values()) {
+      const len = batch.timestamps.length;
+      offsets[idx * 2] = pos;
+      offsets[idx * 2 + 1] = len;
+      labels.push([...batch.labels.entries()]);
+
+      // Pack timestamps and values into flat arrays.
+      for (let i = 0; i < len; i++) {
+        allTimestampsMs[pos + i] = batch.timestamps[i]!;
+        allValues[pos + i] = batch.values[i]!;
+      }
+      pos += len;
+      idx++;
+    }
+
+    const transfer: ArrayBufferLike[] =
+      this.transferStrategy === "transferable"
+        ? [allTimestampsMs.buffer, allValues.buffer, offsets.buffer]
+        : [];
+
+    await this.ingestSemaphore.acquire();
+    try {
+      const response = await this.send(
+        {
+          type: "batch-ingest",
+          count,
+          labels,
+          allTimestampsMs,
+          allValues,
+          offsets,
+        },
+        transfer
+      );
+
+      if (response.ok === false) throw new Error(response.error);
+      if (response.type !== "batch-ingest") {
+        throw new Error(`Unexpected response type: ${response.type}`);
+      }
+      return { seriesCount: response.seriesCount, totalSamples: response.totalSamples };
     } finally {
       this.ingestSemaphore.release();
     }
