@@ -255,8 +255,7 @@ export class ColumnStore implements StorageBackend {
     }
 
     // Skip quantization for integer values (counters, request counts, etc.)
-    s.hot.values[s.hot.count] =
-      this.quantize && value % 1 !== 0 ? this.quantize(value) : value;
+    s.hot.values[s.hot.count] = this.quantize && value % 1 !== 0 ? this.quantize(value) : value;
     s.hot.count++;
     this._sampleCount++;
 
