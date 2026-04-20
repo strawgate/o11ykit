@@ -221,12 +221,31 @@ export class O11yWorkerRuntime {
         }
         case "batch-ingest": {
           const { count, labels: labelsArr, allTimestampsMs, allValues, offsets } = payload;
+
+          // Validate payload shape before processing.
+          if (
+            labelsArr.length !== count ||
+            offsets.length !== count * 2 ||
+            allTimestampsMs.length !== allValues.length
+          ) {
+            this.send(err(id, new Error("Malformed batch-ingest: shape mismatch"), meta));
+            return;
+          }
+
           const msToNs = this.wasmCodecs?.msToNs;
           let totalSamples = 0;
+          let ingestedSeries = 0;
           for (let i = 0; i < count; i++) {
             const off = offsets[i * 2]!;
             const len = offsets[i * 2 + 1]!;
             if (len === 0) continue;
+
+            if (off + len > allTimestampsMs.length) {
+              this.send(
+                err(id, new Error(`Batch offset out of bounds: off=${off} len=${len}`), meta)
+              );
+              return;
+            }
 
             const seriesLabels = new Map(labelsArr[i]!);
             const seriesId = this.store.getOrCreateSeries(seriesLabels);
@@ -243,9 +262,14 @@ export class O11yWorkerRuntime {
             const vals = allValues.subarray(off, off + len);
             this.store.appendBatch(seriesId, tsArr, vals);
             totalSamples += len;
+            ingestedSeries++;
           }
           this.send(
-            ok(id, { ok: true, type: "batch-ingest", seriesCount: count, totalSamples }, meta)
+            ok(
+              id,
+              { ok: true, type: "batch-ingest", seriesCount: ingestedSeries, totalSamples },
+              meta
+            )
           );
           return;
         }

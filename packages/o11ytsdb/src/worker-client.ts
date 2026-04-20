@@ -116,7 +116,18 @@ export class WorkerClient {
 
     // Compute total sample count for pre-allocation.
     let totalLen = 0;
-    for (const batch of pending.values()) totalLen += batch.timestamps.length;
+    for (const batch of pending.values()) {
+      if (batch.timestamps.length !== batch.values.length) {
+        throw new Error(
+          `Timestamp/value length mismatch: ${batch.timestamps.length} vs ${batch.values.length}`
+        );
+      }
+      totalLen += batch.timestamps.length;
+    }
+
+    if (totalLen > 0xffffffff) {
+      throw new Error(`Batch too large for Uint32Array offsets: ${totalLen} samples`);
+    }
 
     const allTimestampsMs = new Float64Array(totalLen);
     const allValues = new Float64Array(totalLen);
