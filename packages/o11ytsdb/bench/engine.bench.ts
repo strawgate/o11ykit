@@ -23,10 +23,10 @@ function pkgPath(rel: string): string {
 
 // ── Types (import from compiled src) ─────────────────────────────────
 
-type StorageBackend = import("../dist/types.js").StorageBackend;
-type Codec = import("../dist/types.js").Codec;
-type Labels = import("../dist/types.js").Labels;
-type QueryEngine = import("../dist/types.js").QueryEngine;
+type StorageBackend = import("./types.js").StorageBackend;
+type Codec = import("./types.js").Codec;
+type Labels = import("./types.js").Labels;
+type QueryEngine = import("./types.js").QueryEngine;
 
 // ── Configuration ────────────────────────────────────────────────────
 

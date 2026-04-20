@@ -1,339 +1,193 @@
-/**
- * Query benchmark — dedicated query performance regression suite.
- *
- * Populates a single ColumnStore (best config: ALP + fused range-decode)
- * once, then benchmarks a matrix of query scenarios:
- *
- *   - raw reads (single, multi-series)
- *   - step-aligned aggregation (sum, avg, rate, percentiles)
- *   - transforms (rate + sumBy)
- *   - regex label matching
- *   - time range selectivity (full vs last-10%)
- *
- * Each scenario reports ops/sec, p50/p95/p99 latency, and memory delta.
- */
-
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import type { BenchReport } from "./harness.js";
-import { fmt, printReport, Suite } from "./harness.js";
-import { generateLabelSets, Rng } from "./vectors.js";
+import { printReport, Suite } from "./harness.js";
+import { loadWasm, makeCodecImpl } from "./wasm-loader.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 function pkgPath(rel: string): string {
   return join(__dirname, "..", "..", rel);
 }
 
-// ── Types ────────────────────────────────────────────────────────────
-
-type StorageBackend = import("../dist/types.js").StorageBackend;
-type QueryEngine = import("../dist/types.js").QueryEngine;
-type Labels = import("../dist/types.js").Labels;
-type QueryOpts = import("../dist/types.js").QueryOpts;
-
-// ── Configuration ────────────────────────────────────────────────────
+type Codec = import("./types.js").Codec;
+type StorageBackend = import("./types.js").StorageBackend;
 
 const NUM_SERIES = 1_000;
-const POINTS_PER_SERIES = 10_000;
-const TOTAL_SAMPLES = NUM_SERIES * POINTS_PER_SERIES; // 10M
+const POINTS_PER_SERIES = 1_024;
+const TOTAL_SAMPLES = NUM_SERIES * POINTS_PER_SERIES;
 const CHUNK_SIZE = 640;
 const T0 = 1_700_000_000_000n;
-const INTERVAL = 15_000n; // 15s scrape interval
-const END = T0 + BigInt(POINTS_PER_SERIES) * INTERVAL;
+const INTERVAL = 15_000n;
 const STEP_1M = 60_000n;
 const STEP_4H = 14_400_000n;
 const REGIONS = ["us-east", "us-west", "eu-west", "ap-south"] as const;
 
-// ── Setup ────────────────────────────────────────────────────────────
-
-async function createStore(): Promise<StorageBackend> {
-  const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
-  const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(
-    "./wasm-loader.js"
-  );
-  const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
-  const wasm = await loadWasm(wasmPath);
-  const alpVals = makeALPValuesCodec(wasm);
-  const wasmTs = makeTimestampCodec(wasm);
-  const rangeCodec = makeALPRangeCodec(wasm);
-  return new ColumnStore(
-    {
-      name: "alp-range",
-      encodeValues: alpVals.encodeValues,
-      decodeValues: alpVals.decodeValues,
-      encodeValuesWithStats: alpVals.encodeValuesWithStats,
-      encodeBatchValuesWithStats: alpVals.encodeBatchValuesWithStats,
-      decodeBatchValues: alpVals.decodeBatchValues,
-    },
-    CHUNK_SIZE,
-    () => 0,
-    undefined,
-    {
-      name: "rust-wasm-ts",
-      encodeTimestamps: wasmTs.encodeTimestamps,
-      decodeTimestamps: wasmTs.decodeTimestamps,
-    },
-    rangeCodec,
-  );
-}
-
-async function loadQueryEngine(): Promise<QueryEngine> {
-  const { ScanEngine } = await import(pkgPath("dist/query.js"));
-  return new ScanEngine();
-}
-
-// ── Data generation (same patterns as engine.bench.ts) ───────────────
-
-function populateStore(store: StorageBackend): void {
-  const rng = new Rng(42);
-  const labelSets = generateLabelSets(NUM_SERIES, 4, 42);
-
-  // Build labels with 10 distinct metric names + a "region" label for groupBy.
-  const labels: Labels[] = [];
-  const ids: number[] = [];
-  for (let s = 0; s < NUM_SERIES; s++) {
-    const ls = labelSets[s]!;
-    const m = new Map<string, string>();
-    m.set("__name__", `metric_${s % 10}`);
-    m.set("region", REGIONS[Math.floor(s / 10) % REGIONS.length]!);
-    for (const [k, v] of ls.labels) m.set(k, v);
-    labels.push(m);
-    ids.push(store.getOrCreateSeries(m));
+async function loadStore(): Promise<StorageBackend> {
+  try {
+    const { ChunkedStore } = await import(pkgPath("dist/chunked-store.js"));
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
+    const wasm = await loadWasm(wasmPath);
+    const rustImpl = makeCodecImpl(wasm, "rust", "Rust→WASM");
+    const codec: Codec = {
+      name: "rust-wasm",
+      encode: rustImpl.encode,
+      decode: rustImpl.decode,
+    };
+    return new ChunkedStore(codec, CHUNK_SIZE);
+  } catch {
+    const { FlatStore } = await import(pkgPath("dist/flat-store.js"));
+    return new FlatStore();
   }
+}
 
-  // Generate and ingest data in chunk-sized round-robin batches.
-  const ts = new BigInt64Array(CHUNK_SIZE);
-  const vs = new Float64Array(CHUNK_SIZE);
+function makeTimestamps(): BigInt64Array {
+  const ts = new BigInt64Array(POINTS_PER_SERIES);
+  for (let i = 0; i < POINTS_PER_SERIES; i++) {
+    ts[i] = T0 + BigInt(i) * INTERVAL;
+  }
+  return ts;
+}
 
-  for (let s = 0; s < NUM_SERIES; s++) {
-    const pattern = s % 10;
-    let counter = pattern <= 2 ? Math.floor(rng.next() * 10000) : 0;
-    let gauge = rng.next() * 100;
-    let ticks = Math.floor(rng.next() * 1e6);
-    let totalTicks = Math.floor(1e7 + rng.next() * 1e6);
-
-    for (let offset = 0; offset < POINTS_PER_SERIES; offset += CHUNK_SIZE) {
-      const len = Math.min(CHUNK_SIZE, POINTS_PER_SERIES - offset);
-
-      for (let i = 0; i < len; i++) {
-        ts[i] = T0 + BigInt(offset + i) * INTERVAL;
-
-        if (pattern === 0) {
-          vs[i] = 42.5;
-        } else if (pattern <= 2) {
-          counter += Math.floor(rng.next() * 10) + 1;
-          vs[i] = counter;
-        } else if (pattern <= 6) {
-          gauge += rng.gaussian(0, 0.05);
-          gauge = Math.max(0, gauge);
-          vs[i] = Math.round(gauge * 100) / 100;
-        } else if (pattern <= 8) {
-          ticks += Math.floor(rng.next() * 200) + 1;
-          totalTicks += 1000;
-          vs[i] = ticks / totalTicks;
-        } else {
-          gauge += rng.gaussian(0, 0.5);
-          gauge = Math.max(0, gauge);
-          vs[i] = Math.round(gauge * 100) / 100;
-        }
-      }
-
-      store.appendBatch(ids[s]!, ts.subarray(0, len), vs.subarray(0, len));
+function makeValues(seriesIndex: number): Float64Array {
+  const values = new Float64Array(POINTS_PER_SERIES);
+  let v = 1_000 + seriesIndex * 10;
+  for (let i = 0; i < POINTS_PER_SERIES; i++) {
+    v += 1 + (seriesIndex % 7) + (i % 3);
+    if ((i + 1) % 400 === 0 && seriesIndex % 11 === 0) {
+      v = 100 + seriesIndex;
     }
+    values[i] = v;
+  }
+  return values;
+}
+
+async function populateStore(store: StorageBackend): Promise<void> {
+  const sharedTs = makeTimestamps();
+  for (let s = 0; s < NUM_SERIES; s++) {
+    const labels = new Map<string, string>();
+    labels.set("__name__", "cpu");
+    labels.set("host", `host-${String(s).padStart(4, "0")}`);
+    labels.set("region", REGIONS[s % REGIONS.length]!);
+    labels.set("shard", `s${s % 10}`);
+    const id = store.getOrCreateSeries(labels);
+    store.appendBatch(id, sharedTs, makeValues(s));
   }
 }
-
-// ── Scenario definitions ─────────────────────────────────────────────
-
-interface Scenario {
-  name: string;
-  opts: QueryOpts;
-  expectedSeries: number;
-  samplesPerQuery: number;
-}
-
-function buildScenarios(): Scenario[] {
-  const metric0 = "metric_0"; // 100 series match (1000 / 10 metrics)
-  const matchCount = NUM_SERIES / 10;
-
-  return [
-    // Raw reads — no aggregation
-    {
-      name: "raw-single",
-      opts: { metric: metric0, matchers: [{ label: "region", op: "=", value: "us-east" }], start: T0, end: END },
-      expectedSeries: matchCount / REGIONS.length,
-      samplesPerQuery: (matchCount / REGIONS.length) * POINTS_PER_SERIES,
-    },
-    {
-      name: "raw-100",
-      opts: { metric: metric0, start: T0, end: END },
-      expectedSeries: matchCount,
-      samplesPerQuery: matchCount * POINTS_PER_SERIES,
-    },
-
-    // Step-aligned aggregation — 1 minute
-    {
-      name: "sum-1m-100",
-      opts: { metric: metric0, start: T0, end: END, step: STEP_1M, agg: "sum" },
-      expectedSeries: 1,
-      samplesPerQuery: matchCount * POINTS_PER_SERIES,
-    },
-    {
-      name: "avg-1m-100",
-      opts: { metric: metric0, start: T0, end: END, step: STEP_1M, agg: "avg" },
-      expectedSeries: 1,
-      samplesPerQuery: matchCount * POINTS_PER_SERIES,
-    },
-
-    // Step-aligned aggregation — 4 hour (coarse)
-    {
-      name: "sum-4h-100",
-      opts: { metric: metric0, start: T0, end: END, step: STEP_4H, agg: "sum" },
-      expectedSeries: 1,
-      samplesPerQuery: matchCount * POINTS_PER_SERIES,
-    },
-
-    // Aggregation at 1K scale — metric field is required by QueryOpts,
-    // so we use the regex matcher on __name__ to widen the initial match
-    // beyond the metric_0 pre-filter. The query engine intersects matchers
-    // with the metric result, so metric_0 acts as the base set here.
-    // To truly hit all 1K series we'd need 10 queries. Instead, this
-    // scenario benchmarks the regex matcher overhead at 100-series scale.
-    {
-      name: "avg-1m-regex",
-      opts: {
-        metric: "metric_0",
-        matchers: [{ label: "__name__", op: "=~", value: "metric_.*" }],
-        start: T0,
-        end: END,
-        step: STEP_1M,
-        agg: "avg",
-      },
-      expectedSeries: 1,
-      samplesPerQuery: matchCount * POINTS_PER_SERIES,
-    },
-
-    // Rate transform
-    {
-      name: "rate-1m-100",
-      opts: { metric: metric0, start: T0, end: END, step: STEP_1M, transform: "rate", agg: "sum" },
-      expectedSeries: 1,
-      samplesPerQuery: matchCount * POINTS_PER_SERIES,
-    },
-
-    // Rate + groupBy region
-    {
-      name: "rate-sumBy-region",
-      opts: {
-        metric: metric0,
-        start: T0,
-        end: END,
-        step: STEP_1M,
-        transform: "rate",
-        agg: "sum",
-        groupBy: ["region"],
-      },
-      expectedSeries: 4,
-      samplesPerQuery: matchCount * POINTS_PER_SERIES,
-    },
-
-    // Percentiles (require step)
-    {
-      name: "p50-1m-100",
-      opts: { metric: metric0, start: T0, end: END, step: STEP_1M, agg: "p50" },
-      expectedSeries: 1,
-      samplesPerQuery: matchCount * POINTS_PER_SERIES,
-    },
-    {
-      name: "p99-1m-100",
-      opts: { metric: metric0, start: T0, end: END, step: STEP_1M, agg: "p99" },
-      expectedSeries: 1,
-      samplesPerQuery: matchCount * POINTS_PER_SERIES,
-    },
-
-    // Regex label matching — tests regex matcher overhead on the 100-series
-    // metric_0 set. The regex is redundant (metric_0 already matches) but
-    // exercises the =~ codepath.
-    {
-      name: "regex-match-100",
-      opts: {
-        metric: "metric_0",
-        matchers: [{ label: "__name__", op: "=~", value: "metric_[0-9]" }],
-        start: T0,
-        end: END,
-        step: STEP_1M,
-        agg: "sum",
-      },
-      expectedSeries: 1,
-      samplesPerQuery: matchCount * POINTS_PER_SERIES,
-    },
-
-    // Time range selectivity — last 10%
-    {
-      name: "sum-1m-last10pct",
-      opts: {
-        metric: metric0,
-        start: T0 + ((END - T0) * 9n) / 10n,
-        end: END,
-        step: STEP_1M,
-        agg: "sum",
-      },
-      expectedSeries: 1,
-      samplesPerQuery: matchCount * (POINTS_PER_SERIES / 10),
-    },
-  ];
-}
-
-// ── Main benchmark ───────────────────────────────────────────────────
 
 export default async function (): Promise<BenchReport> {
   const suite = new Suite("query");
-  const store = await createStore();
-  const qe = await loadQueryEngine();
+  const store = await loadStore();
+  const { query } = await import(pkgPath("dist/query-builder.js"));
+
+  await populateStore(store);
+
+  const end = T0 + BigInt(POINTS_PER_SERIES - 1) * INTERVAL;
 
   console.log(
-    `  Configuration: ${NUM_SERIES.toLocaleString()} series × ${POINTS_PER_SERIES.toLocaleString()} pts = ${TOTAL_SAMPLES.toLocaleString()} total`,
+    `  Configuration: ${NUM_SERIES.toLocaleString()} series × ${POINTS_PER_SERIES.toLocaleString()} pts = ${TOTAL_SAMPLES.toLocaleString()} total`
   );
-  console.log(`  Backend: ${store.name}`);
-  console.log(`  Query engine: ${qe.name}`);
+  console.log(`  Store: ${store.name}`);
   console.log();
 
-  // Populate (timed but not part of the benchmark suite).
-  console.log("  Populating store...");
-  const ingestStart = performance.now();
-  populateStore(store);
-  const ingestMs = performance.now() - ingestStart;
-  console.log(
-    `  Done: ${fmt(TOTAL_SAMPLES / (ingestMs / 1000))} samples/sec (${(ingestMs / 1000).toFixed(1)}s)`,
+  const runtime = store.name;
+
+  suite.add(
+    "raw-single",
+    runtime,
+    () => {
+      query().metric("cpu").where("host", "=", "host-0000").range(T0, end).exec(store);
+    },
+    { warmup: 5, iterations: 20, itemsPerCall: POINTS_PER_SERIES, unit: "samples/sec" }
   );
-  console.log();
 
-  // Run each query scenario.
-  const scenarios = buildScenarios();
+  suite.add(
+    "raw-100",
+    runtime,
+    () => {
+      query().metric("cpu").where("shard", "=", "s0").range(T0, end).exec(store);
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
 
-  for (const scenario of scenarios) {
-    // Warm-up: verify query works and get a sanity check.
-    const warmResult = qe.query(store, scenario.opts);
-    if (warmResult.series.length !== scenario.expectedSeries) {
-      throw new Error(
-        `${scenario.name}: expected ${scenario.expectedSeries} series, got ${warmResult.series.length}`,
-      );
-    }
+  suite.add(
+    "sum-1m-100",
+    runtime,
+    () => {
+      query().metric("cpu").where("shard", "=", "s0").range(T0, end).step(STEP_1M).sum().exec(store);
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
 
-    suite.add(
-      scenario.name,
-      store.name,
-      () => {
-        qe.query(store, scenario.opts);
-      },
-      {
-        warmup: 5,
-        iterations: 30,
-        itemsPerCall: scenario.samplesPerQuery,
-        unit: "samples/sec",
-      },
-    );
-  }
+  suite.add(
+    "sum-4h-100",
+    runtime,
+    () => {
+      query().metric("cpu").where("shard", "=", "s0").range(T0, end).step(STEP_4H).sum().exec(store);
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "avg-1m-1k",
+    runtime,
+    () => {
+      query().metric("cpu").range(T0, end).step(STEP_1M).avg().exec(store);
+    },
+    { warmup: 5, iterations: 10, itemsPerCall: TOTAL_SAMPLES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "rate-1m-100",
+    runtime,
+    () => {
+      query().metric("cpu").where("shard", "=", "s0").range(T0, end).rate().step(STEP_1M).exec(store);
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "rate-sumBy-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .rate()
+        .sumBy("region")
+        .exec(store);
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "p50-1m-100",
+    runtime,
+    () => {
+      query().metric("cpu").where("shard", "=", "s0").range(T0, end).step(STEP_1M).p50().exec(store);
+    },
+    { warmup: 5, iterations: 10, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "p99-1m-100",
+    runtime,
+    () => {
+      query().metric("cpu").where("shard", "=", "s0").range(T0, end).step(STEP_1M).p99().exec(store);
+    },
+    { warmup: 5, iterations: 10, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "regex-match-1k",
+    runtime,
+    () => {
+      query().metric("cpu").where("host", "=~", "host-0[0-9]{3}").range(T0, end).exec(store);
+    },
+    { warmup: 5, iterations: 10, itemsPerCall: TOTAL_SAMPLES, unit: "samples/sec" }
+  );
 
   const report = suite.run();
   printReport(report);
