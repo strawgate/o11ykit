@@ -25,6 +25,7 @@ import {
   toNumber,
   toUnixNanos,
   visitMetricPoints,
+  visitMetricPointsRaw,
 } from "../src/index.js";
 import { logsDocument, metricsDocument, tracesDocument } from "./fixtures.js";
 
@@ -187,6 +188,43 @@ describe("@otlpkit/otlpjson", () => {
     });
 
     expect(scopeNames).toEqual(["logfwd.pipeline"]);
+    expect(batches).toEqual([
+      ["gauge", "logfwd.inflight_batches", 2],
+      ["sum", "logfwd.retry_total", 1],
+      ["histogram", "logfwd.output.duration", 1],
+      ["summary", "logfwd.queue.latency", 1],
+      ["exponentialHistogram", "logfwd.flush.delay", 1],
+    ]);
+  });
+
+  it("visits metric documents with raw scope and attribute arrays", () => {
+    const scopes: Array<[string | null, string | null, number, number]> = [];
+    const batches: Array<[string, string, number]> = [];
+
+    visitMetricPointsRaw(metricsDocument, {
+      onScope(context) {
+        scopes.push([
+          context.scopeName,
+          context.scopeVersion,
+          context.resourceAttributes?.length ?? 0,
+          context.scopeAttributes?.length ?? 0,
+        ]);
+      },
+      onNumberDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onHistogramDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onSummaryDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onExponentialHistogramDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+    });
+
+    expect(scopes).toEqual([["logfwd.pipeline", "1.0.0", 2, 1]]);
     expect(batches).toEqual([
       ["gauge", "logfwd.inflight_batches", 2],
       ["sum", "logfwd.retry_total", 1],

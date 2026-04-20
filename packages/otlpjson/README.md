@@ -32,3 +32,18 @@ visitMetricPoints(document, {
   },
 });
 ```
+
+For the lowest-allocation metrics hot path, use the raw visitor and iterate OTLP
+attribute arrays directly:
+
+```ts
+import { forEachAttribute, visitMetricPointsRaw } from "@otlpkit/otlpjson";
+
+visitMetricPointsRaw(document, {
+  onScope(context) {
+    forEachAttribute(context.resourceAttributes, (key, value) => {
+      console.log(key, value);
+    });
+  },
+});
+```

@@ -1,5 +1,5 @@
 import type {
-  MetricScopeVisitContext,
+  MetricScopeRawVisitContext,
   OtlpExponentialHistogramDataPoint,
   OtlpHistogramDataPoint,
   OtlpKeyValue,
@@ -11,7 +11,7 @@ import {
   forEachAttribute,
   isMetricsDocument,
   toNumber,
-  visitMetricPoints,
+  visitMetricPointsRaw,
 } from "@otlpkit/otlpjson";
 
 import type { Labels, StorageBackend } from "./types.js";
@@ -223,22 +223,27 @@ function ingestMetricsDocument(
   let baseHash = FNV_OFFSET >>> 0;
   let baseSize = 0;
 
-  const rebuildScopeBase = ({ resource, scope }: MetricScopeVisitContext): void => {
+  const rebuildScopeBase = ({
+    resourceAttributes,
+    scopeName,
+    scopeVersion,
+    scopeAttributes,
+  }: MetricScopeRawVisitContext): void => {
     const nextEntries: Array<[string, string]> = [];
-    nextEntries.push([SCOPE_NAME_LABEL, scope.name ?? ""]);
-    nextEntries.push([SCOPE_VERSION_LABEL, scope.version ?? ""]);
-    for (const [key, value] of Object.entries(resource)) {
+    nextEntries.push([SCOPE_NAME_LABEL, scopeName ?? ""]);
+    nextEntries.push([SCOPE_VERSION_LABEL, scopeVersion ?? ""]);
+    forEachAttribute(resourceAttributes, (key, value) => {
       nextEntries.push([
         `${ATTR_PREFIX_RESOURCE}${sanitizeLabelKey(key)}`,
         attributeValueToLabel(value),
       ]);
-    }
-    for (const [key, value] of Object.entries(scope.attributes)) {
+    });
+    forEachAttribute(scopeAttributes, (key, value) => {
       nextEntries.push([
         `${ATTR_PREFIX_SCOPE}${sanitizeLabelKey(key)}`,
         attributeValueToLabel(value),
       ]);
-    }
+    });
 
     let nextHash = FNV_OFFSET >>> 0;
     for (const e of nextEntries) {
@@ -250,7 +255,7 @@ function ingestMetricsDocument(
     baseSize = nextEntries.length;
   };
 
-  visitMetricPoints(document, {
+  visitMetricPointsRaw(document, {
     onScope(context) {
       rebuildScopeBase(context);
     },
