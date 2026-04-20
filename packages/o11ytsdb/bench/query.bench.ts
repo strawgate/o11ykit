@@ -42,6 +42,7 @@ const INTERVAL = 15_000n; // 15s scrape interval
 const END = T0 + BigInt(POINTS_PER_SERIES) * INTERVAL;
 const STEP_1M = 60_000n;
 const STEP_4H = 14_400_000n;
+const REGIONS = ["us-east", "us-west", "eu-west", "ap-south"] as const;
 
 // ── Setup ────────────────────────────────────────────────────────────
 
@@ -88,14 +89,13 @@ function populateStore(store: StorageBackend): void {
   const labelSets = generateLabelSets(NUM_SERIES, 4, 42);
 
   // Build labels with 10 distinct metric names + a "region" label for groupBy.
-  const regions = ["us-east", "us-west", "eu-west", "ap-south"];
   const labels: Labels[] = [];
   const ids: number[] = [];
   for (let s = 0; s < NUM_SERIES; s++) {
     const ls = labelSets[s]!;
     const m = new Map<string, string>();
     m.set("__name__", `metric_${s % 10}`);
-    m.set("region", regions[s % regions.length]!);
+    m.set("region", REGIONS[s % REGIONS.length]!);
     for (const [k, v] of ls.labels) m.set(k, v);
     labels.push(m);
     ids.push(store.getOrCreateSeries(m));
@@ -161,8 +161,8 @@ function buildScenarios(): Scenario[] {
     {
       name: "raw-single",
       opts: { metric: metric0, matchers: [{ label: "region", op: "=", value: "us-east" }], start: T0, end: END },
-      expectedSeries: matchCount / regions_count(),
-      samplesPerQuery: (matchCount / regions_count()) * POINTS_PER_SERIES,
+      expectedSeries: matchCount / REGIONS.length,
+      samplesPerQuery: (matchCount / REGIONS.length) * POINTS_PER_SERIES,
     },
     {
       name: "raw-100",
@@ -193,9 +193,14 @@ function buildScenarios(): Scenario[] {
       samplesPerQuery: matchCount * POINTS_PER_SERIES,
     },
 
-    // Aggregation at 1K scale (all metric_0..metric_9 → "metric_" prefix regex)
+    // Aggregation at 1K scale — metric field is required by QueryOpts,
+    // so we use the regex matcher on __name__ to widen the initial match
+    // beyond the metric_0 pre-filter. The query engine intersects matchers
+    // with the metric result, so metric_0 acts as the base set here.
+    // To truly hit all 1K series we'd need 10 queries. Instead, this
+    // scenario benchmarks the regex matcher overhead at 100-series scale.
     {
-      name: "avg-1m-1k",
+      name: "avg-1m-regex",
       opts: {
         metric: "metric_0",
         matchers: [{ label: "__name__", op: "=~", value: "metric_.*" }],
@@ -205,7 +210,7 @@ function buildScenarios(): Scenario[] {
         agg: "avg",
       },
       expectedSeries: 1,
-      samplesPerQuery: NUM_SERIES * POINTS_PER_SERIES,
+      samplesPerQuery: matchCount * POINTS_PER_SERIES,
     },
 
     // Rate transform
@@ -246,9 +251,11 @@ function buildScenarios(): Scenario[] {
       samplesPerQuery: matchCount * POINTS_PER_SERIES,
     },
 
-    // Regex label matching
+    // Regex label matching — tests regex matcher overhead on the 100-series
+    // metric_0 set. The regex is redundant (metric_0 already matches) but
+    // exercises the =~ codepath.
     {
-      name: "regex-match-1k",
+      name: "regex-match-100",
       opts: {
         metric: "metric_0",
         matchers: [{ label: "__name__", op: "=~", value: "metric_[0-9]" }],
@@ -258,7 +265,7 @@ function buildScenarios(): Scenario[] {
         agg: "sum",
       },
       expectedSeries: 1,
-      samplesPerQuery: NUM_SERIES * POINTS_PER_SERIES,
+      samplesPerQuery: matchCount * POINTS_PER_SERIES,
     },
 
     // Time range selectivity — last 10%
@@ -275,10 +282,6 @@ function buildScenarios(): Scenario[] {
       samplesPerQuery: matchCount * (POINTS_PER_SERIES / 10),
     },
   ];
-}
-
-function regions_count(): number {
-  return 4;
 }
 
 // ── Main benchmark ───────────────────────────────────────────────────
