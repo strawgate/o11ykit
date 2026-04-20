@@ -129,6 +129,16 @@
               </select>
             </div>
             <div class="control-group">
+              <label for="dataPrecision">Value precision</label>
+              <select id="dataPrecision">
+                <option value="0">Integer (counters, bytes)</option>
+                <option value="1">1 decimal (°C, ms)</option>
+                <option value="2" selected>2 decimals (%, currency)</option>
+                <option value="4">4 decimals (ratios)</option>
+                <option value="">Full f64 (worst case)</option>
+              </select>
+            </div>
+            <div class="control-group">
               <label for="sampleInterval">Sample interval</label>
               <select id="sampleInterval">
                 <option value="1000">1 s</option>

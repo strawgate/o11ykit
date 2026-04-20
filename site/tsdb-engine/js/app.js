@@ -298,6 +298,8 @@ document.getElementById("btnCustomGenerate")?.addEventListener("click", () => {
   const numSeries = parseInt(document.getElementById("numSeries").value, 10);
   const numPoints = parseInt(document.getElementById("numPoints").value, 10);
   const pattern = document.getElementById("dataPattern").value;
+  const precisionVal = document.getElementById("dataPrecision").value;
+  const decimals = precisionVal !== "" ? parseInt(precisionVal, 10) : undefined;
   const backendType = document.getElementById("customBackend").value;
   const intervalMs = parseInt(document.getElementById("sampleInterval").value, 10);
 
@@ -308,7 +310,7 @@ document.getElementById("btnCustomGenerate")?.addEventListener("click", () => {
   requestAnimationFrame(() => {
     setTimeout(() => {
       try {
-        generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs);
+        generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs, decimals);
       } finally {
         btn.disabled = false;
         btn.textContent = "Generate Data";
@@ -338,7 +340,7 @@ function _createStore(backendType, chunkSize) {
   return store;
 }
 
-function generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs) {
+function generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs, decimals) {
   const store = _createStore(backendType, CHUNK_SIZE);
   if (!store) return;
 
@@ -365,7 +367,7 @@ function generateCustomData(numSeries, numPoints, pattern, backendType, interval
     const startT = now - BigInt(numPoints) * intervalNs;
     for (let i = 0; i < numPoints; i++) {
       timestamps[i] = startT + BigInt(i) * intervalNs;
-      values[i] = generateValue(pattern, i, si, numPoints);
+      values[i] = generateValue(pattern, i, si, numPoints, decimals);
     }
     seriesData.push({ labels, timestamps, values });
   }
