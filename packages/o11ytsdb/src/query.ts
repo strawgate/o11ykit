@@ -166,15 +166,21 @@ export class ScanEngine implements QueryEngine {
     }
 
     if (!opts.agg) {
-      // No aggregation — return raw series.
+      // No aggregation — return raw series (with optional per-series transform).
       const series: SeriesResult[] = [];
       for (const id of ids) {
         const data = storage.read(id, opts.start, opts.end);
         scannedSamples += data.timestamps.length;
+
+        let result: TimeRange = data;
+        if (opts.transform) {
+          result = aggregate([data], opts.transform, opts.step);
+        }
+
         series.push({
           labels: storage.labels(id) ?? new Map(),
-          timestamps: data.timestamps,
-          values: data.values,
+          timestamps: result.timestamps,
+          values: result.values,
         });
       }
       return { series, scannedSeries: ids.length, scannedSamples };
@@ -313,21 +319,34 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
   const timestamps = longest.timestamps;
   const values = new Float64Array(timestamps.length);
 
-  if (fn === "rate" || fn === "increase") {
+  if (fn === "rate" || fn === "increase" || fn === "irate" || fn === "delta") {
     if (ranges.length !== 1) {
       throw new Error(
-        `${fn}() without a subsequent aggregation must be evaluated per series — use ${fn}().sumBy() or similar`
+        `${fn}() without a subsequent aggregation must be evaluated per series (got ${ranges.length} ranges)`
       );
     }
     const src = ranges[0]!;
-    for (let i = 1; i < src.timestamps.length; i++) {
-      if (fn === "increase") {
+    if (fn === "irate") {
+      for (let i = 1; i < src.timestamps.length; i++) {
         const delta = src.values[i]! - src.values[i - 1]!;
-        values[i] = delta >= 0 ? delta : src.values[i]!;
-      } else {
         const dt = Number(src.timestamps[i]! - src.timestamps[i - 1]!) / 1000;
-        const delta = src.values[i]! - src.values[i - 1]!;
         values[i] = dt > 0 ? (delta >= 0 ? delta : src.values[i]!) / dt : 0;
+      }
+    } else if (fn === "delta") {
+      // Raw difference — no counter-reset handling
+      for (let i = 1; i < src.timestamps.length; i++) {
+        values[i] = src.values[i]! - src.values[i - 1]!;
+      }
+    } else {
+      for (let i = 1; i < src.timestamps.length; i++) {
+        if (fn === "increase") {
+          const delta = src.values[i]! - src.values[i - 1]!;
+          values[i] = delta >= 0 ? delta : src.values[i]!;
+        } else {
+          const dt = Number(src.timestamps[i]! - src.timestamps[i - 1]!) / 1000;
+          const delta = src.values[i]! - src.values[i - 1]!;
+          values[i] = dt > 0 ? (delta >= 0 ? delta : src.values[i]!) / dt : 0;
+        }
       }
     }
     return { timestamps, values };
@@ -397,6 +416,10 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   const pFrac = percentileFraction(fn);
   if (fn === "rate" || fn === "increase") {
     _stepAggregateRate(ranges, values, counts, bucketCount, minT, minTN, stepN, fn === "increase");
+  } else if (fn === "irate") {
+    _stepAggregateIrate(ranges, values, counts, bucketCount, minT, minTN, stepN);
+  } else if (fn === "delta") {
+    _stepAggregateRate(ranges, values, counts, bucketCount, minT, minTN, stepN, true, true);
   } else if (pFrac !== undefined) {
     _stepAggregatePercentile(ranges, values, counts, bucketCount, minT, minTN, stepN, pFrac);
   } else {
@@ -655,9 +678,10 @@ function _makeAccumulator(
 }
 
 /**
- * Rate/increase aggregation — needs per-bucket first/last tracking.
+ * Rate/increase/delta aggregation — needs per-bucket first/last tracking.
  * Handles stats-only parts by decoding them inline.
  * When isIncrease is true, returns delta (last - first) without dividing by time.
+ * When rawDelta is true, skips counter-reset handling (for delta()).
  */
 function _stepAggregateRate(
   ranges: TimeRange[],
@@ -667,7 +691,8 @@ function _stepAggregateRate(
   minT: bigint,
   minTN: number,
   stepN: number,
-  isIncrease = false
+  isIncrease = false,
+  rawDelta = false
 ): void {
   const firstTs = new Float64Array(bucketCount).fill(Infinity);
   const firstVal = new Float64Array(bucketCount);
@@ -731,10 +756,95 @@ function _stepAggregateRate(
   for (let i = 0; i < bucketCount; i++) {
     if (isIncrease) {
       const delta = lastVal[i]! - firstVal[i]!;
-      values[i] = delta >= 0 ? delta : lastVal[i]!; // counter reset: use last value
+      if (rawDelta) {
+        values[i] = delta; // delta(): no counter-reset handling
+      } else {
+        values[i] = delta >= 0 ? delta : lastVal[i]!; // counter reset: use last value
+      }
     } else {
       const delta = lastVal[i]! - firstVal[i]!;
       const dt = (lastTs[i]! - firstTs[i]!) / 1000;
+      values[i] = dt > 0 ? (delta >= 0 ? delta : lastVal[i]!) / dt : 0;
+    }
+  }
+}
+
+/**
+ * Instant rate (irate) — per-bucket rate from only the last two samples.
+ * Tracks the two most-recent samples per bucket instead of first/last.
+ */
+function _stepAggregateIrate(
+  ranges: TimeRange[],
+  values: Float64Array,
+  counts: Float64Array,
+  bucketCount: number,
+  minT: bigint,
+  minTN: number,
+  stepN: number
+): void {
+  // Track the two latest samples per bucket
+  const lastTs = new Float64Array(bucketCount).fill(-Infinity);
+  const lastVal = new Float64Array(bucketCount);
+  const secondTs = new Float64Array(bucketCount).fill(-Infinity);
+  const secondVal = new Float64Array(bucketCount);
+
+  const insertSample = (bucket: number, t: number, v: number): void => {
+    if (t > lastTs[bucket]!) {
+      secondTs[bucket] = lastTs[bucket]!;
+      secondVal[bucket] = lastVal[bucket]!;
+      lastTs[bucket] = t;
+      lastVal[bucket] = v;
+    } else if (t === lastTs[bucket]!) {
+      lastVal[bucket] = v;
+    } else if (t > secondTs[bucket]!) {
+      secondTs[bucket] = t;
+      secondVal[bucket] = v;
+    }
+    counts[bucket]!++;
+  };
+
+  for (let ri = 0; ri < ranges.length; ri++) {
+    const r = ranges[ri]!;
+    const decoded =
+      r.timestamps.length === 0 && r.decode ? (r.decodeView ? r.decodeView() : r.decode()) : r;
+    const src = decoded.timestamps;
+    const len = src.length;
+    if (len === 0) continue;
+    const vs = decoded.values;
+
+    const hasChunkMeta = r.chunkMinT !== undefined && r.chunkMaxT !== undefined;
+    if (len >= 2 && hasChunkMeta) {
+      const chunkMinTN = Number(r.chunkMinT! - minT) + minTN;
+      const chunkMaxTN = Number(r.chunkMaxT! - minT) + minTN;
+      const span = chunkMaxTN - chunkMinTN;
+      if (span > 0 && span % (len - 1) === 0) {
+        const interval = span / (len - 1);
+        const base = chunkMinTN - minTN;
+        for (let i = 0; i < len; i++) {
+          const t = chunkMinTN + i * interval;
+          const bucket = ((base + i * interval) / stepN) | 0;
+          insertSample(bucket, t, vs[i]!);
+        }
+        continue;
+      }
+    }
+    const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+    const readTs = (j: number): number => {
+      const off = j << 3;
+      return dv.getInt32(off + 4, _le) * 4294967296 + dv.getUint32(off, _le);
+    };
+    for (let i = 0; i < len; i++) {
+      const t = readTs(i);
+      const bucket = ((t - minTN) / stepN) | 0;
+      insertSample(bucket, t, vs[i]!);
+    }
+  }
+  for (let i = 0; i < bucketCount; i++) {
+    if (secondTs[i]! === -Infinity) {
+      values[i] = 0; // Only one or zero samples — can't compute rate
+    } else {
+      const delta = lastVal[i]! - secondVal[i]!;
+      const dt = (lastTs[i]! - secondTs[i]!) / 1000;
       values[i] = dt > 0 ? (delta >= 0 ? delta : lastVal[i]!) / dt : 0;
     }
   }
