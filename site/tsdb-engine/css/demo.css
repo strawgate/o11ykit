@@ -164,9 +164,6 @@
 
 /* ── Dataset Panel ──────────────────────────────────────────────────── */
 
-.dataset-panel {
-}
-
 .dataset-tabs {
   display: flex;
   gap: 4px;
@@ -591,9 +588,6 @@
 
 /* ── Query Lab ──────────────────────────────────────────────────────── */
 
-.query-panel {
-}
-
 .query-lab-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -701,6 +695,3 @@
 }
 
 /* ── Results Panel ──────────────────────────────────────────────────── */
-
-.results-panel {
-}
