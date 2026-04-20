@@ -24,6 +24,7 @@ import {
   parseOtlpJsonLines,
   toNumber,
   toUnixNanos,
+  visitMetricPoints,
 } from "../src/index.js";
 import { logsDocument, metricsDocument, tracesDocument } from "./fixtures.js";
 
@@ -161,6 +162,38 @@ describe("@otlpkit/otlpjson", () => {
     expect(logs).toHaveLength(1);
     expect(logs[0]?.body).toBe("retry scheduled");
     expect(logs[0]?.observedTimeUnixNano).toBe("7000000100");
+  });
+
+  it("visits metric documents without materializing point records", () => {
+    const scopeNames: string[] = [];
+    const batches: Array<[string, string, number]> = [];
+
+    visitMetricPoints(metricsDocument, {
+      onScope(context) {
+        scopeNames.push(context.scope.name ?? "unknown");
+      },
+      onNumberDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onHistogramDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onSummaryDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onExponentialHistogramDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+    });
+
+    expect(scopeNames).toEqual(["logfwd.pipeline"]);
+    expect(batches).toEqual([
+      ["gauge", "logfwd.inflight_batches", 2],
+      ["sum", "logfwd.retry_total", 1],
+      ["histogram", "logfwd.output.duration", 1],
+      ["summary", "logfwd.queue.latency", 1],
+      ["exponentialHistogram", "logfwd.flush.delay", 1],
+    ]);
   });
 
   it("covers sparse optional fields and guard failures", () => {

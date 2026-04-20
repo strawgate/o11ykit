@@ -1,11 +1,18 @@
 import type {
+  MetricScopeVisitContext,
   OtlpExponentialHistogramDataPoint,
   OtlpHistogramDataPoint,
   OtlpKeyValue,
   OtlpMetricsDocument,
   OtlpSummaryDataPoint,
 } from "@otlpkit/otlpjson";
-import { detectSignal, flattenAttributes, isMetricsDocument, toNumber } from "@otlpkit/otlpjson";
+import {
+  detectSignal,
+  flattenAttributes,
+  isMetricsDocument,
+  toNumber,
+  visitMetricPoints,
+} from "@otlpkit/otlpjson";
 
 import type { Labels, StorageBackend } from "./types.js";
 
@@ -122,8 +129,7 @@ function buildSnapshotLabels(
   pointAttrs: Record<string, unknown>
 ): Map<string, string> {
   const labels = new Map<string, string>();
-  for (let i = 0; i < baseEntries.length; i++) {
-    const e = baseEntries[i]!;
+  for (const e of baseEntries) {
     labels.set(e[0], e[1]);
   }
   labels.set("__name__", metricName);
@@ -225,105 +231,94 @@ function ingestMetricsDocument(
 ): ParsedOtlpResult {
   const pending = new Map<number, PendingSeriesSamples>();
 
-  for (const resourceMetrics of document.resourceMetrics) {
-    const resourceAttrs = flattenAttributes(resourceMetrics.resource?.attributes);
+  let baseEntries: Array<[string, string]> = [];
+  let baseHash = FNV_OFFSET >>> 0;
+  let baseSize = 0;
 
-    for (const scopeMetrics of resourceMetrics.scopeMetrics ?? []) {
-      const scope = scopeMetrics.scope;
-      const scopeAttrs = flattenAttributes(scope?.attributes);
-
-      // Pre-compute base labels and base hash once per scope.
-      const baseEntries: Array<[string, string]> = [];
-      baseEntries.push([SCOPE_NAME_LABEL, scope?.name ?? ""]);
-      baseEntries.push([SCOPE_VERSION_LABEL, scope?.version ?? ""]);
-      for (const [key, value] of Object.entries(resourceAttrs)) {
-        baseEntries.push([
-          `${ATTR_PREFIX_RESOURCE}${sanitizeLabelKey(key)}`,
-          attributeValueToLabel(value),
-        ]);
-      }
-      for (const [key, value] of Object.entries(scopeAttrs)) {
-        baseEntries.push([
-          `${ATTR_PREFIX_SCOPE}${sanitizeLabelKey(key)}`,
-          attributeValueToLabel(value),
-        ]);
-      }
-
-      let baseHash = FNV_OFFSET >>> 0;
-      for (let i = 0; i < baseEntries.length; i++) {
-        const e = baseEntries[i]!;
-        baseHash = fnvHashEntry(baseHash, e[0], e[1]);
-      }
-      const baseSize = baseEntries.length;
-
-      for (const metric of scopeMetrics.metrics ?? []) {
-        if (metric.gauge?.dataPoints) {
-          result.metricTypeCounts.gauge++;
-          ingestNumberPoints(
-            metric.name,
-            metric.gauge.dataPoints,
-            baseEntries,
-            baseHash,
-            baseSize,
-            pending,
-            result
-          );
-        }
-
-        if (metric.sum?.dataPoints) {
-          result.metricTypeCounts.sum++;
-          ingestNumberPoints(
-            metric.name,
-            metric.sum.dataPoints,
-            baseEntries,
-            baseHash,
-            baseSize,
-            pending,
-            result
-          );
-        }
-
-        if (metric.histogram?.dataPoints) {
-          result.metricTypeCounts.histogram++;
-          ingestHistogramPoints(
-            metric.name,
-            metric.histogram.dataPoints,
-            baseEntries,
-            baseHash,
-            baseSize,
-            pending,
-            result
-          );
-        }
-
-        if (metric.summary?.dataPoints) {
-          result.metricTypeCounts.summary++;
-          ingestSummaryPoints(
-            metric.name,
-            metric.summary.dataPoints,
-            baseEntries,
-            baseHash,
-            baseSize,
-            pending,
-            result
-          );
-        }
-
-        if (metric.exponentialHistogram?.dataPoints) {
-          result.metricTypeCounts.exponentialHistogram++;
-          ingestExponentialHistogramPoints(
-            metric.name,
-            metric.exponentialHistogram.dataPoints,
-            baseEntries,
-            baseHash,
-            baseSize,
-            pending,
-            result
-          );
-        }
-      }
+  const rebuildScopeBase = ({ resource, scope }: MetricScopeVisitContext): void => {
+    const nextEntries: Array<[string, string]> = [];
+    nextEntries.push([SCOPE_NAME_LABEL, scope.name ?? ""]);
+    nextEntries.push([SCOPE_VERSION_LABEL, scope.version ?? ""]);
+    for (const [key, value] of Object.entries(resource)) {
+      nextEntries.push([
+        `${ATTR_PREFIX_RESOURCE}${sanitizeLabelKey(key)}`,
+        attributeValueToLabel(value),
+      ]);
     }
-  }
+    for (const [key, value] of Object.entries(scope.attributes)) {
+      nextEntries.push([
+        `${ATTR_PREFIX_SCOPE}${sanitizeLabelKey(key)}`,
+        attributeValueToLabel(value),
+      ]);
+    }
+
+    let nextHash = FNV_OFFSET >>> 0;
+    for (const e of nextEntries) {
+      nextHash = fnvHashEntry(nextHash, e[0], e[1]);
+    }
+
+    baseEntries = nextEntries;
+    baseHash = nextHash;
+    baseSize = nextEntries.length;
+  };
+
+  visitMetricPoints(document, {
+    onScope(context) {
+      rebuildScopeBase(context);
+    },
+    onNumberDataPoints(context, points) {
+      if (context.metric.kind === "gauge") {
+        result.metricTypeCounts.gauge++;
+      } else {
+        result.metricTypeCounts.sum++;
+      }
+      ingestNumberPoints(
+        context.metric.name,
+        points,
+        baseEntries,
+        baseHash,
+        baseSize,
+        pending,
+        result
+      );
+    },
+    onHistogramDataPoints(context, points) {
+      result.metricTypeCounts.histogram++;
+      ingestHistogramPoints(
+        context.metric.name,
+        points,
+        baseEntries,
+        baseHash,
+        baseSize,
+        pending,
+        result
+      );
+    },
+    onSummaryDataPoints(context, points) {
+      result.metricTypeCounts.summary++;
+      ingestSummaryPoints(
+        context.metric.name,
+        points,
+        baseEntries,
+        baseHash,
+        baseSize,
+        pending,
+        result
+      );
+    },
+    onExponentialHistogramDataPoints(context, points) {
+      result.metricTypeCounts.exponentialHistogram++;
+      ingestExponentialHistogramPoints(
+        context.metric.name,
+        points,
+        baseEntries,
+        baseHash,
+        baseSize,
+        pending,
+        result
+      );
+    },
+  });
 
   return { pending, result };
 }
@@ -375,7 +370,11 @@ export function flushSamplesToStorage(
       tsArr = msToNs(Float64Array.from(msArr));
     } else {
       tsArr = new BigInt64Array(len);
-      for (let i = 0; i < len; i++) tsArr[i] = BigInt(msArr[i]!) * 1_000_000n;
+      let i = 0;
+      for (const ms of msArr) {
+        tsArr[i] = BigInt(ms) * 1_000_000n;
+        i++;
+      }
     }
     storage.appendBatch(id, tsArr, Float64Array.from(batch.values));
     result.samplesInserted += len;
