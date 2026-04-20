@@ -92,6 +92,8 @@ export interface WasmExports {
   // Memory management
   allocScratch: (size: number) => number;
   resetScratch: () => void;
+  // Exception encoding mode
+  setAlpExcMode?: (mode: number) => void;
 }
 
 /**
