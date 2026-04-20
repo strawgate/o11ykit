@@ -22,6 +22,7 @@
       <header class="topbar panel">
         <a class="brand" href="/o11ykit/"><img class="brand-mark" src="./logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
         <nav class="topnav" aria-label="Primary">
+          <a href="#experiences">Experiences</a>
           <a href="#overview">Overview</a>
           <a href="#flows">How it works</a>
           <a href="#tsdb-engine">TSDB Engine</a>
@@ -57,6 +58,81 @@
         </div>
       </section>
 
+      <section id="experiences" class="panel">
+        <h2>Start with the fun interactive experiences</h2>
+        <p class="section-intro">
+          The most distinctive surfaces here are the hands-on ones. Lead with them first, then drop
+          into docs and architecture once the product has earned the explanation.
+        </p>
+        <div class="grid grid-3">
+          <article class="card accent-tsdb">
+            <h3>TSDB Live Demo</h3>
+            <p>
+              Generate data, compress it, inspect storage behavior, and run queries in the browser
+              against the engine directly.
+            </p>
+            <div class="card-links">
+              <a href="/o11ykit/tsdb-engine/#live-demo">Launch demo</a>
+              <a href="/o11ykit/tsdb-engine/">Engine overview</a>
+            </div>
+          </article>
+          <article class="card accent-tsdb">
+            <h3>Codec + query learn hub</h3>
+            <p>
+              Bring back the playful side: XOR-delta, delta-of-delta, ALP, string interning, chunk
+              stats, and query-engine walkthroughs are all still here.
+            </p>
+            <div class="card-links">
+              <a href="/o11ykit/tsdb-engine/learn/">Open learn hub</a>
+              <a href="/o11ykit/tsdb-engine/learn/xor-delta/">XOR-delta</a>
+            </div>
+          </article>
+          <article class="card accent-otlp">
+            <h3>OtlpKit demo</h3>
+            <p>
+              See OTLP documents turned into chart-ready series and frames that slot directly into
+              visualization libraries.
+            </p>
+            <div class="card-links">
+              <a href="/o11ykit/otlpkit/">Open demo</a>
+              <a href="/o11ykit/otlpkit-docs/">Docs</a>
+            </div>
+          </article>
+          <article class="card accent-bench">
+            <h3>Benchkit walkthrough</h3>
+            <p>
+              Follow the benchmark story from raw output to telemetry, comparisons, and regression
+              gates in CI.
+            </p>
+            <div class="card-links">
+              <a href="/o11ykit/benchkit/">Open Benchkit Demo</a>
+              <a href="/o11ykit/octo11y/">Pipeline guide</a>
+            </div>
+          </article>
+          <article class="card accent-octo">
+            <h3>Playground</h3>
+            <p>
+              Keep an explicit route to the playful public-data experiments so the main site does not
+              collapse back into docs-only mode.
+            </p>
+            <div class="card-links">
+              <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">Open playground</a>
+            </div>
+          </article>
+          <article class="card accent-tsdb">
+            <h3>Pick a learning path</h3>
+            <p>
+              Start with beginner-friendly chunk stats and string interning, then move into the
+              codec internals once the storage model clicks.
+            </p>
+            <div class="card-links">
+              <a href="/o11ykit/tsdb-engine/learn/chunk-stats/">Chunk stats</a>
+              <a href="/o11ykit/tsdb-engine/learn/string-interning/">String interning</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section id="overview" class="panel">
         <h2>Choose your entry point</h2>
         <p class="section-intro">
@@ -67,8 +143,8 @@
           <article class="card accent-otlp">
             <h3>OtlpKit</h3>
             <p>
-              Parse OTLP JSON, filter and bucket records, and project chart-ready frames into
-              Chart.js, ECharts, Recharts, or uPlot.
+              Parse OTLP JSON, filter and bucket records, and build in-memory frames or series for
+              charting libraries. It is the shaping layer, not the compressed storage engine.
             </p>
             <div class="card-links">
               <a href="/o11ykit/otlpkit-docs/">Docs</a>
@@ -78,8 +154,9 @@
           <article class="card accent-tsdb">
             <h3>TSDB Engine</h3>
             <p>
-              Browser-native time-series storage and compression with interchangeable TypeScript and
-              Rust→WASM codecs, multiple backends, and learnable internals.
+              Browser-native time-series storage, compression, and query execution with
+              interchangeable TypeScript and Rust→WASM codecs, multiple backends, and learnable
+              internals.
             </p>
             <div class="card-links">
               <a href="/o11ykit/tsdb-engine/">Explore the engine</a>
@@ -181,9 +258,10 @@
       <section class="callout">
         <h3>Keep OtlpKit and o11ytsdb adjacent, not merged</h3>
         <p>
-          OtlpKit is the OTLP shaping layer. o11ytsdb is the compression and storage layer. They fit
-          together naturally, but the current split keeps the storage engine reusable and lets the
-          TypeScript implementation remain the low-friction option when WASM would be overkill.
+          They can both hand you series, but they do different jobs. OtlpKit parses OTLP JSON and
+          shapes it into view-friendly data for charts. o11ytsdb owns compressed persistence,
+          backend layout, codec selection, and query execution over stored chunks. The overlap is at
+          the boundary, not in the core responsibility.
         </p>
         <div class="card-links">
           <a href="/o11ykit/otlpkit-docs/">OtlpKit docs</a>
