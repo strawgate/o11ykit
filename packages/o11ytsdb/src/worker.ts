@@ -256,7 +256,7 @@ export class O11yWorkerRuntime {
               tsArr = msToNs(msSlice);
             } else {
               tsArr = new BigInt64Array(len);
-              for (let j = 0; j < len; j++) tsArr[j] = BigInt(msSlice[j]!) * 1_000_000n;
+              for (let j = 0; j < len; j++) tsArr[j] = BigInt(Math.round(msSlice[j]! * 1_000_000));
             }
 
             const vals = allValues.subarray(off, off + len);
