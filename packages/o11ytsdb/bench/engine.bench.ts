@@ -23,10 +23,10 @@ function pkgPath(rel: string): string {
 
 // ── Types (import from compiled src) ─────────────────────────────────
 
-type StorageBackend = import("../dist/types.js").StorageBackend;
-type Codec = import("../dist/types.js").Codec;
-type Labels = import("../dist/types.js").Labels;
-type QueryEngine = import("../dist/types.js").QueryEngine;
+type StorageBackend = import("./types.js").StorageBackend;
+type Codec = import("./types.js").Codec;
+type Labels = import("./types.js").Labels;
+type QueryEngine = import("./types.js").QueryEngine;
 
 // ── Configuration ────────────────────────────────────────────────────
 
@@ -604,8 +604,8 @@ export default async function (): Promise<BenchReport> {
       const ok =
         refData.timestamps.length === otherData.timestamps.length &&
         (isLossy
-          ? refData.values.every((v, j) => Math.abs(v - otherData.values[j]!) < 0.01)
-          : refData.values.every((v, j) => v === otherData.values[j]));
+          ? refData.values.every((v: number, j: number) => Math.abs(v - otherData.values[j]!) < 0.01)
+          : refData.values.every((v: number, j: number) => v === otherData.values[j]));
       const detail = isLossy ? "approx (precision-quantized)" : "bit-exact";
       suite.addValidation(
         ref.name,

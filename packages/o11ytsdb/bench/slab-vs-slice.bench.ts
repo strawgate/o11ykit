@@ -26,13 +26,13 @@ function pkgPath(rel: string): string {
 
 // ── Types ────────────────────────────────────────────────────────────
 
-type StorageBackend = import("../dist/types.js").StorageBackend;
-type ValuesCodec = import("../dist/types.js").ValuesCodec;
-type TimestampCodec = import("../dist/types.js").TimestampCodec;
-type RangeDecodeCodec = import("../dist/types.js").RangeDecodeCodec;
-type QueryEngine = import("../dist/types.js").QueryEngine;
-type Labels = import("../dist/types.js").Labels;
-type ChunkStats = import("../dist/types.js").ChunkStats;
+type StorageBackend = import("./types.js").StorageBackend;
+type ValuesCodec = import("./types.js").ValuesCodec;
+type TimestampCodec = import("./types.js").TimestampCodec;
+type RangeDecodeCodec = import("./types.js").RangeDecodeCodec;
+type QueryEngine = import("./types.js").QueryEngine;
+type Labels = import("./types.js").Labels;
+type ChunkStats = import("./types.js").ChunkStats;
 
 // ── Configuration ────────────────────────────────────────────────────
 

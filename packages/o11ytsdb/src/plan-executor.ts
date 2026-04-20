@@ -17,7 +17,14 @@ import type {
   TransformNode,
 } from "./plan.js";
 import { ScanEngine } from "./query.js";
-import type { AggFn, Matcher, QueryOpts, QueryResult, StorageBackend } from "./types.js";
+import type {
+  AggFn,
+  Matcher,
+  QueryOpts,
+  QueryResult,
+  StorageBackend,
+  TransformOp,
+} from "./types.js";
 
 // ── Extracted plan parameters ────────────────────────────────────────
 
@@ -114,16 +121,22 @@ function toEngineMatchers(planMatchers: readonly PlanMatcher[]): Matcher[] {
 function resolveAggFn(
   transforms: TransformFn[],
   agg: PlanAggFn | undefined
-): { agg: AggFn | undefined; transform: "rate" | "increase" | undefined } {
+): { agg: AggFn | undefined; transform: TransformOp | undefined } {
   if (transforms.length === 0) {
     return { agg, transform: undefined };
   }
 
-  if (transforms.length === 1 && (transforms[0] === "rate" || transforms[0] === "increase")) {
-    const transform = transforms[0];
-    if (agg == null) {
-      // rate() or increase() without a subsequent aggregation → treated as AggFn
-      return { agg: transform as AggFn, transform: undefined };
+  if (
+    transforms.length === 1 &&
+    (transforms[0] === "rate" ||
+      transforms[0] === "increase" ||
+      transforms[0] === "irate" ||
+      transforms[0] === "delta")
+  ) {
+    const transform = transforms[0] as TransformOp;
+    if (agg == null || (agg as string) === transform) {
+      // Standalone transform (agg may be synthesized by query builder for step propagation).
+      return { agg: undefined, transform };
     }
     // Compound: transform per-series, then cross-series aggregation
     return { agg, transform };
@@ -131,7 +144,7 @@ function resolveAggFn(
 
   throw new Error(
     `Transform '${transforms.join(" → ")}' is not yet supported by the executor. ` +
-      `Supported: rate(), increase() (with optional subsequent aggregation).`
+      `Supported: rate(), increase(), irate(), delta() (with optional subsequent aggregation).`
   );
 }
 
@@ -143,8 +156,9 @@ const engine = new ScanEngine();
  * Execute a query plan against a storage backend.
  *
  * V1: flattens the plan tree and delegates to ScanEngine.query().
- * Supports: =, !=, =~, !~ matchers, all 6 aggregations ± step ± groupBy, rate().
- * Not yet supported: compound transforms; binary ops; increase, irate, abs, etc.
+ * Supports: =, !=, =~, !~ matchers, all aggregations ± step ± groupBy,
+ * rate(), increase(), irate(), delta(), and compound transforms.
+ * Not yet supported: binary ops; abs.
  */
 export function executePlan(plan: PlanNode, storage: StorageBackend): QueryResult {
   const flat = flattenPlan(plan);

@@ -23,7 +23,15 @@ export interface PlanMatcher {
 // ── Function types ───────────────────────────────────────────────────
 
 /** Per-series transform functions (applied before aggregation). */
-export type TransformFn = "rate" | "increase" | "irate" | "abs" | "ceil" | "floor" | "sqrt";
+export type TransformFn =
+  | "rate"
+  | "increase"
+  | "irate"
+  | "delta"
+  | "abs"
+  | "ceil"
+  | "floor"
+  | "sqrt";
 
 /** Pure aggregation functions (collapse series, not per-series transforms). */
 export type PlanAggFn =

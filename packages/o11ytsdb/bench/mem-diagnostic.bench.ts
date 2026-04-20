@@ -21,8 +21,8 @@ function pkgPath(rel: string): string {
   return join(__dirname, "..", "..", rel);
 }
 
-type StorageBackend = import("../dist/types.js").StorageBackend;
-type Labels = import("../dist/types.js").Labels;
+type StorageBackend = import("./types.js").StorageBackend;
+type Labels = import("./types.js").Labels;
 
 const CHUNK_SIZE = 640;
 const T0 = 1_700_000_000_000n;
