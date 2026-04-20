@@ -52,10 +52,10 @@
         <p class="lede">
           Gorilla-style XOR-delta compression. Three pluggable storage backends.
           A scan query engine with aggregation, grouping, and rate computation.
-          Generate a million data points below and query them in&nbsp;real&nbsp;time.
+          Generate millions of data points below and query them in&nbsp;real&nbsp;time.
         </p>
         <div class="hero-actions">
-          <a class="cta cta-primary" href="#live-demo">Launch Live Demo ↓</a>
+          <a class="cta cta-primary" href="#section-dataset">Launch Live Demo ↓</a>
           <a class="cta" href="learn/">Learn How It Works</a>
           <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ytsdb" target="_blank" rel="noreferrer">
             Browse Source
@@ -74,7 +74,7 @@
       <!-- ─── Section 1: Dataset ────────────────────────────────── -->
       <section class="panel dataset-panel" id="section-dataset">
         <h2>Load a Dataset</h2>
-        <p class="section-intro">Choose a pre-built scenario or generate custom data. Everything runs in your browser.</p>
+        <p class="section-intro">Choose a pre-built scenario or generate custom data. Everything runs in your browser — no server, no network, no latency.</p>
 
         <div class="dataset-tabs" role="tablist">
           <button type="button" class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-scenarios" id="tab-scenarios-btn">Scenarios</button>
@@ -151,9 +151,34 @@
         </div>
       </section>
 
-      <!-- ─── Section 2: Storage ────────────────────────────────── -->
+      <!-- ─── Section 2: Fork in the Road ──────────────────────── -->
+      <section class="panel fork-panel" id="section-fork" hidden>
+        <h2>What would you like to explore?</h2>
+        <p class="section-intro">Your dataset is loaded and ready. Choose a path — you can always switch later.</p>
+
+        <div class="fork-grid">
+          <button type="button" class="fork-card" id="forkStorage">
+            <div class="fork-icon">💾</div>
+            <h3>Explore Storage</h3>
+            <p>See how millions of data points are compressed and organized in memory. Compare three storage backends side-by-side. Inspect individual compressed chunks byte-by-byte.</p>
+            <span class="fork-cta">Start Exploring →</span>
+          </button>
+          <button type="button" class="fork-card" id="forkQuery">
+            <div class="fork-icon">🔍</div>
+            <h3>Explore Queries</h3>
+            <p>Write queries against your live dataset. Filter by labels, aggregate across series, compute rates and percentiles, and see results charted in real time.</p>
+            <span class="fork-cta">Open Query Lab →</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ─── Section 3: Storage ────────────────────────────────── -->
       <section class="panel storage-panel" id="section-storage" hidden>
-        <h2>Storage</h2>
+        <nav class="explore-nav" aria-label="Explorer navigation">
+          <button type="button" class="explore-nav-btn active" data-target="section-storage">💾 Storage</button>
+          <button type="button" class="explore-nav-btn" data-target="section-query">🔍 Query Lab</button>
+        </nav>
+        <h2>Storage Explorer</h2>
 
         <div class="storage-stats-row" id="storageStatsRow">
           <div class="stat-card"><div class="stat-big" id="statStoragePts">—</div><div class="stat-desc">Total points</div></div>
@@ -184,8 +209,12 @@
         </div>
       </section>
 
-      <!-- ─── Section 3: Query Lab ──────────────────────────────── -->
+      <!-- ─── Section 4: Query Lab ──────────────────────────────── -->
       <section class="panel query-panel" id="section-query" hidden>
+        <nav class="explore-nav" aria-label="Explorer navigation">
+          <button type="button" class="explore-nav-btn" data-target="section-storage">💾 Storage</button>
+          <button type="button" class="explore-nav-btn active" data-target="section-query">🔍 Query Lab</button>
+        </nav>
         <h2>Query Lab</h2>
 
         <div class="query-lab-grid">
@@ -263,7 +292,7 @@
         <button type="button" id="btnQuery" class="cta cta-primary demo-btn">Run Query</button>
       </section>
 
-      <!-- ─── Section 4: Results ────────────────────────────────── -->
+      <!-- ─── Section 5: Results ────────────────────────────────── -->
       <section class="panel results-panel" id="section-results" hidden>
         <h2>Results</h2>
         <div class="query-stats" id="queryStats">
@@ -436,7 +465,7 @@ New window       → '11' + 6L + 6M   (14 + N bits)</code></pre>
       <!-- ─── Query Engine ────────────────────────────────────── -->
       <section class="panel" id="query-engine">
         <h2>Query Engine</h2>
-        <p class="section-intro">The scan engine supports label matching, time windowing, six aggregation functions, groupBy, and rate computation. A 18–30% optimization pass in April 2026 improved step-aggregation throughput across all backends.</p>
+        <p class="section-intro">The scan engine supports label matching, time windowing, six aggregation functions, groupBy, and rate computation. An 18–30% optimization pass in April 2026 improved step-aggregation throughput across all backends.</p>
 
         <div class="grid grid-2">
           <div class="query-feature">
@@ -629,13 +658,6 @@ console.log(`${stats.seriesCount} series, ${stats.sampleCount} samples, ${stats.
             p.classList.toggle('active', show);
             p.hidden = !show;
           });
-        });
-      });
-
-      // Backend storage tabs
-      document.querySelectorAll('.backend-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-          document.querySelectorAll('.backend-tab').forEach(t => t.classList.toggle('active', t === tab));
         });
       });
     </script>

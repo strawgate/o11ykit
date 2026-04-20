@@ -369,7 +369,7 @@ export function buildLayoutDiagram(store, container) {
     container.innerHTML = _flatLayoutHTML(store);
   } else if (name === 'ChunkedStore') {
     container.innerHTML = _chunkedLayoutHTML(store);
-  } else if (name === 'ColumnStore') {
+  } else if (name.startsWith('ColumnStore')) {
     container.innerHTML = _columnLayoutHTML(store);
   } else {
     container.innerHTML = `<p class="layout-unknown">Layout visualization not available for ${name}.</p>`;

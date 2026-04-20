@@ -1,7 +1,7 @@
 // ── App Entry Point ──────────────────────────────────────────────────
 
 import { CHART_COLORS, renderChart, setupChartTooltip } from "./chart.js";
-import { generateScenarioData, generateValue, INSTANCES, METRICS, REGIONS, SCENARIOS } from "./data-gen.js";
+import { generateScenarioData, generateValue, INSTANCES, METRICS, REGIONS, SCENARIOS, scenarioSampleCount, scenarioSeriesCount } from "./data-gen.js";
 import { ScanEngine } from "./query.js";
 import { buildLayoutDiagram, buildStorageExplorer, showChunkDetail } from "./storage-explorer.js";
 import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
@@ -18,47 +18,61 @@ const currentEngine = new ScanEngine();
 let generatedMetrics = [];
 let activeMatchers = []; // [{label, op, value}]
 let availableLabels = new Map(); // label -> Set of values
+let _lastIngestData = null;
+let _lastIngestTime = 0;
+let _storagePopulated = false;
+let _queryPopulated = false;
 
 // ── Section visibility ────────────────────────────────────────────────
 
 function showSection(id) {
   const el = document.getElementById(id);
-  if (el) el.hidden = false;
+  if (el) {
+    el.hidden = false;
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function hideSection(id) {
+  const el = document.getElementById(id);
+  if (el) el.hidden = true;
 }
 
 function onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs) {
   currentStore = store;
   generatedMetrics = metrics;
+  _storagePopulated = false;
+  _queryPopulated = false;
 
   // Populate available labels for matcher UI
   _buildAvailableLabels(store);
 
-  // Show storage section
-  showSection('section-storage');
-  const layoutContainer = document.getElementById('storageLayoutDiagram');
-  if (layoutContainer) buildLayoutDiagram(store, layoutContainer);
-  buildStorageExplorer(store);
-
-  // Update ingest stats
+  // Precompute stats for the fork section
   const totalPts = store.sampleCount;
   const memBytes = store.memoryBytes();
   const rawBytes = totalPts * 16;
   const ratio = rawBytes / memBytes;
+  const ingestRate = totalPts / (ingestTime / 1000);
 
-  document.getElementById('statStoragePts').textContent = totalPts.toLocaleString();
-  document.getElementById('statStorageSeries').textContent = store.seriesCount.toLocaleString();
-  document.getElementById('statStorageMem').textContent = formatBytes(memBytes);
-  document.getElementById('statStorageRatio').textContent = `${ratio.toFixed(1)}×`;
-  document.getElementById('statStorageIngestTime').textContent = `${ingestTime.toFixed(0)} ms`;
-  document.getElementById('statStorageIngestRate').textContent = `${formatNum(totalPts / (ingestTime / 1000))} pts/s`;
+  // Update active card with results
+  const activeCard = document.querySelector('.scenario-card.loading, .scenario-card.active');
+  if (activeCard) {
+    activeCard.classList.remove('loading');
+    activeCard.classList.add('active', 'loaded');
+    const doneEl = activeCard.querySelector('.sc-done-stats');
+    if (doneEl) {
+      doneEl.textContent = `✓ ${totalPts.toLocaleString()} pts in ${ingestTime.toFixed(0)} ms · ${ratio.toFixed(0)}× compression · ${formatBytes(memBytes)}`;
+    }
+  }
 
-  // Show query lab
-  showSection('section-query');
-  _populateQueryMetrics(metrics);
-  _populateGroupByOptions(store);
+  // Hide storage/query/results — let user choose via fork
+  hideSection('section-storage');
+  hideSection('section-query');
+  hideSection('section-results');
 
-  // Run default query immediately
-  runQuery();
+  // Show fork in the road
+  showSection('section-fork');
+  autoSelectQueryStep(intervalMs, numPoints);
 }
 
 function _buildAvailableLabels(store) {
@@ -165,6 +179,64 @@ function _renderMatcherChips() {
   });
 }
 
+// ── Fork in the Road ──────────────────────────────────────────────────
+
+function _revealStorage() {
+  if (!currentStore) return;
+  if (!_storagePopulated) {
+    _storagePopulated = true;
+    const totalPts = currentStore.sampleCount;
+    const memBytes = currentStore.memoryBytes();
+    const rawBytes = totalPts * 16;
+    const ratio = rawBytes / memBytes;
+    const ingestRate = totalPts / (_lastIngestTime / 1000);
+
+    document.getElementById('statStoragePts').textContent = totalPts.toLocaleString();
+    document.getElementById('statStorageSeries').textContent = currentStore.seriesCount.toLocaleString();
+    document.getElementById('statStorageMem').textContent = formatBytes(memBytes);
+    document.getElementById('statStorageRatio').textContent = `${ratio.toFixed(1)}×`;
+    document.getElementById('statStorageIngestTime').textContent = `${_lastIngestTime.toFixed(0)} ms`;
+    document.getElementById('statStorageIngestRate').textContent = `${formatNum(ingestRate)} pts/s`;
+
+    const layoutContainer = document.getElementById('storageLayoutDiagram');
+    if (layoutContainer) buildLayoutDiagram(currentStore, layoutContainer);
+    buildStorageExplorer(currentStore);
+  }
+  hideSection('section-query');
+  hideSection('section-results');
+  showSection('section-storage');
+  _updateExploreNav('section-storage');
+}
+
+function _revealQuery() {
+  if (!currentStore) return;
+  if (!_queryPopulated) {
+    _queryPopulated = true;
+    _populateQueryMetrics(generatedMetrics);
+    _populateGroupByOptions(currentStore);
+  }
+  hideSection('section-storage');
+  showSection('section-query');
+  _updateExploreNav('section-query');
+}
+
+function _updateExploreNav(activeId) {
+  document.querySelectorAll('.explore-nav-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.target === activeId);
+  });
+}
+
+document.getElementById('forkStorage')?.addEventListener('click', _revealStorage);
+document.getElementById('forkQuery')?.addEventListener('click', _revealQuery);
+
+// Explore nav buttons (breadcrumb switching)
+document.querySelectorAll('.explore-nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (btn.dataset.target === 'section-storage') _revealStorage();
+    else if (btn.dataset.target === 'section-query') _revealQuery();
+  });
+});
+
 // ── Storage backend tabs ──────────────────────────────────────────────
 
 document.getElementById('section-storage')?.querySelectorAll('.backend-tab').forEach(tab => {
@@ -196,17 +268,8 @@ function _rebuildStoreWithBackend(backendType) {
   }
 
   currentStore = newStore;
-
-  const layoutContainer = document.getElementById('storageLayoutDiagram');
-  if (layoutContainer) buildLayoutDiagram(newStore, layoutContainer);
-  buildStorageExplorer(newStore);
-
-  const memBytes = newStore.memoryBytes();
-  const rawBytes = newStore.sampleCount * 16;
-  document.getElementById('statStorageMem').textContent = formatBytes(memBytes);
-  document.getElementById('statStorageRatio').textContent = `${(rawBytes / memBytes).toFixed(1)}×`;
-
-  runQuery();
+  _storagePopulated = false;
+  _revealStorage();
 }
 
 // ── Scenario picker ───────────────────────────────────────────────────
@@ -214,7 +277,11 @@ function _rebuildStoreWithBackend(backendType) {
 function _renderScenarioCards() {
   const grid = document.getElementById('scenarioGrid');
   if (!grid) return;
-  grid.innerHTML = SCENARIOS.map(s => `
+  grid.innerHTML = SCENARIOS.map(s => {
+    const seriesCount = scenarioSeriesCount(s);
+    const sampleCount = scenarioSampleCount(s);
+    const interval = s.intervalMs >= 60000 ? `${s.intervalMs/60000}min` : `${s.intervalMs/1000}s`;
+    return `
     <button type="button" class="scenario-card" data-scenario-id="${s.id}">
       <div class="sc-emoji">${s.emoji}</div>
       <div class="sc-name">${s.name}</div>
@@ -222,9 +289,11 @@ function _renderScenarioCards() {
       <div class="sc-meta">
         ${s.metrics.map(m => `<span class="sc-metric">${m.name}</span>`).join('')}
       </div>
-      <div class="sc-stats">${s.metrics.length * s.labelGroups.length} series · ${(s.numPoints).toLocaleString()} pts · ${s.intervalMs >= 60000 ? `${s.intervalMs/60000}min` : `${s.intervalMs/1000}s`} interval</div>
-    </button>
-  `).join('');
+      <div class="sc-stats">${seriesCount.toLocaleString()} series · ${sampleCount.toLocaleString()} pts · ${interval} interval</div>
+      <div class="sc-loading-indicator"><span class="sc-spinner"></span><span class="sc-loading-text">Generating data…</span></div>
+      <div class="sc-done-stats"></div>
+    </button>`;
+  }).join('');
 
   grid.querySelectorAll('.scenario-card').forEach(card => {
     card.addEventListener('click', () => {
@@ -234,38 +303,53 @@ function _renderScenarioCards() {
   });
 }
 
-let _lastIngestData = null;
 
 function loadScenario(scenario, clickedCard) {
-  document.querySelectorAll('.scenario-card').forEach(c => c.classList.remove('active'));
-  if (clickedCard) clickedCard.classList.add('active');
+  // Show loading state
+  document.querySelectorAll('.scenario-card').forEach(c => {
+    c.classList.remove('active', 'loading', 'loaded');
+  });
+  if (clickedCard) clickedCard.classList.add('loading');
 
-  const backendType = document.getElementById('scenarioBackend')?.value || 'column';
-  const store = _createStore(backendType, CHUNK_SIZE);
-  if (!store) return;
+  // Hide previous fork/storage/query while loading
+  hideSection('section-fork');
+  hideSection('section-storage');
+  hideSection('section-query');
+  hideSection('section-results');
 
-  const t0 = performance.now();
-  const seriesData = generateScenarioData(scenario);
-  _lastIngestData = seriesData;
-
-  for (const sd of seriesData) {
-    const id = store.getOrCreateSeries(sd.labels);
-    if (backendType === 'column') {
-      const n = sd.timestamps.length;
-      for (let offset = 0; offset < n; offset += CHUNK_SIZE) {
-        const end = Math.min(offset + CHUNK_SIZE, n);
-        store.appendBatch(id, sd.timestamps.subarray(offset, end), sd.values.subarray(offset, end));
+  // Defer heavy work to let the loading spinner render
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      const backendType = document.getElementById('scenarioBackend')?.value || 'column';
+      const store = _createStore(backendType, CHUNK_SIZE);
+      if (!store) {
+        if (clickedCard) clickedCard.classList.remove('loading');
+        return;
       }
-    } else {
-      store.appendBatch(id, sd.timestamps, sd.values);
-    }
-  }
 
-  const ingestTime = performance.now() - t0;
-  const metrics = [...new Set(scenario.metrics.map(m => m.name))];
+      const t0 = performance.now();
+      const seriesData = generateScenarioData(scenario);
+      _lastIngestData = seriesData;
 
-  onDataLoaded(store, metrics, ingestTime, scenario.numPoints, scenario.intervalMs);
-  autoSelectQueryStep(scenario.intervalMs, scenario.numPoints);
+      for (const sd of seriesData) {
+        const id = store.getOrCreateSeries(sd.labels);
+        if (backendType === 'column') {
+          const n = sd.timestamps.length;
+          for (let offset = 0; offset < n; offset += CHUNK_SIZE) {
+            const end = Math.min(offset + CHUNK_SIZE, n);
+            store.appendBatch(id, sd.timestamps.subarray(offset, end), sd.values.subarray(offset, end));
+          }
+        } else {
+          store.appendBatch(id, sd.timestamps, sd.values);
+        }
+      }
+
+      _lastIngestTime = performance.now() - t0;
+      const metrics = [...new Set(scenario.metrics.map(m => m.name))];
+
+      onDataLoaded(store, metrics, _lastIngestTime, scenario.numPoints, scenario.intervalMs);
+    }, 30);
+  });
 }
 
 // ── Custom generator ──────────────────────────────────────────────────
@@ -361,8 +445,9 @@ function generateCustomData(numSeries, numPoints, pattern, backendType, interval
     }
   }
   const ingestTime = performance.now() - t0;
+  _lastIngestTime = ingestTime;
 
-  document.querySelectorAll('.scenario-card').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.scenario-card').forEach(c => c.classList.remove('active', 'loading', 'loaded'));
   onDataLoaded(store, [...metricsUsed], ingestTime, numPoints, intervalMs);
   autoSelectQueryStep(intervalMs, numPoints);
 }
@@ -484,15 +569,6 @@ loadWasm().then((ok) => {
     });
   }
 
-  // Render scenario cards
+  // Render scenario cards (user clicks to load — no auto-load)
   _renderScenarioCards();
-
-  // Auto-load first scenario
-  const firstScenario = SCENARIOS[0];
-  requestAnimationFrame(() => {
-    setTimeout(() => {
-      const firstCard = document.querySelector('.scenario-card');
-      loadScenario(firstScenario, firstCard);
-    }, 100);
-  });
 });

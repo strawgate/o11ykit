@@ -558,3 +558,165 @@
 /* ── Results Panel ──────────────────────────────────────────────────── */
 
 .results-panel { }
+
+/* ── Fork in the Road ──────────────────────────────────────────────── */
+
+.fork-panel {
+  text-align: center;
+}
+.fork-panel .section-intro {
+  margin-bottom: 28px;
+}
+
+.fork-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.fork-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 36px 28px 28px;
+  background: var(--panel-bg, rgba(248, 252, 255, 0.92));
+  border: 2px solid var(--border, rgba(43, 80, 106, 0.15));
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  color: inherit;
+}
+.fork-card:hover {
+  border-color: var(--accent, #2563eb);
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(37, 99, 235, 0.12);
+}
+.fork-card:active {
+  transform: translateY(-1px);
+}
+
+.fork-icon {
+  font-size: 48px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.fork-card h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.fork-card p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary, #5a7a94);
+}
+
+.fork-cta {
+  display: inline-block;
+  margin-top: auto;
+  padding: 8px 20px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--accent, #2563eb);
+  border: 1.5px solid var(--accent, #2563eb);
+  border-radius: 8px;
+  transition: all 0.15s;
+}
+.fork-card:hover .fork-cta {
+  background: var(--accent, #2563eb);
+  color: white;
+}
+
+@media (max-width: 600px) {
+  .fork-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Explore Navigation (breadcrumb bar) ──────────────────────────── */
+
+.explore-nav {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border, rgba(43, 80, 106, 0.12));
+}
+
+.explore-nav-btn {
+  padding: 6px 16px;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: transparent;
+  border: 1.5px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-secondary, #5a7a94);
+  transition: all 0.15s;
+}
+.explore-nav-btn:hover {
+  color: var(--ink, #1e293b);
+  background: rgba(37, 99, 235, 0.04);
+}
+.explore-nav-btn.active {
+  color: var(--accent, #2563eb);
+  border-color: var(--accent, #2563eb);
+  background: rgba(37, 99, 235, 0.06);
+  font-weight: 600;
+}
+
+/* ── Scenario Card Loading State ──────────────────────────────────── */
+
+.scenario-card.loading {
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.sc-loading-indicator {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8125rem;
+  color: var(--accent, #2563eb);
+  margin-top: 8px;
+}
+.scenario-card.loading .sc-loading-indicator {
+  display: flex;
+}
+.scenario-card.loading .sc-stats {
+  display: none;
+}
+
+.sc-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(37, 99, 235, 0.2);
+  border-top-color: var(--accent, #2563eb);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.sc-done-stats {
+  display: none;
+  font-size: 0.8125rem;
+  color: var(--text-secondary, #5a7a94);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border, rgba(43, 80, 106, 0.1));
+}
+.scenario-card.loaded .sc-done-stats {
+  display: block;
+}
+.scenario-card.loaded .sc-loading-indicator {
+  display: none;
+}

@@ -51,100 +51,122 @@ export function generateValue(pattern, i, seriesIdx, _total) {
 
 // ── Pre-canned Scenarios ──────────────────────────────────────────────
 
+// Label dimensions are cross-producted to create label groups automatically.
+// E.g. { region: ['a','b'], job: ['x','y'] } → 4 label groups.
+
 export const SCENARIOS = [
   {
     id: 'ecommerce',
     name: 'E-Commerce Platform',
     emoji: '🛒',
-    description: 'Web traffic, checkout latency, cart events, and active users across regions.',
+    description: 'Web traffic, latency percentiles, error rates, and checkout flow across a global fleet of services.',
     metrics: [
       { name: 'http_requests_total', pattern: 'sine' },
-      { name: 'checkout_latency_ms', pattern: 'spiky' },
-      { name: 'cart_abandonment_rate', pattern: 'random-walk' },
-      { name: 'active_users', pattern: 'sine' },
+      { name: 'request_latency_p99_ms', pattern: 'spiky' },
+      { name: 'error_rate', pattern: 'random-walk' },
+      { name: 'cart_events_total', pattern: 'sine' },
+      { name: 'active_sessions', pattern: 'random-walk' },
+      { name: 'checkout_total', pattern: 'sawtooth' },
     ],
-    labelGroups: [
-      { region: 'us-east', job: 'frontend' },
-      { region: 'us-west', job: 'frontend' },
-      { region: 'eu-west', job: 'frontend' },
-      { region: 'us-east', job: 'api' },
-      { region: 'us-west', job: 'api' },
-    ],
-    numPoints: 5000,
+    labelDimensions: {
+      region: ['us-east-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1'],
+      service: ['web', 'api', 'checkout', 'search', 'cart', 'auth', 'cdn', 'payments'],
+      endpoint: ['/home', '/search', '/cart', '/checkout'],
+    },
+    numPoints: 1500,
     intervalMs: 10000,
   },
   {
     id: 'kubernetes',
     name: 'Kubernetes Cluster',
     emoji: '☸️',
-    description: 'CPU, memory, pod restarts, and network I/O across namespaces and nodes.',
+    description: 'CPU, memory, pod restarts, and network I/O across namespaces, nodes, and pods.',
     metrics: [
       { name: 'cpu_usage_cores', pattern: 'random-walk' },
       { name: 'memory_usage_bytes', pattern: 'sawtooth' },
-      { name: 'pod_restart_count', pattern: 'spiky' },
-      { name: 'network_bytes_sent', pattern: 'random-walk' },
+      { name: 'pod_restart_total', pattern: 'spiky' },
+      { name: 'network_rx_bytes', pattern: 'random-walk' },
+      { name: 'network_tx_bytes', pattern: 'random-walk' },
     ],
-    labelGroups: [
-      { namespace: 'prod', node: 'node-1' },
-      { namespace: 'prod', node: 'node-2' },
-      { namespace: 'prod', node: 'node-3' },
-      { namespace: 'staging', node: 'node-1' },
-      { namespace: 'staging', node: 'node-2' },
-      { namespace: 'default', node: 'node-1' },
-    ],
-    numPoints: 5000,
+    labelDimensions: {
+      namespace: ['prod', 'staging', 'monitoring', 'kube-system'],
+      node: ['node-01', 'node-02', 'node-03', 'node-04', 'node-05',
+             'node-06', 'node-07', 'node-08', 'node-09', 'node-10',
+             'node-11', 'node-12'],
+      pod: ['web', 'api', 'worker', 'cache', 'queue', 'cron'],
+    },
+    numPoints: 1200,
     intervalMs: 15000,
   },
   {
     id: 'iot',
     name: 'IoT Sensor Network',
     emoji: '📡',
-    description: 'Temperature, humidity, battery voltage, and signal strength from remote sensors.',
+    description: 'Temperature, humidity, battery, and signal data from hundreds of sensors across facilities.',
     metrics: [
       { name: 'temperature_celsius', pattern: 'sine' },
       { name: 'humidity_percent', pattern: 'sine' },
       { name: 'battery_voltage', pattern: 'sawtooth' },
       { name: 'signal_strength_dbm', pattern: 'random-walk' },
     ],
-    labelGroups: [
-      { zone: 'warehouse', device: 'sensor-01' },
-      { zone: 'warehouse', device: 'sensor-02' },
-      { zone: 'outdoor', device: 'sensor-03' },
-      { zone: 'outdoor', device: 'sensor-04' },
-      { zone: 'office', device: 'sensor-05' },
-    ],
-    numPoints: 3000,
-    intervalMs: 60000,
-  },
-  {
-    id: 'database',
-    name: 'Database Server Farm',
-    emoji: '🗄️',
-    description: 'Query latency, active connections, cache hit ratio, and replication lag.',
-    metrics: [
-      { name: 'query_latency_p99_ms', pattern: 'spiky' },
-      { name: 'active_connections', pattern: 'random-walk' },
-      { name: 'cache_hit_ratio', pattern: 'constant' },
-      { name: 'replication_lag_ms', pattern: 'sawtooth' },
-    ],
-    labelGroups: [
-      { host: 'db-primary', db: 'users' },
-      { host: 'replica-1', db: 'users' },
-      { host: 'replica-2', db: 'users' },
-      { host: 'db-primary', db: 'orders' },
-      { host: 'replica-1', db: 'orders' },
-    ],
-    numPoints: 10000,
-    intervalMs: 10000,
+    labelDimensions: {
+      facility: ['warehouse-a', 'warehouse-b', 'factory-1', 'factory-2', 'office-hq',
+                  'office-west', 'datacenter-1', 'datacenter-2', 'lab-north', 'lab-south'],
+      zone: ['floor-1', 'floor-2', 'floor-3', 'outdoor', 'roof', 'basement'],
+      device: ['sens-001', 'sens-002', 'sens-003', 'sens-004', 'sens-005'],
+    },
+    numPoints: 2000,
+    intervalMs: 30000,
   },
 ];
 
-export function generateScenarioData(scenario) {
+// Compute cross-product of label dimensions → flat array of label objects.
+function _expandLabelDimensions(dims) {
+  const keys = Object.keys(dims);
+  if (keys.length === 0) return [{}];
+  const result = [];
+  const values = keys.map(k => dims[k]);
+  const indices = new Array(keys.length).fill(0);
+
+  for (;;) {
+    const group = {};
+    for (let d = 0; d < keys.length; d++) group[keys[d]] = values[d][indices[d]];
+    result.push(group);
+
+    let carry = keys.length - 1;
+    while (carry >= 0) {
+      indices[carry]++;
+      if (indices[carry] < values[carry].length) break;
+      indices[carry] = 0;
+      carry--;
+    }
+    if (carry < 0) break;
+  }
+  return result;
+}
+
+/** Compute series count for a scenario without generating data. */
+export function scenarioSeriesCount(scenario) {
+  const dims = scenario.labelDimensions || {};
+  const keys = Object.keys(dims);
+  const labelCombinations = keys.length === 0 ? 1
+    : keys.reduce((acc, k) => acc * dims[k].length, 1);
+  return scenario.metrics.length * labelCombinations;
+}
+
+/** Compute total sample count for a scenario. */
+export function scenarioSampleCount(scenario) {
+  return scenarioSeriesCount(scenario) * scenario.numPoints;
+}
+
+export function generateScenarioData(scenario, onProgress) {
   const now = BigInt(Date.now()) * 1_000_000n;
   const intervalNs = BigInt(scenario.intervalMs) * 1_000_000n;
-  const { numPoints, metrics, labelGroups } = scenario;
+  const { numPoints, metrics } = scenario;
+  const labelGroups = _expandLabelDimensions(scenario.labelDimensions || {});
   const startT = now - BigInt(numPoints) * intervalNs;
 
+  const totalSeries = metrics.length * labelGroups.length;
   const series = [];
   let seriesIdx = 0;
   for (const m of metrics) {
@@ -158,7 +180,11 @@ export function generateScenarioData(scenario) {
       }
       series.push({ labels, timestamps, values });
       seriesIdx++;
+      if (onProgress && seriesIdx % 200 === 0) {
+        onProgress(seriesIdx, totalSeries);
+      }
     }
   }
+  if (onProgress) onProgress(totalSeries, totalSeries);
   return series;
 }
