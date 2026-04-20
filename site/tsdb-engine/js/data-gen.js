@@ -28,7 +28,8 @@ export function generateValue(pattern, i, seriesIdx, _total, decimals) {
   let v;
   switch (pattern) {
     case "sine":
-      v = 100 +
+      v =
+        100 +
         Math.sin(i / 50 + phase) * 40 +
         Math.sin(i / 200 + phase) * 20 +
         (Math.random() - 0.5) * 8;
@@ -38,12 +39,14 @@ export function generateValue(pattern, i, seriesIdx, _total, decimals) {
       break;
     case "random-walk": {
       const seed = seriesIdx * 7919 + 1;
-      v = Math.max(0,
+      v = Math.max(
+        0,
         50 +
-        seriesIdx * 10 +
-        Math.sin(i * 0.01 + seed) * 30 +
-        Math.sin(i * 0.003 + seed * 1.7) * 20 +
-        Math.cos(i * 0.0007 + seed * 2.3) * 15);
+          seriesIdx * 10 +
+          Math.sin(i * 0.01 + seed) * 30 +
+          Math.sin(i * 0.003 + seed * 1.7) * 20 +
+          Math.cos(i * 0.0007 + seed * 2.3) * 15
+      );
       break;
     }
     case "spiky": {
