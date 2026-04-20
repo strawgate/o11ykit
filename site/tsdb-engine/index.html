@@ -71,100 +71,158 @@
       </section>
 
 
-      <!-- ─── LIVE DEMO ──────────────────────────────────────── -->
-      <section class="panel demo-panel" id="live-demo">
-        <h2>🚀 Live Demo: Generate &amp; Query</h2>
-        <p class="section-intro">This runs entirely in your browser. Generate up to 1M data points across multiple series, then query with aggregation — watch compression ratios and query performance in real&nbsp;time.</p>
+      <!-- ─── Section 1: Dataset ────────────────────────────────── -->
+      <section class="panel dataset-panel" id="section-dataset">
+        <h2>Load a Dataset</h2>
+        <p class="section-intro">Choose a pre-built scenario or generate custom data. Everything runs in your browser.</p>
 
-        <div class="demo-controls">
-          <div class="control-group">
-            <label for="numSeries">Series</label>
-            <select id="numSeries">
-              <option value="5">5 series</option>
-              <option value="10" selected>10 series</option>
-              <option value="25">25 series</option>
-              <option value="50">50 series</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="numPoints">Points per series</label>
-            <select id="numPoints">
-              <option value="1000">1,000</option>
-              <option value="10000" selected>10,000</option>
-              <option value="50000">50,000</option>
-              <option value="100000">100,000</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="dataPattern">Data pattern</label>
-            <select id="dataPattern">
-              <option value="sine">Sine wave</option>
-              <option value="sawtooth">Sawtooth</option>
-              <option value="random-walk">Random walk</option>
-              <option value="spiky">Spiky traffic</option>
-              <option value="constant">Constant (best compression)</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="sampleInterval">Sample interval</label>
-            <select id="sampleInterval">
-              <option value="1000">1 s</option>
-              <option value="10000" selected>10 s</option>
-              <option value="60000">1 min</option>
-              <option value="300000">5 min</option>
-              <option value="900000">15 min</option>
-              <option value="3600000">1 hr</option>
-              <option value="21600000">6 hr</option>
-              <option value="43200000">12 hr</option>
-            </select>
-          </div>
-          <div class="control-group">
-            <label for="backend">Storage backend</label>
-            <select id="backend">
-              <option value="flat">FlatStore (no compression)</option>
-              <option value="chunked">ChunkedStore (XOR-delta)</option>
+        <div class="dataset-tabs" role="tablist">
+          <button type="button" class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-scenarios" id="tab-scenarios-btn">Scenarios</button>
+          <button type="button" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-custom" id="tab-custom-btn">Custom Generator</button>
+        </div>
+
+        <!-- Scenarios tab -->
+        <div class="tab-panel active" id="tab-scenarios" role="tabpanel" aria-labelledby="tab-scenarios-btn">
+          <div class="scenario-backend-row">
+            <label for="scenarioBackend">Storage backend</label>
+            <select id="scenarioBackend">
               <option value="column" selected>ColumnStore (ALP + shared timestamps)</option>
+              <option value="chunked">ChunkedStore (XOR-delta)</option>
+              <option value="flat">FlatStore (no compression)</option>
             </select>
-            <div id="wasmStatus" class="wasm-status" style="display:none"></div>
+            <span class="wasm-status-badge" style="display:none"></span>
           </div>
-          <button type="button" id="btnGenerate" class="cta cta-primary demo-btn">Generate Data</button>
-        </div>
-
-        <!-- Stats dashboard -->
-        <div class="stats-grid" id="statsGrid" role="region" aria-label="Generation statistics" style="display:none;">
-          <div class="stat-card">
-            <div class="stat-big" id="statTotalPoints">—</div>
-            <div class="stat-desc">Total data points</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-big" id="statSeries">—</div>
-            <div class="stat-desc">Time series</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-big" id="statMemory">—</div>
-            <div class="stat-desc">Memory used</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-big" id="statCompression">—</div>
-            <div class="stat-desc">Compression ratio</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-big" id="statIngestTime">—</div>
-            <div class="stat-desc">Ingest time</div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-big" id="statIngestRate">—</div>
-            <div class="stat-desc">Ingest rate</div>
+          <div class="scenario-grid" id="scenarioGrid">
+            <!-- populated by JS -->
           </div>
         </div>
 
-        <!-- Query controls -->
-        <div class="query-controls" id="queryControls" style="display:none;">
-          <h3>Query the Data</h3>
+        <!-- Custom generator tab -->
+        <div class="tab-panel" id="tab-custom" role="tabpanel" aria-labelledby="tab-custom-btn" hidden>
           <div class="demo-controls">
+            <div class="control-group">
+              <label for="numSeries">Series</label>
+              <select id="numSeries">
+                <option value="5">5 series</option>
+                <option value="10" selected>10 series</option>
+                <option value="25">25 series</option>
+                <option value="50">50 series</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="numPoints">Points per series</label>
+              <select id="numPoints">
+                <option value="1000">1,000</option>
+                <option value="10000" selected>10,000</option>
+                <option value="50000">50,000</option>
+                <option value="100000">100,000</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="dataPattern">Data pattern</label>
+              <select id="dataPattern">
+                <option value="sine">Sine wave</option>
+                <option value="sawtooth">Sawtooth</option>
+                <option value="random-walk">Random walk</option>
+                <option value="spiky">Spiky traffic</option>
+                <option value="constant">Constant (best compression)</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="sampleInterval">Sample interval</label>
+              <select id="sampleInterval">
+                <option value="1000">1 s</option>
+                <option value="10000" selected>10 s</option>
+                <option value="60000">1 min</option>
+                <option value="300000">5 min</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="customBackend">Storage backend</label>
+              <select id="customBackend">
+                <option value="flat">FlatStore (no compression)</option>
+                <option value="chunked">ChunkedStore (XOR-delta)</option>
+                <option value="column" selected>ColumnStore (ALP + shared ts)</option>
+              </select>
+              <span id="wasmStatusCustom" class="wasm-status" style="display:none"></span>
+            </div>
+            <button type="button" id="btnCustomGenerate" class="cta cta-primary demo-btn">Generate Data</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── Section 2: Storage ────────────────────────────────── -->
+      <section class="panel storage-panel" id="section-storage" hidden>
+        <h2>Storage</h2>
+
+        <div class="storage-stats-row" id="storageStatsRow">
+          <div class="stat-card"><div class="stat-big" id="statStoragePts">—</div><div class="stat-desc">Total points</div></div>
+          <div class="stat-card"><div class="stat-big" id="statStorageSeries">—</div><div class="stat-desc">Series</div></div>
+          <div class="stat-card"><div class="stat-big" id="statStorageMem">—</div><div class="stat-desc">Memory used</div></div>
+          <div class="stat-card"><div class="stat-big" id="statStorageRatio">—</div><div class="stat-desc">Compression ratio</div></div>
+          <div class="stat-card"><div class="stat-big" id="statStorageIngestTime">—</div><div class="stat-desc">Ingest time</div></div>
+          <div class="stat-card"><div class="stat-big" id="statStorageIngestRate">—</div><div class="stat-desc">Ingest rate</div></div>
+        </div>
+
+        <!-- Backend switcher tabs -->
+        <div class="backend-tabs" role="tablist" aria-label="Storage backend">
+          <button type="button" class="backend-tab active" data-backend="column" role="tab">ColumnStore</button>
+          <button type="button" class="backend-tab" data-backend="chunked" role="tab">ChunkedStore</button>
+          <button type="button" class="backend-tab" data-backend="flat" role="tab">FlatStore</button>
+        </div>
+
+        <!-- Memory layout diagram -->
+        <div id="storageLayoutDiagram" class="storage-layout-diagram"></div>
+
+        <!-- Series chunk explorer (existing) -->
+        <div class="storage-explorer" id="storageExplorer" role="region" aria-label="Storage explorer">
+          <h3>💾 Series Explorer</h3>
+          <p class="storage-intro">Each row is a series. Frozen compressed chunks are <span class="tag-frozen">frozen</span> and the active write buffer is <span class="tag-hot">hot</span>. Click any chunk to inspect it.</p>
+          <div class="storage-overview" id="storageOverview"></div>
+          <div class="storage-series-list" id="storageSeriesList"></div>
+          <div class="chunk-detail-panel" id="chunkDetailPanel" style="display:none;"></div>
+        </div>
+      </section>
+
+      <!-- ─── Section 3: Query Lab ──────────────────────────────── -->
+      <section class="panel query-panel" id="section-query" hidden>
+        <h2>Query Lab</h2>
+
+        <div class="query-lab-grid">
+          <!-- Metric + filters -->
+          <div class="query-lab-col">
             <div class="control-group">
               <label for="queryMetric">Metric</label>
               <select id="queryMetric"></select>
+            </div>
+
+            <!-- Label matchers -->
+            <div class="matcher-section">
+              <label class="matcher-label">Label filters</label>
+              <div class="matcher-chips" id="matcherChips"></div>
+              <div class="matcher-add-row">
+                <select id="matcherLabel" class="matcher-select"><option value="">label…</option></select>
+                <select id="matcherOp" class="matcher-op-select">
+                  <option value="=">=</option>
+                  <option value="!=">!=</option>
+                </select>
+                <select id="matcherValue" class="matcher-select"><option value="">value…</option></select>
+                <button type="button" id="btnAddMatcher" class="btn-add-filter">+ Add</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Transform + Aggregation + GroupBy + Step -->
+          <div class="query-lab-col">
+            <div class="control-group">
+              <label for="queryTransform">Transform <span class="hint">(per series, before agg)</span></label>
+              <select id="queryTransform">
+                <option value="">None</option>
+                <option value="rate">rate (per second)</option>
+                <option value="irate">irate (instant rate)</option>
+                <option value="delta">delta (change)</option>
+                <option value="increase">increase (counter delta)</option>
+              </select>
             </div>
             <div class="control-group">
               <label for="queryAgg">Aggregation</label>
@@ -175,15 +233,15 @@
                 <option value="min">min</option>
                 <option value="max">max</option>
                 <option value="count">count</option>
-                <option value="rate">rate</option>
+                <option value="p50">p50 (median)</option>
+                <option value="p95">p95</option>
+                <option value="p99">p99</option>
               </select>
             </div>
             <div class="control-group">
               <label for="queryGroupBy">Group by</label>
               <select id="queryGroupBy">
                 <option value="">No grouping</option>
-                <option value="region" selected>region</option>
-                <option value="instance">instance</option>
               </select>
             </div>
             <div class="control-group">
@@ -191,50 +249,33 @@
               <select id="queryStep">
                 <option value="0">No step (raw)</option>
                 <option value="1000">1 s</option>
-                <option value="5000">5 s</option>
                 <option value="10000">10 s</option>
                 <option value="30000">30 s</option>
                 <option value="60000" selected>1 min</option>
                 <option value="300000">5 min</option>
                 <option value="900000">15 min</option>
                 <option value="3600000">1 hr</option>
-                <option value="21600000">6 hr</option>
-                <option value="43200000">12 hr</option>
-                <option value="86400000">1 day</option>
               </select>
             </div>
-            <button type="button" id="btnQuery" class="cta cta-primary demo-btn">Run Query</button>
-          </div>
-
-          <!-- Query results -->
-          <div id="queryResults" role="status" aria-live="polite" aria-label="Query execution results" style="display:none;">
-            <div class="query-stats">
-              <span id="qStatScannedSeries">—</span>
-              <span id="qStatScannedSamples">—</span>
-              <span id="qStatResultSeries">—</span>
-              <span id="qStatQueryTime">—</span>
-            </div>
-            <div class="chart-container">
-              <canvas id="chartCanvas" width="1100" height="400"></canvas>
-            </div>
-            <div class="chart-legend" id="chartLegend"></div>
           </div>
         </div>
 
-        <!-- Compression benchmark -->
-        <div class="compression-bench" id="compressionBench" style="display:none;">
-          <h3>Compression Breakdown</h3>
-          <div class="compression-bars" id="compressionBars"></div>
-        </div>
+        <button type="button" id="btnQuery" class="cta cta-primary demo-btn">Run Query</button>
+      </section>
 
-        <!-- Storage Explorer -->
-        <div class="storage-explorer" id="storageExplorer" role="region" aria-label="Storage explorer" style="display:none;">
-          <h3>💾 Storage Explorer</h3>
-          <p class="storage-intro">Explore the internal chunk layout of the storage backend. Each series is a row; frozen compressed chunks are <span class="tag-frozen">frozen</span> and the active write buffer is <span class="tag-hot">hot</span>. Click any chunk to inspect it.</p>
-          <div class="storage-overview" id="storageOverview"></div>
-          <div class="storage-series-list" id="storageSeriesList"></div>
-          <div class="chunk-detail-panel" id="chunkDetailPanel" style="display:none;"></div>
+      <!-- ─── Section 4: Results ────────────────────────────────── -->
+      <section class="panel results-panel" id="section-results" hidden>
+        <h2>Results</h2>
+        <div class="query-stats" id="queryStats">
+          <span id="qStatScannedSeries">—</span>
+          <span id="qStatScannedSamples">—</span>
+          <span id="qStatResultSeries">—</span>
+          <span id="qStatQueryTime">—</span>
         </div>
+        <div class="chart-container">
+          <canvas id="chartCanvas" width="1100" height="400"></canvas>
+        </div>
+        <div class="chart-legend" id="chartLegend"></div>
       </section>
 
 
@@ -574,6 +615,30 @@ console.log(`${stats.seriesCount} series, ${stats.sampleCount} samples, ${stats.
       </footer>
     </main>
 
+    <script>
+      // Dataset panel tabs
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const panel = btn.closest('.dataset-panel');
+          panel.querySelectorAll('.tab-btn').forEach(b => {
+            b.classList.toggle('active', b === btn);
+            b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+          });
+          panel.querySelectorAll('.tab-panel').forEach(p => {
+            const show = p.id === btn.getAttribute('aria-controls');
+            p.classList.toggle('active', show);
+            p.hidden = !show;
+          });
+        });
+      });
+
+      // Backend storage tabs
+      document.querySelectorAll('.backend-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.backend-tab').forEach(t => t.classList.toggle('active', t === tab));
+        });
+      });
+    </script>
     <script type="module" src="js/app.js"></script>
   </body>
 </html>
