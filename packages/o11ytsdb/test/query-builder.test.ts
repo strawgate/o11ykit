@@ -344,12 +344,7 @@ describe("QueryBuilder — exec()", () => {
     store.append(id, 1_015_000n, 90);
     store.append(id, 1_030_000n, 80);
 
-    const result = query()
-      .metric("gauge")
-      .range(0n, 2_000_000n)
-      .delta()
-      .exec(store)
-      .materialize();
+    const result = query().metric("gauge").range(0n, 2_000_000n).delta().exec(store).materialize();
 
     expect(result.series.length).toBeGreaterThan(0);
     expect(Array.from(result.series[0]!.values).some((value) => value < 0)).toBe(true);

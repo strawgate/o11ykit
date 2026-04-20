@@ -298,7 +298,9 @@ class MaterializedQueryResultHandle implements MaterializedQueryResult {
     return new MaterializedQueryResultHandle(result, false);
   }
 
-  mapSeries(mapper: (series: SeriesResult, index: number) => SeriesResult): MaterializedQueryResult {
+  mapSeries(
+    mapper: (series: SeriesResult, index: number) => SeriesResult
+  ): MaterializedQueryResult {
     return MaterializedQueryResultHandle.fromOwnedSeries({
       series: this.series.map((series, index) => mapper(cloneSeriesResult(series), index)),
       scannedSeries: this.scannedSeries,
@@ -331,13 +333,7 @@ class MaterializedQueryResultHandle implements MaterializedQueryResult {
       series: this.series.map((series, seriesIndex) => {
         const values = new Float64Array(series.values.length);
         for (let i = 0; i < values.length; i++) {
-          values[i] = mapper(
-            series.values[i]!,
-            series.timestamps[i]!,
-            series,
-            i,
-            seriesIndex
-          );
+          values[i] = mapper(series.values[i]!, series.timestamps[i]!, series, i, seriesIndex);
         }
         return {
           labels: new Map(series.labels),
