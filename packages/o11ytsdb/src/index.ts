@@ -48,8 +48,8 @@ export type {
   ExecutedQuery,
   Labels,
   Matcher,
-  MaterializedQueryResult,
   MatchOp,
+  MaterializedQueryResult,
   QueryEngine,
   QueryOpts,
   QueryResult,
@@ -68,6 +68,8 @@ export type { WasmCodecs } from "./wasm-codecs.js";
 export { initWasmCodecs } from "./wasm-codecs.js";
 export { WorkerClient } from "./worker-client.js";
 export type {
+  BatchIngestRequest,
+  BatchIngestResponse,
   RequestEnvelope,
   ResponseEnvelope,
   TransferStrategy,

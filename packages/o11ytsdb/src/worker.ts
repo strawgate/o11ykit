@@ -119,6 +119,7 @@ export class O11yWorkerRuntime {
   private store: StorageBackend;
   private wasmReady: Promise<void>;
   private defaultPrecision: number | undefined;
+  private wasmCodecs: WasmCodecs | null = null;
 
   constructor(endpoint?: WorkerLikeEndpoint, config?: WorkerRuntimeConfig) {
     this.endpoint = endpoint ?? resolveEndpoint();
@@ -147,6 +148,7 @@ export class O11yWorkerRuntime {
     this.wasmReady = tryLoadWasm()
       .then((wc) => {
         if (wc) {
+          this.wasmCodecs = wc;
           if (!hasCustomFactory) {
             this.createStore = (cs: number, precision?: number) =>
               new ColumnStore(
@@ -214,6 +216,36 @@ export class O11yWorkerRuntime {
               { ok: true, type: "ingest", seriesId, ingestedSamples: payload.values.length },
               meta
             )
+          );
+          return;
+        }
+        case "batch-ingest": {
+          const { count, labels: labelsArr, allTimestampsMs, allValues, offsets } = payload;
+          const msToNs = this.wasmCodecs?.msToNs;
+          let totalSamples = 0;
+          for (let i = 0; i < count; i++) {
+            const off = offsets[i * 2]!;
+            const len = offsets[i * 2 + 1]!;
+            if (len === 0) continue;
+
+            const seriesLabels = new Map(labelsArr[i]!);
+            const seriesId = this.store.getOrCreateSeries(seriesLabels);
+
+            const msSlice = allTimestampsMs.subarray(off, off + len);
+            let tsArr: BigInt64Array;
+            if (msToNs) {
+              tsArr = msToNs(msSlice);
+            } else {
+              tsArr = new BigInt64Array(len);
+              for (let j = 0; j < len; j++) tsArr[j] = BigInt(msSlice[j]!) * 1_000_000n;
+            }
+
+            const vals = allValues.subarray(off, off + len);
+            this.store.appendBatch(seriesId, tsArr, vals);
+            totalSamples += len;
+          }
+          this.send(
+            ok(id, { ok: true, type: "batch-ingest", seriesCount: count, totalSamples }, meta)
           );
           return;
         }

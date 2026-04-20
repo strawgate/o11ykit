@@ -25,6 +25,25 @@ export interface IngestRequest {
   values: Float64Array;
 }
 
+/**
+ * Batch ingest: all series from an OTLP payload in a single message.
+ *
+ * Timestamps are millisecond Float64 — the worker converts to nanosecond
+ * BigInt64Array (WASM-accelerated when available). This avoids BigInt
+ * allocation on the main thread entirely.
+ *
+ * Layout: `allTimestampsMs` and `allValues` are flat-packed; `offsets` is
+ * a Uint32Array of `[offset0, len0, offset1, len1, ...]` pairs.
+ */
+export interface BatchIngestRequest {
+  type: "batch-ingest";
+  count: number;
+  labels: LabelEntries[];
+  allTimestampsMs: Float64Array;
+  allValues: Float64Array;
+  offsets: Uint32Array;
+}
+
 export interface QueryRequest {
   type: "query";
   opts: QueryOpts;
@@ -46,6 +65,7 @@ export interface EchoRequest {
 export type WorkerRequest =
   | InitRequest
   | IngestRequest
+  | BatchIngestRequest
   | QueryRequest
   | StatsRequest
   | CloseRequest
@@ -62,6 +82,13 @@ export interface IngestResponse {
   type: "ingest";
   seriesId: number;
   ingestedSamples: number;
+}
+
+export interface BatchIngestResponse {
+  ok: true;
+  type: "batch-ingest";
+  seriesCount: number;
+  totalSamples: number;
 }
 
 export interface QueryResponse {
@@ -101,6 +128,7 @@ export interface ErrorResponse {
 export type WorkerResponse =
   | InitResponse
   | IngestResponse
+  | BatchIngestResponse
   | QueryResponse
   | StatsResponse
   | EchoResponse

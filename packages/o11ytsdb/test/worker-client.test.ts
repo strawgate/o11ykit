@@ -155,6 +155,113 @@ describe("WorkerClient", () => {
     });
   });
 
+  // ── ingestBatch() ──────────────────────────────────────────────
+
+  describe("ingestBatch()", () => {
+    it("packs multiple series into a single batch-ingest message", async () => {
+      mock.autoRespond({ ok: true, type: "batch-ingest", seriesCount: 2, totalSamples: 5 });
+
+      const pending = new Map<
+        number,
+        { labels: Map<string, string>; timestamps: number[]; values: number[] }
+      >();
+      pending.set(1, {
+        labels: new Map([
+          ["__name__", "cpu"],
+          ["host", "a"],
+        ]),
+        timestamps: [100, 200],
+        values: [1.0, 2.0],
+      });
+      pending.set(2, {
+        labels: new Map([
+          ["__name__", "mem"],
+          ["host", "b"],
+        ]),
+        timestamps: [300, 400, 500],
+        values: [3.0, 4.0, 5.0],
+      });
+
+      const result = await client.ingestBatch(pending);
+      expect(result).toEqual({ seriesCount: 2, totalSamples: 5 });
+
+      const envelope = mock.posted[0].message as RequestEnvelope;
+      expect(envelope.payload.type).toBe("batch-ingest");
+
+      const payload = envelope.payload as import("../src/worker-protocol.js").BatchIngestRequest;
+      expect(payload.count).toBe(2);
+      expect(payload.labels).toHaveLength(2);
+      // Verify packed arrays contain all data
+      expect(payload.allTimestampsMs).toHaveLength(5);
+      expect(payload.allValues).toHaveLength(5);
+      expect(payload.offsets).toEqual(new Uint32Array([0, 2, 2, 3]));
+    });
+
+    it("includes 3 transferables for transferable strategy", async () => {
+      mock.autoRespond({ ok: true, type: "batch-ingest", seriesCount: 1, totalSamples: 2 });
+
+      const pending = new Map<
+        number,
+        { labels: Map<string, string>; timestamps: number[]; values: number[] }
+      >();
+      pending.set(1, {
+        labels: new Map([["k", "v"]]),
+        timestamps: [1, 2],
+        values: [10, 20],
+      });
+
+      await client.ingestBatch(pending);
+
+      const transfer = mock.posted[0].transfer;
+      expect(transfer).toBeDefined();
+      // biome-ignore lint/style/noNonNullAssertion: test code
+      expect(transfer!.length).toBe(3);
+    });
+
+    it("omits transferables for structured-clone strategy", async () => {
+      mock = createMockWorker();
+      client = new WorkerClient({ worker: mock.worker, transferStrategy: "structured-clone" });
+      mock.autoRespond({ ok: true, type: "batch-ingest", seriesCount: 1, totalSamples: 1 });
+
+      const pending = new Map<
+        number,
+        { labels: Map<string, string>; timestamps: number[]; values: number[] }
+      >();
+      pending.set(1, {
+        labels: new Map([["k", "v"]]),
+        timestamps: [1],
+        values: [10],
+      });
+
+      await client.ingestBatch(pending);
+
+      const transfer = mock.posted[0].transfer;
+      expect(transfer).toEqual([]);
+    });
+
+    it("returns immediately for empty pending map", async () => {
+      const result = await client.ingestBatch(new Map());
+      expect(result).toEqual({ seriesCount: 0, totalSamples: 0 });
+      expect(mock.posted).toHaveLength(0);
+    });
+
+    it("throws on error response", async () => {
+      mock.autoRespond({ ok: false, type: "error", error: "batch fail" });
+
+      const pending = new Map<
+        number,
+        { labels: Map<string, string>; timestamps: number[]; values: number[] }
+      >();
+      pending.set(1, {
+        labels: new Map([["k", "v"]]),
+        timestamps: [1],
+        values: [10],
+      });
+
+      await expect(client.ingestBatch(pending)).rejects.toThrow("batch fail");
+    });
+  });
+
   // ── query() ───────────────────────────────────────────────────
 
   describe("query()", () => {
