@@ -250,11 +250,12 @@ export class QueryBuilder {
       node = { kind: "transform", input: node, fn };
     }
 
-    if (agg != null || (step != null && transforms.length > 0)) {
+    const trailingTransform = transforms.at(-1);
+    if (agg != null || (step != null && trailingTransform != null)) {
       node = {
         kind: "aggregate",
         input: node,
-        fn: (agg ?? transforms[transforms.length - 1]!) as PlanAggFn,
+        fn: (agg ?? trailingTransform) as PlanAggFn,
         ...(step != null && { step }),
         ...(groupBy != null && { groupBy }),
       };
@@ -298,7 +299,9 @@ class MaterializedQueryResultHandle implements MaterializedQueryResult {
     return new MaterializedQueryResultHandle(result, false);
   }
 
-  mapSeries(mapper: (series: SeriesResult, index: number) => SeriesResult): MaterializedQueryResult {
+  mapSeries(
+    mapper: (series: SeriesResult, index: number) => SeriesResult
+  ): MaterializedQueryResult {
     return MaterializedQueryResultHandle.fromOwnedSeries({
       series: this.series.map((series, index) => mapper(cloneSeriesResult(series), index)),
       scannedSeries: this.scannedSeries,
@@ -331,13 +334,12 @@ class MaterializedQueryResultHandle implements MaterializedQueryResult {
       series: this.series.map((series, seriesIndex) => {
         const values = new Float64Array(series.values.length);
         for (let i = 0; i < values.length; i++) {
-          values[i] = mapper(
-            series.values[i]!,
-            series.timestamps[i]!,
-            series,
-            i,
-            seriesIndex
-          );
+          const value = series.values[i];
+          const timestamp = series.timestamps[i];
+          if (value === undefined || timestamp === undefined) {
+            throw new RangeError(`missing point at series ${seriesIndex}, index ${i}`);
+          }
+          values[i] = mapper(value, timestamp, series, i, seriesIndex);
         }
         return {
           labels: new Map(series.labels),

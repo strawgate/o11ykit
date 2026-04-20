@@ -71,6 +71,7 @@ describe("MetricsBatch.fromOtlp", () => {
     const batch = MetricsBatch.fromOtlp(makeDoc());
     const p = batch.points.find((p) => p.scenario === "BenchmarkSort" && p.metric === "ns/op");
     assert.ok(p);
+    if (!p) throw new Error("missing BenchmarkSort/ns-op point");
     assert.equal(p.tags["impl"], "quicksort");
     assert.equal(p.tags["benchkit.scenario"], undefined);
   });
@@ -79,6 +80,7 @@ describe("MetricsBatch.fromOtlp", () => {
     const batch = MetricsBatch.fromOtlp(makeDoc());
     const p = batch.points.find((p) => p.scenario === "BenchmarkSort" && p.metric === "ns/op");
     assert.ok(p);
+    if (!p) throw new Error("missing BenchmarkSort/ns-op point");
     assert.equal(p.direction, "smaller_is_better");
     assert.equal(p.unit, "ns");
   });
@@ -246,6 +248,7 @@ describe("MetricsBatch.toOtlp", () => {
         (p) => p.scenario === orig.scenario && p.metric === orig.metric,
       );
       assert.ok(found, `missing ${orig.scenario}/${orig.metric}`);
+      if (!found) throw new Error(`missing ${orig.scenario}/${orig.metric}`);
       assert.equal(found.value, orig.value);
       assert.equal(found.unit, orig.unit);
       assert.equal(found.direction, orig.direction);
@@ -258,6 +261,7 @@ describe("MetricsBatch.toOtlp", () => {
     const origSort = original.points.find((p) => p.scenario === "BenchmarkSort" && p.metric === "ns/op");
     const restoredSort = restored.points.find((p) => p.scenario === "BenchmarkSort" && p.metric === "ns/op");
     assert.ok(origSort && restoredSort);
+    if (!origSort || !restoredSort) throw new Error("missing BenchmarkSort/ns-op point");
     assert.deepEqual(restoredSort.tags, origSort.tags);
   });
 
