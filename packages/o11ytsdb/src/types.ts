@@ -194,9 +194,7 @@ export interface QueryResult {
 }
 
 export interface MaterializedQueryResult extends QueryResult {
-  mapSeries(
-    mapper: (series: SeriesResult, index: number) => SeriesResult
-  ): MaterializedQueryResult;
+  mapSeries(mapper: (series: SeriesResult, index: number) => SeriesResult): MaterializedQueryResult;
   filterSeries(
     predicate: (series: SeriesResult, index: number) => boolean
   ): MaterializedQueryResult;
