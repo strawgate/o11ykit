@@ -549,4 +549,19 @@ describe("QueryBuilder — exec()", () => {
     expect(result.series.length).toBe(2);
     expect(result.series[0]?.values[0]).toBe(20);
   });
+
+  it("throws when mapPoints() sees mismatched timestamps and values", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .exec(store)
+      .materialize()
+      .mapSeries((series) => ({
+        ...series,
+        timestamps: new BigInt64Array([...series.timestamps, 9_999_999n]),
+      }));
+
+    expect(() => result.mapPoints((value) => value)).toThrow("mismatched point arrays");
+  });
 });

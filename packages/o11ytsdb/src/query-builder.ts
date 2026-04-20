@@ -347,8 +347,14 @@ class MaterializedQueryResultHandle implements MaterializedQueryResult {
   ): MaterializedQueryResult {
     return MaterializedQueryResultHandle.fromOwnedSeries({
       series: this.series.map((series, seriesIndex) => {
-        const values = new Float64Array(series.values.length);
-        for (let i = 0; i < values.length; i++) {
+        const pointCount = series.values.length;
+        if (series.timestamps.length !== pointCount) {
+          throw new RangeError(
+            `mismatched point arrays at series ${seriesIndex}: values=${pointCount}, timestamps=${series.timestamps.length}`
+          );
+        }
+        const values = new Float64Array(pointCount);
+        for (let i = 0; i < pointCount; i++) {
           const value = series.values[i];
           const timestamp = series.timestamps[i];
           if (value === undefined || timestamp === undefined) {
@@ -358,7 +364,7 @@ class MaterializedQueryResultHandle implements MaterializedQueryResult {
         }
         return {
           labels: new Map(series.labels),
-          timestamps: series.timestamps.slice(),
+          timestamps: series.timestamps.slice(0, pointCount),
           values,
         };
       }),
