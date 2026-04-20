@@ -232,11 +232,12 @@ describe("compare", () => {
 
     const result = compare(current, baseline);
     assert.equal(result.entries.length, 0);
-    assert.ok(result.warnings);
-    assert.equal(result.warnings.length, 1);
-    assert.match(result.warnings[0], /allocs/);
-    assert.match(result.warnings[0], /BenchA/);
-    assert.match(result.warnings[0], /baseline mean is zero/);
+    const warnings = result.warnings;
+    assert.ok(warnings);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /allocs/);
+    assert.match(warnings[0], /BenchA/);
+    assert.match(warnings[0], /baseline mean is zero/);
   });
 
   it("omits warnings key when no metrics are skipped", () => {

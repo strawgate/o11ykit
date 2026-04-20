@@ -617,27 +617,29 @@ console.log(`${stats.seriesCount} series, ${stats.sampleCount} samples, ${stats.
 
     <script>
       // Dataset panel tabs
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const panel = btn.closest('.dataset-panel');
-          panel.querySelectorAll('.tab-btn').forEach(b => {
-            b.classList.toggle('active', b === btn);
-            b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
-          });
-          panel.querySelectorAll('.tab-panel').forEach(p => {
-            const show = p.id === btn.getAttribute('aria-controls');
-            p.classList.toggle('active', show);
-            p.hidden = !show;
-          });
-        });
-      });
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+              btn.addEventListener('click', () => {
+                const panel = btn.closest('.dataset-panel');
+                panel.querySelectorAll('.tab-btn').forEach(b => {
+                  b.classList.toggle('active', b === btn);
+                  b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+                });
+                panel.querySelectorAll('.tab-panel').forEach(p => {
+                  const show = p.id === btn.getAttribute('aria-controls');
+                  p.classList.toggle('active', show);
+                  p.hidden = !show;
+                });
+              });
+            });
 
-      // Backend storage tabs
-      document.querySelectorAll('.backend-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-          document.querySelectorAll('.backend-tab').forEach(t => t.classList.toggle('active', t === tab));
-        });
-      });
+            // Backend storage tabs
+            document.querySelectorAll('.backend-tab').forEach(tab => {
+              tab.addEventListener('click', () => {
+                document.querySelectorAll('.backend-tab').forEach(t => {
+                  t.classList.toggle('active', t === tab);
+                });
+              });
+            });
     </script>
     <script type="module" src="js/app.js"></script>
   </body>

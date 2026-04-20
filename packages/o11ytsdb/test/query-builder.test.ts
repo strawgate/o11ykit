@@ -149,6 +149,15 @@ describe("QueryBuilder — plan compilation", () => {
     expect(inner.input.kind).toBe("timeRange");
   });
 
+  it("does not treat abs() as a step-derived aggregate", () => {
+    const plan = query().metric("cpu").range(0n, 100n).abs().step(60_000n).plan();
+
+    expect(plan.kind).toBe("transform");
+    const transform = plan as Extract<PlanNode, { kind: "transform" }>;
+    expect(transform.fn).toBe("abs");
+    expect(transform.input.kind).toBe("timeRange");
+  });
+
   it("is immutable — each method returns a new builder", () => {
     const b1 = query().metric("cpu");
     const b2 = b1.where("host", "=", "a");
@@ -344,12 +353,7 @@ describe("QueryBuilder — exec()", () => {
     store.append(id, 1_015_000n, 90);
     store.append(id, 1_030_000n, 80);
 
-    const result = query()
-      .metric("gauge")
-      .range(0n, 2_000_000n)
-      .delta()
-      .exec(store)
-      .materialize();
+    const result = query().metric("gauge").range(0n, 2_000_000n).delta().exec(store).materialize();
 
     expect(result.series.length).toBeGreaterThan(0);
     expect(Array.from(result.series[0]!.values).some((value) => value < 0)).toBe(true);
@@ -544,5 +548,20 @@ describe("QueryBuilder — exec()", () => {
 
     expect(result.series.length).toBe(2);
     expect(result.series[0]?.values[0]).toBe(20);
+  });
+
+  it("throws when mapPoints() sees mismatched timestamps and values", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .exec(store)
+      .materialize()
+      .mapSeries((series) => ({
+        ...series,
+        timestamps: new BigInt64Array([...series.timestamps, 9_999_999n]),
+      }));
+
+    expect(() => result.mapPoints((value) => value)).toThrow("mismatched point arrays");
   });
 });
