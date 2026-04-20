@@ -3,7 +3,7 @@
 import { CHART_COLORS, renderChart, setupChartTooltip } from "./chart.js";
 import { generateScenarioData, generateValue, INSTANCES, METRICS, REGIONS, SCENARIOS, scenarioSampleCount, scenarioSeriesCount } from "./data-gen.js";
 import { ScanEngine } from "./query.js";
-import { buildLayoutDiagram, buildStorageExplorer, showChunkDetail } from "./storage-explorer.js";
+import { buildStorageExplorer, showChunkDetail } from "./storage-explorer.js";
 import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
 import { $, autoSelectQueryStep, formatBytes, formatDuration, formatNum } from "./utils.js";
 import { loadWasm, wasmReady } from "./wasm.js";
@@ -198,8 +198,16 @@ function _revealStorage() {
     document.getElementById('statStorageIngestTime').textContent = `${_lastIngestTime.toFixed(0)} ms`;
     document.getElementById('statStorageIngestRate').textContent = `${formatNum(ingestRate)} pts/s`;
 
-    const layoutContainer = document.getElementById('storageLayoutDiagram');
-    if (layoutContainer) buildLayoutDiagram(currentStore, layoutContainer);
+    // Compute chunk stats for the merged stats row
+    let totalChunks = 0, totalFrozen = 0;
+    for (let id = 0; id < currentStore.seriesCount; id++) {
+      const info = currentStore.getChunkInfo(id);
+      totalFrozen += info.frozen.length;
+      totalChunks += info.frozen.length + (info.hot.count > 0 ? 1 : 0);
+    }
+    document.getElementById('statStorageChunks').textContent = totalChunks.toLocaleString();
+    document.getElementById('statStorageFrozen').textContent = totalFrozen.toLocaleString();
+
     buildStorageExplorer(currentStore);
   }
   hideSection('section-query');
@@ -237,47 +245,12 @@ document.querySelectorAll('.explore-nav-btn').forEach(btn => {
   });
 });
 
-// ── Storage backend tabs ──────────────────────────────────────────────
-
-document.getElementById('section-storage')?.querySelectorAll('.backend-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    const newBackend = tab.dataset.backend;
-    if (!currentStore || currentStore._backendType === newBackend) return;
-
-    document.querySelectorAll('.backend-tab').forEach(t => t.classList.toggle('active', t === tab));
-    _rebuildStoreWithBackend(newBackend);
-  });
-});
-
-function _rebuildStoreWithBackend(backendType) {
-  if (!currentStore || !_lastIngestData) return;
-  const newStore = _createStore(backendType, CHUNK_SIZE);
-  if (!newStore) return;
-
-  for (const sd of _lastIngestData) {
-    const id = newStore.getOrCreateSeries(sd.labels);
-    if (backendType === 'column') {
-      const n = sd.timestamps.length;
-      for (let offset = 0; offset < n; offset += CHUNK_SIZE) {
-        const end = Math.min(offset + CHUNK_SIZE, n);
-        newStore.appendBatch(id, sd.timestamps.subarray(offset, end), sd.values.subarray(offset, end));
-      }
-    } else {
-      newStore.appendBatch(id, sd.timestamps, sd.values);
-    }
-  }
-
-  currentStore = newStore;
-  _storagePopulated = false;
-  _revealStorage();
-}
-
 // ── Scenario picker ───────────────────────────────────────────────────
 
 function _renderScenarioCards() {
   const grid = document.getElementById('scenarioGrid');
   if (!grid) return;
-  grid.innerHTML = SCENARIOS.map(s => {
+  const scenarioCards = SCENARIOS.map(s => {
     const seriesCount = scenarioSeriesCount(s);
     const sampleCount = scenarioSampleCount(s);
     const interval = s.intervalMs >= 60000 ? `${s.intervalMs/60000}min` : `${s.intervalMs/1000}s`;
@@ -295,11 +268,27 @@ function _renderScenarioCards() {
     </button>`;
   }).join('');
 
-  grid.querySelectorAll('.scenario-card').forEach(card => {
+  const customCard = `
+    <button type="button" class="scenario-card scenario-card-custom" id="openCustomGenerator">
+      <div class="sc-emoji">⚙️</div>
+      <div class="sc-name">Custom Generator</div>
+      <div class="sc-desc">Choose your own series count, points, data pattern, and sample interval. Full control over the generated dataset.</div>
+      <span class="fork-cta" style="margin-top:auto">Open Generator →</span>
+    </button>`;
+
+  grid.innerHTML = scenarioCards + customCard;
+
+  grid.querySelectorAll('.scenario-card[data-scenario-id]').forEach(card => {
     card.addEventListener('click', () => {
       const scenario = SCENARIOS.find(s => s.id === card.dataset.scenarioId);
       if (scenario) loadScenario(scenario, card);
     });
+  });
+
+  // Custom generator card opens the Custom tab
+  document.getElementById('openCustomGenerator')?.addEventListener('click', () => {
+    const customBtn = document.getElementById('tab-custom-btn');
+    if (customBtn) customBtn.click();
   });
 }
 
@@ -320,7 +309,7 @@ function loadScenario(scenario, clickedCard) {
   // Defer heavy work to let the loading spinner render
   requestAnimationFrame(() => {
     setTimeout(() => {
-      const backendType = document.getElementById('scenarioBackend')?.value || 'column';
+      const backendType = 'column';
       const store = _createStore(backendType, CHUNK_SIZE);
       if (!store) {
         if (clickedCard) clickedCard.classList.remove('loading');
@@ -550,18 +539,7 @@ installResizeListener();
 // ── WASM init + auto-load ─────────────────────────────────────────────
 
 loadWasm().then((ok) => {
-  const statusEls = document.querySelectorAll('.wasm-status-badge');
-  for (const el of statusEls) {
-    el.style.display = 'inline-block';
-    if (ok) {
-      el.className = 'wasm-status-badge wasm-ok';
-      el.textContent = '✓ WASM';
-    } else {
-      el.className = 'wasm-status-badge wasm-err';
-      el.textContent = '✗ WASM unavailable';
-    }
-  }
-  // Disable column options if WASM unavailable
+  // Disable column options in custom generator if WASM unavailable
   if (!ok) {
     document.querySelectorAll('option[value="column"]').forEach(opt => {
       opt.disabled = true;

@@ -73,7 +73,7 @@ export const SCENARIOS = [
       service: ['web', 'api', 'checkout', 'search', 'cart', 'auth', 'cdn', 'payments'],
       endpoint: ['/home', '/search', '/cart', '/checkout'],
     },
-    numPoints: 1500,
+    numPoints: 7500,
     intervalMs: 10000,
   },
   {
@@ -95,28 +95,8 @@ export const SCENARIOS = [
              'node-11', 'node-12'],
       pod: ['web', 'api', 'worker', 'cache', 'queue', 'cron'],
     },
-    numPoints: 1200,
+    numPoints: 6000,
     intervalMs: 15000,
-  },
-  {
-    id: 'iot',
-    name: 'IoT Sensor Network',
-    emoji: '📡',
-    description: 'Temperature, humidity, battery, and signal data from hundreds of sensors across facilities.',
-    metrics: [
-      { name: 'temperature_celsius', pattern: 'sine' },
-      { name: 'humidity_percent', pattern: 'sine' },
-      { name: 'battery_voltage', pattern: 'sawtooth' },
-      { name: 'signal_strength_dbm', pattern: 'random-walk' },
-    ],
-    labelDimensions: {
-      facility: ['warehouse-a', 'warehouse-b', 'factory-1', 'factory-2', 'office-hq',
-                  'office-west', 'datacenter-1', 'datacenter-2', 'lab-north', 'lab-south'],
-      zone: ['floor-1', 'floor-2', 'floor-3', 'outdoor', 'roof', 'basement'],
-      device: ['sens-001', 'sens-002', 'sens-003', 'sens-004', 'sens-005'],
-    },
-    numPoints: 2000,
-    intervalMs: 30000,
   },
 ];
 

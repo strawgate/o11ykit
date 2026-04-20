@@ -516,149 +516,142 @@ function _fmtBytes(bytes) {
 }
 
 export function buildStorageExplorer(store) {
-  const explorer = $("#storageExplorer");
-  const overview = $("#storageOverview");
   const seriesList = $("#storageSeriesList");
   const detailPanel = $("#chunkDetailPanel");
-  explorer.style.display = "";
   detailPanel.style.display = "none";
 
-  let totalChunks = 0,
-    totalFrozen = 0,
-    _totalHotSamples = 0,
-    totalCompressedBytes = 0,
-    totalRawBytes = 0;
+  // Build series infos
   const seriesInfos = [];
-
   for (let id = 0; id < store.seriesCount; id++) {
     const labels = store.labels(id);
     const info = store.getChunkInfo(id);
     const frozenSamples = info.frozen.reduce((s, c) => s + c.count, 0);
     const frozenBytes = info.frozen.reduce((s, c) => s + c.compressedBytes, 0);
     const frozenRaw = info.frozen.reduce((s, c) => s + c.rawBytes, 0);
-    totalFrozen += info.frozen.length;
-    totalChunks += info.frozen.length + (info.hot.count > 0 ? 1 : 0);
-    _totalHotSamples += info.hot.count;
-    totalCompressedBytes += frozenBytes + (info.hot.count > 0 ? info.hot.rawBytes : 0);
-    totalRawBytes += frozenRaw + info.hot.rawBytes;
-
     seriesInfos.push({ id, labels, info, frozenSamples, frozenBytes, frozenRaw });
   }
 
-  const firstInfo = seriesInfos.length > 0 ? seriesInfos[0].info : null;
-  const isColumnStore = firstInfo?._isColumnStore;
-  const columnStatsHtml = isColumnStore
-    ? `
-      <div class="explorer-stat column-stat">
-        <span class="explorer-stat-value">${firstInfo._groupMembers}</span>
-        <span class="explorer-stat-label">Series sharing timestamps</span>
-      </div>
-      <div class="explorer-stat column-stat">
-        <span class="explorer-stat-value">${firstInfo._sharedTsChunks}</span>
-        <span class="explorer-stat-label">Shared ts chunks</span>
-      </div>
-      <div class="explorer-stat column-stat">
-        <span class="explorer-stat-value">${formatBytes(firstInfo._sharedTsTotalBytes)}</span>
-        <span class="explorer-stat-label">Shared ts storage</span>
-      </div>`
-    : "";
+  // Group by metric name
+  const groups = new Map();
+  for (const si of seriesInfos) {
+    const metricName = si.labels.get("__name__") || "unknown";
+    if (!groups.has(metricName)) groups.set(metricName, []);
+    groups.get(metricName).push(si);
+  }
 
-  overview.innerHTML = `
-    <div class="explorer-stats">
-      <div class="explorer-stat">
-        <span class="explorer-stat-value">${store.seriesCount}</span>
-        <span class="explorer-stat-label">Series</span>
-      </div>
-      <div class="explorer-stat">
-        <span class="explorer-stat-value">${totalChunks}</span>
-        <span class="explorer-stat-label">Total chunks</span>
-      </div>
-      <div class="explorer-stat">
-        <span class="explorer-stat-value">${totalFrozen}</span>
-        <span class="explorer-stat-label">Frozen (compressed)</span>
-      </div>
-      <div class="explorer-stat">
-        <span class="explorer-stat-value">${formatBytes(totalCompressedBytes)}</span>
-        <span class="explorer-stat-label">Total storage</span>
-      </div>
-      <div class="explorer-stat">
-        <span class="explorer-stat-value">${totalRawBytes > 0 ? `${(totalRawBytes / totalCompressedBytes).toFixed(1)}×` : "—"}</span>
-        <span class="explorer-stat-label">Avg compression</span>
-      </div>
-      ${columnStatsHtml}
-    </div>`;
+  const maxSamples = Math.max(...seriesInfos.map((s) => s.frozenSamples + s.info.hot.count));
+  const INITIAL_SHOW = 5;
 
   seriesList.innerHTML = "";
-  for (const si of seriesInfos) {
-    const row = document.createElement("div");
-    row.className = "storage-series-row";
+  for (const [metricName, members] of groups) {
+    const groupEl = document.createElement("div");
+    groupEl.className = "metric-group";
 
-    const labelStr = [...si.labels]
-      .filter(([k]) => k !== "__name__")
-      .map(
-        ([k, v]) =>
-          `<span class="label-pair"><span class="label-key">${k}</span>=<span class="label-val">${v}</span></span>`
-      )
-      .join(" ");
-    const metricName = si.labels.get("__name__") || "unknown";
+    const totalPts = members.reduce((s, m) => s + m.frozenSamples + m.info.hot.count, 0);
+    const totalBytes = members.reduce((s, m) => s + m.frozenBytes + (m.info.hot.count > 0 ? m.info.hot.rawBytes : 0), 0);
 
-    const totalSamples = si.frozenSamples + si.info.hot.count;
-    const totalBytes = si.frozenBytes + (si.info.hot.count > 0 ? si.info.hot.rawBytes : 0);
+    groupEl.innerHTML = `
+      <div class="metric-group-header">
+        <span class="metric-group-name">${metricName}</span>
+        <span class="metric-group-stats">${members.length} series · ${totalPts.toLocaleString()} pts · ${formatBytes(totalBytes)}</span>
+      </div>`;
 
-    row.innerHTML = `
-      <div class="series-header">
-        <span class="series-metric">${metricName}</span>
-        <span class="series-labels">${labelStr}</span>
-        <span class="series-summary">${totalSamples.toLocaleString()} pts · ${formatBytes(totalBytes)} · ${si.info.frozen.length} chunks${si.info.hot.count > 0 ? " + hot" : ""}</span>
-      </div>
-      <div class="chunk-bar-container"></div>`;
+    const rowContainer = document.createElement("div");
+    rowContainer.className = "metric-group-rows";
 
-    const barContainer = row.querySelector(".chunk-bar-container");
-    const maxSamples = Math.max(...seriesInfos.map((s) => s.frozenSamples + s.info.hot.count));
-    const totalChunksInSeries = si.info.frozen.length + (si.info.hot.count > 0 ? 1 : 0);
-    const compact = totalChunksInSeries > 40;
-    if (compact) barContainer.classList.add("compact-chunks");
-
-    const isCol = si.info._isColumnStore;
-    for (let ci = 0; ci < si.info.frozen.length; ci++) {
-      const chunk = si.info.frozen[ci];
-      const block = document.createElement("div");
-      block.className = isCol ? "chunk-block frozen column-store" : "chunk-block frozen";
-      if (!compact) {
-        const widthPct = Math.max(2, (chunk.count / maxSamples) * 100);
-        block.style.width = `${widthPct}%`;
-      }
-      block.title = `Chunk ${ci}: ${chunk.count} pts, ${formatBytes(chunk.compressedBytes)}, ${chunk.ratio.toFixed(1)}× compression`;
-      if (!compact) block.innerHTML = `<span class="chunk-label">${chunk.count}</span>`;
-      block.addEventListener("click", () => showChunkDetail(si, ci, "frozen", store));
-      barContainer.appendChild(block);
+    const showCount = Math.min(members.length, INITIAL_SHOW);
+    for (let i = 0; i < showCount; i++) {
+      rowContainer.appendChild(_buildSeriesRow(members[i], maxSamples, store));
     }
 
-    if (si.info.hot.count > 0) {
-      const block = document.createElement("div");
-      block.className = "chunk-block hot";
-      if (!compact) {
-        const widthPct = Math.max(2, (si.info.hot.count / maxSamples) * 100);
-        block.style.width = `${widthPct}%`;
-      }
-      block.title = `Hot buffer: ${si.info.hot.count} pts, ${formatBytes(si.info.hot.rawBytes)} (uncompressed)`;
-      if (!compact) block.innerHTML = `<span class="chunk-label">${si.info.hot.count}</span>`;
-      block.addEventListener("click", () => showChunkDetail(si, -1, "hot", store));
-      barContainer.appendChild(block);
+    groupEl.appendChild(rowContainer);
+
+    if (members.length > INITIAL_SHOW) {
+      const remaining = members.length - INITIAL_SHOW;
+      const expandBtn = document.createElement("button");
+      expandBtn.type = "button";
+      expandBtn.className = "metric-group-expand";
+      expandBtn.textContent = `Show ${remaining} more series…`;
+      expandBtn.addEventListener("click", () => {
+        for (let i = INITIAL_SHOW; i < members.length; i++) {
+          rowContainer.appendChild(_buildSeriesRow(members[i], maxSamples, store));
+        }
+        expandBtn.remove();
+      });
+      groupEl.appendChild(expandBtn);
     }
 
-    if (compact) {
-      const summary = document.createElement("div");
-      summary.className = "chunk-summary-bar";
-      summary.innerHTML =
-        `<span class="chunk-count-badge">${si.info.frozen.length} frozen</span>` +
-        (si.info.hot.count > 0
-          ? `<span class="chunk-count-badge hot">1 hot (${si.info.hot.count.toLocaleString()} pts)</span>`
-          : "") +
-        `<span>Click any block to explore</span>`;
-      row.appendChild(summary);
-    }
-
-    seriesList.appendChild(row);
+    seriesList.appendChild(groupEl);
   }
+}
+
+function _buildSeriesRow(si, maxSamples, store) {
+  const row = document.createElement("div");
+  row.className = "storage-series-row";
+
+  const labelStr = [...si.labels]
+    .filter(([k]) => k !== "__name__")
+    .map(
+      ([k, v]) =>
+        `<span class="label-pair"><span class="label-key">${k}</span>=<span class="label-val">${v}</span></span>`
+    )
+    .join(" ");
+  const metricName = si.labels.get("__name__") || "unknown";
+
+  const totalSamples = si.frozenSamples + si.info.hot.count;
+  const totalBytes = si.frozenBytes + (si.info.hot.count > 0 ? si.info.hot.rawBytes : 0);
+
+  row.innerHTML = `
+    <div class="series-header">
+      <span class="series-labels">${labelStr}</span>
+      <span class="series-summary">${totalSamples.toLocaleString()} pts · ${formatBytes(totalBytes)} · ${si.info.frozen.length} chunks${si.info.hot.count > 0 ? " + hot" : ""}</span>
+    </div>
+    <div class="chunk-bar-container"></div>`;
+
+  const barContainer = row.querySelector(".chunk-bar-container");
+  const totalChunksInSeries = si.info.frozen.length + (si.info.hot.count > 0 ? 1 : 0);
+  const compact = totalChunksInSeries > 40;
+  if (compact) barContainer.classList.add("compact-chunks");
+
+  const isCol = si.info._isColumnStore;
+  for (let ci = 0; ci < si.info.frozen.length; ci++) {
+    const chunk = si.info.frozen[ci];
+    const block = document.createElement("div");
+    block.className = isCol ? "chunk-block frozen column-store" : "chunk-block frozen";
+    if (!compact) {
+      const widthPct = Math.max(2, (chunk.count / maxSamples) * 100);
+      block.style.width = `${widthPct}%`;
+    }
+    block.title = `Chunk ${ci}: ${chunk.count} pts, ${formatBytes(chunk.compressedBytes)}, ${chunk.ratio.toFixed(1)}× compression`;
+    if (!compact) block.innerHTML = `<span class="chunk-label">${chunk.count}</span>`;
+    block.addEventListener("click", () => showChunkDetail(si, ci, "frozen", store));
+    barContainer.appendChild(block);
+  }
+
+  if (si.info.hot.count > 0) {
+    const block = document.createElement("div");
+    block.className = "chunk-block hot";
+    if (!compact) {
+      const widthPct = Math.max(2, (si.info.hot.count / maxSamples) * 100);
+      block.style.width = `${widthPct}%`;
+    }
+    block.title = `Hot buffer: ${si.info.hot.count} pts, ${formatBytes(si.info.hot.rawBytes)} (uncompressed)`;
+    if (!compact) block.innerHTML = `<span class="chunk-label">${si.info.hot.count}</span>`;
+    block.addEventListener("click", () => showChunkDetail(si, -1, "hot", store));
+    barContainer.appendChild(block);
+  }
+
+  if (compact) {
+    const summary = document.createElement("div");
+    summary.className = "chunk-summary-bar";
+    summary.innerHTML =
+      `<span class="chunk-count-badge">${si.info.frozen.length} frozen</span>` +
+      (si.info.hot.count > 0
+        ? `<span class="chunk-count-badge hot">1 hot (${si.info.hot.count.toLocaleString()} pts)</span>`
+        : "") +
+      `<span>Click any block to explore</span>`;
+    row.appendChild(summary);
+  }
+
+  return row;
 }

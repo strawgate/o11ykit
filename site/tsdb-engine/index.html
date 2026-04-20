@@ -83,15 +83,6 @@
 
         <!-- Scenarios tab -->
         <div class="tab-panel active" id="tab-scenarios" role="tabpanel" aria-labelledby="tab-scenarios-btn">
-          <div class="scenario-backend-row">
-            <label for="scenarioBackend">Storage backend</label>
-            <select id="scenarioBackend">
-              <option value="column" selected>ColumnStore (ALP + shared timestamps)</option>
-              <option value="chunked">ChunkedStore (XOR-delta)</option>
-              <option value="flat">FlatStore (no compression)</option>
-            </select>
-            <span class="wasm-status-badge" style="display:none"></span>
-          </div>
           <div class="scenario-grid" id="scenarioGrid">
             <!-- populated by JS -->
           </div>
@@ -187,26 +178,15 @@
           <div class="stat-card"><div class="stat-big" id="statStorageRatio">—</div><div class="stat-desc">Compression ratio</div></div>
           <div class="stat-card"><div class="stat-big" id="statStorageIngestTime">—</div><div class="stat-desc">Ingest time</div></div>
           <div class="stat-card"><div class="stat-big" id="statStorageIngestRate">—</div><div class="stat-desc">Ingest rate</div></div>
+          <div class="stat-card"><div class="stat-big" id="statStorageChunks">—</div><div class="stat-desc">Total chunks</div></div>
+          <div class="stat-card"><div class="stat-big" id="statStorageFrozen">—</div><div class="stat-desc">Frozen (compressed)</div></div>
         </div>
 
-        <!-- Backend switcher tabs -->
-        <div class="backend-tabs" role="tablist" aria-label="Storage backend">
-          <button type="button" class="backend-tab active" data-backend="column" role="tab">ColumnStore</button>
-          <button type="button" class="backend-tab" data-backend="chunked" role="tab">ChunkedStore</button>
-          <button type="button" class="backend-tab" data-backend="flat" role="tab">FlatStore</button>
-        </div>
+        <p class="storage-intro">Each row is a series. Frozen compressed chunks are <span class="tag-frozen">frozen</span> and the active write buffer is <span class="tag-hot">hot</span>. Click any chunk to inspect it.</p>
 
-        <!-- Memory layout diagram -->
-        <div id="storageLayoutDiagram" class="storage-layout-diagram"></div>
-
-        <!-- Series chunk explorer (existing) -->
-        <div class="storage-explorer" id="storageExplorer" role="region" aria-label="Storage explorer">
-          <h3>💾 Series Explorer</h3>
-          <p class="storage-intro">Each row is a series. Frozen compressed chunks are <span class="tag-frozen">frozen</span> and the active write buffer is <span class="tag-hot">hot</span>. Click any chunk to inspect it.</p>
-          <div class="storage-overview" id="storageOverview"></div>
-          <div class="storage-series-list" id="storageSeriesList"></div>
-          <div class="chunk-detail-panel" id="chunkDetailPanel" style="display:none;"></div>
-        </div>
+        <!-- Series explorer (grouped by metric) -->
+        <div class="storage-series-list" id="storageSeriesList"></div>
+        <div class="chunk-detail-panel" id="chunkDetailPanel" style="display:none;"></div>
       </section>
 
       <!-- ─── Section 4: Query Lab ──────────────────────────────── -->
