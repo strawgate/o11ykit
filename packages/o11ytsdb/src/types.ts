@@ -130,6 +130,9 @@ export interface StorageBackend {
   /** Read decoded samples as individual chunk parts (avoids concatenation). */
   readParts?(id: SeriesId, start: bigint, end: bigint): TimeRange[];
 
+  /** Visit individual chunk parts without materializing a TimeRange[] array. */
+  scanParts?(id: SeriesId, start: bigint, end: bigint, visit: (part: TimeRange) => void): void;
+
   /** Retrieve the label set for a series. */
   labels(id: SeriesId): Labels | undefined;
 
