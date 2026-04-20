@@ -70,8 +70,7 @@ describe("MetricsBatch.fromOtlp", () => {
   it("extracts tags excluding reserved attributes", () => {
     const batch = MetricsBatch.fromOtlp(makeDoc());
     const p = batch.points.find((p) => p.scenario === "BenchmarkSort" && p.metric === "ns/op");
-    assert.ok(p);
-    if (!p) throw new Error("missing BenchmarkSort/ns-op point");
+    assert.ok(p, "metrics-batch.test.ts: missing BenchmarkSort/ns/op point in fromOtlp tag extraction");
     assert.equal(p.tags["impl"], "quicksort");
     assert.equal(p.tags["benchkit.scenario"], undefined);
   });
@@ -79,8 +78,10 @@ describe("MetricsBatch.fromOtlp", () => {
   it("extracts direction and unit", () => {
     const batch = MetricsBatch.fromOtlp(makeDoc());
     const p = batch.points.find((p) => p.scenario === "BenchmarkSort" && p.metric === "ns/op");
-    assert.ok(p);
-    if (!p) throw new Error("missing BenchmarkSort/ns-op point");
+    assert.ok(
+      p,
+      "metrics-batch.test.ts: missing BenchmarkSort/ns/op point in fromOtlp direction/unit extraction",
+    );
     assert.equal(p.direction, "smaller_is_better");
     assert.equal(p.unit, "ns");
   });
@@ -247,8 +248,10 @@ describe("MetricsBatch.toOtlp", () => {
       const found = restored.points.find(
         (p) => p.scenario === orig.scenario && p.metric === orig.metric,
       );
-      assert.ok(found, `missing ${orig.scenario}/${orig.metric}`);
-      if (!found) throw new Error(`missing ${orig.scenario}/${orig.metric}`);
+      assert.ok(
+        found,
+        `metrics-batch.test.ts: missing restored point for ${orig.scenario}/${orig.metric} in toOtlp round-trip`,
+      );
       assert.equal(found.value, orig.value);
       assert.equal(found.unit, orig.unit);
       assert.equal(found.direction, orig.direction);
@@ -260,8 +263,10 @@ describe("MetricsBatch.toOtlp", () => {
     const restored = MetricsBatch.fromOtlp(original.toOtlp());
     const origSort = original.points.find((p) => p.scenario === "BenchmarkSort" && p.metric === "ns/op");
     const restoredSort = restored.points.find((p) => p.scenario === "BenchmarkSort" && p.metric === "ns/op");
-    assert.ok(origSort && restoredSort);
-    if (!origSort || !restoredSort) throw new Error("missing BenchmarkSort/ns-op point");
+    assert.ok(
+      origSort && restoredSort,
+      "metrics-batch.test.ts: missing BenchmarkSort/ns/op point in round-trip tag check",
+    );
     assert.deepEqual(restoredSort.tags, origSort.tags);
   });
 

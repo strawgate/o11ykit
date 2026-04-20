@@ -378,6 +378,9 @@ export function flushSamplesToStorage(
         if (millis === undefined) {
           throw new RangeError(`missing timestamp at batch index ${i}`);
         }
+        if (!Number.isFinite(millis) || !Number.isInteger(millis)) {
+          throw new RangeError(`invalid timestamp at batch index ${i}: ${String(millis)}`);
+        }
         tsArr[i] = BigInt(millis) * 1_000_000n;
       }
     }

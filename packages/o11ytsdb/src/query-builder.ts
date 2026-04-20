@@ -42,6 +42,8 @@ interface BuilderState {
   readonly groupBy: readonly string[] | undefined;
 }
 
+type StepTransform = Extract<TransformFn, "rate" | "increase" | "irate" | "delta">;
+
 const EMPTY_STATE: BuilderState = {
   metric: undefined,
   matchers: [],
@@ -52,6 +54,10 @@ const EMPTY_STATE: BuilderState = {
   agg: undefined,
   groupBy: undefined,
 };
+
+function isStepTransform(fn: TransformFn | undefined): fn is StepTransform {
+  return fn === "rate" || fn === "increase" || fn === "irate" || fn === "delta";
+}
 
 // ── Builder ──────────────────────────────────────────────────────────
 
@@ -251,11 +257,20 @@ export class QueryBuilder {
     }
 
     const trailingTransform = transforms.at(-1);
-    if (agg != null || (step != null && trailingTransform != null)) {
+    const stepDerivedAgg = isStepTransform(trailingTransform) ? trailingTransform : undefined;
+    if (agg != null) {
       node = {
         kind: "aggregate",
         input: node,
-        fn: (agg ?? trailingTransform) as PlanAggFn,
+        fn: agg,
+        ...(step != null && { step }),
+        ...(groupBy != null && { groupBy }),
+      };
+    } else if (step != null && stepDerivedAgg != null) {
+      node = {
+        kind: "aggregate",
+        input: node,
+        fn: stepDerivedAgg as PlanAggFn,
         ...(step != null && { step }),
         ...(groupBy != null && { groupBy }),
       };
