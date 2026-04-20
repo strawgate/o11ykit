@@ -33,7 +33,7 @@ export interface PendingSeriesSamples {
 }
 
 export interface ParsedOtlpResult {
-  pending: Map<string, PendingSeriesSamples>;
+  pending: Map<number, PendingSeriesSamples>;
   result: IngestResult;
 }
 
@@ -46,6 +46,16 @@ const ATTR_PREFIX_POINT = "attr.";
 const SANITIZE_RE = /[^a-zA-Z0-9_]/gu;
 
 function sanitizeLabelKey(key: string): string {
+  // Fast path: skip regex if key is already clean (alphanumeric + underscore).
+  let clean = true;
+  for (let i = 0; i < key.length; i++) {
+    const c = key.charCodeAt(i);
+    if (!((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95)) {
+      clean = false;
+      break;
+    }
+  }
+  if (clean) return key;
   return key.replace(SANITIZE_RE, "_");
 }
 
@@ -75,7 +85,13 @@ function fnvHashEntry(hash: number, key: string, value: string): number {
 let _phHash = 0;
 let _phCount = 0;
 
+// Cache the last computePointAttrsHash result. Consecutive points
+// in the same metric with the same attributes ref will hit this.
+let _paBaseHash = 0;
+let _paAttrsRef: Record<string, unknown> | undefined;
+
 function computePointAttrsHash(baseHash: number, pointAttrs: Record<string, unknown>): void {
+  if (pointAttrs === _paAttrsRef && baseHash === _paBaseHash) return;
   let hash = baseHash;
   let count = 0;
   for (const key of Object.keys(pointAttrs)) {
@@ -88,14 +104,16 @@ function computePointAttrsHash(baseHash: number, pointAttrs: Record<string, unkn
   }
   _phHash = hash;
   _phCount = count;
+  _paBaseHash = baseHash;
+  _paAttrsRef = pointAttrs;
 }
 
-function toFingerprint(hash: number, size: number): string {
-  // Two independent hash mixes → effectively 64-bit fingerprint.
-  // Birthday collision bound: ~4.3 billion series (vs ~77K with single 32-bit).
+function toFingerprint(hash: number, size: number): number {
+  // Combine two independent 32-bit mixes into a single 53-bit safe integer.
+  // Birthday collision bound for 53 bits: ~94M series before p=0.5.
   const h1 = Math.imul((hash ^ size) >>> 0, FNV_PRIME) >>> 0;
   const h2 = Math.imul((hash ^ Math.imul(size, 0x9e3779b9)) >>> 0, 0x517cc1b7) >>> 0;
-  return `${h1.toString(36)}.${h2.toString(36)}`;
+  return (h1 & 0x1fffff) * 0x100000000 + h2;
 }
 
 function buildSnapshotLabels(
@@ -205,7 +223,7 @@ function ingestMetricsDocument(
   document: OtlpMetricsDocument,
   result: IngestResult
 ): ParsedOtlpResult {
-  const pending = new Map<string, PendingSeriesSamples>();
+  const pending = new Map<number, PendingSeriesSamples>();
 
   for (const resourceMetrics of document.resourceMetrics) {
     const resourceAttrs = flattenAttributes(resourceMetrics.resource?.attributes);
@@ -337,7 +355,7 @@ export function ingestOtlpJson(
  *   than the scalar BigInt fallback loop.
  */
 export function flushSamplesToStorage(
-  pending: Map<string, PendingSeriesSamples>,
+  pending: Map<number, PendingSeriesSamples>,
   storage: StorageBackend,
   result: IngestResult,
   msToNs?: (ms: Float64Array) => BigInt64Array
@@ -379,7 +397,7 @@ function ingestNumberPoints(
   baseEntries: Array<[string, string]>,
   baseHash: number,
   baseSize: number,
-  pending: Map<string, PendingSeriesSamples>,
+  pending: Map<number, PendingSeriesSamples>,
   result: IngestResult
 ): void {
   const metricHash = fnvHashEntry(baseHash, "__name__", metricName);
@@ -420,7 +438,7 @@ function ingestHistogramPoints(
   baseEntries: Array<[string, string]>,
   baseHash: number,
   baseSize: number,
-  pending: Map<string, PendingSeriesSamples>,
+  pending: Map<number, PendingSeriesSamples>,
   result: IngestResult
 ): void {
   const bucketName = `${metricName}_bucket`;
@@ -519,7 +537,7 @@ function ingestSummaryPoints(
   baseEntries: Array<[string, string]>,
   baseHash: number,
   baseSize: number,
-  pending: Map<string, PendingSeriesSamples>,
+  pending: Map<number, PendingSeriesSamples>,
   result: IngestResult
 ): void {
   const countName = `${metricName}_count`;
@@ -618,7 +636,7 @@ function ingestExponentialHistogramPoints(
   baseEntries: Array<[string, string]>,
   baseHash: number,
   baseSize: number,
-  pending: Map<string, PendingSeriesSamples>,
+  pending: Map<number, PendingSeriesSamples>,
   result: IngestResult
 ): void {
   const bucketName = `${metricName}_bucket`;
@@ -747,7 +765,7 @@ function ingestExpBuckets(
   side: "positive" | "negative",
   buckets: { offset?: string | number; bucketCounts?: readonly (string | number)[] } | undefined,
   baseEntries: ReadonlyArray<readonly [string, string]>,
-  pending: Map<string, PendingSeriesSamples>
+  pending: Map<number, PendingSeriesSamples>
 ): number {
   const offset = toNumber(buckets?.offset ?? null) ?? 0;
   const counts = parseNumberArray(buckets?.bucketCounts);
