@@ -363,13 +363,13 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
 
 /** Render a visual memory-layout diagram for the given store. */
 export function buildLayoutDiagram(store, container) {
-  const name = store.name || 'Unknown';
+  const name = store.name || "Unknown";
 
-  if (name === 'FlatStore') {
+  if (name === "FlatStore") {
     container.innerHTML = _flatLayoutHTML(store);
-  } else if (name === 'ChunkedStore') {
+  } else if (name === "ChunkedStore") {
     container.innerHTML = _chunkedLayoutHTML(store);
-  } else if (name === 'ColumnStore') {
+  } else if (name === "ColumnStore") {
     container.innerHTML = _columnLayoutHTML(store);
   } else {
     container.innerHTML = `<p class="layout-unknown">Layout visualization not available for ${name}.</p>`;
@@ -384,7 +384,7 @@ function _flatLayoutHTML(store) {
     const pts = info.hot.count;
     const alloc = info.hot.allocatedBytes;
     const labels = store.labels(id);
-    const name = labels?.get('__name__') || 'series';
+    const name = labels?.get("__name__") || "series";
     rows.push(`
       <div class="layout-flat-row">
         <span class="layout-series-name">${name}</span>
@@ -402,7 +402,7 @@ function _flatLayoutHTML(store) {
     <div class="layout-diagram layout-flat">
       <div class="layout-title">FlatStore — contiguous TypedArrays</div>
       <div class="layout-description">Each series stores raw timestamps and values as two adjacent arrays. No compression. Random access O(log n) via binary search.</div>
-      <div class="layout-flat-rows">${rows.join('')}</div>
+      <div class="layout-flat-rows">${rows.join("")}</div>
       <div class="layout-legend">
         <span class="legend-ts">BigInt64Array (timestamps)</span>
         <span class="legend-vals">Float64Array (values)</span>
@@ -416,19 +416,27 @@ function _chunkedLayoutHTML(store) {
   for (let id = 0; id < sampleSeries; id++) {
     const info = store.getChunkInfo(id);
     const labels = store.labels(id);
-    const name = labels?.get('__name__') || 'series';
+    const name = labels?.get("__name__") || "series";
     const frozenCount = info.frozen.length;
     const showChunks = Math.min(frozenCount, 8);
-    const chunkBlocks = info.frozen.slice(0, showChunks).map((c, i) =>
-      `<div class="layout-chunk frozen" title="Chunk ${i}: ${c.count} pts, ${_fmtBytes(c.compressedBytes)}, ${c.ratio.toFixed(1)}×">
+    const chunkBlocks = info.frozen
+      .slice(0, showChunks)
+      .map(
+        (c, i) =>
+          `<div class="layout-chunk frozen" title="Chunk ${i}: ${c.count} pts, ${_fmtBytes(c.compressedBytes)}, ${c.ratio.toFixed(1)}×">
         <span class="lc-pts">${c.count}</span>
         <span class="lc-ratio">${c.ratio.toFixed(1)}×</span>
       </div>`
-    ).join('');
-    const ellipsis = frozenCount > showChunks ? `<div class="layout-chunk-ellipsis">+${frozenCount - showChunks}</div>` : '';
-    const hotBlock = info.hot.count > 0
-      ? `<div class="layout-chunk hot" title="Hot buffer: ${info.hot.count} pts (uncompressed)"><span class="lc-pts">${info.hot.count}</span><span class="lc-label">hot</span></div>`
-      : '';
+      )
+      .join("");
+    const ellipsis =
+      frozenCount > showChunks
+        ? `<div class="layout-chunk-ellipsis">+${frozenCount - showChunks}</div>`
+        : "";
+    const hotBlock =
+      info.hot.count > 0
+        ? `<div class="layout-chunk hot" title="Hot buffer: ${info.hot.count} pts (uncompressed)"><span class="lc-pts">${info.hot.count}</span><span class="lc-label">hot</span></div>`
+        : "";
     rows.push(`
       <div class="layout-chunked-row">
         <span class="layout-series-name">${name}</span>
@@ -442,7 +450,7 @@ function _chunkedLayoutHTML(store) {
     <div class="layout-diagram layout-chunked">
       <div class="layout-title">ChunkedStore — compressed chunks</div>
       <div class="layout-description">Data accumulates in a hot buffer. When full, it's compressed with XOR-delta encoding and frozen. Each frozen chunk: ~2–4 B/sample vs 16 B/sample raw.</div>
-      <div class="layout-chunked-rows">${rows.join('')}</div>
+      <div class="layout-chunked-rows">${rows.join("")}</div>
       <div class="layout-legend">
         <span class="legend-frozen">Frozen chunk (XOR-delta compressed)</span>
         <span class="legend-hot">Hot buffer (raw, ~16 B/sample)</span>
@@ -462,23 +470,32 @@ function _columnLayoutHTML(store) {
   const sharedTsSeries = firstInfo._groupMembers || store.seriesCount;
   const sharedTsBytes = firstInfo._sharedTsTotalBytes || 0;
 
-  const tsSpine = Array.from({ length: Math.min(sharedTsChunks, 6) }, (_, i) =>
-    `<div class="layout-ts-chunk" title="Shared ts chunk ${i}">ts-${i}</div>`
-  ).join('');
-  const tsEllipsis = sharedTsChunks > 6 ? `<div class="layout-chunk-ellipsis">+${sharedTsChunks - 6}</div>` : '';
+  const tsSpine = Array.from(
+    { length: Math.min(sharedTsChunks, 6) },
+    (_, i) => `<div class="layout-ts-chunk" title="Shared ts chunk ${i}">ts-${i}</div>`
+  ).join("");
+  const tsEllipsis =
+    sharedTsChunks > 6 ? `<div class="layout-chunk-ellipsis">+${sharedTsChunks - 6}</div>` : "";
 
   const sampleSeries = Math.min(store.seriesCount, 5);
   const valRows = [];
   for (let id = 0; id < sampleSeries; id++) {
     const info = store.getChunkInfo(id);
     const labels = store.labels(id);
-    const name = labels?.get('__name__') || 'series';
+    const name = labels?.get("__name__") || "series";
     const frozenCount = info.frozen.length;
     const showChunks = Math.min(frozenCount, 6);
-    const valBlocks = info.frozen.slice(0, showChunks).map((c, i) =>
-      `<div class="layout-val-chunk" title="Values chunk ${i}: ${_fmtBytes(c.valuesBytes || c.compressedBytes)}, ALP">v-${i}</div>`
-    ).join('');
-    const ellipsis = frozenCount > showChunks ? `<div class="layout-chunk-ellipsis">+${frozenCount - showChunks}</div>` : '';
+    const valBlocks = info.frozen
+      .slice(0, showChunks)
+      .map(
+        (c, i) =>
+          `<div class="layout-val-chunk" title="Values chunk ${i}: ${_fmtBytes(c.valuesBytes || c.compressedBytes)}, ALP">v-${i}</div>`
+      )
+      .join("");
+    const ellipsis =
+      frozenCount > showChunks
+        ? `<div class="layout-chunk-ellipsis">+${frozenCount - showChunks}</div>`
+        : "";
     valRows.push(`
       <div class="layout-column-row">
         <span class="layout-series-name">${name}</span>
@@ -486,10 +503,13 @@ function _columnLayoutHTML(store) {
       </div>`);
   }
   if (store.seriesCount > sampleSeries) {
-    valRows.push(`<div class="layout-more">+ ${store.seriesCount - sampleSeries} more series…</div>`);
+    valRows.push(
+      `<div class="layout-more">+ ${store.seriesCount - sampleSeries} more series…</div>`
+    );
   }
 
-  const amortizedBytesPerSeries = sharedTsSeries > 0 ? Math.round(sharedTsBytes / sharedTsSeries) : 0;
+  const amortizedBytesPerSeries =
+    sharedTsSeries > 0 ? Math.round(sharedTsBytes / sharedTsSeries) : 0;
 
   return `
     <div class="layout-diagram layout-column">
@@ -500,7 +520,7 @@ function _columnLayoutHTML(store) {
         <div class="layout-ts-chunks">${tsSpine}${tsEllipsis}</div>
         <span class="layout-spine-amortized">÷ ${sharedTsSeries} series = ${_fmtBytes(amortizedBytesPerSeries)}/series</span>
       </div>
-      <div class="layout-column-rows">${valRows.join('')}</div>
+      <div class="layout-column-rows">${valRows.join("")}</div>
       <div class="layout-legend">
         <span class="legend-ts-spine">Shared timestamp spine (Gorilla Δ²)</span>
         <span class="legend-val-col">Per-series value column (ALP bit-packed)</span>
@@ -509,7 +529,7 @@ function _columnLayoutHTML(store) {
 }
 
 function _fmtBytes(bytes) {
-  if (!bytes) return '0 B';
+  if (!bytes) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1048576).toFixed(1)} MB`;
