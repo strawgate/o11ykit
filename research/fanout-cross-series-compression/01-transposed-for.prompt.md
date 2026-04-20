@@ -51,6 +51,7 @@ prototype + benchmark
 - You MUST add the new backend(s) to `packages/o11ytsdb/bench/engine.bench.ts` alongside existing backends
 
 - You MUST run the engine benchmark:
+
   ```bash
   npx tsc -b packages/otlpjson packages/o11ytsdb --force
   npx tsc -p packages/o11ytsdb/bench/tsconfig.json

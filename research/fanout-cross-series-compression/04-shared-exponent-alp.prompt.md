@@ -9,7 +9,8 @@ Prototype and benchmark a **shared-exponent ALP** encoding where all series in a
 ## Why this workstream exists
 
 The current ALP codec encodes each series independently with its own 14-byte header:
-```
+
+```text
 [0-1]   count (u16)
 [2]     exponent (u8)
 [3]     bit_width (u8)
@@ -40,10 +41,10 @@ prototype + benchmark
 
 - You MUST create `packages/o11ytsdb/src/shared-exp-store.ts` that:
   1. During freeze: for each group, determine the "best shared exponent" across all member series
-     - For each candidate exponent e ∈ {0,1,2,...,18}: scale all values from all series by 10^e, count how many round-trip correctly
+     - For each candidate exponent e ∈ {0,1,2,...,18}: scale all values from all series by 10**e, count how many round-trip correctly
      - Pick the exponent with highest total match count (or lowest total encoded size)
   2. Encode all series using that shared exponent:
-     - Scale values to integers: `int = round(value × 10^e)`
+     - Scale values to integers: `int = round(value × 10**e)`
      - Exceptions: values that don't round-trip at this exponent
      - Store: [group header: exponent, member count] + [per-series: bit_width, min_int, exception_count, packed data]
   3. Compare total encoded size vs independent-exponent ALP

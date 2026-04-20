@@ -1,4 +1,4 @@
-# Post-ALP Byte-Level Compression (zstd/deflate/brotli on Row Group Buffers)
+# Post-ALP Byte-Level Compression (deflate/brotli on Row Group Buffers)
 
 You are handling one workstream inside a larger Codex Cloud fanout for this repository.
 
@@ -43,11 +43,13 @@ prototype + benchmark
 - You MUST add the new backend(s) to `packages/o11ytsdb/bench/engine.bench.ts`
 
 - You MUST run the engine benchmark:
+
   ```bash
   npx tsc -b packages/otlpjson packages/o11ytsdb --force
   npx tsc -p packages/o11ytsdb/bench/tsconfig.json
   node packages/o11ytsdb/bench/run.mjs engine
   ```
+
 
 - You MUST report: bytes/point (post-compression), compression ratio vs raw (26.24 B/pt) and vs ALP-only (2.88 B/pt), ingest throughput impact, query throughput impact (decompression cost)
 

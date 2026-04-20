@@ -39,7 +39,7 @@ prototype + benchmark
 - You MUST test multiple reference selection strategies:
   - **First member**: simplest, no analysis cost
   - **Median-range member**: pick the series whose values have the median (max-min) range — other series' deltas relative to a "middle" series should have smaller ranges
-  - **Mean series**: compute the per-index mean across all members, encode that as reference, then all series store deltas from the mean — this minimizes total delta variance
+  - **Median series (actual member)**: pick the series closest to the per-index mean — an actual member series whose values are already bit-exact, avoiding floating-point drift that a synthetic mean would introduce during reconstruction (value - mean + mean ≠ value)
 
 - You MUST handle the case where series are NOT correlated:
   - Patterns 7-8 (high-precision cpu.utilization) have independent random walks
@@ -49,11 +49,13 @@ prototype + benchmark
 - You MUST add the backends to `packages/o11ytsdb/bench/engine.bench.ts`
 
 - You MUST run the engine benchmark:
+
   ```bash
   npx tsc -b packages/otlpjson packages/o11ytsdb --force
   npx tsc -p packages/o11ytsdb/bench/tsconfig.json
   node packages/o11ytsdb/bench/run.mjs engine
   ```
+
 
 - You MUST report per-pattern compression breakdown (which patterns benefit, which get worse)
 

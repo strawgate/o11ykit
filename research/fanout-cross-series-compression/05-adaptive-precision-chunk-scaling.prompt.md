@@ -33,7 +33,7 @@ prototype + benchmark
 - **Adaptive precision detection**: You MUST implement a function `detectPrecision(values: Float64Array): number | null` that:
   1. Samples the first 32-64 values
   2. For each candidate precision p ∈ {0, 1, 2, 3, ..., 15}:
-     - Round each value: `rounded = Math.round(value * 10^p) / 10^p`
+     - Round each value: `rounded = Math.round(value * 10**p) / 10**p`
      - Check if `rounded === value` (exact bit equality) for all sampled values
   3. Return the minimum p where all values round-trip, or null if no precision ≤ 15 works
   4. This is the "natural precision" — rounding to it is lossless
