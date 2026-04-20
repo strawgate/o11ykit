@@ -51,7 +51,7 @@ const modules = {
   interner: "./dist/interner.bench.js",
   postings: "./dist/postings.bench.js",
   ingest: "./dist/ingest.bench.js",
-  // 'query': './dist/query.bench.js',
+  query: "./dist/query.bench.js",
 };
 
 const available = Object.keys(modules);

@@ -1,4 +1,5 @@
-bench/results/
+bench/results/*
+!bench/results/query-baseline.json
 bench/dist/
 bench/*.cpuprofile
 wasm/
