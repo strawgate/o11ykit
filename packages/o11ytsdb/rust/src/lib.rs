@@ -838,6 +838,18 @@ const ALP_HEADER_SIZE: usize = 14;
 const ALP_MAX_CHUNK: usize = 2048;
 const ALP_MAX_EXP: usize = 18;
 
+// Exception encoding mode: 0 = FoR (original), 1 = delta-FoR
+// Delta-FoR encodes zigzag deltas between consecutive sortable-u64
+// exception values, then FoR bit-packs the deltas. This exploits
+// temporal locality in slowly-changing high-precision series.
+//
+// The mode is signaled in the blob by setting bit 7 of exc_bw:
+//   exc_bw & 0x80 == 0  →  original FoR, actual bw = exc_bw
+//   exc_bw & 0x80 != 0  →  delta-FoR,    actual bw = exc_bw & 0x7F
+// When delta-FoR: the first 8 bytes after the tag are the first
+// sortable u64 (instead of min_su64), followed by bit-packed zigzag deltas.
+static mut ALP_EXC_MODE: u8 = 0;
+
 /// Convert f64 to a sortable u64 representation.
 /// IEEE 754 is monotonic for positive floats; this extends to negatives
 /// by flipping bits so that u64 ordering matches f64 ordering.
@@ -897,6 +909,7 @@ fn extract_packed_safe(buf: &[u8], i: usize, bw: u8) -> u64 {
 // Temp storage for ALP (static to avoid stack/heap allocation).
 static mut ALP_INTS: [i64; ALP_MAX_CHUNK] = [0; ALP_MAX_CHUNK];
 static mut ALP_EXC: [u8; ALP_MAX_CHUNK] = [0; ALP_MAX_CHUNK]; // 1 = exception
+static mut ALP_EXC_U64: [u64; ALP_MAX_CHUNK] = [0; ALP_MAX_CHUNK]; // sortable u64s for delta-FoR
 
 /// Check if a value round-trips through ALP encoding at exponent e.
 #[inline(always)]
@@ -1087,41 +1100,79 @@ fn alp_encode_inner(vals: &[f64], out: &mut [u8]) -> usize {
         }
     }
 
-    // Step 7: FoR bit-pack exception values as sortable u64s.
-    // IEEE 754 is monotonic for positive floats. Reinterpreting f64 as
-    // sortable u64 and FoR-packing exploits shared high bits among
-    // nearby values (e.g. cpu.utilization in [0.01,0.10] → ~22-bit range).
+    // Step 7: Encode exception values as sortable u64s.
+    // Mode 0 (FoR): min/max range → FoR bit-pack (original).
+    // Mode 1 (delta-FoR): zigzag deltas between consecutive u64s → FoR bit-pack.
+    //   Signaled by setting bit 7 of exc_bw byte.
     if exc_count > 0 {
-        // Find min/max sortable u64 among exceptions.
-        let mut min_su64: u64 = u64::MAX;
-        let mut max_su64: u64 = 0;
+        let exc_u64 = unsafe { &mut ALP_EXC_U64[..exc_count] };
+        let mut ei = 0;
         for i in 0..n {
             if exc[i] != 0 {
-                let su = f64_to_sortable_u64(vals[i]);
-                if su < min_su64 { min_su64 = su; }
-                if su > max_su64 { max_su64 = su; }
+                exc_u64[ei] = f64_to_sortable_u64(vals[i]);
+                ei += 1;
             }
         }
 
-        let exc_range = max_su64 - min_su64;
-        let exc_bw = bits_needed(exc_range);
+        let use_delta = unsafe { ALP_EXC_MODE } == 1;
 
-        // Write exception min_u64 (8 bytes) + bit_width (1 byte).
-        let min_su64_bytes = min_su64.to_be_bytes();
-        out[pos..pos + 8].copy_from_slice(&min_su64_bytes);
-        pos += 8;
-        out[pos] = exc_bw;
-        pos += 1;
+        if use_delta && exc_count > 1 {
+            // Delta-FoR: zigzag-encode consecutive deltas, then FoR pack.
+            // First value stored raw (8 bytes), then zigzag deltas.
+            let first_su64 = exc_u64[0];
+            out[pos..pos + 8].copy_from_slice(&first_su64.to_be_bytes());
+            pos += 8;
 
-        // Bit-pack exception value offsets from min_su64.
-        if exc_bw > 0 {
-            let mut w = BitWriter::new(&mut out[pos..]);
-            for i in 0..n {
-                if exc[i] != 0 {
-                    w.write_bits(f64_to_sortable_u64(vals[i]) - min_su64, exc_bw);
-                }
+            // Compute zigzag deltas and find max for FoR bit-width.
+            let mut max_zz: u64 = 0;
+            let deltas = unsafe { &mut ALP_INTS[..exc_count - 1] };
+            for i in 0..exc_count - 1 {
+                let cur = exc_u64[i + 1] as i128;
+                let prev = exc_u64[i] as i128;
+                let diff = cur - prev;
+                // Zigzag: (diff << 1) ^ (diff >> 63) for i64
+                let d64 = diff as i64;
+                let zz = ((d64 << 1) ^ (d64 >> 63)) as u64;
+                deltas[i] = zz as i64; // reuse ALP_INTS as temp
+                if zz > max_zz { max_zz = zz; }
             }
-            pos += w.bytes_written();
+
+            let delta_bw = bits_needed(max_zz);
+            // Set bit 7 to signal delta-FoR mode.
+            out[pos] = delta_bw | 0x80;
+            pos += 1;
+
+            if delta_bw > 0 {
+                let mut w = BitWriter::new(&mut out[pos..]);
+                for i in 0..exc_count - 1 {
+                    w.write_bits(deltas[i] as u64, delta_bw);
+                }
+                pos += w.bytes_written();
+            }
+        } else {
+            // Original FoR encoding.
+            let mut min_su64: u64 = u64::MAX;
+            let mut max_su64: u64 = 0;
+            for i in 0..exc_count {
+                if exc_u64[i] < min_su64 { min_su64 = exc_u64[i]; }
+                if exc_u64[i] > max_su64 { max_su64 = exc_u64[i]; }
+            }
+
+            let exc_range = max_su64 - min_su64;
+            let exc_bw = bits_needed(exc_range);
+
+            out[pos..pos + 8].copy_from_slice(&min_su64.to_be_bytes());
+            pos += 8;
+            out[pos] = exc_bw; // bit 7 clear = original FoR
+            pos += 1;
+
+            if exc_bw > 0 {
+                let mut w = BitWriter::new(&mut out[pos..]);
+                for i in 0..exc_count {
+                    w.write_bits(exc_u64[i] - min_su64, exc_bw);
+                }
+                pos += w.bytes_written();
+            }
         }
     }
 
@@ -1638,7 +1689,8 @@ fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usize {
         }
     }
 
-    // Read exception positions and FoR-u64 decode exception values.
+    // Read exception positions and decode exception values.
+    // Handles both FoR (bit 7 clear) and delta-FoR (bit 7 set) modes.
     if exc_count > 0 {
         // Read positions (omitted when exc_count == n).
         let mut exc_positions = [0u16; ALP_MAX_CHUNK];
@@ -1649,58 +1701,99 @@ fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usize {
             }
         }
 
-        // Read exception min_u64 (8 bytes) + bit_width (1 byte).
-        let mut min_su64_bytes = [0u8; 8];
-        min_su64_bytes.copy_from_slice(&input[pos..pos + 8]);
-        let min_su64 = u64::from_be_bytes(min_su64_bytes);
+        // Read first 8 bytes (min_su64 for FoR, first_su64 for delta-FoR)
+        // + 1 byte tag/bw.
+        let mut header_bytes = [0u8; 8];
+        header_bytes.copy_from_slice(&input[pos..pos + 8]);
+        let header_u64 = u64::from_be_bytes(header_bytes);
         pos += 8;
-        let exc_bw = input[pos];
+        let raw_bw = input[pos];
         pos += 1;
 
-        // FoR-u64 decode exceptions — direct-index for SIMD-friendly loops.
-        if exc_count == n {
-            if exc_bw > 0 && exc_bw <= 57 {
-                let packed = &input[pos..];
-                let safe_limit = if n > 8 { n - 8 } else { 0 };
-                for i in 0..safe_limit {
-                    val_out[i] = sortable_u64_to_f64(min_su64 + extract_packed(packed, i, exc_bw));
-                }
-                for i in safe_limit..n {
-                    val_out[i] = sortable_u64_to_f64(min_su64 + extract_packed_safe(packed, i, exc_bw));
-                }
-            } else if exc_bw > 0 {
+        let is_delta = raw_bw & 0x80 != 0;
+        let actual_bw = raw_bw & 0x7F;
+
+        if is_delta {
+            // Delta-FoR decode: first value + zigzag deltas.
+            let first_su64 = header_u64;
+            let exc_u64 = unsafe { &mut ALP_EXC_U64[..exc_count] };
+            exc_u64[0] = first_su64;
+
+            if actual_bw > 0 {
                 let mut r = BitReader::new(&input[pos..]);
+                let mut prev = first_su64;
+                for i in 1..exc_count {
+                    let zz = r.read_bits(actual_bw);
+                    // Un-zigzag: (zz >> 1) ^ -(zz & 1)
+                    let d = ((zz >> 1) as i64) ^ (-((zz & 1) as i64));
+                    let cur = (prev as i128 + d as i128) as u64;
+                    exc_u64[i] = cur;
+                    prev = cur;
+                }
+                pos += ((exc_count - 1) * actual_bw as usize + 7) / 8;
+            } else {
+                for i in 1..exc_count { exc_u64[i] = first_su64; }
+            }
+
+            // Write decoded values to output.
+            if exc_count == n {
                 for i in 0..n {
-                    val_out[i] = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
+                    val_out[i] = sortable_u64_to_f64(exc_u64[i]);
                 }
             } else {
-                let base = sortable_u64_to_f64(min_su64);
-                for i in 0..n {
-                    val_out[i] = base;
+                for i in 0..exc_count {
+                    val_out[exc_positions[i] as usize] = sortable_u64_to_f64(exc_u64[i]);
                 }
             }
         } else {
-            if exc_bw > 0 && exc_bw <= 57 {
-                let packed = &input[pos..];
-                let safe_limit = if exc_count > 8 { exc_count - 8 } else { 0 };
-                for i in 0..safe_limit {
-                    val_out[exc_positions[i] as usize] =
-                        sortable_u64_to_f64(min_su64 + extract_packed(packed, i, exc_bw));
-                }
-                for i in safe_limit..exc_count {
-                    val_out[exc_positions[i] as usize] =
-                        sortable_u64_to_f64(min_su64 + extract_packed_safe(packed, i, exc_bw));
-                }
-            } else if exc_bw > 0 {
-                let mut r = BitReader::new(&input[pos..]);
-                for i in 0..exc_count {
-                    val_out[exc_positions[i] as usize] =
-                        sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
+            // Original FoR decode.
+            let min_su64 = header_u64;
+            let exc_bw = actual_bw;
+
+            if exc_count == n {
+                if exc_bw > 0 && exc_bw <= 57 {
+                    let packed = &input[pos..];
+                    let safe_limit = if n > 8 { n - 8 } else { 0 };
+                    for i in 0..safe_limit {
+                        val_out[i] = sortable_u64_to_f64(min_su64 + extract_packed(packed, i, exc_bw));
+                    }
+                    for i in safe_limit..n {
+                        val_out[i] = sortable_u64_to_f64(min_su64 + extract_packed_safe(packed, i, exc_bw));
+                    }
+                } else if exc_bw > 0 {
+                    let mut r = BitReader::new(&input[pos..]);
+                    for i in 0..n {
+                        val_out[i] = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
+                    }
+                } else {
+                    let base = sortable_u64_to_f64(min_su64);
+                    for i in 0..n {
+                        val_out[i] = base;
+                    }
                 }
             } else {
-                let base = sortable_u64_to_f64(min_su64);
-                for i in 0..exc_count {
-                    val_out[exc_positions[i] as usize] = base;
+                if exc_bw > 0 && exc_bw <= 57 {
+                    let packed = &input[pos..];
+                    let safe_limit = if exc_count > 8 { exc_count - 8 } else { 0 };
+                    for i in 0..safe_limit {
+                        val_out[exc_positions[i] as usize] =
+                            sortable_u64_to_f64(min_su64 + extract_packed(packed, i, exc_bw));
+                    }
+                    for i in safe_limit..exc_count {
+                        val_out[exc_positions[i] as usize] =
+                            sortable_u64_to_f64(min_su64 + extract_packed_safe(packed, i, exc_bw));
+                    }
+                } else if exc_bw > 0 {
+                    let mut r = BitReader::new(&input[pos..]);
+                    for i in 0..exc_count {
+                        val_out[exc_positions[i] as usize] =
+                            sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
+                    }
+                } else {
+                    let base = sortable_u64_to_f64(min_su64);
+                    for i in 0..exc_count {
+                        val_out[exc_positions[i] as usize] = base;
+                    }
                 }
             }
         }
@@ -1811,9 +1904,9 @@ fn decode_values_alp_range(input: &[u8], lo: usize, hi: usize, out: &mut [f64]) 
         }
     }
 
-    // Patch exceptions within [lo..hi] via FoR-u64 decode (random access).
+    // Patch exceptions within [lo..hi].
+    // Handles both FoR (bit 7 clear) and delta-FoR (bit 7 set) modes.
     if exc_count > 0 {
-        // Read exception positions (omitted when exc_count == n).
         let mut exc_positions = [0u16; ALP_MAX_CHUNK];
         if exc_count < n {
             for i in 0..exc_count {
@@ -1822,51 +1915,88 @@ fn decode_values_alp_range(input: &[u8], lo: usize, hi: usize, out: &mut [f64]) 
             }
         }
 
-        // Read exception min_u64 (8 bytes) + bit_width (1 byte).
-        let mut min_su64_bytes = [0u8; 8];
-        min_su64_bytes.copy_from_slice(&input[pos..pos + 8]);
-        let min_su64 = u64::from_be_bytes(min_su64_bytes);
+        let mut header_bytes = [0u8; 8];
+        header_bytes.copy_from_slice(&input[pos..pos + 8]);
+        let header_u64 = u64::from_be_bytes(header_bytes);
         pos += 8;
-        let exc_bw = input[pos];
+        let raw_bw = input[pos];
         pos += 1;
 
-        if exc_count == n {
-            // All values are exceptions. Random-access decode [lo..hi).
-            if exc_bw > 0 {
-                let start_bit = lo * exc_bw as usize;
-                let byte_offset = start_bit / 8;
-                let bit_offset = (start_bit % 8) as u8;
-                let mut r = BitReader {
-                    buf: &input[pos + byte_offset..],
-                    byte_pos: 0,
-                    bit_pos: bit_offset,
-                };
-                for i in 0..(hi - lo) {
-                    out[i] = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
+        let is_delta = raw_bw & 0x80 != 0;
+        let actual_bw = raw_bw & 0x7F;
+
+        if is_delta {
+            // Delta-FoR: must sequentially decode all exceptions, then pick [lo..hi].
+            let exc_u64 = unsafe { &mut ALP_EXC_U64[..exc_count] };
+            exc_u64[0] = header_u64;
+
+            if actual_bw > 0 {
+                let mut r = BitReader::new(&input[pos..]);
+                let mut prev = header_u64;
+                for i in 1..exc_count {
+                    let zz = r.read_bits(actual_bw);
+                    let d = ((zz >> 1) as i64) ^ (-((zz & 1) as i64));
+                    let cur = (prev as i128 + d as i128) as u64;
+                    exc_u64[i] = cur;
+                    prev = cur;
                 }
             } else {
-                let base = sortable_u64_to_f64(min_su64);
-                for i in 0..(hi - lo) {
-                    out[i] = base;
+                for i in 1..exc_count { exc_u64[i] = header_u64; }
+            }
+
+            if exc_count == n {
+                for i in lo..hi {
+                    out[i - lo] = sortable_u64_to_f64(exc_u64[i]);
+                }
+            } else {
+                for i in 0..exc_count {
+                    let idx = exc_positions[i] as usize;
+                    if idx >= lo && idx < hi {
+                        out[idx - lo] = sortable_u64_to_f64(exc_u64[i]);
+                    }
                 }
             }
         } else {
-            // Partial exceptions — decode only those in [lo..hi).
-            if exc_bw > 0 {
-                let mut r = BitReader::new(&input[pos..]);
-                for i in 0..exc_count {
-                    let val = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
-                    let idx = exc_positions[i] as usize;
-                    if idx >= lo && idx < hi {
-                        out[idx - lo] = val;
+            // Original FoR decode.
+            let min_su64 = header_u64;
+            let exc_bw = actual_bw;
+
+            if exc_count == n {
+                if exc_bw > 0 {
+                    let start_bit = lo * exc_bw as usize;
+                    let byte_offset = start_bit / 8;
+                    let bit_offset = (start_bit % 8) as u8;
+                    let mut r = BitReader {
+                        buf: &input[pos + byte_offset..],
+                        byte_pos: 0,
+                        bit_pos: bit_offset,
+                    };
+                    for i in 0..(hi - lo) {
+                        out[i] = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
+                    }
+                } else {
+                    let base = sortable_u64_to_f64(min_su64);
+                    for i in 0..(hi - lo) {
+                        out[i] = base;
                     }
                 }
             } else {
-                let base = sortable_u64_to_f64(min_su64);
-                for i in 0..exc_count {
-                    let idx = exc_positions[i] as usize;
-                    if idx >= lo && idx < hi {
-                        out[idx - lo] = base;
+                if exc_bw > 0 {
+                    let mut r = BitReader::new(&input[pos..]);
+                    for i in 0..exc_count {
+                        let val = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
+                        let idx = exc_positions[i] as usize;
+                        if idx >= lo && idx < hi {
+                            out[idx - lo] = val;
+                        }
+                    }
+                } else {
+                    let base = sortable_u64_to_f64(min_su64);
+                    for i in 0..exc_count {
+                        let idx = exc_positions[i] as usize;
+                        if idx >= lo && idx < hi {
+                            out[idx - lo] = base;
+                        }
                     }
                 }
             }
@@ -1958,6 +2088,14 @@ pub extern "C" fn allocScratch(size: u32) -> u32 {
 pub extern "C" fn resetScratch() {
     unsafe {
         BUMP_OFFSET = 0;
+    }
+}
+
+/// Set ALP exception encoding mode. 0 = FoR (default), 1 = delta-FoR.
+#[no_mangle]
+pub extern "C" fn setAlpExcMode(mode: u32) {
+    unsafe {
+        ALP_EXC_MODE = mode as u8;
     }
 }
 
