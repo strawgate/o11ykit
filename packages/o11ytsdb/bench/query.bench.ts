@@ -95,7 +95,7 @@ function populateStore(store: StorageBackend): void {
     const ls = labelSets[s]!;
     const m = new Map<string, string>();
     m.set("__name__", `metric_${s % 10}`);
-    m.set("region", REGIONS[s % REGIONS.length]!);
+    m.set("region", REGIONS[Math.floor(s / 10) % REGIONS.length]!);
     for (const [k, v] of ls.labels) m.set(k, v);
     labels.push(m);
     ids.push(store.getOrCreateSeries(m));
@@ -314,9 +314,10 @@ export default async function (): Promise<BenchReport> {
   for (const scenario of scenarios) {
     // Warm-up: verify query works and get a sanity check.
     const warmResult = qe.query(store, scenario.opts);
-    if (warmResult.series.length === 0 && scenario.expectedSeries > 0) {
-      console.log(`  ⚠ ${scenario.name}: returned 0 series, expected ${scenario.expectedSeries} — skipping`);
-      continue;
+    if (warmResult.series.length !== scenario.expectedSeries) {
+      throw new Error(
+        `${scenario.name}: expected ${scenario.expectedSeries} series, got ${warmResult.series.length}`,
+      );
     }
 
     suite.add(
