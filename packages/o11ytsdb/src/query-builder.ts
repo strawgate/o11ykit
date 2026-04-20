@@ -21,7 +21,13 @@
 
 import type { MatchOp, PlanAggFn, PlanMatcher, PlanNode, TransformFn } from "./plan.js";
 import { executePlan } from "./plan-executor.js";
-import type { QueryResult, StorageBackend } from "./types.js";
+import type {
+  ExecutedQuery,
+  MaterializedQueryResult,
+  QueryResult,
+  SeriesResult,
+  StorageBackend,
+} from "./types.js";
 
 // ── Internal state ───────────────────────────────────────────────────
 
@@ -106,6 +112,14 @@ export class QueryBuilder {
     return new QueryBuilder({
       ...this.s,
       transforms: [...this.s.transforms, "irate"],
+    });
+  }
+
+  /** Apply delta() — raw difference between consecutive samples (no counter-reset handling). */
+  delta(): QueryBuilder {
+    return new QueryBuilder({
+      ...this.s,
+      transforms: [...this.s.transforms, "delta"],
     });
   }
 
@@ -252,14 +266,109 @@ export class QueryBuilder {
   /**
    * Compile and execute the query against a storage backend.
    *
-   * Shorthand for `executePlan(builder.plan(), storage)`.
+   * Returns an executed query handle. Call `.materialize()` to move into the
+   * explicit client-side transformation phase.
    */
-  exec(storage: StorageBackend): QueryResult {
-    return executePlan(this.plan(), storage);
+  exec(storage: StorageBackend): ExecutedQuery {
+    return new ExecutedQueryHandle(executePlan(this.plan(), storage));
   }
 }
 
 /** Start building a new query. */
 export function query(): QueryBuilder {
   return QueryBuilder.create();
+}
+
+class MaterializedQueryResultHandle implements MaterializedQueryResult {
+  readonly series: SeriesResult[];
+  readonly scannedSeries: number;
+  readonly scannedSamples: number;
+
+  private constructor(result: QueryResult, cloneSeries: boolean) {
+    this.series = cloneSeries ? result.series.map(cloneSeriesResult) : result.series;
+    this.scannedSeries = result.scannedSeries;
+    this.scannedSamples = result.scannedSamples;
+  }
+
+  static fromQueryResult(result: QueryResult): MaterializedQueryResultHandle {
+    return new MaterializedQueryResultHandle(result, true);
+  }
+
+  static fromOwnedSeries(result: QueryResult): MaterializedQueryResultHandle {
+    return new MaterializedQueryResultHandle(result, false);
+  }
+
+  mapSeries(mapper: (series: SeriesResult, index: number) => SeriesResult): MaterializedQueryResult {
+    return MaterializedQueryResultHandle.fromOwnedSeries({
+      series: this.series.map((series, index) => mapper(cloneSeriesResult(series), index)),
+      scannedSeries: this.scannedSeries,
+      scannedSamples: this.scannedSamples,
+    });
+  }
+
+  filterSeries(
+    predicate: (series: SeriesResult, index: number) => boolean
+  ): MaterializedQueryResult {
+    return MaterializedQueryResultHandle.fromOwnedSeries({
+      series: this.series
+        .filter((series, index) => predicate(series, index))
+        .map(cloneSeriesResult),
+      scannedSeries: this.scannedSeries,
+      scannedSamples: this.scannedSamples,
+    });
+  }
+
+  mapPoints(
+    mapper: (
+      value: number,
+      timestamp: bigint,
+      series: SeriesResult,
+      pointIndex: number,
+      seriesIndex: number
+    ) => number
+  ): MaterializedQueryResult {
+    return MaterializedQueryResultHandle.fromOwnedSeries({
+      series: this.series.map((series, seriesIndex) => {
+        const values = new Float64Array(series.values.length);
+        for (let i = 0; i < values.length; i++) {
+          values[i] = mapper(
+            series.values[i]!,
+            series.timestamps[i]!,
+            series,
+            i,
+            seriesIndex
+          );
+        }
+        return {
+          labels: new Map(series.labels),
+          timestamps: series.timestamps.slice(),
+          values,
+        };
+      }),
+      scannedSeries: this.scannedSeries,
+      scannedSamples: this.scannedSamples,
+    });
+  }
+}
+
+class ExecutedQueryHandle implements ExecutedQuery {
+  readonly scannedSeries: number;
+  readonly scannedSamples: number;
+
+  constructor(private readonly result: QueryResult) {
+    this.scannedSeries = result.scannedSeries;
+    this.scannedSamples = result.scannedSamples;
+  }
+
+  materialize(): MaterializedQueryResult {
+    return MaterializedQueryResultHandle.fromQueryResult(this.result);
+  }
+}
+
+function cloneSeriesResult(series: SeriesResult): SeriesResult {
+  return {
+    labels: new Map(series.labels),
+    timestamps: series.timestamps.slice(),
+    values: series.values.slice(),
+  };
 }
