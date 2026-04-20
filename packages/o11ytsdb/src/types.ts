@@ -153,6 +153,8 @@ export type AggFn =
   | "last"
   | "rate"
   | "increase"
+  | "irate"
+  | "delta"
   | "p50"
   | "p90"
   | "p95"
@@ -166,7 +168,7 @@ export interface Matcher {
   value: string;
 }
 
-export type TransformOp = "rate" | "increase";
+export type TransformOp = "rate" | "increase" | "irate" | "delta";
 
 export interface QueryOpts {
   metric: string;
@@ -189,6 +191,28 @@ export interface QueryResult {
   series: SeriesResult[];
   scannedSeries: number;
   scannedSamples: number;
+}
+
+export interface MaterializedQueryResult extends QueryResult {
+  mapSeries(mapper: (series: SeriesResult, index: number) => SeriesResult): MaterializedQueryResult;
+  filterSeries(
+    predicate: (series: SeriesResult, index: number) => boolean
+  ): MaterializedQueryResult;
+  mapPoints(
+    mapper: (
+      value: number,
+      timestamp: bigint,
+      series: SeriesResult,
+      pointIndex: number,
+      seriesIndex: number
+    ) => number
+  ): MaterializedQueryResult;
+}
+
+export interface ExecutedQuery {
+  scannedSeries: number;
+  scannedSamples: number;
+  materialize(): MaterializedQueryResult;
 }
 
 export interface QueryEngine {

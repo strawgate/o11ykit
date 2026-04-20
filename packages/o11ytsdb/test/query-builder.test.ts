@@ -149,6 +149,15 @@ describe("QueryBuilder — plan compilation", () => {
     expect(inner.input.kind).toBe("timeRange");
   });
 
+  it("does not treat abs() as a step-derived aggregate", () => {
+    const plan = query().metric("cpu").range(0n, 100n).abs().step(60_000n).plan();
+
+    expect(plan.kind).toBe("transform");
+    const transform = plan as Extract<PlanNode, { kind: "transform" }>;
+    expect(transform.fn).toBe("abs");
+    expect(transform.input.kind).toBe("timeRange");
+  });
+
   it("is immutable — each method returns a new builder", () => {
     const b1 = query().metric("cpu");
     const b2 = b1.where("host", "=", "a");
@@ -184,9 +193,20 @@ describe("QueryBuilder — plan compilation", () => {
 // ── Execution tests ──────────────────────────────────────────────────
 
 describe("QueryBuilder — exec()", () => {
+  it("requires explicit materialization before client-side access", () => {
+    const store = populateStore();
+    const executed = query().metric("cpu").range(0n, 100_000_000n).exec(store);
+
+    expect(executed.scannedSeries).toBe(3);
+    expect("series" in (executed as object)).toBe(false);
+
+    const result = executed.materialize();
+    expect(result.series.length).toBe(3);
+  });
+
   it("executes a raw query (no aggregation)", () => {
     const store = populateStore();
-    const result = query().metric("cpu").range(0n, 100_000_000n).exec(store);
+    const result = query().metric("cpu").range(0n, 100_000_000n).exec(store).materialize();
 
     expect(result.series.length).toBe(3);
     expect(result.scannedSeries).toBe(3);
@@ -201,7 +221,8 @@ describe("QueryBuilder — exec()", () => {
       .metric("cpu")
       .where("host", "=", "a")
       .range(0n, 100_000_000n)
-      .exec(store);
+      .exec(store)
+      .materialize();
 
     expect(result.series.length).toBe(1);
     expect(result.series[0]?.labels.get("host")).toBe("a");
@@ -209,7 +230,7 @@ describe("QueryBuilder — exec()", () => {
 
   it("executes sum aggregation", () => {
     const store = populateStore();
-    const result = query().metric("cpu").range(0n, 100_000_000n).sum().exec(store);
+    const result = query().metric("cpu").range(0n, 100_000_000n).sum().exec(store).materialize();
 
     // sum across 3 series → 1 output series
     expect(result.series.length).toBe(1);
@@ -223,7 +244,8 @@ describe("QueryBuilder — exec()", () => {
       .range(0n, 100_000_000n)
       .step(60_000n)
       .avgBy("region")
-      .exec(store);
+      .exec(store)
+      .materialize();
 
     // All series have region=us-east → 1 group
     expect(result.series.length).toBe(1);
@@ -233,13 +255,108 @@ describe("QueryBuilder — exec()", () => {
 
   it("executes rate()", () => {
     const store = populateStore();
-    const result = query().metric("cpu").range(0n, 100_000_000n).rate().step(60_000n).exec(store);
+    // rate() standalone → per-series rate
+    const result = query().metric("cpu").range(0n, 100_000_000n).rate().exec(store).materialize();
 
-    // rate without agg but with step → rate step-aggregation per series
+    // Should return all 3 cpu series, each with per-series rate applied
+    expect(result.series.length).toBe(3);
+    for (const s of result.series) {
+      expect(s.timestamps.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("executes rate().step() per series", () => {
+    const store = populateStore();
+    // rate() with step but no aggregation → per-series rate with step-aligned buckets
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .rate()
+      .step(60_000n)
+      .exec(store)
+      .materialize();
+
+    expect(result.series.length).toBe(3);
+    for (const s of result.series) {
+      expect(s.timestamps.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("executes irate() — instant rate from last two samples", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .irate()
+      .step(60_000n)
+      .exec(store)
+      .materialize();
+
     expect(result.series.length).toBeGreaterThan(0);
     for (const s of result.series) {
       expect(s.timestamps.length).toBeGreaterThan(0);
     }
+  });
+
+  it("executes irate().sumBy() compound transform", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .step(60_000n)
+      .irate()
+      .sumBy("region")
+      .exec(store)
+      .materialize();
+
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    expect(result.series[0]!.labels.get("region")).toBe("us-east");
+  });
+
+  it("executes delta() — raw difference without reset handling", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .delta()
+      .step(60_000n)
+      .exec(store)
+      .materialize();
+
+    expect(result.series.length).toBeGreaterThan(0);
+    for (const s of result.series) {
+      expect(s.timestamps.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("executes delta().avgBy() compound transform", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .step(60_000n)
+      .delta()
+      .avgBy("region")
+      .exec(store)
+      .materialize();
+
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    expect(result.series[0]!.labels.get("region")).toBe("us-east");
+  });
+
+  it("delta() produces negative values on decreasing series", () => {
+    const store = new FlatStore();
+    const id = store.getOrCreateSeries(makeLabels("gauge", { host: "a" }));
+    store.append(id, 1_000_000n, 100);
+    store.append(id, 1_015_000n, 90);
+    store.append(id, 1_030_000n, 80);
+
+    const result = query().metric("gauge").range(0n, 2_000_000n).delta().exec(store).materialize();
+
+    expect(result.series.length).toBeGreaterThan(0);
+    expect(Array.from(result.series[0]!.values).some((value) => value < 0)).toBe(true);
   });
 
   // ── Regex & negative matchers ────────────────────────────────────
@@ -250,7 +367,8 @@ describe("QueryBuilder — exec()", () => {
       .metric("cpu")
       .where("host", "=~", "a|b")
       .range(0n, 100_000_000n)
-      .exec(store);
+      .exec(store)
+      .materialize();
     expect(result.series.length).toBe(2);
     const hosts = result.series.map((s) => s.labels.get("host")).sort();
     expect(hosts).toEqual(["a", "b"]);
@@ -262,7 +380,8 @@ describe("QueryBuilder — exec()", () => {
       .metric("cpu")
       .where("host", "!=", "c")
       .range(0n, 100_000_000n)
-      .exec(store);
+      .exec(store)
+      .materialize();
     expect(result.series.length).toBe(2);
     const hosts = result.series.map((s) => s.labels.get("host")).sort();
     expect(hosts).toEqual(["a", "b"]);
@@ -274,7 +393,8 @@ describe("QueryBuilder — exec()", () => {
       .metric("cpu")
       .where("host", "!~", "^c$")
       .range(0n, 100_000_000n)
-      .exec(store);
+      .exec(store)
+      .materialize();
     expect(result.series.length).toBe(2);
     const hosts = result.series.map((s) => s.labels.get("host")).sort();
     expect(hosts).toEqual(["a", "b"]);
@@ -290,7 +410,8 @@ describe("QueryBuilder — exec()", () => {
       .rate()
       .step(60_000n)
       .sumBy("region")
-      .exec(store);
+      .exec(store)
+      .materialize();
     // 3 series with region=us-east → should produce 1 group
     expect(result.series.length).toBe(1);
     // biome-ignore lint/style/noNonNullAssertion: test code
@@ -308,7 +429,8 @@ describe("QueryBuilder — exec()", () => {
       .rate()
       .step(60_000n)
       .avgBy("region")
-      .exec(store);
+      .exec(store)
+      .materialize();
     expect(result.series.length).toBe(1);
     // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.timestamps.length).toBeGreaterThan(0);
@@ -316,7 +438,13 @@ describe("QueryBuilder — exec()", () => {
 
   it("executes rate().sumBy() without step (no-step compound)", () => {
     const store = populateStore();
-    const result = query().metric("cpu").range(0n, 100_000_000n).rate().sumBy("region").exec(store);
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .rate()
+      .sumBy("region")
+      .exec(store)
+      .materialize();
     // Should still produce grouped results even without step
     expect(result.series.length).toBe(1);
     // biome-ignore lint/style/noNonNullAssertion: test code
@@ -327,7 +455,13 @@ describe("QueryBuilder — exec()", () => {
 
   it("executes p50 (median) aggregation", () => {
     const store = populateStore();
-    const result = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p50().exec(store);
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .step(60_000n)
+      .p50()
+      .exec(store)
+      .materialize();
     expect(result.series.length).toBe(1);
     // biome-ignore lint/style/noNonNullAssertion: test code
     const vals = result.series[0]!.values;
@@ -339,7 +473,13 @@ describe("QueryBuilder — exec()", () => {
 
   it("executes p99 aggregation", () => {
     const store = populateStore();
-    const result = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p99().exec(store);
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .step(60_000n)
+      .p99()
+      .exec(store)
+      .materialize();
     expect(result.series.length).toBe(1);
     // biome-ignore lint/style/noNonNullAssertion: test code
     const vals = result.series[0]!.values;
@@ -349,8 +489,20 @@ describe("QueryBuilder — exec()", () => {
 
   it("p50 <= p99 for same data", () => {
     const store = populateStore();
-    const r50 = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p50().exec(store);
-    const r99 = query().metric("cpu").range(0n, 100_000_000n).step(60_000n).p99().exec(store);
+    const r50 = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .step(60_000n)
+      .p50()
+      .exec(store)
+      .materialize();
+    const r99 = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .step(60_000n)
+      .p99()
+      .exec(store)
+      .materialize();
     // biome-ignore lint/style/noNonNullAssertion: test code
     const v50 = r50.series[0]!.values;
     // biome-ignore lint/style/noNonNullAssertion: test code
@@ -369,7 +521,8 @@ describe("QueryBuilder — exec()", () => {
       .range(0n, 100_000_000n)
       .step(60_000n)
       .p90By("host")
-      .exec(store);
+      .exec(store)
+      .materialize();
     // 3 hosts → 3 groups
     expect(result.series.length).toBe(3);
     const hosts = result.series.map((s) => s.labels.get("host")).sort();
@@ -381,5 +534,34 @@ describe("QueryBuilder — exec()", () => {
     expect(() => query().metric("cpu").range(0n, 100_000_000n).p50().exec(store)).toThrow(
       "requires step()"
     );
+  });
+
+  it("supports client-side transforms after materialize()", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .exec(store)
+      .materialize()
+      .filterSeries((series) => series.labels.get("host") !== "c")
+      .mapPoints((value) => value * 2);
+
+    expect(result.series.length).toBe(2);
+    expect(result.series[0]?.values[0]).toBe(20);
+  });
+
+  it("throws when mapPoints() sees mismatched timestamps and values", () => {
+    const store = populateStore();
+    const result = query()
+      .metric("cpu")
+      .range(0n, 100_000_000n)
+      .exec(store)
+      .materialize()
+      .mapSeries((series) => ({
+        ...series,
+        timestamps: new BigInt64Array([...series.timestamps, 9_999_999n]),
+      }));
+
+    expect(() => result.mapPoints((value) => value)).toThrow("mismatched point arrays");
   });
 });

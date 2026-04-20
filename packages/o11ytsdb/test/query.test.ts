@@ -187,6 +187,44 @@ describe("ScanEngine", () => {
     expect(s.values[1]).toBeCloseTo(0.0001);
   });
 
+  it("aggregates with irate point-by-point", () => {
+    const store = new FlatStore();
+    const id = store.getOrCreateSeries(makeLabels("counter"));
+    for (let i = 0; i < 4; i++) {
+      store.append(id, BigInt(i) * 1_000_000_000n, i * 100);
+    }
+    const result = engine.query(store, {
+      metric: "counter",
+      start: 0n,
+      end: BigInt(Number.MAX_SAFE_INTEGER),
+      agg: "irate",
+    });
+    const s = result.series[0]!;
+    expect(s.values[0]).toBe(0);
+    expect(s.values[1]).toBeCloseTo(0.0001);
+    expect(s.values[2]).toBeCloseTo(0.0001);
+    expect(s.values[3]).toBeCloseTo(0.0001);
+  });
+
+  it("step irate keeps the latest two distinct timestamps per bucket", () => {
+    const store = new FlatStore();
+    const id = store.getOrCreateSeries(makeLabels("counter"));
+    store.append(id, 0n, 0);
+    store.append(id, 1_000n, 100);
+    store.append(id, 1_000n, 150);
+    store.append(id, 2_000n, 300);
+
+    const result = engine.query(store, {
+      metric: "counter",
+      start: 0n,
+      end: 5_000n,
+      agg: "irate",
+      step: 5_000n,
+    });
+    const s = result.series[0]!;
+    expect(s.values[0]).toBeCloseTo(150);
+  });
+
   // ── stepAggregate value-correctness tests ────────────────────────
 
   /**

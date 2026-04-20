@@ -95,15 +95,22 @@ function frozenPush(fc: FrozenColumns, blob: Uint8Array, tsIndex: number, stats:
 
 function frozenGetStats(fc: FrozenColumns, i: number): ChunkStats {
   const si = i * STATS_STRIDE;
+  const readStat = (offset: number): number => {
+    const value = fc.stats[si + offset];
+    if (value === undefined) {
+      throw new RangeError(`missing frozen column stats at index ${si + offset}`);
+    }
+    return value;
+  };
   return {
-    minV: fc.stats[si + S_MIN]!,
-    maxV: fc.stats[si + S_MAX]!,
-    sum: fc.stats[si + S_SUM]!,
-    count: fc.stats[si + S_COUNT]!,
-    firstV: fc.stats[si + S_FIRST]!,
-    lastV: fc.stats[si + S_LAST]!,
-    sumOfSquares: fc.stats[si + S_SUMSQ]!,
-    resetCount: fc.stats[si + S_RESET]!,
+    minV: readStat(S_MIN),
+    maxV: readStat(S_MAX),
+    sum: readStat(S_SUM),
+    count: readStat(S_COUNT),
+    firstV: readStat(S_FIRST),
+    lastV: readStat(S_LAST),
+    sumOfSquares: readStat(S_SUMSQ),
+    resetCount: readStat(S_RESET),
   };
 }
 
@@ -201,7 +208,11 @@ export class ColumnStore implements StorageBackend {
         this.quantize = (v: number) => {
           scratch[0] = v;
           qb(scratch, p);
-          return scratch[0]!;
+          const quantized = scratch[0];
+          if (quantized === undefined) {
+            throw new RangeError("quantizeBatch did not populate scratch output");
+          }
+          return quantized;
         };
       } else {
         this.quantize = (v: number) => Math.round(v * scale) / scale;
@@ -476,10 +487,17 @@ export class ColumnStore implements StorageBackend {
           if (typeof vc.decodeValuesView === "function") {
             const decView = vc.decodeValuesView.bind(vc);
             part.decodeView = () => {
-              if (!tsChunk.timestamps && tsc) {
-                tsChunk.timestamps = tsc.decodeTimestamps(tcc!);
+              if (!tsChunk.timestamps) {
+                if (!tsc || !tcc) {
+                  throw new RangeError("missing timestamp codec data for decodeView()");
+                }
+                tsChunk.timestamps = tsc.decodeTimestamps(tcc);
               }
-              return { timestamps: tsChunk.timestamps!, values: decView(cv) };
+              const timestamps = tsChunk.timestamps;
+              if (!timestamps) {
+                throw new RangeError("decodeView() did not materialize timestamps");
+              }
+              return { timestamps, values: decView(cv) };
             };
           }
           parts.push(part);

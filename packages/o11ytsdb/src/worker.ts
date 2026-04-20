@@ -119,6 +119,7 @@ export class O11yWorkerRuntime {
   private store: StorageBackend;
   private wasmReady: Promise<void>;
   private defaultPrecision: number | undefined;
+  private wasmCodecs: WasmCodecs | null = null;
 
   constructor(endpoint?: WorkerLikeEndpoint, config?: WorkerRuntimeConfig) {
     this.endpoint = endpoint ?? resolveEndpoint();
@@ -147,6 +148,7 @@ export class O11yWorkerRuntime {
     this.wasmReady = tryLoadWasm()
       .then((wc) => {
         if (wc) {
+          this.wasmCodecs = wc;
           if (!hasCustomFactory) {
             this.createStore = (cs: number, precision?: number) =>
               new ColumnStore(
@@ -212,6 +214,60 @@ export class O11yWorkerRuntime {
             ok(
               id,
               { ok: true, type: "ingest", seriesId, ingestedSamples: payload.values.length },
+              meta
+            )
+          );
+          return;
+        }
+        case "batch-ingest": {
+          const { count, labels: labelsArr, allTimestampsMs, allValues, offsets } = payload;
+
+          // Validate payload shape before processing.
+          if (
+            labelsArr.length !== count ||
+            offsets.length !== count * 2 ||
+            allTimestampsMs.length !== allValues.length
+          ) {
+            this.send(err(id, new Error("Malformed batch-ingest: shape mismatch"), meta));
+            return;
+          }
+
+          const msToNs = this.wasmCodecs?.msToNs;
+          let totalSamples = 0;
+          let ingestedSeries = 0;
+          for (let i = 0; i < count; i++) {
+            const off = offsets[i * 2]!;
+            const len = offsets[i * 2 + 1]!;
+            if (len === 0) continue;
+
+            if (off + len > allTimestampsMs.length) {
+              this.send(
+                err(id, new Error(`Batch offset out of bounds: off=${off} len=${len}`), meta)
+              );
+              return;
+            }
+
+            const seriesLabels = new Map(labelsArr[i]!);
+            const seriesId = this.store.getOrCreateSeries(seriesLabels);
+
+            const msSlice = allTimestampsMs.subarray(off, off + len);
+            let tsArr: BigInt64Array;
+            if (msToNs) {
+              tsArr = msToNs(msSlice);
+            } else {
+              tsArr = new BigInt64Array(len);
+              for (let j = 0; j < len; j++) tsArr[j] = BigInt(Math.round(msSlice[j]! * 1_000_000));
+            }
+
+            const vals = allValues.subarray(off, off + len);
+            this.store.appendBatch(seriesId, tsArr, vals);
+            totalSamples += len;
+            ingestedSeries++;
+          }
+          this.send(
+            ok(
+              id,
+              { ok: true, type: "batch-ingest", seriesCount: ingestedSeries, totalSamples },
               meta
             )
           );

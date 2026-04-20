@@ -15,38 +15,171 @@ export const INSTANCES = [
 ];
 export const METRICS = ["http_requests_total", "cpu_usage_percent", "memory_usage_bytes"];
 
-export function generateValue(pattern, i, seriesIdx, _total) {
+/**
+ * Generate a single value for a pattern.
+ * @param {string} pattern - one of sine, sawtooth, random-walk, spiky, constant
+ * @param {number} i - sample index
+ * @param {number} seriesIdx - series index (for phase offset)
+ * @param {number} [_total] - total samples (unused)
+ * @param {number} [decimals] - decimal places to round to.  undefined = full f64 precision
+ */
+export function generateValue(pattern, i, seriesIdx, _total, decimals) {
   const phase = seriesIdx * 0.7;
+  let v;
   switch (pattern) {
     case "sine":
-      return (
+      v =
         100 +
         Math.sin(i / 50 + phase) * 40 +
         Math.sin(i / 200 + phase) * 20 +
-        (Math.random() - 0.5) * 8
-      );
+        (Math.random() - 0.5) * 8;
+      break;
     case "sawtooth":
-      return ((i + seriesIdx * 100) % 200) + Math.random() * 5;
+      v = ((i + seriesIdx * 100) % 200) + Math.random() * 5;
+      break;
     case "random-walk": {
       const seed = seriesIdx * 7919 + 1;
-      const v =
+      v = Math.max(
+        0,
         50 +
-        seriesIdx * 10 +
-        Math.sin(i * 0.01 + seed) * 30 +
-        Math.sin(i * 0.003 + seed * 1.7) * 20 +
-        Math.cos(i * 0.0007 + seed * 2.3) * 15;
-      return Math.max(0, v);
+          seriesIdx * 10 +
+          Math.sin(i * 0.01 + seed) * 30 +
+          Math.sin(i * 0.003 + seed * 1.7) * 20 +
+          Math.cos(i * 0.0007 + seed * 2.3) * 15
+      );
+      break;
     }
     case "spiky": {
       const base = 20 + seriesIdx * 5;
       const spike = i % 100 < 5 ? 200 + Math.random() * 100 : 0;
-      return base + Math.random() * 10 + spike;
+      v = base + Math.random() * 10 + spike;
+      break;
     }
     case "constant":
-      return 42.0 + seriesIdx * 0.001;
+      v = 42.0 + seriesIdx * 0.001;
+      break;
     default:
-      return Math.random() * 100;
+      v = Math.random() * 100;
   }
+  if (decimals !== undefined) {
+    const f = 10 ** decimals;
+    return Math.round(v * f) / f;
+  }
+  return v;
+}
+
+// ── Pre-canned Scenarios ──────────────────────────────────────────────
+
+export const SCENARIOS = [
+  {
+    id: "ecommerce",
+    name: "E-Commerce Platform",
+    emoji: "🛒",
+    description: "Web traffic, checkout latency, cart events, and active users across regions.",
+    metrics: [
+      { name: "http_requests_total", pattern: "sine", decimals: 0 },
+      { name: "checkout_latency_ms", pattern: "spiky", decimals: 1 },
+      { name: "cart_abandonment_rate", pattern: "random-walk", decimals: 4 },
+      { name: "active_users", pattern: "sine", decimals: 0 },
+    ],
+    labelGroups: [
+      { region: "us-east", job: "frontend" },
+      { region: "us-west", job: "frontend" },
+      { region: "eu-west", job: "frontend" },
+      { region: "us-east", job: "api" },
+      { region: "us-west", job: "api" },
+    ],
+    numPoints: 5000,
+    intervalMs: 10000,
+  },
+  {
+    id: "kubernetes",
+    name: "Kubernetes Cluster",
+    emoji: "☸️",
+    description: "CPU, memory, pod restarts, and network I/O across namespaces and nodes.",
+    metrics: [
+      { name: "cpu_usage_cores", pattern: "random-walk", decimals: 3 },
+      { name: "memory_usage_bytes", pattern: "sawtooth", decimals: 0 },
+      { name: "pod_restart_count", pattern: "spiky", decimals: 0 },
+      { name: "network_bytes_sent", pattern: "random-walk", decimals: 0 },
+    ],
+    labelGroups: [
+      { namespace: "prod", node: "node-1" },
+      { namespace: "prod", node: "node-2" },
+      { namespace: "prod", node: "node-3" },
+      { namespace: "staging", node: "node-1" },
+      { namespace: "staging", node: "node-2" },
+      { namespace: "default", node: "node-1" },
+    ],
+    numPoints: 5000,
+    intervalMs: 15000,
+  },
+  {
+    id: "iot",
+    name: "IoT Sensor Network",
+    emoji: "📡",
+    description: "Temperature, humidity, battery voltage, and signal strength from remote sensors.",
+    metrics: [
+      { name: "temperature_celsius", pattern: "sine", decimals: 1 },
+      { name: "humidity_percent", pattern: "sine", decimals: 1 },
+      { name: "battery_voltage", pattern: "sawtooth", decimals: 2 },
+      { name: "signal_strength_dbm", pattern: "random-walk", decimals: 0 },
+    ],
+    labelGroups: [
+      { zone: "warehouse", device: "sensor-01" },
+      { zone: "warehouse", device: "sensor-02" },
+      { zone: "outdoor", device: "sensor-03" },
+      { zone: "outdoor", device: "sensor-04" },
+      { zone: "office", device: "sensor-05" },
+    ],
+    numPoints: 3000,
+    intervalMs: 60000,
+  },
+  {
+    id: "database",
+    name: "Database Server Farm",
+    emoji: "🗄️",
+    description: "Query latency, active connections, cache hit ratio, and replication lag.",
+    metrics: [
+      { name: "query_latency_p99_ms", pattern: "spiky", decimals: 1 },
+      { name: "active_connections", pattern: "random-walk", decimals: 0 },
+      { name: "cache_hit_ratio", pattern: "constant", decimals: 4 },
+      { name: "replication_lag_ms", pattern: "sawtooth", decimals: 1 },
+    ],
+    labelGroups: [
+      { host: "db-primary", db: "users" },
+      { host: "replica-1", db: "users" },
+      { host: "replica-2", db: "users" },
+      { host: "db-primary", db: "orders" },
+      { host: "replica-1", db: "orders" },
+    ],
+    numPoints: 10000,
+    intervalMs: 10000,
+  },
+];
+
+export function generateScenarioData(scenario) {
+  const now = BigInt(Date.now()) * 1_000_000n;
+  const intervalNs = BigInt(scenario.intervalMs) * 1_000_000n;
+  const { numPoints, metrics, labelGroups } = scenario;
+  const startT = now - BigInt(numPoints) * intervalNs;
+
+  const series = [];
+  let seriesIdx = 0;
+  for (const m of metrics) {
+    for (const lg of labelGroups) {
+      const labels = new Map([["__name__", m.name], ...Object.entries(lg)]);
+      const timestamps = new BigInt64Array(numPoints);
+      const values = new Float64Array(numPoints);
+      for (let i = 0; i < numPoints; i++) {
+        timestamps[i] = startT + BigInt(i) * intervalNs;
+        values[i] = generateValue(m.pattern, i, seriesIdx, numPoints, m.decimals);
+      }
+      series.push({ labels, timestamps, values });
+      seriesIdx++;
+    }
+  }
+  return series;
 }
 
 // ── Pre-canned Scenarios ──────────────────────────────────────────────
