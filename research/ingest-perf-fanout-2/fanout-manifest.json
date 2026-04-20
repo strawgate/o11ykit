@@ -1,0 +1,27 @@
+{
+  "created_at": "2026-04-20T16:25:00Z",
+  "cwd": "/home/bill_easton/o11ykit.worktrees/copilot-ingest-followups",
+  "prompt_dir": "research/ingest-perf-fanout-2",
+  "pattern": "*.prompt.md",
+  "branch": "copilot/ingest-followups",
+  "env_id": "strawgate/o11ykit",
+  "env_label": "strawgate/o11ykit",
+  "attempts_requested": null,
+  "prompt_attempt_overrides": {},
+  "tasks": [
+    {
+      "name": "Fused Quantize-on-Encode in Rust WASM",
+      "prompt_file": "research/ingest-perf-fanout-2/fused-quantize-encode.prompt.md",
+      "attempts": 3,
+      "task_id": "task_e_69e6535b6770832e986ed3c6bcb240dd",
+      "url": "https://chatgpt.com/codex/tasks/task_e_69e6535b6770832e986ed3c6bcb240dd"
+    },
+    {
+      "name": "Streaming OTLP Metrics Decode — Skip JSON.parse",
+      "prompt_file": "research/ingest-perf-fanout-2/streaming-otlp-decode.prompt.md",
+      "attempts": 2,
+      "task_id": "task_e_69e65363d618832ead870e20db74bf4b",
+      "url": "https://chatgpt.com/codex/tasks/task_e_69e65363d618832ead870e20db74bf4b"
+    }
+  ]
+}
