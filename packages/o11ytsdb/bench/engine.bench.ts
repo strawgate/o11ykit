@@ -28,6 +28,36 @@ type Codec = import("./types.js").Codec;
 type Labels = import("./types.js").Labels;
 type QueryEngine = import("./types.js").QueryEngine;
 
+/** Wrap an ALP codec to enable delta-FoR mode (1) around encode calls. */
+function wrapWithDeltaFor(
+  alpVals: Codec,
+  setMode: (mode: number) => void
+): Codec {
+  return {
+    name: "alp-deltafor",
+    encodeValues: (values: Float64Array) => {
+      setMode(1);
+      const r = alpVals.encodeValues(values);
+      setMode(0);
+      return r;
+    },
+    decodeValues: alpVals.decodeValues,
+    encodeValuesWithStats: (values: Float64Array) => {
+      setMode(1);
+      const r = alpVals.encodeValuesWithStats(values);
+      setMode(0);
+      return r;
+    },
+    encodeBatchValuesWithStats: (arrays: Float64Array[]) => {
+      setMode(1);
+      const r = alpVals.encodeBatchValuesWithStats(arrays);
+      setMode(0);
+      return r;
+    },
+    decodeBatchValues: alpVals.decodeBatchValues,
+  };
+}
+
 // ── Configuration ────────────────────────────────────────────────────
 
 const NUM_SERIES = 100;
@@ -309,34 +339,9 @@ async function loadBackends(): Promise<StorageBackend[]> {
     const wasmTs = makeTimestampCodec(wasm);
     const rangeCodec = makeALPRangeCodec(wasm);
 
-    // Wrap encode calls to set delta-FoR mode (1) before encoding.
-    const wrappedCodec = {
-      name: "alp-deltafor",
-      encodeValues: (values: Float64Array) => {
-        setMode(1);
-        const result = alpVals.encodeValues(values);
-        setMode(0);
-        return result;
-      },
-      decodeValues: alpVals.decodeValues,
-      encodeValuesWithStats: (values: Float64Array) => {
-        setMode(1);
-        const result = alpVals.encodeValuesWithStats(values);
-        setMode(0);
-        return result;
-      },
-      encodeBatchValuesWithStats: (arrays: Float64Array[]) => {
-        setMode(1);
-        const result = alpVals.encodeBatchValuesWithStats(arrays);
-        setMode(0);
-        return result;
-      },
-      decodeBatchValues: alpVals.decodeBatchValues,
-    };
-
     backends.push(
       new ColumnStore(
-        wrappedCodec,
+        wrapWithDeltaFor(alpVals, setMode),
         CHUNK_SIZE,
         () => 0,
         undefined,
@@ -848,29 +853,7 @@ async function freshBackend(name: string): Promise<StorageBackend> {
       const setMode = wasm.setAlpExcMode;
       if (!setMode) throw new Error("setAlpExcMode not available in WASM");
       return new ColumnStore(
-        {
-          name: "alp-deltafor",
-          encodeValues: (values: Float64Array) => {
-            setMode(1);
-            const r = alpVals.encodeValues(values);
-            setMode(0);
-            return r;
-          },
-          decodeValues: alpVals.decodeValues,
-          encodeValuesWithStats: (values: Float64Array) => {
-            setMode(1);
-            const r = alpVals.encodeValuesWithStats(values);
-            setMode(0);
-            return r;
-          },
-          encodeBatchValuesWithStats: (arrays: Float64Array[]) => {
-            setMode(1);
-            const r = alpVals.encodeBatchValuesWithStats(arrays);
-            setMode(0);
-            return r;
-          },
-          decodeBatchValues: alpVals.decodeBatchValues,
-        },
+        wrapWithDeltaFor(alpVals, setMode),
         size,
         () => 0,
         undefined,

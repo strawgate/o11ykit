@@ -848,7 +848,8 @@ const ALP_MAX_EXP: usize = 18;
 //   exc_bw & 0x80 != 0  →  delta-FoR,    actual bw = exc_bw & 0x7F
 // When delta-FoR: the first 8 bytes after the tag are the first
 // sortable u64 (instead of min_su64), followed by bit-packed zigzag deltas.
-static mut ALP_EXC_MODE: u8 = 0;
+use core::sync::atomic::{AtomicU8, Ordering};
+static ALP_EXC_MODE: AtomicU8 = AtomicU8::new(0);
 
 /// Convert f64 to a sortable u64 representation.
 /// IEEE 754 is monotonic for positive floats; this extends to negatives
@@ -1114,40 +1115,69 @@ fn alp_encode_inner(vals: &[f64], out: &mut [u8]) -> usize {
             }
         }
 
-        let use_delta = unsafe { ALP_EXC_MODE } == 1;
+        let use_delta = ALP_EXC_MODE.load(Ordering::Relaxed) == 1;
 
         if use_delta && exc_count > 1 {
             // Delta-FoR: zigzag-encode consecutive deltas, then FoR pack.
             // First value stored raw (8 bytes), then zigzag deltas.
+            // Falls back to plain FoR if any delta exceeds i64 range.
             let first_su64 = exc_u64[0];
-            out[pos..pos + 8].copy_from_slice(&first_su64.to_be_bytes());
-            pos += 8;
 
             // Compute zigzag deltas and find max for FoR bit-width.
             let mut max_zz: u64 = 0;
             let deltas = unsafe { &mut ALP_INTS[..exc_count - 1] };
+            let mut delta_fits = true;
             for i in 0..exc_count - 1 {
                 let cur = exc_u64[i + 1] as i128;
                 let prev = exc_u64[i] as i128;
                 let diff = cur - prev;
-                // Zigzag: (diff << 1) ^ (diff >> 63) for i64
+                if diff < i64::MIN as i128 || diff > i64::MAX as i128 {
+                    delta_fits = false;
+                    break;
+                }
                 let d64 = diff as i64;
                 let zz = ((d64 << 1) ^ (d64 >> 63)) as u64;
                 deltas[i] = zz as i64; // reuse ALP_INTS as temp
                 if zz > max_zz { max_zz = zz; }
             }
 
-            let delta_bw = bits_needed(max_zz);
-            // Set bit 7 to signal delta-FoR mode.
-            out[pos] = delta_bw | 0x80;
-            pos += 1;
+            if delta_fits {
+                out[pos..pos + 8].copy_from_slice(&first_su64.to_be_bytes());
+                pos += 8;
 
-            if delta_bw > 0 {
-                let mut w = BitWriter::new(&mut out[pos..]);
-                for i in 0..exc_count - 1 {
-                    w.write_bits(deltas[i] as u64, delta_bw);
+                let delta_bw = bits_needed(max_zz);
+                // Set bit 7 to signal delta-FoR mode.
+                out[pos] = delta_bw | 0x80;
+                pos += 1;
+
+                if delta_bw > 0 {
+                    let mut w = BitWriter::new(&mut out[pos..]);
+                    for i in 0..exc_count - 1 {
+                        w.write_bits(deltas[i] as u64, delta_bw);
+                    }
+                    pos += w.bytes_written();
                 }
-                pos += w.bytes_written();
+            } else {
+                // Delta too large — fall back to plain FoR.
+                let mut min_su64: u64 = u64::MAX;
+                let mut max_su64: u64 = 0;
+                for i in 0..exc_count {
+                    if exc_u64[i] < min_su64 { min_su64 = exc_u64[i]; }
+                    if exc_u64[i] > max_su64 { max_su64 = exc_u64[i]; }
+                }
+                let exc_range = max_su64 - min_su64;
+                let exc_bw = bits_needed(exc_range);
+                out[pos..pos + 8].copy_from_slice(&min_su64.to_be_bytes());
+                pos += 8;
+                out[pos] = exc_bw;
+                pos += 1;
+                if exc_bw > 0 {
+                    let mut w = BitWriter::new(&mut out[pos..]);
+                    for i in 0..exc_count {
+                        w.write_bits(exc_u64[i] - min_su64, exc_bw);
+                    }
+                    pos += w.bytes_written();
+                }
             }
         } else {
             // Original FoR encoding.
@@ -1730,7 +1760,7 @@ fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usize {
                     exc_u64[i] = cur;
                     prev = cur;
                 }
-                pos += ((exc_count - 1) * actual_bw as usize + 7) / 8;
+                // pos not needed after this point
             } else {
                 for i in 1..exc_count { exc_u64[i] = first_su64; }
             }
@@ -2094,9 +2124,8 @@ pub extern "C" fn resetScratch() {
 /// Set ALP exception encoding mode. 0 = FoR (default), 1 = delta-FoR.
 #[no_mangle]
 pub extern "C" fn setAlpExcMode(mode: u32) {
-    unsafe {
-        ALP_EXC_MODE = mode as u8;
-    }
+    let m = if mode <= 1 { mode as u8 } else { 0 };
+    ALP_EXC_MODE.store(m, Ordering::Relaxed);
 }
 
 // ── M2: String interner (WASM) ─────────────────────────────────────
