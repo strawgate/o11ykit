@@ -401,7 +401,7 @@ export function makeALPValuesCodec(wasm: WasmExports): {
     encodeBatchValuesWithStats(arrays: Float64Array[]) {
       const numArrays = arrays.length;
       if (numArrays === 0) return [];
-      const chunkSize = arrays[0]?.length;
+      const chunkSize = arrays[0]!.length;
       for (let i = 1; i < numArrays; i++) {
         if (arrays[i]?.length !== chunkSize) {
           throw new RangeError("encodeBatchValuesWithStats requires equal-length arrays");
