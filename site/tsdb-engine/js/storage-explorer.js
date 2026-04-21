@@ -159,18 +159,6 @@ function _buildChunkDetailHTML(
   const hasPrev = chunkIndex > 0;
   const hasNext = chunkIndex < totalFrozen - 1;
 
-  const columnExtra = isColumn
-    ? `
-        <div class="detail-stat">
-          <div class="detail-stat-label">Values (ALP)</div>
-          <div class="detail-stat-value">${formatBytes(chunk.valuesBytes)}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Timestamps (shared)</div>
-          <div class="detail-stat-value">${formatBytes(chunk.timestampBytes)} ÷ ${chunk.sharedTsSeries} = ${formatBytes(chunk.amortizedTsBytes)}</div>
-        </div>`
-    : "";
-
   const byteLayoutLegend = isColumn
     ? `
           <span class="byte-legend-item"><span class="byte-swatch header"></span>ALP header (14 B)</span>
@@ -182,17 +170,34 @@ function _buildChunkDetailHTML(
           <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Interleaved Δ²ts + XOR values</span>
         `;
 
-  const tsLegend = isColumn
+  const tsSection = isColumn
     ? `
-      <div class="chunk-byte-layout">
-        <h4>Timestamps Store <span class="store-badge ts">Gorilla Δ² · shared ÷ ${chunk.sharedTsSeries}</span></h4>
+      <div class="chunk-ts-section">
+        <h4>Timestamps <span class="store-badge ts">Gorilla Δ² · shared ÷ ${chunk.sharedTsSeries}</span></h4>
         <div class="byte-map" id="byteMapTs"></div>
         <div class="byte-legend">
           <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Timestamp header (10 B)</span>
           <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Δ² body</span>
         </div>
-      </div>
-      <div class="byte-explorer" id="byteExplorerTs"></div>`
+        <div class="byte-explorer" id="byteExplorerTs"></div>
+      </div>`
+    : "";
+
+  // Memory breakdown for ColumnStore
+  const memStats = isColumn
+    ? `
+        <div class="detail-stat">
+          <div class="detail-stat-label">Values</div>
+          <div class="detail-stat-value">${formatBytes(chunk.valuesBytes)}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Timestamps</div>
+          <div class="detail-stat-value">${formatBytes(chunk.timestampBytes)}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">TS amortized</div>
+          <div class="detail-stat-value">${formatBytes(chunk.amortizedTsBytes)} (÷${chunk.sharedTsSeries})</div>
+        </div>`
     : "";
 
   const html = `
@@ -207,49 +212,48 @@ function _buildChunkDetailHTML(
           <span class="chunk-detail-labels">{${labelStr}}</span>
           <span class="tag-codec">${codecName}</span>
         </div>
+        <div class="chunk-time-range">${formatTimeRange(chunk.minT, chunk.maxT)}</div>
         <button type="button" class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
       </div>
-      <div class="chunk-sparkline-container">
-        <h4>Decoded Values</h4>
-        <canvas id="${sparkId}" width="600" height="120"></canvas>
+      <div class="chunk-detail-body">
+        <div class="chunk-detail-stats">
+          <div class="detail-stat">
+            <div class="detail-stat-label">Samples</div>
+            <div class="detail-stat-value">${chunk.count.toLocaleString()}</div>
+          </div>
+          <div class="detail-stat">
+            <div class="detail-stat-label">Raw size</div>
+            <div class="detail-stat-value">${formatBytes(chunk.rawBytes)}</div>
+          </div>
+          <div class="detail-stat">
+            <div class="detail-stat-label">Compressed</div>
+            <div class="detail-stat-value">${formatBytes(chunk.compressedBytes)}</div>
+          </div>
+          <div class="detail-stat">
+            <div class="detail-stat-label">Ratio</div>
+            <div class="detail-stat-value ratio-highlight">${chunk.ratio.toFixed(1)}×</div>
+          </div>
+          <div class="detail-stat">
+            <div class="detail-stat-label">Bits/sample</div>
+            <div class="detail-stat-value">${((chunk.compressedBytes * 8) / chunk.count).toFixed(1)}</div>
+          </div>
+          ${memStats}
+        </div>
+        <div class="chunk-detail-sparkline">
+          <h4>Decoded Values</h4>
+          <canvas id="${sparkId}" width="600" height="120"></canvas>
+        </div>
       </div>
       <div id="codecInsightOuter"></div>
-      <div class="chunk-detail-grid">
-        <div class="detail-stat">
-          <div class="detail-stat-label">Samples</div>
-          <div class="detail-stat-value">${chunk.count.toLocaleString()}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Time range</div>
-          <div class="detail-stat-value detail-stat-small">${formatTimeRange(chunk.minT, chunk.maxT)}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Raw size</div>
-          <div class="detail-stat-value">${formatBytes(chunk.rawBytes)}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Compressed</div>
-          <div class="detail-stat-value">${formatBytes(chunk.compressedBytes)}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Ratio</div>
-          <div class="detail-stat-value ratio-highlight">${chunk.ratio.toFixed(1)}×</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Bits/sample</div>
-          <div class="detail-stat-value">${((chunk.compressedBytes * 8) / chunk.count).toFixed(1)}</div>
-        </div>
-        ${columnExtra}
-      </div>
       <div class="chunk-byte-layout">
-        <h4>${isColumn ? "Values Store" : "Byte Layout"} <span class="store-badge val">${isColumn ? `ALP · ${formatBytes(chunk.valuesBytes)}` : ""}</span></h4>
+        <h4>${isColumn ? "Values" : "Byte Layout"} <span class="store-badge val">${isColumn ? `ALP · ${formatBytes(chunk.valuesBytes)}` : ""}</span></h4>
         <div class="byte-map" id="byteMap"></div>
         <div class="byte-legend">
           ${byteLayoutLegend}
         </div>
       </div>
       <div class="byte-explorer" id="byteExplorer"></div>
-      ${tsLegend}`;
+      ${tsSection}`;
 
   return { html, sparkId };
 }

@@ -74,22 +74,15 @@
       <!-- ─── Section 1: Dataset ────────────────────────────────── -->
       <section class="panel dataset-panel" id="section-dataset">
         <h2>Load a Dataset</h2>
-        <p class="section-intro">Choose a pre-built scenario or generate custom data. Everything runs in your browser — no server, no network, no latency.</p>
+        <p class="section-intro">Choose a pre-built scenario or configure custom data. Everything runs in your browser — no server, no network, no latency.</p>
 
-        <div class="dataset-tabs" role="tablist">
-          <button type="button" class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-scenarios" id="tab-scenarios-btn">Scenarios</button>
-          <button type="button" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-custom" id="tab-custom-btn">Custom Generator</button>
+        <div class="scenario-grid" id="scenarioGrid">
+          <!-- populated by JS -->
         </div>
 
-        <!-- Scenarios tab -->
-        <div class="tab-panel active" id="tab-scenarios" role="tabpanel" aria-labelledby="tab-scenarios-btn">
-          <div class="scenario-grid" id="scenarioGrid">
-            <!-- populated by JS -->
-          </div>
-        </div>
-
-        <!-- Custom generator tab -->
-        <div class="tab-panel" id="tab-custom" role="tabpanel" aria-labelledby="tab-custom-btn" hidden>
+        <!-- Custom generator (inline, hidden until Custom card clicked) -->
+        <div class="custom-generator-inline" id="customGeneratorInline" hidden>
+          <h3 class="custom-gen-title">Custom Generator</h3>
           <div class="demo-controls">
             <div class="control-group">
               <label for="numSeries">Series</label>
@@ -127,15 +120,6 @@
                 <option value="60000">1 min</option>
                 <option value="300000">5 min</option>
               </select>
-            </div>
-            <div class="control-group">
-              <label for="customBackend">Storage backend</label>
-              <select id="customBackend">
-                <option value="flat">FlatStore (no compression)</option>
-                <option value="chunked">ChunkedStore (XOR-delta)</option>
-                <option value="column" selected>ColumnStore (ALP + shared ts)</option>
-              </select>
-              <span id="wasmStatusCustom" class="wasm-status" style="display:none"></span>
             </div>
             <button type="button" id="btnCustomGenerate" class="cta cta-primary demo-btn">Generate Data</button>
           </div>
@@ -196,6 +180,11 @@
           <button type="button" class="explore-nav-btn active" data-target="section-query">🔍 Query Lab</button>
         </nav>
         <h2>Query Lab</h2>
+
+        <!-- Query preview (PromQL-like) -->
+        <div class="query-preview" id="queryPreview">
+          <code class="query-preview-code">Select a metric to build a query…</code>
+        </div>
 
         <div class="query-lab-grid">
           <!-- Metric + filters -->
@@ -269,7 +258,34 @@
           </div>
         </div>
 
-        <button type="button" id="btnQuery" class="cta cta-primary demo-btn">Run Query</button>
+        <button type="button" id="btnQuery" class="cta cta-primary demo-btn">▶ Execute Query</button>
+
+        <!-- Pipeline visualization (shown after query runs) -->
+        <div class="query-pipeline" id="queryPipeline" hidden>
+          <div class="pipeline-stage" id="pipelineMatch">
+            <div class="pipeline-icon">🏷️</div>
+            <div class="pipeline-info">
+              <div class="pipeline-title">Label Matching</div>
+              <div class="pipeline-detail" id="pipelineMatchDetail">—</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+          </div>
+          <div class="pipeline-stage" id="pipelineChunks">
+            <div class="pipeline-icon">📦</div>
+            <div class="pipeline-info">
+              <div class="pipeline-title">Chunk Scan</div>
+              <div class="pipeline-detail" id="pipelineChunksDetail">—</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+          </div>
+          <div class="pipeline-stage" id="pipelineDecode">
+            <div class="pipeline-icon">🔓</div>
+            <div class="pipeline-info">
+              <div class="pipeline-title">Decode &amp; Aggregate</div>
+              <div class="pipeline-detail" id="pipelineDecodeDetail">—</div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <!-- ─── Section 5: Results ────────────────────────────────── -->
@@ -299,23 +315,6 @@
       </footer>
     </main>
 
-    <script>
-      // Dataset panel tabs
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const panel = btn.closest('.dataset-panel');
-          panel.querySelectorAll('.tab-btn').forEach(b => {
-            b.classList.toggle('active', b === btn);
-            b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
-          });
-          panel.querySelectorAll('.tab-panel').forEach(p => {
-            const show = p.id === btn.getAttribute('aria-controls');
-            p.classList.toggle('active', show);
-            p.hidden = !show;
-          });
-        });
-      });
-    </script>
     <script type="module" src="js/app.js"></script>
   </body>
 </html>

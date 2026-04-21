@@ -180,6 +180,7 @@ function _renderMatcherChips() {
       if (currentStore) runQuery();
     });
   });
+  updateQueryPreview();
 }
 
 // ── Fork in the Road ──────────────────────────────────────────────────
@@ -225,6 +226,7 @@ function _revealQuery() {
     _queryPopulated = true;
     _populateQueryMetrics(generatedMetrics);
     _populateGroupByOptions(currentStore);
+    updateQueryPreview();
   }
   hideSection('section-storage');
   showSection('section-query');
@@ -288,10 +290,13 @@ function _renderScenarioCards() {
     });
   });
 
-  // Custom generator card opens the Custom tab
+  // Custom generator card toggles inline controls
   document.getElementById('openCustomGenerator')?.addEventListener('click', () => {
-    const customBtn = document.getElementById('tab-custom-btn');
-    if (customBtn) customBtn.click();
+    const inline = document.getElementById('customGeneratorInline');
+    if (inline) {
+      inline.hidden = !inline.hidden;
+      if (!inline.hidden) inline.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   });
 }
 
@@ -349,7 +354,7 @@ document.getElementById('btnCustomGenerate')?.addEventListener('click', () => {
   const numSeries = parseInt(document.getElementById('numSeries').value, 10);
   const numPoints = parseInt(document.getElementById('numPoints').value, 10);
   const pattern = document.getElementById('dataPattern').value;
-  const backendType = document.getElementById('customBackend').value;
+  const backendType = 'column';
   const intervalMs = parseInt(document.getElementById('sampleInterval').value, 10);
 
   const btn = document.getElementById('btnCustomGenerate');
@@ -416,7 +421,7 @@ function generateCustomData(numSeries, numPoints, pattern, backendType, interval
     const startT = now - BigInt(numPoints) * intervalNs;
     for (let i = 0; i < numPoints; i++) {
       timestamps[i] = startT + BigInt(i) * intervalNs;
-      values[i] = generateValue(pattern, i, si, numPoints, decimals);
+      values[i] = generateValue(pattern, i, si, numPoints);
     }
     seriesData.push({ labels, timestamps, values });
   }
@@ -447,8 +452,49 @@ document.getElementById('btnQuery')?.addEventListener('click', runQuery);
 
 for (const id of ['queryMetric', 'queryAgg', 'queryGroupBy', 'queryStep', 'queryTransform']) {
   document.getElementById(id)?.addEventListener('change', () => {
+    updateQueryPreview();
     if (currentStore) runQuery();
   });
+}
+
+function updateQueryPreview() {
+  const el = document.getElementById('queryPreview')?.querySelector('.query-preview-code');
+  if (!el) return;
+
+  const metric = document.getElementById('queryMetric')?.value || '…';
+  const agg = document.getElementById('queryAgg')?.value;
+  const transform = document.getElementById('queryTransform')?.value;
+  const groupByVal = document.getElementById('queryGroupBy')?.value;
+  const stepMs = parseInt(document.getElementById('queryStep')?.value || '0', 10);
+
+  // Build matcher string
+  let matcherStr = '';
+  if (activeMatchers.length > 0) {
+    const parts = activeMatchers.map(m =>
+      `<span class="qp-label">${m.label}</span><span class="qp-op">${m.op}</span><span class="qp-val">"${m.value}"</span>`
+    );
+    matcherStr = `{${parts.join(', ')}}`;
+  }
+
+  // Build PromQL-like expression
+  let expr = `<span class="qp-metric">${metric}</span>${matcherStr}`;
+
+  if (transform) {
+    expr = `<span class="qp-fn">${transform}</span>(${expr})`;
+  }
+
+  if (agg) {
+    expr = `<span class="qp-fn">${agg}</span>(${expr}`;
+    if (stepMs > 0) {
+      expr += ` <span class="qp-kw">[${formatDuration(stepMs)}]</span>`;
+    }
+    expr += ')';
+    if (groupByVal) {
+      expr += ` <span class="qp-kw">by</span> (<span class="qp-group">${groupByVal}</span>)`;
+    }
+  }
+
+  el.innerHTML = expr;
 }
 
 function runQuery() {
@@ -462,7 +508,15 @@ function runQuery() {
   const step = stepMs > 0 ? BigInt(stepMs) * NS_PER_MS : undefined;
   const transform = document.getElementById('queryTransform')?.value || undefined;
 
+  // Pipeline stage 1: Label matching
+  const totalSeries = currentStore.seriesCount || 0;
   const ids = currentStore.matchLabel('__name__', metric);
+  let matchedIds = ids;
+  if (activeMatchers.length > 0) {
+    matchedIds = [...ids]; // copy for intersection
+    // matchLabel is called inside ScanEngine, but we can count here
+  }
+
   if (ids.length === 0) return;
 
   let minT = BigInt('9223372036854775807');
@@ -490,19 +544,39 @@ function runQuery() {
   const queryTime = performance.now() - t0;
 
   showSection('section-results');
+  updateQueryPreview();
+
+  // ── Pipeline visualization ──
+  const pipelineEl = document.getElementById('queryPipeline');
+  if (pipelineEl) {
+    pipelineEl.hidden = false;
+    // Stage 1: Label matching
+    const matchEl = document.getElementById('pipelineMatchDetail');
+    if (matchEl) {
+      matchEl.innerHTML = `<strong>${result.scannedSeries.toLocaleString()}</strong> of ${totalSeries.toLocaleString()} series matched`;
+    }
+    // Stage 2: Chunk scan
+    const chunksEl = document.getElementById('pipelineChunksDetail');
+    if (chunksEl) {
+      chunksEl.innerHTML = `<strong>${result.scannedSamples.toLocaleString()}</strong> samples across ${result.scannedSeries.toLocaleString()} series`;
+    }
+    // Stage 3: Decode & aggregate
+    const decodeEl = document.getElementById('pipelineDecodeDetail');
+    if (decodeEl) {
+      decodeEl.innerHTML = `<strong>${result.series.length.toLocaleString()}</strong> result series · <strong>${queryTime.toFixed(1)} ms</strong>`;
+    }
+    // Animate stages in
+    for (const stage of pipelineEl.querySelectorAll('.pipeline-stage')) {
+      stage.classList.add('pipeline-active');
+    }
+  }
 
   document.getElementById('qStatScannedSeries').innerHTML = `Scanned: <strong>${result.scannedSeries}</strong> series`;
   document.getElementById('qStatScannedSamples').innerHTML = `Samples: <strong>${result.scannedSamples.toLocaleString()}</strong>`;
   document.getElementById('qStatResultSeries').innerHTML = `Result: <strong>${result.series.length}</strong> series`;
   document.getElementById('qStatQueryTime').innerHTML = `Time: <strong>${queryTime.toFixed(1)} ms</strong>`;
 
-  const transformLabel = transform ? `${transform}(${metric})` : metric;
-  const aggLabel = agg ? `${agg}(${transformLabel})` : transformLabel;
-  const groupLabel = groupBy ? ` by ${groupBy.join(', ')}` : '';
-  const stepLabel = step ? ` [${formatDuration(stepMs)} step]` : '';
-  const chartTitle = `${aggLabel}${groupLabel}${stepLabel}`;
-
-  renderChart(document.getElementById('chartCanvas'), result.series, chartTitle);
+  renderChart(document.getElementById('chartCanvas'), result.series, '');
   setupChartTooltip();
 
   const legendEl = document.getElementById('chartLegend');
@@ -539,19 +613,8 @@ installResizeListener();
 // ── WASM init + auto-load ─────────────────────────────────────────────
 
 loadWasm().then((ok) => {
-  // Disable column options in custom generator if WASM unavailable
   if (!ok) {
-    document.querySelectorAll('option[value="column"]').forEach(opt => {
-      opt.disabled = true;
-      opt.textContent += ' (WASM required)';
-    });
-  }
-  // Disable column options if WASM unavailable
-  if (!ok) {
-    document.querySelectorAll('option[value="column"]').forEach((opt) => {
-      opt.disabled = true;
-      opt.textContent += " (WASM required)";
-    });
+    console.warn('WASM unavailable — ColumnStore features disabled');
   }
 
   // Render scenario cards (user clicks to load — no auto-load)
