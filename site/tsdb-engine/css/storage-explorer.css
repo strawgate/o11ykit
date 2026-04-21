@@ -79,14 +79,14 @@
 
 .storage-series-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .storage-series-row {
   background: white;
   border: 1px solid rgba(43, 80, 106, 0.12);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 10px;
+  padding: 8px 12px;
   transition: border-color 200ms ease;
   overflow: hidden;
   min-width: 0;
@@ -100,8 +100,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
+  gap: 6px;
+  margin-bottom: 4px;
 }
 
 .series-metric {
@@ -143,32 +143,32 @@
   white-space: nowrap;
 }
 
-.chunk-bar-container {
+/* Compact single-row chunk bar */
+.chunk-bar-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  min-height: 32px;
-  align-items: stretch;
-  max-width: 100%;
-}
-
-.chunk-bar-container.compact-chunks {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(8px, 1fr));
+  align-items: center;
   gap: 1px;
-  max-height: 64px;
+  height: 18px;
+  max-width: 100%;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: 4px;
 }
 
-.chunk-bar-container.compact-chunks .chunk-block {
-  min-width: 0;
-  border-radius: 2px;
+.chunk-bar-row .chunk-block {
+  flex: 1 1 0;
+  min-width: 3px;
+  max-width: 12px;
   height: 100%;
+  border-radius: 2px;
 }
 
-.chunk-bar-container.compact-chunks .chunk-label {
-  display: none;
+.chunk-elided {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6b8a9e;
+  white-space: nowrap;
+  margin-right: 4px;
+  flex-shrink: 0;
 }
 
 /* biome-ignore lint/style/noDescendingSpecificity: intentional modifier class */
@@ -182,7 +182,6 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  min-width: 20px;
   position: relative;
   overflow: hidden;
 }
@@ -225,30 +224,21 @@
   background: linear-gradient(135deg, var(--region-values) 0%, #059669 100%);
 }
 
-/* ─── Series Chunk Summary (compact mode) ────────────────────────── */
+/* ─── Inline chunk badges (in series header) ─────────────────────── */
 
-.chunk-summary-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  color: #6b8a9e;
-  margin-top: 4px;
-}
-
-.chunk-summary-bar .chunk-count-badge {
+.chunk-count-badge {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   font-weight: 600;
   font-size: 10px;
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-radius: 4px;
   background: rgba(59, 130, 246, 0.08);
   color: #2563eb;
 }
 
-.chunk-summary-bar .chunk-count-badge.hot {
+.chunk-count-badge.hot {
   background: rgba(245, 158, 11, 0.1);
   color: #d97706;
 }
