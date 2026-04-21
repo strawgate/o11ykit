@@ -36,6 +36,15 @@ pub(crate) fn packed_safe_limit(buf_len: usize, n: usize, bw: u8) -> usize {
     max_i.min(n)
 }
 
+#[inline(always)]
+pub(crate) fn i64_range_u64(min_int: i64, max_int: i64) -> u64 {
+    if max_int >= min_int {
+        (max_int as i128 - min_int as i128) as u64
+    } else {
+        0
+    }
+}
+
 pub(crate) const ALP_HEADER_SIZE: usize = 14;
 pub(crate) const ALP_MAX_CHUNK: usize = 2048;
 const ALP_MAX_EXP: usize = 18;
@@ -135,7 +144,7 @@ pub(crate) fn alp_find_exponent(vals: &[f64]) -> u8 {
         let exc_count = sample - match_count;
 
         let bw = if match_count >= 2 {
-            bits_needed((max_int as i128 - min_int as i128) as u64) as usize
+            bits_needed(i64_range_u64(min_int, max_int)) as usize
         } else {
             0
         };
@@ -208,11 +217,7 @@ pub(crate) fn alp_encode_inner(vals: &[f64], out: &mut [u8]) -> usize {
     }
 
     // Step 3: Compute bit-width for FoR offsets.
-    let range = if max_int >= min_int {
-        (max_int - min_int) as u64
-    } else {
-        0
-    };
+    let range = i64_range_u64(min_int, max_int);
     let bw = bits_needed(range);
 
     // Step 4: Write header.

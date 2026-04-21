@@ -15,7 +15,7 @@
 //   7. sortable_u64 ordering         — preserves f64 total order
 //   8. BitWriter/BitReader           — single-value roundtrip, all widths
 
-use crate::alp::{f64_to_sortable_u64, packed_safe_limit, sortable_u64_to_f64};
+use crate::alp::{f64_to_sortable_u64, i64_range_u64, packed_safe_limit, sortable_u64_to_f64};
 use crate::bitio::{bits_needed, zigzag_decode, zigzag_encode, BitReader, BitWriter};
 
 // ── Bug Fix #1: write_bits(_, 0) was shift-overflow UB ──────────────
@@ -92,12 +92,7 @@ fn verify_alp_for_range_no_overflow() {
     let max_int: i64 = kani::any();
     kani::assume(max_int >= min_int);
 
-    // The fixed computation (mirrors production code)
-    let range_i128 = max_int as i128 - min_int as i128;
-    assert!(range_i128 >= 0, "range must be non-negative");
-    assert!(range_i128 <= u64::MAX as i128, "range must fit u64");
-
-    let range = range_i128 as u64;
+    let range = i64_range_u64(min_int, max_int);
 
     // Verify reconstruction: min + range == max
     let reconstructed = (min_int as i128 + range as i128) as i64;
