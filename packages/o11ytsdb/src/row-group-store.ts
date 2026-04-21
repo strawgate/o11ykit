@@ -81,6 +81,13 @@ function createLane(chunkSize: number): GroupLane {
   };
 }
 
+function requireDefined<T>(value: T | undefined, message: string): T {
+  if (value === undefined) {
+    throw new RangeError(message);
+  }
+  return value;
+}
+
 export class RowGroupStore implements StorageBackend {
   readonly name: string;
 
@@ -159,7 +166,9 @@ export class RowGroupStore implements StorageBackend {
       state.lane.hotTimestamps[state.lane.hotCount] = timestamp;
     }
 
-    state.segment.hot.values[state.segment.hot.count] = this.quantize ? this.quantize(value) : value;
+    state.segment.hot.values[state.segment.hot.count] = this.quantize
+      ? this.quantize(value)
+      : value;
     state.segment.hot.count++;
     this._sampleCount++;
 
@@ -196,10 +205,15 @@ export class RowGroupStore implements StorageBackend {
       if (this.quantize) {
         const q = this.quantize;
         for (let i = 0; i < batch; i++) {
-          state.segment.hot.values[state.segment.hot.count + i] = q(values[offset + i]!);
+          state.segment.hot.values[state.segment.hot.count + i] = q(
+            requireDefined(values[offset + i], `missing value at batch index ${offset + i}`)
+          );
         }
       } else {
-        state.segment.hot.values.set(values.subarray(offset, offset + batch), state.segment.hot.count);
+        state.segment.hot.values.set(
+          values.subarray(offset, offset + batch),
+          state.segment.hot.count
+        );
       }
 
       state.segment.hot.count += batch;
@@ -225,25 +239,37 @@ export class RowGroupStore implements StorageBackend {
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
-    const series = this.allSeries[id]!;
+    const series = requireDefined(this.allSeries[id], `unknown series id ${id}`);
     const parts: TimeRange[] = [];
 
     for (const segment of series.segments) {
-      const lane = this.groups[series.groupId]!.lanes[segment.laneId]!;
+      const lane = this.getLane(series.groupId, segment.laneId);
 
       if (this.rangeCodec && this.tsCodec) {
         for (const rg of lane.rowGroups) {
           if (segment.laneMemberIndex >= rg.memberCount) continue;
-          const tsChunk = lane.frozenTimestamps[rg.tsChunkIndex]!;
+          const tsChunk = requireDefined(
+            lane.frozenTimestamps[rg.tsChunkIndex],
+            `missing timestamp chunk ${rg.tsChunkIndex} for lane ${segment.laneId}`
+          );
           if (tsChunk.maxT < start || tsChunk.minT > end) continue;
-
-          const compressedValues = rg.valueBuffer.subarray(
-            rg.offsets[segment.laneMemberIndex]!,
-            rg.offsets[segment.laneMemberIndex]! + rg.sizes[segment.laneMemberIndex]!
+          const offset = requireDefined(
+            rg.offsets[segment.laneMemberIndex],
+            `missing row-group offset for member ${segment.laneMemberIndex}`
+          );
+          const size = requireDefined(
+            rg.sizes[segment.laneMemberIndex],
+            `missing row-group size for member ${segment.laneMemberIndex}`
+          );
+          const compressedTimestamps = requireDefined(
+            tsChunk.compressed,
+            `missing compressed timestamps for chunk ${rg.tsChunkIndex}`
           );
 
+          const compressedValues = rg.valueBuffer.subarray(offset, offset + size);
+
           const result = this.rangeCodec.rangeDecodeValues(
-            tsChunk.compressed!,
+            compressedTimestamps,
             compressedValues,
             start,
             end
@@ -251,25 +277,36 @@ export class RowGroupStore implements StorageBackend {
           if (result.timestamps.length > 0) {
             parts.push(result);
             if (!tsChunk.timestamps) {
-              tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed!);
+              tsChunk.timestamps = this.tsCodec.decodeTimestamps(compressedTimestamps);
             }
           }
         }
       } else {
         for (const rg of lane.rowGroups) {
           if (segment.laneMemberIndex >= rg.memberCount) continue;
-          const tsChunk = lane.frozenTimestamps[rg.tsChunkIndex]!;
+          const tsChunk = requireDefined(
+            lane.frozenTimestamps[rg.tsChunkIndex],
+            `missing timestamp chunk ${rg.tsChunkIndex} for lane ${segment.laneId}`
+          );
           if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
           if (!tsChunk.timestamps && this.tsCodec && tsChunk.compressed) {
             tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed);
           }
-          const timestamps = tsChunk.timestamps!;
-
-          const compressedValues = rg.valueBuffer.subarray(
-            rg.offsets[segment.laneMemberIndex]!,
-            rg.offsets[segment.laneMemberIndex]! + rg.sizes[segment.laneMemberIndex]!
+          const timestamps = requireDefined(
+            tsChunk.timestamps,
+            `missing decoded timestamps for chunk ${rg.tsChunkIndex}`
           );
+          const offset = requireDefined(
+            rg.offsets[segment.laneMemberIndex],
+            `missing row-group offset for member ${segment.laneMemberIndex}`
+          );
+          const size = requireDefined(
+            rg.sizes[segment.laneMemberIndex],
+            `missing row-group size for member ${segment.laneMemberIndex}`
+          );
+
+          const compressedValues = rg.valueBuffer.subarray(offset, offset + size);
           const values = this.valuesCodec.decodeValues(compressedValues);
           const lo = lowerBound(timestamps, start, 0, tsChunk.count);
           const hi = upperBound(timestamps, end, lo, tsChunk.count);
@@ -342,9 +379,9 @@ export class RowGroupStore implements StorageBackend {
   }
 
   private attachInitialSegment(seriesId: SeriesId, groupId: number): void {
-    const group = this.groups[groupId]!;
+    const group = this.getGroup(groupId);
     let laneId = group.lanes.length - 1;
-    let lane = group.lanes[laneId]!;
+    let lane = requireDefined(group.lanes[laneId], `missing lane ${laneId} for group ${groupId}`);
     if (lane.members.length >= this.maxSeriesPerLane) {
       lane = createLane(this.chunkSize);
       group.lanes.push(lane);
@@ -359,7 +396,7 @@ export class RowGroupStore implements StorageBackend {
     lane: GroupLane,
     activate: boolean
   ): LaneSegment {
-    const series = this.allSeries[seriesId]!;
+    const series = requireDefined(this.allSeries[seriesId], `unknown series id ${seriesId}`);
     const segment: LaneSegment = {
       laneId,
       laneMemberIndex: lane.members.length,
@@ -374,9 +411,13 @@ export class RowGroupStore implements StorageBackend {
     return segment;
   }
 
-  private rollSeriesToFreshLane(seriesId: SeriesId): { series: LaneSeries; segment: LaneSegment; lane: GroupLane } {
-    const series = this.allSeries[seriesId]!;
-    const group = this.groups[series.groupId]!;
+  private rollSeriesToFreshLane(seriesId: SeriesId): {
+    series: LaneSeries;
+    segment: LaneSegment;
+    lane: GroupLane;
+  } {
+    const series = requireDefined(this.allSeries[seriesId], `unknown series id ${seriesId}`);
+    const group = this.getGroup(series.groupId);
     const lane = createLane(this.chunkSize);
     group.lanes.push(lane);
     const laneId = group.lanes.length - 1;
@@ -384,14 +425,34 @@ export class RowGroupStore implements StorageBackend {
     return { series, segment, lane };
   }
 
-  private getActiveState(seriesId: SeriesId): { series: LaneSeries; segment: LaneSegment; lane: GroupLane } {
-    const series = this.allSeries[seriesId]!;
-    const segment = series.segments[series.activeSegmentIndex]!;
-    const lane = this.groups[series.groupId]!.lanes[segment.laneId]!;
+  private getActiveState(seriesId: SeriesId): {
+    series: LaneSeries;
+    segment: LaneSegment;
+    lane: GroupLane;
+  } {
+    const series = requireDefined(this.allSeries[seriesId], `unknown series id ${seriesId}`);
+    const segment = requireDefined(
+      series.segments[series.activeSegmentIndex],
+      `missing active segment ${series.activeSegmentIndex} for series ${seriesId}`
+    );
+    const lane = this.getLane(series.groupId, segment.laneId);
     return { series, segment, lane };
   }
 
-  private ensureWriteSpace(seriesId: SeriesId): { series: LaneSeries; segment: LaneSegment; lane: GroupLane } {
+  private getGroup(groupId: number): SeriesGroup {
+    return requireDefined(this.groups[groupId], `missing group ${groupId}`);
+  }
+
+  private getLane(groupId: number, laneId: number): GroupLane {
+    const group = this.getGroup(groupId);
+    return requireDefined(group.lanes[laneId], `missing lane ${laneId} for group ${groupId}`);
+  }
+
+  private ensureWriteSpace(seriesId: SeriesId): {
+    series: LaneSeries;
+    segment: LaneSegment;
+    lane: GroupLane;
+  } {
     let state = this.getActiveState(seriesId);
     if (state.segment.hot.values.length > state.segment.hot.count) {
       return state;
@@ -424,7 +485,11 @@ export class RowGroupStore implements StorageBackend {
   private maybeFreeze(lane: GroupLane): void {
     let minCount = Infinity;
     for (const member of lane.members) {
-      const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+      const segment = requireDefined(
+        requireDefined(this.allSeries[member.seriesId], `unknown series id ${member.seriesId}`)
+          .segments[member.segmentIndex],
+        `missing segment ${member.segmentIndex} for series ${member.seriesId}`
+      );
       if (segment.hot.count < minCount) minCount = segment.hot.count;
     }
 
@@ -444,15 +509,21 @@ export class RowGroupStore implements StorageBackend {
         const compressed = this.tsCodec.encodeTimestamps(ts);
         lane.frozenTimestamps.push({
           compressed,
-          minT: ts[0]!,
-          maxT: ts[this.chunkSize - 1]!,
+          minT: requireDefined(ts[0], "missing first timestamp while freezing lane"),
+          maxT: requireDefined(
+            ts[this.chunkSize - 1],
+            "missing last timestamp while freezing lane"
+          ),
           count: this.chunkSize,
         });
       } else {
         lane.frozenTimestamps.push({
           timestamps: ts,
-          minT: ts[0]!,
-          maxT: ts[this.chunkSize - 1]!,
+          minT: requireDefined(ts[0], "missing first timestamp while freezing lane"),
+          maxT: requireDefined(
+            ts[this.chunkSize - 1],
+            "missing last timestamp while freezing lane"
+          ),
           count: this.chunkSize,
         });
       }
@@ -465,27 +536,45 @@ export class RowGroupStore implements StorageBackend {
         for (let bStart = 0; bStart < numMembers; bStart += BATCH_CAP) {
           const bEnd = Math.min(bStart + BATCH_CAP, numMembers);
           const arrays: Float64Array[] = [];
+          const encodeBatchValuesWithStats = requireDefined(
+            this.valuesCodec.encodeBatchValuesWithStats,
+            "missing batch values encoder"
+          );
           for (let m = bStart; m < bEnd; m++) {
-            const member = lane.members[m]!;
-            const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+            const member = requireDefined(lane.members[m], `missing lane member ${m}`);
+            const segment = requireDefined(
+              requireDefined(
+                this.allSeries[member.seriesId],
+                `unknown series id ${member.seriesId}`
+              ).segments[member.segmentIndex],
+              `missing segment ${member.segmentIndex} for series ${member.seriesId}`
+            );
             arrays.push(segment.hot.values.subarray(chunkStart, chunkStart + this.chunkSize));
           }
-          const results = this.valuesCodec.encodeBatchValuesWithStats!(arrays);
+          const results = encodeBatchValuesWithStats(arrays);
           for (let m = 0; m < results.length; m++) {
-            const { compressed, stats } = results[m]!;
+            const { compressed, stats } = requireDefined(results[m], `missing batch result ${m}`);
             blobs.push(compressed);
             allStats.push(stats);
           }
         }
       } else {
         for (const member of lane.members) {
-          const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+          const segment = requireDefined(
+            requireDefined(this.allSeries[member.seriesId], `unknown series id ${member.seriesId}`)
+              .segments[member.segmentIndex],
+            `missing segment ${member.segmentIndex} for series ${member.seriesId}`
+          );
           const vals = segment.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
 
           let compressed: Uint8Array;
           let stats: ChunkStats;
           if (hasWasmStats) {
-            const result = this.valuesCodec.encodeValuesWithStats!(vals);
+            const encodeValuesWithStats = requireDefined(
+              this.valuesCodec.encodeValuesWithStats,
+              "missing values-with-stats encoder"
+            );
+            const result = encodeValuesWithStats(vals);
             compressed = result.compressed;
             stats = result.stats;
           } else {
@@ -507,13 +596,13 @@ export class RowGroupStore implements StorageBackend {
 
       let pos = 0;
       for (let m = 0; m < numMembers; m++) {
-        const blob = blobs[m]!;
+        const blob = requireDefined(blobs[m], `missing blob ${m}`);
         valueBuffer.set(blob, pos);
         offsets[m] = pos;
         sizes[m] = blob.byteLength;
         pos += blob.byteLength;
 
-        const st = allStats[m]!;
+        const st = requireDefined(allStats[m], `missing stats ${m}`);
         const si = m * 8;
         packedStats[si] = st.minV;
         packedStats[si + 1] = st.maxV;
@@ -537,7 +626,11 @@ export class RowGroupStore implements StorageBackend {
 
     const frozenSamples = chunksToFreeze * this.chunkSize;
     for (const member of lane.members) {
-      const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+      const segment = requireDefined(
+        requireDefined(this.allSeries[member.seriesId], `unknown series id ${member.seriesId}`)
+          .segments[member.segmentIndex],
+        `missing segment ${member.segmentIndex} for series ${member.seriesId}`
+      );
       const remaining = segment.hot.count - frozenSamples;
       if (remaining > 0) {
         segment.hot.values.copyWithin(0, frozenSamples, segment.hot.count);

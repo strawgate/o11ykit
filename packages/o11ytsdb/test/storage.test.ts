@@ -179,7 +179,10 @@ function describeStorageBackend(name: string, create: () => StorageBackend) {
 // ── Run contract tests against each backend ──────────────────────────
 
 describeStorageBackend("FlatStore", () => new FlatStore());
-describeStorageBackend("RowGroupStore (chunk=64 lane=2)", () => new RowGroupStore(tsValuesCodec, 64, () => 0, 2));
+describeStorageBackend(
+  "RowGroupStore (chunk=64 lane=2)",
+  () => new RowGroupStore(tsValuesCodec, 64, () => 0, 2)
+);
 
 describe("RowGroupStore freeze behavior", () => {
   it("freezes lanes independently within the same logical group", () => {

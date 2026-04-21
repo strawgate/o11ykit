@@ -285,10 +285,16 @@ export class ScanEngine implements QueryEngine {
 }
 
 function isSimpleStepAgg(fn: AggFn): fn is SimpleStepAgg {
-  return fn === "sum" || fn === "avg" || fn === "min" || fn === "max" || fn === "count" || fn === "last";
+  return (
+    fn === "sum" || fn === "avg" || fn === "min" || fn === "max" || fn === "count" || fn === "last"
+  );
 }
 
-function makeGroupLabels(metric: string, groupBy: readonly string[] | undefined, labels: Labels): Labels {
+function makeGroupLabels(
+  metric: string,
+  groupBy: readonly string[] | undefined,
+  labels: Labels
+): Labels {
   const groupLabels = new Map<string, string>();
   groupLabels.set("__name__", metric);
   if (groupBy) {
@@ -304,7 +310,8 @@ function updateBounds(bounds: { minT?: bigint; maxT?: bigint }, part: TimeRange)
   if (part.timestamps.length > 0) {
     const start = part.timestamps[0];
     const end = part.timestamps[part.timestamps.length - 1];
-    if (start !== undefined && (bounds.minT === undefined || start < bounds.minT)) bounds.minT = start;
+    if (start !== undefined && (bounds.minT === undefined || start < bounds.minT))
+      bounds.minT = start;
     if (end !== undefined && (bounds.maxT === undefined || end > bounds.maxT)) bounds.maxT = end;
     return;
   }
@@ -332,7 +339,9 @@ function streamStepAggregateByGroup(
 
   for (const id of ids) {
     const labels = storage.labels(id) ?? new Map();
-    const groupKey = opts.groupBy ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0") : "__all__";
+    const groupKey = opts.groupBy
+      ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0")
+      : "__all__";
     let group = groups.get(groupKey);
     if (!group) {
       group = { labels: makeGroupLabels(opts.metric, opts.groupBy, labels) };
@@ -352,7 +361,9 @@ function streamStepAggregateByGroup(
 
   for (const id of ids) {
     const labels = storage.labels(id) ?? new Map();
-    const groupKey = opts.groupBy ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0") : "__all__";
+    const groupKey = opts.groupBy
+      ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0")
+      : "__all__";
     const state = groups.get(groupKey)?.state;
     if (!state) continue;
     scanParts.call(storage, id, opts.start, opts.end, (part) => {

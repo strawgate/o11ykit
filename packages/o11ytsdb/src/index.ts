@@ -35,9 +35,9 @@ export { Interner } from "./interner.js";
 // Label index — shared label management for storage backends
 export { LabelIndex } from "./label-index.js";
 export { MemPostings } from "./postings.js";
-export { RowGroupStore } from "./row-group-store.js";
 // Query engine
 export { ScanEngine } from "./query.js";
+export { RowGroupStore } from "./row-group-store.js";
 export { computeStats } from "./stats.js";
 // Core types — pluggable interfaces for storage, codecs, and queries
 export type {
