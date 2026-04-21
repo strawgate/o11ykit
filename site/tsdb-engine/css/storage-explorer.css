@@ -369,42 +369,50 @@
   background: rgba(0, 0, 0, 0.12);
 }
 
-/* Side-by-side body: sparkline top-left, stats tiled right and below */
+/* Tile grid: sparkline spans 2 cols, stat cards fill remaining spots */
 .chunk-detail-body {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 20px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
   margin-bottom: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
-.chunk-detail-stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(100px, 1fr));
-  gap: 8px;
-  min-width: 220px;
-}
-
-.chunk-detail-sparkline {
+.chunk-detail-body > .detail-stat {
   min-width: 0;
 }
 
+.chunk-detail-sparkline {
+  grid-column: span 2;
+  grid-row: span 2;
+  min-width: 0;
+  background: #f8fcff;
+  border: 1px solid rgba(43, 80, 106, 0.1);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+}
+
 .chunk-detail-sparkline h4 {
-  margin: 0 0 8px;
-  font-size: 14px;
-  color: #0f3a5e;
+  margin: 0 0 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b8a9e;
 }
 
 .chunk-detail-sparkline canvas {
   width: 100%;
-  height: auto;
-  border-radius: 8px;
-  border: 1px solid rgba(43, 80, 106, 0.1);
+  flex: 1;
+  min-height: 0;
+  border-radius: 6px;
 }
 
 @media (max-width: 700px) {
   .chunk-detail-body {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 

@@ -220,29 +220,27 @@ function _buildChunkDetailHTML(
           <h4>Decoded Values</h4>
           <canvas id="${sparkId}" width="600" height="150"></canvas>
         </div>
-        <div class="chunk-detail-stats">
-          <div class="detail-stat">
-            <div class="detail-stat-label">Samples</div>
-            <div class="detail-stat-value">${chunk.count.toLocaleString()}</div>
-          </div>
-          <div class="detail-stat">
-            <div class="detail-stat-label">Raw size</div>
-            <div class="detail-stat-value">${formatBytes(chunk.rawBytes)}</div>
-          </div>
-          <div class="detail-stat">
-            <div class="detail-stat-label">Compressed</div>
-            <div class="detail-stat-value">${formatBytes(chunk.compressedBytes)}</div>
-          </div>
-          <div class="detail-stat">
-            <div class="detail-stat-label">Ratio</div>
-            <div class="detail-stat-value ratio-highlight">${chunk.ratio.toFixed(1)}×</div>
-          </div>
-          <div class="detail-stat">
-            <div class="detail-stat-label">Bits/sample</div>
-            <div class="detail-stat-value">${((chunk.compressedBytes * 8) / chunk.count).toFixed(1)}</div>
-          </div>
-          ${memStats}
+        <div class="detail-stat">
+          <div class="detail-stat-label">Samples</div>
+          <div class="detail-stat-value">${chunk.count.toLocaleString()}</div>
         </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Raw size</div>
+          <div class="detail-stat-value">${formatBytes(chunk.rawBytes)}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Compressed</div>
+          <div class="detail-stat-value">${formatBytes(chunk.compressedBytes)}</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Ratio</div>
+          <div class="detail-stat-value ratio-highlight">${chunk.ratio.toFixed(1)}×</div>
+        </div>
+        <div class="detail-stat">
+          <div class="detail-stat-label">Bits/sample</div>
+          <div class="detail-stat-value">${((chunk.compressedBytes * 8) / chunk.count).toFixed(1)}</div>
+        </div>
+        ${memStats}
       </div>
       <div class="chunk-byte-layout">
         <h4>${isColumn ? "Values" : "Byte Layout"} <span class="store-badge val">${isColumn ? `ALP · ${formatBytes(chunk.valuesBytes)}` : ""}</span></h4>
