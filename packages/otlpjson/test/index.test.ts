@@ -234,6 +234,135 @@ describe("@otlpkit/otlpjson", () => {
     ]);
   });
 
+  it("rejects non-metrics documents in visitor entry points", () => {
+    expect(() => visitMetricPoints({ resourceSpans: [] })).toThrowError(TypeError);
+    expect(() => visitMetricPointsRaw({ resourceLogs: [] })).toThrowError(TypeError);
+  });
+
+  it("handles sparse visitor documents and missing metric metadata", () => {
+    const sparseVisitorMetrics = {
+      resourceMetrics: [
+        {},
+        {
+          scopeMetrics: [
+            {},
+            {
+              scope: {},
+              metrics: [
+                {
+                  name: "sparse.sum",
+                  sum: {
+                    dataPoints: [{}],
+                  },
+                },
+                {
+                  name: "sparse.histogram",
+                  histogram: {
+                    dataPoints: [{}],
+                  },
+                },
+                {
+                  name: "sparse.summary",
+                  summary: {
+                    dataPoints: [{}],
+                  },
+                },
+                {
+                  name: "sparse.exp",
+                  exponentialHistogram: {
+                    dataPoints: [{}],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const metricKinds: Array<[string, number | null, boolean | null]> = [];
+    visitMetricPoints(sparseVisitorMetrics, {
+      onNumberDataPoints(context) {
+        metricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+      onHistogramDataPoints(context) {
+        metricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+      onSummaryDataPoints(context) {
+        metricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+      onExponentialHistogramDataPoints(context) {
+        metricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+    });
+
+    const rawScopes: Array<[string | null, string | null, number]> = [];
+    const rawMetricKinds: Array<[string, number | null, boolean | null]> = [];
+    visitMetricPointsRaw(sparseVisitorMetrics, {
+      onScope(context) {
+        rawScopes.push([
+          context.scopeName,
+          context.scopeVersion,
+          context.scopeAttributes?.length ?? 0,
+        ]);
+      },
+      onNumberDataPoints(context) {
+        rawMetricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+      onHistogramDataPoints(context) {
+        rawMetricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+      onExponentialHistogramDataPoints(context) {
+        rawMetricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+    });
+    visitMetricPointsRaw(sparseVisitorMetrics, {});
+
+    expect(metricKinds).toEqual([
+      ["sum", null, null],
+      ["histogram", null, null],
+      ["summary", null, null],
+      ["exponentialHistogram", null, null],
+    ]);
+    expect(rawScopes).toEqual([
+      [null, null, 0],
+      [null, null, 0],
+    ]);
+    expect(rawMetricKinds).toEqual([
+      ["sum", null, null],
+      ["histogram", null, null],
+      ["exponentialHistogram", null, null],
+    ]);
+  });
+
   it("covers sparse optional fields and guard failures", () => {
     const sparseMetrics = {
       resourceMetrics: [
