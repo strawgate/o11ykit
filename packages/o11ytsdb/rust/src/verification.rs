@@ -15,8 +15,10 @@
 //   7. sortable_u64 ordering         — preserves f64 total order
 //   8. BitWriter/BitReader           — single-value roundtrip, all widths
 
-use crate::alp::{f64_to_sortable_u64, i64_range_u64, packed_safe_limit, sortable_u64_to_f64};
+use crate::alp::{alp_try, f64_to_sortable_u64, i64_range_u64, packed_safe_limit, sortable_u64_to_f64};
 use crate::bitio::{bits_needed, zigzag_decode, zigzag_encode, BitReader, BitWriter};
+use crate::delta_alp::is_delta_alp_candidate;
+use crate::gorilla::compute_stats;
 
 // ── Bug Fix #1: write_bits(_, 0) was shift-overflow UB ──────────────
 
@@ -237,4 +239,90 @@ fn verify_bitwriter_reader_roundtrip_single() {
     kani::cover!(count == 64, "full 64-bit fast path");
     kani::cover!(count == 57, "boundary of fast read path");
     kani::cover!(count > 0 && count < 8, "sub-byte");
+}
+
+// ── ALP helper and stats proofs ───────────────────────────────────────
+
+#[kani::proof]
+fn verify_alp_try_rejects_nonfinite() {
+    assert!(alp_try(f64::NAN, 0).is_none());
+    assert!(alp_try(f64::INFINITY, 0).is_none());
+    assert!(alp_try(f64::NEG_INFINITY, 0).is_none());
+}
+
+#[kani::proof]
+#[kani::unwind(6)]
+fn verify_compute_stats_small_values() {
+    let vals = [
+        kani::any::<u8>() as f64,
+        kani::any::<u8>() as f64,
+        kani::any::<u8>() as f64,
+    ];
+    let mut stats = [0.0f64; 8];
+    let reset_count = compute_stats(&vals, &mut stats);
+
+    let min_v = vals[0].min(vals[1]).min(vals[2]);
+    let max_v = vals[0].max(vals[1]).max(vals[2]);
+    let sum = vals[0] + vals[1] + vals[2];
+    let sum_sq = vals[0] * vals[0] + vals[1] * vals[1] + vals[2] * vals[2];
+    let expected_reset_count = (vals[1] < vals[0]) as u32 + (vals[2] < vals[1]) as u32;
+
+    assert_eq!(reset_count, expected_reset_count);
+    assert_eq!(stats[0], min_v);
+    assert_eq!(stats[1], max_v);
+    assert_eq!(stats[2], sum);
+    assert_eq!(stats[3], 3.0);
+    assert_eq!(stats[4], vals[0]);
+    assert_eq!(stats[5], vals[2]);
+    assert_eq!(stats[6], sum_sq);
+    assert_eq!(stats[7], expected_reset_count as f64);
+
+    kani::cover!(reset_count == 0, "no resets");
+    kani::cover!(reset_count > 0, "one or more resets");
+}
+
+// ── Delta-ALP candidate detection: compose with compute_stats ─────────
+
+#[kani::proof]
+#[kani::unwind(8)]
+fn verify_delta_alp_candidate_cases() {
+    let base = kani::any::<i16>() as f64;
+    let inc1 = (kani::any::<u8>() % 10 + 1) as f64;
+    let inc2 = (kani::any::<u8>() % 10 + 1) as f64;
+    let inc3 = (kani::any::<u8>() % 10 + 1) as f64;
+    let mut vals = [base, base + inc1, base + inc1 + inc2, base + inc1 + inc2 + inc3];
+    let case: u8 = kani::any_where(|&c| c <= 4);
+
+    match case {
+        1 => vals[3] = vals[0],
+        2 => vals[1] += 0.5,
+        3 => vals[2] = f64::NAN,
+        4 => vals[2] = vals[1] - 1.0,
+        _ => {}
+    }
+
+    let mut stats = [0.0f64; 8];
+    let reset_count = compute_stats(&vals, &mut stats);
+    let candidate = is_delta_alp_candidate(&vals, reset_count);
+
+    if case == 0 {
+        assert!(candidate);
+    } else {
+        assert!(!candidate);
+    }
+
+    if candidate {
+        assert_eq!(reset_count, 0);
+        assert!(vals[0] < vals[3]);
+        for v in vals {
+            assert!(!v.is_nan() && !v.is_infinite());
+            assert_eq!(v, (v as i64) as f64);
+        }
+    }
+
+    kani::cover!(case == 0 && candidate, "valid candidate accepted");
+    kani::cover!(case == 1 && !candidate, "non-increasing rejected");
+    kani::cover!(case == 2 && !candidate, "fractional rejected");
+    kani::cover!(case == 3 && !candidate, "nan rejected");
+    kani::cover!(case == 4 && !candidate, "reset rejected");
 }

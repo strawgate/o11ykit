@@ -47,7 +47,7 @@ pub(crate) fn i64_range_u64(min_int: i64, max_int: i64) -> u64 {
 
 pub(crate) const ALP_HEADER_SIZE: usize = 14;
 pub(crate) const ALP_MAX_CHUNK: usize = 2048;
-const ALP_MAX_EXP: usize = 18;
+pub(crate) const ALP_MAX_EXP: usize = 18;
 
 pub(crate) static POW10: [f64; 19] = [
     1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
