@@ -199,7 +199,6 @@ function _revealStorage() {
     document.getElementById('statStorageSeries').textContent = currentStore.seriesCount.toLocaleString();
     document.getElementById('statStorageMem').textContent = formatBytes(memBytes);
     document.getElementById('statStorageRatio').textContent = `${ratio.toFixed(1)}×`;
-    document.getElementById('statStorageIngestTime').textContent = `${_lastIngestTime.toFixed(0)} ms`;
     document.getElementById('statStorageIngestRate').textContent = `${formatNum(ingestRate)} pts/s`;
 
     // Compute chunk stats for the merged stats row

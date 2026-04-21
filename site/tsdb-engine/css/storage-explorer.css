@@ -365,10 +365,10 @@
   background: rgba(0, 0, 0, 0.12);
 }
 
-/* Side-by-side body: stats left, sparkline right */
+/* Side-by-side body: sparkline top-left, stats tiled right and below */
 .chunk-detail-body {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: 1fr auto;
   gap: 20px;
   margin-bottom: 16px;
   align-items: start;

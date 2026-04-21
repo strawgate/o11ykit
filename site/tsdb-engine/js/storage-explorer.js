@@ -216,6 +216,10 @@ function _buildChunkDetailHTML(
         <button type="button" class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
       </div>
       <div class="chunk-detail-body">
+        <div class="chunk-detail-sparkline">
+          <h4>Decoded Values</h4>
+          <canvas id="${sparkId}" width="600" height="150"></canvas>
+        </div>
         <div class="chunk-detail-stats">
           <div class="detail-stat">
             <div class="detail-stat-label">Samples</div>
@@ -239,12 +243,7 @@ function _buildChunkDetailHTML(
           </div>
           ${memStats}
         </div>
-        <div class="chunk-detail-sparkline">
-          <h4>Decoded Values</h4>
-          <canvas id="${sparkId}" width="600" height="120"></canvas>
-        </div>
       </div>
-      <div id="codecInsightOuter"></div>
       <div class="chunk-byte-layout">
         <h4>${isColumn ? "Values" : "Byte Layout"} <span class="store-badge val">${isColumn ? `ALP · ${formatBytes(chunk.valuesBytes)}` : ""}</span></h4>
         <div class="byte-map" id="byteMap"></div>
