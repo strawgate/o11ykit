@@ -121,6 +121,70 @@ export interface MetricPointRecord {
   readonly point: MetricPoint;
 }
 
+export interface MetricScopeVisitContext {
+  readonly resource: AttributeMap;
+  readonly scope: ScopeInfo;
+}
+
+export interface MetricPointVisitContext extends MetricScopeVisitContext {
+  readonly metric: MetricInfo;
+}
+
+export interface MetricScopeRawVisitContext {
+  readonly resourceAttributes: readonly OtlpKeyValue[] | undefined;
+  readonly scopeName: string | null;
+  readonly scopeVersion: string | null;
+  readonly scopeAttributes: readonly OtlpKeyValue[] | undefined;
+}
+
+export interface MetricPointRawVisitContext extends MetricScopeRawVisitContext {
+  readonly metric: MetricInfo;
+}
+
+export interface MetricPointVisitor {
+  onScope?(context: MetricScopeVisitContext): void;
+  onNumberDataPoints?(
+    context: MetricPointVisitContext,
+    points: readonly OtlpNumberDataPoint[]
+  ): void;
+  onHistogramDataPoints?(
+    context: MetricPointVisitContext,
+    points: readonly OtlpHistogramDataPoint[]
+  ): void;
+  onSummaryDataPoints?(
+    context: MetricPointVisitContext,
+    points: readonly OtlpSummaryDataPoint[]
+  ): void;
+  onExponentialHistogramDataPoints?(
+    context: MetricPointVisitContext,
+    points: readonly OtlpExponentialHistogramDataPoint[]
+  ): void;
+}
+
+export interface MetricPointRawVisitor {
+  /**
+   * Raw scope callbacks receive the original OTLP attribute arrays without
+   * flattening them into JS objects first.
+   */
+  onScope?(context: MetricScopeRawVisitContext): void;
+  onNumberDataPoints?(
+    context: MetricPointRawVisitContext,
+    points: readonly OtlpNumberDataPoint[]
+  ): void;
+  onHistogramDataPoints?(
+    context: MetricPointRawVisitContext,
+    points: readonly OtlpHistogramDataPoint[]
+  ): void;
+  onSummaryDataPoints?(
+    context: MetricPointRawVisitContext,
+    points: readonly OtlpSummaryDataPoint[]
+  ): void;
+  onExponentialHistogramDataPoints?(
+    context: MetricPointRawVisitContext,
+    points: readonly OtlpExponentialHistogramDataPoint[]
+  ): void;
+}
+
 export interface SpanEventRecord {
   readonly timeUnixNano: string | null;
   readonly isoTime: string | null;
@@ -596,6 +660,188 @@ export function forEachAttribute(
   }
   for (const attribute of attributes) {
     fn(attribute.key, attributeValueToJs(attribute.value));
+  }
+}
+
+export function visitMetricPoints(
+  document: OtlpMetricsDocument,
+  visitor: MetricPointVisitor
+): void {
+  if (!isMetricsDocument(document)) {
+    throw new TypeError("Expected OTLP metrics document.");
+  }
+
+  for (const resourceMetrics of document.resourceMetrics) {
+    const resource = flattenAttributes(resourceMetrics.resource?.attributes);
+    for (const scopeMetrics of resourceMetrics.scopeMetrics ?? []) {
+      const scope = mapScope(scopeMetrics.scope);
+      visitor.onScope?.({ resource, scope });
+      for (const metric of scopeMetrics.metrics ?? []) {
+        const gaugePoints = metric.gauge?.dataPoints;
+        if (gaugePoints) {
+          visitor.onNumberDataPoints?.(
+            {
+              resource,
+              scope,
+              metric: mapMetricInfo(metric, "gauge", null, null),
+            },
+            gaugePoints
+          );
+        }
+
+        const sum = metric.sum;
+        const sumPoints = sum?.dataPoints;
+        if (sumPoints) {
+          visitor.onNumberDataPoints?.(
+            {
+              resource,
+              scope,
+              metric: mapMetricInfo(
+                metric,
+                "sum",
+                sum?.aggregationTemporality ?? null,
+                sum?.isMonotonic ?? null
+              ),
+            },
+            sumPoints
+          );
+        }
+
+        const histogram = metric.histogram;
+        const histogramPoints = histogram?.dataPoints;
+        if (histogramPoints) {
+          visitor.onHistogramDataPoints?.(
+            {
+              resource,
+              scope,
+              metric: mapMetricInfo(
+                metric,
+                "histogram",
+                histogram?.aggregationTemporality ?? null,
+                null
+              ),
+            },
+            histogramPoints
+          );
+        }
+
+        const summaryPoints = metric.summary?.dataPoints;
+        if (summaryPoints) {
+          visitor.onSummaryDataPoints?.(
+            {
+              resource,
+              scope,
+              metric: mapMetricInfo(metric, "summary", null, null),
+            },
+            summaryPoints
+          );
+        }
+
+        const exponentialHistogram = metric.exponentialHistogram;
+        const exponentialHistogramPoints = exponentialHistogram?.dataPoints;
+        if (exponentialHistogramPoints) {
+          visitor.onExponentialHistogramDataPoints?.(
+            {
+              resource,
+              scope,
+              metric: mapMetricInfo(
+                metric,
+                "exponentialHistogram",
+                exponentialHistogram?.aggregationTemporality ?? null,
+                null
+              ),
+            },
+            exponentialHistogramPoints
+          );
+        }
+      }
+    }
+  }
+}
+
+export function visitMetricPointsRaw(
+  document: OtlpMetricsDocument,
+  visitor: MetricPointRawVisitor
+): void {
+  if (!isMetricsDocument(document)) {
+    throw new TypeError("Expected OTLP metrics document.");
+  }
+
+  for (const resourceMetrics of document.resourceMetrics) {
+    const resourceAttributes = resourceMetrics.resource?.attributes;
+    for (const scopeMetrics of resourceMetrics.scopeMetrics ?? []) {
+      const rawContext = {
+        resourceAttributes,
+        scopeName: scopeMetrics.scope?.name ?? null,
+        scopeVersion: scopeMetrics.scope?.version ?? null,
+        scopeAttributes: scopeMetrics.scope?.attributes,
+      };
+      visitor.onScope?.(rawContext);
+      const withMetric = (metricInfo: MetricInfo): MetricPointRawVisitContext => ({
+        ...rawContext,
+        metric: metricInfo,
+      });
+      for (const metric of scopeMetrics.metrics ?? []) {
+        const gaugePoints = metric.gauge?.dataPoints;
+        if (gaugePoints) {
+          visitor.onNumberDataPoints?.(
+            withMetric(mapMetricInfo(metric, "gauge", null, null)),
+            gaugePoints
+          );
+        }
+
+        const sum = metric.sum;
+        const sumPoints = sum?.dataPoints;
+        if (sumPoints) {
+          visitor.onNumberDataPoints?.(
+            withMetric(
+              mapMetricInfo(
+                metric,
+                "sum",
+                sum?.aggregationTemporality ?? null,
+                sum?.isMonotonic ?? null
+              )
+            ),
+            sumPoints
+          );
+        }
+
+        const histogram = metric.histogram;
+        const histogramPoints = histogram?.dataPoints;
+        if (histogramPoints) {
+          visitor.onHistogramDataPoints?.(
+            withMetric(
+              mapMetricInfo(metric, "histogram", histogram?.aggregationTemporality ?? null, null)
+            ),
+            histogramPoints
+          );
+        }
+
+        const summaryPoints = metric.summary?.dataPoints;
+        if (summaryPoints) {
+          visitor.onSummaryDataPoints?.(
+            withMetric(mapMetricInfo(metric, "summary", null, null)),
+            summaryPoints
+          );
+        }
+
+        const exponentialHistogram = metric.exponentialHistogram;
+        const exponentialHistogramPoints = exponentialHistogram?.dataPoints;
+        if (exponentialHistogramPoints) {
+          visitor.onExponentialHistogramDataPoints?.(
+            withMetric(
+              mapMetricInfo(
+                metric,
+                "exponentialHistogram",
+                exponentialHistogram?.aggregationTemporality ?? null,
+                null
+              )
+            ),
+            exponentialHistogramPoints
+          );
+        }
+      }
+    }
   }
 }
 
