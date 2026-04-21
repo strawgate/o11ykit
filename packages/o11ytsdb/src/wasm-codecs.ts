@@ -171,6 +171,29 @@ function checkScratch(ptr: number, label: string): void {
   }
 }
 
+function validateBatchSlice(
+  offset: number,
+  size: number,
+  encodedBytes: number,
+  outCap: number,
+  index: number
+): void {
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw new RangeError(`invalid batch offset at index ${index}: ${offset}`);
+  }
+  if (!Number.isInteger(size) || size < 0) {
+    throw new RangeError(`invalid batch size at index ${index}: ${size}`);
+  }
+  if (!Number.isInteger(encodedBytes) || encodedBytes < 0 || encodedBytes > outCap) {
+    throw new RangeError(`invalid encoded batch byte length: ${encodedBytes}`);
+  }
+  if (offset > encodedBytes || offset + size > encodedBytes) {
+    throw new RangeError(
+      `invalid batch slice at index ${index}: offset=${offset}, size=${size}, encodedBytes=${encodedBytes}`
+    );
+  }
+}
+
 // ── Factory ─────────────────────────────────────────────────────────
 
 /**
@@ -268,7 +291,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const statsPtr = wasm.allocScratch(numArrays * 64);
       checkScratch(statsPtr, "encodeBatchValuesWithStats/statsPtr");
 
-      wasm.encodeBatchValuesALPWithStats(
+      const encodedBytes = wasm.encodeBatchValuesALPWithStats(
         valsPtr,
         chunkSize,
         numArrays,
@@ -292,6 +315,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
         const si = i * 8;
         const offset = readNumberAt(offsets, i, "batch offset");
         const size = readNumberAt(sizes, i, "batch size");
+        validateBatchSlice(offset, size, encodedBytes, outCap, i);
         results.push({
           compressed: new Uint8Array(
             wasm.memory.buffer.slice(outPtr + offset, outPtr + offset + size)
