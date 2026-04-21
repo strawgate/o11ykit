@@ -6,8 +6,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { ColumnStore } from "../src/column-store.js";
 import { ScanEngine } from "../src/query.js";
+import { RowGroupStore } from "../src/row-group-store.js";
 import type { RangeDecodeCodec, TimestampCodec, ValuesCodec } from "../src/types.js";
 import { initWasmCodecs } from "../src/wasm-codecs.js";
 
@@ -108,18 +108,19 @@ interface CodecConfig {
 
 // ── Benchmark helpers ─────────────────────────────────────────────────
 
-function createStore(cfg: CodecConfig): ColumnStore {
-  return new ColumnStore(
+function createStore(cfg: CodecConfig): RowGroupStore {
+  return new RowGroupStore(
     cfg.valuesCodec,
     CHUNK_SIZE,
     () => 0,
+    32,
     cfg.label,
     cfg.tsCodec,
     cfg.rangeCodec
   );
 }
 
-function ingestAll(store: ColumnStore, data: SeriesData[]): void {
+function ingestAll(store: RowGroupStore, data: SeriesData[]): void {
   for (const s of data) {
     const labels = new Map([["__name__", s.name]]);
     const id = store.getOrCreateSeries(labels);
@@ -130,14 +131,14 @@ function ingestAll(store: ColumnStore, data: SeriesData[]): void {
 function benchIngest(
   cfg: CodecConfig,
   data: SeriesData[]
-): { elapsedMs: number; store: ColumnStore } {
+): { elapsedMs: number; store: RowGroupStore } {
   // Warmup
   const warmup = createStore(cfg);
   ingestAll(warmup, data);
 
   // Timed iterations — each iteration starts a fresh store
   const start = performance.now();
-  let store!: ColumnStore;
+  let store!: RowGroupStore;
   for (let i = 0; i < INGEST_ITERS; i++) {
     store = createStore(cfg);
     ingestAll(store, data);
@@ -146,12 +147,12 @@ function benchIngest(
   return { elapsedMs, store };
 }
 
-function measureCompression(store: ColumnStore): number {
+function measureCompression(store: RowGroupStore): number {
   return store.memoryBytes();
 }
 
 function benchQuery(
-  store: ColumnStore,
+  store: RowGroupStore,
   engine: ScanEngine,
   data: SeriesData[],
   fullRange: boolean

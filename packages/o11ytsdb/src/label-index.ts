@@ -3,7 +3,7 @@
  *
  * All storage backends delegate label management here, eliminating
  * the duplicated interner + postings + hash-map + resolve logic
- * that was previously copied across FlatStore, ChunkedStore, and ColumnStore.
+ * that was previously copied across multiple storage backends.
  */
 
 import { Interner } from "./interner.js";

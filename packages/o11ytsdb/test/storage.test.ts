@@ -1,18 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ChunkedStore } from "../src/chunked-store.js";
-import { decodeChunk, encodeChunk } from "../src/codec.js";
-import { ColumnStore } from "../src/column-store.js";
 import { FlatStore } from "../src/flat-store.js";
 import { RowGroupStore } from "../src/row-group-store.js";
-import type { Codec, Labels, StorageBackend, ValuesCodec } from "../src/types.js";
+import type { Labels, StorageBackend, ValuesCodec } from "../src/types.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-const tsCodec: Codec = {
-  name: "ts-xor-delta",
-  encode: encodeChunk,
-  decode: decodeChunk,
-};
 
 const tsValuesCodec: ValuesCodec = {
   name: "identity",
@@ -188,43 +179,7 @@ function describeStorageBackend(name: string, create: () => StorageBackend) {
 // ── Run contract tests against each backend ──────────────────────────
 
 describeStorageBackend("FlatStore", () => new FlatStore());
-describeStorageBackend("ChunkedStore (chunk=64)", () => new ChunkedStore(tsCodec, 64));
-describeStorageBackend("ChunkedStore (chunk=640)", () => new ChunkedStore(tsCodec, 640));
-describeStorageBackend("ColumnStore (chunk=64)", () => new ColumnStore(tsValuesCodec, 64));
 describeStorageBackend("RowGroupStore (chunk=64 lane=2)", () => new RowGroupStore(tsValuesCodec, 64, () => 0, 2));
-
-// ── ChunkedStore-specific tests ──────────────────────────────────────
-
-describe("ChunkedStore freeze behavior", () => {
-  it("freezes chunks when reaching chunk size", () => {
-    const store = new ChunkedStore(tsCodec, 16);
-    const id = insertSamples(store, makeLabels("freeze_test"), 48);
-
-    // 48 samples with chunk size 16 → 3 frozen chunks, hot chunk empty
-    const data = store.read(id, 0n, BigInt(Number.MAX_SAFE_INTEGER));
-    expect(data.timestamps.length).toBe(48);
-
-    // Compressed should use less memory than flat
-    const flat = new FlatStore();
-    // biome-ignore lint/correctness/noUnusedVariables: test code
-    const flatId = insertSamples(flat, makeLabels("freeze_test"), 48);
-    expect(store.memoryBytes()).toBeLessThan(flat.memoryBytes());
-  });
-
-  it("correctly reads across frozen and hot chunks", () => {
-    const store = new ChunkedStore(tsCodec, 10);
-    const id = insertSamples(store, makeLabels("mixed"), 25);
-
-    // 25 samples with chunk size 10 → 2 frozen chunks + 5 in hot
-    const data = store.read(id, 0n, BigInt(Number.MAX_SAFE_INTEGER));
-    expect(data.timestamps.length).toBe(25);
-
-    // Verify continuity
-    for (let i = 0; i < 25; i++) {
-      expect(data.values[i]).toBeCloseTo(i * 1.5);
-    }
-  });
-});
 
 describe("RowGroupStore freeze behavior", () => {
   it("freezes lanes independently within the same logical group", () => {

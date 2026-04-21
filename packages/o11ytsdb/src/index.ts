@@ -6,7 +6,6 @@
 
 // Worker isolation + transfer protocol
 export { BackpressureController } from "./backpressure.js";
-export { ChunkedStore } from "./chunked-store.js";
 export type { DecodedChunk } from "./codec.js";
 // Codec — XOR-delta (Gorilla) compression
 export {
@@ -15,7 +14,6 @@ export {
   decodeChunk,
   encodeChunk,
 } from "./codec.js";
-export { ColumnStore } from "./column-store.js";
 // Storage backends
 export { FlatStore } from "./flat-store.js";
 export type {

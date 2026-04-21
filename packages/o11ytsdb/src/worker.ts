@@ -1,4 +1,4 @@
-import { ColumnStore } from "./column-store.js";
+import { RowGroupStore } from "./row-group-store.js";
 import { ScanEngine } from "./query.js";
 import type { QueryEngine, StorageBackend, ValuesCodec } from "./types.js";
 import type { WasmCodecs } from "./wasm-codecs.js";
@@ -129,10 +129,11 @@ export class O11yWorkerRuntime {
     this.createStore =
       config?.createStore ??
       ((cs: number, precision?: number) =>
-        new ColumnStore(
+        new RowGroupStore(
           codec,
           cs,
-          undefined,
+          () => 0,
+          32,
           undefined,
           undefined,
           undefined,
@@ -151,16 +152,16 @@ export class O11yWorkerRuntime {
           this.wasmCodecs = wc;
           if (!hasCustomFactory) {
             this.createStore = (cs: number, precision?: number) =>
-              new ColumnStore(
+              new RowGroupStore(
                 wc.valuesCodec,
                 cs,
-                undefined,
+                () => 0,
+                32,
                 undefined,
                 wc.tsCodec,
                 wc.rangeCodec,
                 undefined,
                 precision,
-                wc.quantizeBatch
               );
           }
         }
