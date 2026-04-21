@@ -138,6 +138,7 @@ async function loadBackends(): Promise<StorageBackend[]> {
         },
         CHUNK_SIZE,
         () => 0,
+        32,
         undefined,
         {
           name: "rust-wasm-ts",
@@ -170,6 +171,7 @@ async function loadBackends(): Promise<StorageBackend[]> {
         },
         CHUNK_SIZE,
         () => 0,
+        32,
         undefined,
         {
           name: "rust-wasm-ts",

@@ -3,7 +3,7 @@ import { ChunkedStore } from "../src/chunked-store.js";
 import { decodeChunk, encodeChunk } from "../src/codec.js";
 import { ColumnStore } from "../src/column-store.js";
 import { FlatStore } from "../src/flat-store.js";
-import { LaneRowGroupStore } from "../src/lane-row-group-store.js";
+import { RowGroupStore } from "../src/row-group-store.js";
 import type { Codec, Labels, StorageBackend, ValuesCodec } from "../src/types.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -191,7 +191,7 @@ describeStorageBackend("FlatStore", () => new FlatStore());
 describeStorageBackend("ChunkedStore (chunk=64)", () => new ChunkedStore(tsCodec, 64));
 describeStorageBackend("ChunkedStore (chunk=640)", () => new ChunkedStore(tsCodec, 640));
 describeStorageBackend("ColumnStore (chunk=64)", () => new ColumnStore(tsValuesCodec, 64));
-describeStorageBackend("LaneRowGroupStore (chunk=64 lane=2)", () => new LaneRowGroupStore(tsValuesCodec, 64, () => 0, 2));
+describeStorageBackend("RowGroupStore (chunk=64 lane=2)", () => new RowGroupStore(tsValuesCodec, 64, () => 0, 2));
 
 // ── ChunkedStore-specific tests ──────────────────────────────────────
 
@@ -226,9 +226,9 @@ describe("ChunkedStore freeze behavior", () => {
   });
 });
 
-describe("LaneRowGroupStore freeze behavior", () => {
+describe("RowGroupStore freeze behavior", () => {
   it("freezes lanes independently within the same logical group", () => {
-    const store = new LaneRowGroupStore(tsValuesCodec, 64, () => 0, 2);
+    const store = new RowGroupStore(tsValuesCodec, 64, () => 0, 2);
     const labels = ["a", "b", "c", "d"].map((host) => makeLabels("lane_metric", { host }));
     const ids = labels.map((label) => store.getOrCreateSeries(label));
 
@@ -275,7 +275,7 @@ describe("LaneRowGroupStore freeze behavior", () => {
   });
 
   it("rolls a stalled fast series into a fresh lane instead of growing unbounded", () => {
-    const store = new LaneRowGroupStore(tsValuesCodec, 64, () => 0, 2);
+    const store = new RowGroupStore(tsValuesCodec, 64, () => 0, 2);
     const fastId = store.getOrCreateSeries(makeLabels("lane_metric", { host: "fast" }));
     const slowId = store.getOrCreateSeries(makeLabels("lane_metric", { host: "slow" }));
 

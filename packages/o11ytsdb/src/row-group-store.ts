@@ -1,19 +1,9 @@
 /**
- * Row-group store — Parquet-style row groups with per-series ALP columns.
+ * Row-group store — bounded physical row groups inside a logical group.
  *
- * Same column-oriented architecture as ColumnStore, but packs all
- * group members' compressed values into a single contiguous buffer
- * per chunk window (a "row group"). Each series keeps its own ALP
- * encoding — no shared exponent or bit-width compromise.
- *
- * Advantages over per-series FrozenChunk allocations:
- *   - One ArrayBuffer per row group instead of N per series
- *   - Packed stats in a single Float64Array
- *   - Lower GC pressure from fewer small allocations
- *   - Identical compression — same codec, same quality
- *
- * Query path: slice into the row group buffer at the series offset,
- * decode just that series' ALP block. No query amplification.
+ * Freeze coordination happens per lane instead of per logical group. When a
+ * lane stalls and hits its hot-buffer cap, the active series is rolled into a
+ * fresh lane so the stalled lane stays bounded.
  */
 
 import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
@@ -30,20 +20,12 @@ import type {
   ValuesCodec,
 } from "./types.js";
 
-// ── Internal types ───────────────────────────────────────────────────
-
 interface RowGroup {
-  /** Contiguous buffer of all members' compressed values. */
   valueBuffer: Uint8Array;
-  /** Byte offset per member into valueBuffer. */
   offsets: Uint32Array;
-  /** Byte size per member. */
   sizes: Uint32Array;
-  /** Packed stats: 8 f64s per member (minV, maxV, sum, count, firstV, lastV, sumOfSquares, resetCount). */
   packedStats: Float64Array;
-  /** Index into the group's frozen timestamp chunks. */
   tsChunkIndex: number;
-  /** Number of group members when this row group was frozen. */
   memberCount: number;
 }
 
@@ -52,11 +34,21 @@ interface HotValues {
   count: number;
 }
 
-interface RGSeries {
-  groupId: number;
-  /** Position of this series within its group's members array. */
-  memberIndex: number;
+interface LaneSegment {
+  laneId: number;
+  laneMemberIndex: number;
   hot: HotValues;
+}
+
+interface LaneSeries {
+  groupId: number;
+  segments: LaneSegment[];
+  activeSegmentIndex: number;
+}
+
+interface LaneMember {
+  seriesId: SeriesId;
+  segmentIndex: number;
 }
 
 interface TimestampChunk {
@@ -67,15 +59,27 @@ interface TimestampChunk {
   count: number;
 }
 
-interface SeriesGroup {
+interface GroupLane {
   hotTimestamps: BigInt64Array;
   hotCount: number;
   frozenTimestamps: TimestampChunk[];
-  members: SeriesId[];
+  members: LaneMember[];
   rowGroups: RowGroup[];
 }
 
-// ── RowGroupStore ────────────────────────────────────────────────────
+interface SeriesGroup {
+  lanes: GroupLane[];
+}
+
+function createLane(chunkSize: number): GroupLane {
+  return {
+    hotTimestamps: new BigInt64Array(chunkSize),
+    hotCount: 0,
+    frozenTimestamps: [],
+    members: [],
+    rowGroups: [],
+  };
+}
 
 export class RowGroupStore implements StorageBackend {
   readonly name: string;
@@ -84,16 +88,18 @@ export class RowGroupStore implements StorageBackend {
   private tsCodec: TimestampCodec | undefined;
   private rangeCodec: RangeDecodeCodec | undefined;
   private chunkSize: number;
-  private allSeries: RGSeries[] = [];
+  private allSeries: LaneSeries[] = [];
   private groups: SeriesGroup[] = [];
   private labelIndex: LabelIndex;
   private _sampleCount = 0;
   private quantize: ((v: number) => number) | undefined;
+  private readonly maxHotWindowsPerLane = 2;
 
   constructor(
     valuesCodec: ValuesCodec,
     chunkSize = 640,
     private groupResolver: (labels: Labels) => number = () => 0,
+    private maxSeriesPerLane = 32,
     name?: string,
     tsCodec?: TimestampCodec,
     rangeCodec?: RangeDecodeCodec,
@@ -103,19 +109,26 @@ export class RowGroupStore implements StorageBackend {
     if (!Number.isFinite(chunkSize) || !Number.isInteger(chunkSize) || chunkSize < 1) {
       throw new RangeError(`chunkSize must be a finite integer >= 1, got ${chunkSize}`);
     }
+    if (
+      !Number.isFinite(maxSeriesPerLane) ||
+      !Number.isInteger(maxSeriesPerLane) ||
+      maxSeriesPerLane < 1
+    ) {
+      throw new RangeError(
+        `maxSeriesPerLane must be a finite integer >= 1, got ${maxSeriesPerLane}`
+      );
+    }
     this.valuesCodec = valuesCodec;
     this.tsCodec = tsCodec;
     this.rangeCodec = rangeCodec;
     this.chunkSize = chunkSize;
-    this.name = name ?? `rowgroup-${this.valuesCodec.name}-${chunkSize}`;
+    this.name = name ?? `rowgroup-${this.valuesCodec.name}-${chunkSize}-lane${maxSeriesPerLane}`;
     this.labelIndex = labelIndex ?? new LabelIndex();
     if (precision != null) {
       const scale = 10 ** precision;
       this.quantize = (v: number) => Math.round(v * scale) / scale;
     }
   }
-
-  // ── Ingest ──
 
   getOrCreateSeries(labels: Labels): SeriesId {
     const { id, isNew } = this.labelIndex.getOrCreate(labels, this.allSeries.length);
@@ -127,48 +140,35 @@ export class RowGroupStore implements StorageBackend {
     }
 
     while (this.groups.length <= groupId) {
-      this.groups.push({
-        hotTimestamps: new BigInt64Array(this.chunkSize),
-        hotCount: 0,
-        frozenTimestamps: [],
-        members: [],
-        rowGroups: [],
-      });
+      this.groups.push({ lanes: [createLane(this.chunkSize)] });
     }
 
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    const group = this.groups[groupId]!;
-    const memberIndex = group.members.length;
-    group.members.push(id);
-
-    this.allSeries.push({
+    const series: LaneSeries = {
       groupId,
-      memberIndex,
-      hot: { values: new Float64Array(this.chunkSize), count: 0 },
-    });
+      segments: [],
+      activeSegmentIndex: 0,
+    };
+    this.allSeries.push(series);
+    this.attachInitialSegment(id, groupId);
     return id;
   }
 
   append(id: SeriesId, timestamp: bigint, value: number): void {
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    const s = this.allSeries[id]!;
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    const group = this.groups[s.groupId]!;
-
-    if (s.hot.count === group.hotCount) {
-      group.hotTimestamps[group.hotCount] = timestamp;
+    const state = this.ensureWriteSpace(id);
+    if (state.segment.hot.count === state.lane.hotCount) {
+      state.lane.hotTimestamps[state.lane.hotCount] = timestamp;
     }
 
-    s.hot.values[s.hot.count] = this.quantize ? this.quantize(value) : value;
-    s.hot.count++;
+    state.segment.hot.values[state.segment.hot.count] = this.quantize ? this.quantize(value) : value;
+    state.segment.hot.count++;
     this._sampleCount++;
 
-    if (s.hot.count > group.hotCount) {
-      group.hotCount = s.hot.count;
+    if (state.segment.hot.count > state.lane.hotCount) {
+      state.lane.hotCount = state.segment.hot.count;
     }
 
-    if (s.hot.count === this.chunkSize) {
-      this.maybeFreeze(group);
+    if (state.segment.hot.count === this.chunkSize) {
+      this.maybeFreeze(state.lane);
     }
   }
 
@@ -179,66 +179,42 @@ export class RowGroupStore implements StorageBackend {
       );
     }
     if (timestamps.length === 0) return;
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    const s = this.allSeries[id]!;
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    const group = this.groups[s.groupId]!;
+
     let offset = 0;
     const len = timestamps.length;
 
     while (offset < len) {
-      let space = s.hot.values.length - s.hot.count;
-
-      if (space === 0) {
-        const countBefore = s.hot.count;
-        this.maybeFreeze(group);
-        if (s.hot.count < countBefore) {
-          space = s.hot.values.length - s.hot.count;
-        } else {
-          const newSize = s.hot.values.length + this.chunkSize;
-          const newVals = new Float64Array(newSize);
-          newVals.set(s.hot.values);
-          s.hot.values = newVals;
-          if (group.hotTimestamps.length < newSize) {
-            const newTs = new BigInt64Array(newSize);
-            newTs.set(group.hotTimestamps);
-            group.hotTimestamps = newTs;
-          }
-          space = newSize - s.hot.count;
-        }
-      }
-
+      const state = this.ensureWriteSpace(id);
+      const space = state.segment.hot.values.length - state.segment.hot.count;
       const batch = Math.min(space, len - offset);
-
       const tsSlice = timestamps.subarray(offset, offset + batch);
-      if (s.hot.count <= group.hotCount) {
-        group.hotTimestamps.set(tsSlice, s.hot.count);
+
+      if (state.segment.hot.count <= state.lane.hotCount) {
+        state.lane.hotTimestamps.set(tsSlice, state.segment.hot.count);
       }
 
       if (this.quantize) {
         const q = this.quantize;
         for (let i = 0; i < batch; i++) {
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          s.hot.values[s.hot.count + i] = q(values[offset + i]!);
+          state.segment.hot.values[state.segment.hot.count + i] = q(values[offset + i]!);
         }
       } else {
-        s.hot.values.set(values.subarray(offset, offset + batch), s.hot.count);
+        state.segment.hot.values.set(values.subarray(offset, offset + batch), state.segment.hot.count);
       }
-      s.hot.count += batch;
+
+      state.segment.hot.count += batch;
       this._sampleCount += batch;
       offset += batch;
 
-      if (s.hot.count > group.hotCount) {
-        group.hotCount = s.hot.count;
+      if (state.segment.hot.count > state.lane.hotCount) {
+        state.lane.hotCount = state.segment.hot.count;
       }
 
-      if (s.hot.count >= this.chunkSize) {
-        this.maybeFreeze(group);
+      if (state.segment.hot.count >= this.chunkSize) {
+        this.maybeFreeze(state.lane);
       }
     }
   }
-
-  // ── Query ──
 
   matchLabel(label: string, value: string): SeriesId[] {
     return this.labelIndex.matchLabel(label, value);
@@ -249,81 +225,72 @@ export class RowGroupStore implements StorageBackend {
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    const s = this.allSeries[id]!;
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    const group = this.groups[s.groupId]!;
+    const series = this.allSeries[id]!;
     const parts: TimeRange[] = [];
 
-    if (this.rangeCodec && this.tsCodec) {
-      for (const rg of group.rowGroups) {
-        if (s.memberIndex >= rg.memberCount) continue;
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const tsChunk = group.frozenTimestamps[rg.tsChunkIndex]!;
-        if (tsChunk.maxT < start || tsChunk.minT > end) continue;
+    for (const segment of series.segments) {
+      const lane = this.groups[series.groupId]!.lanes[segment.laneId]!;
 
-        const compressedValues = rg.valueBuffer.subarray(
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          rg.offsets[s.memberIndex]!,
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          rg.offsets[s.memberIndex]! + rg.sizes[s.memberIndex]!
-        );
+      if (this.rangeCodec && this.tsCodec) {
+        for (const rg of lane.rowGroups) {
+          if (segment.laneMemberIndex >= rg.memberCount) continue;
+          const tsChunk = lane.frozenTimestamps[rg.tsChunkIndex]!;
+          if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
-        const result = this.rangeCodec.rangeDecodeValues(
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          tsChunk.compressed!,
-          compressedValues,
-          start,
-          end
-        );
-        if (result.timestamps.length > 0) {
-          parts.push(result);
-          if (!tsChunk.timestamps) {
-            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-            tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed!);
+          const compressedValues = rg.valueBuffer.subarray(
+            rg.offsets[segment.laneMemberIndex]!,
+            rg.offsets[segment.laneMemberIndex]! + rg.sizes[segment.laneMemberIndex]!
+          );
+
+          const result = this.rangeCodec.rangeDecodeValues(
+            tsChunk.compressed!,
+            compressedValues,
+            start,
+            end
+          );
+          if (result.timestamps.length > 0) {
+            parts.push(result);
+            if (!tsChunk.timestamps) {
+              tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed!);
+            }
+          }
+        }
+      } else {
+        for (const rg of lane.rowGroups) {
+          if (segment.laneMemberIndex >= rg.memberCount) continue;
+          const tsChunk = lane.frozenTimestamps[rg.tsChunkIndex]!;
+          if (tsChunk.maxT < start || tsChunk.minT > end) continue;
+
+          if (!tsChunk.timestamps && this.tsCodec && tsChunk.compressed) {
+            tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed);
+          }
+          const timestamps = tsChunk.timestamps!;
+
+          const compressedValues = rg.valueBuffer.subarray(
+            rg.offsets[segment.laneMemberIndex]!,
+            rg.offsets[segment.laneMemberIndex]! + rg.sizes[segment.laneMemberIndex]!
+          );
+          const values = this.valuesCodec.decodeValues(compressedValues);
+          const lo = lowerBound(timestamps, start, 0, tsChunk.count);
+          const hi = upperBound(timestamps, end, lo, tsChunk.count);
+          if (hi > lo) {
+            parts.push({
+              timestamps: timestamps.slice(lo, hi),
+              values: values.slice(lo, hi),
+            });
           }
         }
       }
-    } else {
-      for (const rg of group.rowGroups) {
-        if (s.memberIndex >= rg.memberCount) continue;
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const tsChunk = group.frozenTimestamps[rg.tsChunkIndex]!;
-        if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
-        if (!tsChunk.timestamps && this.tsCodec && tsChunk.compressed) {
-          tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed);
-        }
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-        const timestamps = tsChunk.timestamps!;
-
-        const compressedValues = rg.valueBuffer.subarray(
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          rg.offsets[s.memberIndex]!,
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          rg.offsets[s.memberIndex]! + rg.sizes[s.memberIndex]!
-        );
-        const values = this.valuesCodec.decodeValues(compressedValues);
-        const lo = lowerBound(timestamps, start, 0, tsChunk.count);
-        const hi = upperBound(timestamps, end, lo, tsChunk.count);
+      if (segment.hot.count > 0) {
+        const lo = lowerBound(lane.hotTimestamps, start, 0, segment.hot.count);
+        const hi = upperBound(lane.hotTimestamps, end, lo, segment.hot.count);
         if (hi > lo) {
           parts.push({
-            timestamps: timestamps.slice(lo, hi),
-            values: values.slice(lo, hi),
+            timestamps: lane.hotTimestamps.slice(lo, hi),
+            values: segment.hot.values.slice(lo, hi),
           });
         }
-      }
-    }
-
-    // Scan hot chunk.
-    if (s.hot.count > 0) {
-      const lo = lowerBound(group.hotTimestamps, start, 0, s.hot.count);
-      const hi = upperBound(group.hotTimestamps, end, lo, s.hot.count);
-      if (hi > lo) {
-        parts.push({
-          timestamps: group.hotTimestamps.slice(lo, hi),
-          values: s.hot.values.slice(lo, hi),
-        });
       }
     }
 
@@ -334,11 +301,10 @@ export class RowGroupStore implements StorageBackend {
     return this.labelIndex.labels(id);
   }
 
-  // ── Stats ──
-
   get seriesCount(): number {
     return this.allSeries.length;
   }
+
   get sampleCount(): number {
     return this._sampleCount;
   }
@@ -346,40 +312,120 @@ export class RowGroupStore implements StorageBackend {
   memoryBytes(): number {
     let bytes = 0;
 
-    for (const g of this.groups) {
-      bytes += g.hotCount * 8;
-      for (const tc of g.frozenTimestamps) {
-        if (tc.compressed) {
-          bytes += tc.compressed.byteLength;
-        } else if (tc.timestamps) {
-          bytes += tc.timestamps.byteLength;
+    for (const group of this.groups) {
+      for (const lane of group.lanes) {
+        bytes += lane.hotCount * 8;
+        for (const tc of lane.frozenTimestamps) {
+          if (tc.compressed) {
+            bytes += tc.compressed.byteLength;
+          } else if (tc.timestamps) {
+            bytes += tc.timestamps.byteLength;
+          }
         }
-      }
-      // Row groups: one contiguous buffer + offset/size tables + packed stats.
-      for (const rg of g.rowGroups) {
-        bytes += rg.valueBuffer.byteLength;
-        bytes += rg.offsets.byteLength;
-        bytes += rg.sizes.byteLength;
-        bytes += rg.packedStats.byteLength;
+        for (const rg of lane.rowGroups) {
+          bytes += rg.valueBuffer.byteLength;
+          bytes += rg.offsets.byteLength;
+          bytes += rg.sizes.byteLength;
+          bytes += rg.packedStats.byteLength;
+        }
       }
     }
 
-    for (const s of this.allSeries) {
-      bytes += s.hot.count * 8;
+    for (const series of this.allSeries) {
+      for (const segment of series.segments) {
+        bytes += segment.hot.count * 8;
+      }
     }
 
     bytes += this.labelIndex.memoryBytes();
     return bytes;
   }
 
-  // ── Internal ──
+  private attachInitialSegment(seriesId: SeriesId, groupId: number): void {
+    const group = this.groups[groupId]!;
+    let laneId = group.lanes.length - 1;
+    let lane = group.lanes[laneId]!;
+    if (lane.members.length >= this.maxSeriesPerLane) {
+      lane = createLane(this.chunkSize);
+      group.lanes.push(lane);
+      laneId = group.lanes.length - 1;
+    }
+    this.attachSegmentToLane(seriesId, laneId, lane, false);
+  }
 
-  private maybeFreeze(group: SeriesGroup): void {
+  private attachSegmentToLane(
+    seriesId: SeriesId,
+    laneId: number,
+    lane: GroupLane,
+    activate: boolean
+  ): LaneSegment {
+    const series = this.allSeries[seriesId]!;
+    const segment: LaneSegment = {
+      laneId,
+      laneMemberIndex: lane.members.length,
+      hot: { values: new Float64Array(this.chunkSize), count: 0 },
+    };
+    const segmentIndex = series.segments.length;
+    series.segments.push(segment);
+    lane.members.push({ seriesId, segmentIndex });
+    if (activate) {
+      series.activeSegmentIndex = segmentIndex;
+    }
+    return segment;
+  }
+
+  private rollSeriesToFreshLane(seriesId: SeriesId): { series: LaneSeries; segment: LaneSegment; lane: GroupLane } {
+    const series = this.allSeries[seriesId]!;
+    const group = this.groups[series.groupId]!;
+    const lane = createLane(this.chunkSize);
+    group.lanes.push(lane);
+    const laneId = group.lanes.length - 1;
+    const segment = this.attachSegmentToLane(seriesId, laneId, lane, true);
+    return { series, segment, lane };
+  }
+
+  private getActiveState(seriesId: SeriesId): { series: LaneSeries; segment: LaneSegment; lane: GroupLane } {
+    const series = this.allSeries[seriesId]!;
+    const segment = series.segments[series.activeSegmentIndex]!;
+    const lane = this.groups[series.groupId]!.lanes[segment.laneId]!;
+    return { series, segment, lane };
+  }
+
+  private ensureWriteSpace(seriesId: SeriesId): { series: LaneSeries; segment: LaneSegment; lane: GroupLane } {
+    let state = this.getActiveState(seriesId);
+    if (state.segment.hot.values.length > state.segment.hot.count) {
+      return state;
+    }
+
+    const countBefore = state.segment.hot.count;
+    this.maybeFreeze(state.lane);
+    state = this.getActiveState(seriesId);
+    if (state.segment.hot.count < countBefore) {
+      return state;
+    }
+
+    const maxHotSamples = this.chunkSize * this.maxHotWindowsPerLane;
+    if (state.segment.hot.values.length >= maxHotSamples) {
+      return this.rollSeriesToFreshLane(seriesId);
+    }
+
+    const newSize = state.segment.hot.values.length + this.chunkSize;
+    const newVals = new Float64Array(newSize);
+    newVals.set(state.segment.hot.values);
+    state.segment.hot.values = newVals;
+    if (state.lane.hotTimestamps.length < newSize) {
+      const newTs = new BigInt64Array(newSize);
+      newTs.set(state.lane.hotTimestamps);
+      state.lane.hotTimestamps = newTs;
+    }
+    return state;
+  }
+
+  private maybeFreeze(lane: GroupLane): void {
     let minCount = Infinity;
-    for (const memberId of group.members) {
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-      const c = this.allSeries[memberId]!.hot.count;
-      if (c < minCount) minCount = c;
+    for (const member of lane.members) {
+      const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+      if (segment.hot.count < minCount) minCount = segment.hot.count;
     }
 
     const chunksToFreeze = Math.floor(minCount / this.chunkSize);
@@ -387,37 +433,30 @@ export class RowGroupStore implements StorageBackend {
 
     const hasBatch = typeof this.valuesCodec.encodeBatchValuesWithStats === "function";
     const hasWasmStats = typeof this.valuesCodec.encodeValuesWithStats === "function";
-    const numMembers = group.members.length;
+    const numMembers = lane.members.length;
 
     for (let c = 0; c < chunksToFreeze; c++) {
       const chunkStart = c * this.chunkSize;
-
-      // Freeze shared timestamps.
-      const ts = group.hotTimestamps.slice(chunkStart, chunkStart + this.chunkSize);
-      const tsChunkIndex = group.frozenTimestamps.length;
+      const ts = lane.hotTimestamps.slice(chunkStart, chunkStart + this.chunkSize);
+      const tsChunkIndex = lane.frozenTimestamps.length;
 
       if (this.tsCodec) {
         const compressed = this.tsCodec.encodeTimestamps(ts);
-        group.frozenTimestamps.push({
+        lane.frozenTimestamps.push({
           compressed,
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           minT: ts[0]!,
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           maxT: ts[this.chunkSize - 1]!,
           count: this.chunkSize,
         });
       } else {
-        group.frozenTimestamps.push({
+        lane.frozenTimestamps.push({
           timestamps: ts,
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           minT: ts[0]!,
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           maxT: ts[this.chunkSize - 1]!,
           count: this.chunkSize,
         });
       }
 
-      // Encode all members and collect results.
       const blobs: Uint8Array[] = [];
       const allStats: ChunkStats[] = [];
 
@@ -427,29 +466,25 @@ export class RowGroupStore implements StorageBackend {
           const bEnd = Math.min(bStart + BATCH_CAP, numMembers);
           const arrays: Float64Array[] = [];
           for (let m = bStart; m < bEnd; m++) {
-            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-            const s = this.allSeries[group.members[m]!]!;
-            arrays.push(s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize));
+            const member = lane.members[m]!;
+            const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+            arrays.push(segment.hot.values.subarray(chunkStart, chunkStart + this.chunkSize));
           }
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           const results = this.valuesCodec.encodeBatchValuesWithStats!(arrays);
           for (let m = 0; m < results.length; m++) {
-            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             const { compressed, stats } = results[m]!;
             blobs.push(compressed);
             allStats.push(stats);
           }
         }
       } else {
-        for (const memberId of group.members) {
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          const s = this.allSeries[memberId]!;
-          const vals = s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
+        for (const member of lane.members) {
+          const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+          const vals = segment.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
 
           let compressed: Uint8Array;
           let stats: ChunkStats;
           if (hasWasmStats) {
-            // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             const result = this.valuesCodec.encodeValuesWithStats!(vals);
             compressed = result.compressed;
             stats = result.stats;
@@ -462,7 +497,6 @@ export class RowGroupStore implements StorageBackend {
         }
       }
 
-      // Pack into a single row group.
       let totalBytes = 0;
       for (const b of blobs) totalBytes += b.byteLength;
 
@@ -473,14 +507,12 @@ export class RowGroupStore implements StorageBackend {
 
       let pos = 0;
       for (let m = 0; m < numMembers; m++) {
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const blob = blobs[m]!;
         valueBuffer.set(blob, pos);
         offsets[m] = pos;
         sizes[m] = blob.byteLength;
         pos += blob.byteLength;
 
-        // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const st = allStats[m]!;
         const si = m * 8;
         packedStats[si] = st.minV;
@@ -493,7 +525,7 @@ export class RowGroupStore implements StorageBackend {
         packedStats[si + 7] = st.resetCount;
       }
 
-      group.rowGroups.push({
+      lane.rowGroups.push({
         valueBuffer,
         offsets,
         sizes,
@@ -503,26 +535,24 @@ export class RowGroupStore implements StorageBackend {
       });
     }
 
-    // Shift remaining hot data back.
     const frozenSamples = chunksToFreeze * this.chunkSize;
-    for (const memberId of group.members) {
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-      const s = this.allSeries[memberId]!;
-      const remaining = s.hot.count - frozenSamples;
+    for (const member of lane.members) {
+      const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+      const remaining = segment.hot.count - frozenSamples;
       if (remaining > 0) {
-        s.hot.values.copyWithin(0, frozenSamples, s.hot.count);
-        s.hot.count = remaining;
+        segment.hot.values.copyWithin(0, frozenSamples, segment.hot.count);
+        segment.hot.count = remaining;
       } else {
-        s.hot.count = 0;
+        segment.hot.count = 0;
       }
     }
 
-    const tsRemaining = group.hotCount - frozenSamples;
+    const tsRemaining = lane.hotCount - frozenSamples;
     if (tsRemaining > 0) {
-      group.hotTimestamps.copyWithin(0, frozenSamples, group.hotCount);
-      group.hotCount = tsRemaining;
+      lane.hotTimestamps.copyWithin(0, frozenSamples, lane.hotCount);
+      lane.hotCount = tsRemaining;
     } else {
-      group.hotCount = 0;
+      lane.hotCount = 0;
     }
   }
 }

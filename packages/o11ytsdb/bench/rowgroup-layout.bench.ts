@@ -35,7 +35,7 @@ const STEP = 60_000n;
 
 interface LayoutSpec {
   name: string;
-  kind: "column" | "rowgroup" | "lane-rowgroup";
+  kind: "column" | "rowgroup" | "legacy-rowgroup";
   groupSize: number | "all";
   laneSize?: number;
 }
@@ -81,10 +81,10 @@ interface ExperimentResult {
 
 const LAYOUTS: LayoutSpec[] = [
   { name: "column-all", kind: "column", groupSize: "all" },
-  { name: "rowgroup-all", kind: "rowgroup", groupSize: "all" },
-  { name: "lane-rowgroup-32", kind: "lane-rowgroup", groupSize: "all", laneSize: 32 },
-  { name: "rowgroup-32", kind: "rowgroup", groupSize: 32 },
-  { name: "rowgroup-5", kind: "rowgroup", groupSize: 5 },
+  { name: "legacy-rowgroup-all", kind: "legacy-rowgroup", groupSize: "all" },
+  { name: "rowgroup-32", kind: "rowgroup", groupSize: "all", laneSize: 32 },
+  { name: "legacy-rowgroup-32", kind: "legacy-rowgroup", groupSize: 32 },
+  { name: "legacy-rowgroup-5", kind: "legacy-rowgroup", groupSize: 5 },
 ];
 
 const SCENARIOS: ScenarioSpec[] = [
@@ -375,9 +375,9 @@ async function createStore(layout: LayoutSpec): Promise<StorageBackend> {
     return new ColumnStore(valuesCodec, CHUNK_SIZE, resolver, layout.name, tsCodec, rangeCodec);
   }
 
-  if (layout.kind === "lane-rowgroup") {
-    const { LaneRowGroupStore } = await import(pkgPath("dist/lane-row-group-store.js"));
-    return new LaneRowGroupStore(
+  if (layout.kind === "rowgroup") {
+    const { RowGroupStore } = await import(pkgPath("dist/row-group-store.js"));
+    return new RowGroupStore(
       valuesCodec,
       CHUNK_SIZE,
       resolver,
@@ -388,8 +388,8 @@ async function createStore(layout: LayoutSpec): Promise<StorageBackend> {
     );
   }
 
-  const { RowGroupStore } = await import(pkgPath("dist/row-group-store.js"));
-  return new RowGroupStore(valuesCodec, CHUNK_SIZE, resolver, layout.name, tsCodec, rangeCodec);
+  const { LegacyRowGroupStore } = await import(pkgPath("dist/legacy-row-group-store.js"));
+  return new LegacyRowGroupStore(valuesCodec, CHUNK_SIZE, resolver, layout.name, tsCodec, rangeCodec);
 }
 
 function median(values: number[]): number {
