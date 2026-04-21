@@ -23,10 +23,40 @@ function pkgPath(rel: string): string {
 
 // ── Types (import from compiled src) ─────────────────────────────────
 
-type StorageBackend = import("../dist/types.js").StorageBackend;
-type Codec = import("../dist/types.js").Codec;
-type Labels = import("../dist/types.js").Labels;
-type QueryEngine = import("../dist/types.js").QueryEngine;
+type StorageBackend = import("./types.js").StorageBackend;
+type Codec = import("./types.js").Codec;
+type Labels = import("./types.js").Labels;
+type QueryEngine = import("./types.js").QueryEngine;
+
+/** Wrap an ALP codec to enable delta-FoR mode (1) around encode calls. */
+function wrapWithDeltaFor(
+  alpVals: Codec,
+  setMode: (mode: number) => void
+): Codec {
+  return {
+    name: "alp-deltafor",
+    encodeValues: (values: Float64Array) => {
+      setMode(1);
+      const r = alpVals.encodeValues(values);
+      setMode(0);
+      return r;
+    },
+    decodeValues: alpVals.decodeValues,
+    encodeValuesWithStats: (values: Float64Array) => {
+      setMode(1);
+      const r = alpVals.encodeValuesWithStats(values);
+      setMode(0);
+      return r;
+    },
+    encodeBatchValuesWithStats: (arrays: Float64Array[]) => {
+      setMode(1);
+      const r = alpVals.encodeBatchValuesWithStats(arrays);
+      setMode(0);
+      return r;
+    },
+    decodeBatchValues: alpVals.decodeBatchValues,
+  };
+}
 
 // ── Configuration ────────────────────────────────────────────────────
 
@@ -292,6 +322,39 @@ async function loadBackends(): Promise<StorageBackend[]> {
     );
   } catch (e) {
     console.log(`  ⚠ ColumnStore/ALP+p3 not available — skipping (${(e as Error).message})`);
+  }
+
+  // ColumnStore with ALP + delta-FoR exception encoding.
+  try {
+    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(
+      "./wasm-loader.js"
+    );
+    const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
+    const wasm = await loadWasm(wasmPath);
+    const setMode = wasm.setAlpExcMode;
+    if (!setMode) throw new Error("setAlpExcMode not available in WASM");
+
+    const alpVals = makeALPValuesCodec(wasm);
+    const wasmTs = makeTimestampCodec(wasm);
+    const rangeCodec = makeALPRangeCodec(wasm);
+
+    backends.push(
+      new ColumnStore(
+        wrapWithDeltaFor(alpVals, setMode),
+        CHUNK_SIZE,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        },
+        rangeCodec
+      )
+    );
+  } catch (e) {
+    console.log(`  ⚠ ColumnStore/ALP+deltaFoR not available — skipping (${(e as Error).message})`);
   }
 
   return backends;
@@ -604,8 +667,8 @@ export default async function (): Promise<BenchReport> {
       const ok =
         refData.timestamps.length === otherData.timestamps.length &&
         (isLossy
-          ? refData.values.every((v, j) => Math.abs(v - otherData.values[j]!) < 0.01)
-          : refData.values.every((v, j) => v === otherData.values[j]));
+          ? refData.values.every((v: number, j: number) => Math.abs(v - otherData.values[j]!) < 0.01)
+          : refData.values.every((v: number, j: number) => v === otherData.values[j]));
       const detail = isLossy ? "approx (precision-quantized)" : "bit-exact";
       suite.addValidation(
         ref.name,
@@ -780,6 +843,26 @@ async function freshBackend(name: string): Promise<StorageBackend> {
         rangeCodec,
         undefined, // labelIndex
         precision
+      );
+    }
+
+    if (codecName === "alp-deltafor") {
+      const alpVals = makeALPValuesCodec(wasm);
+      const wasmTs = makeTimestampCodec(wasm);
+      const rangeCodec = makeALPRangeCodec(wasm);
+      const setMode = wasm.setAlpExcMode;
+      if (!setMode) throw new Error("setAlpExcMode not available in WASM");
+      return new ColumnStore(
+        wrapWithDeltaFor(alpVals, setMode),
+        size,
+        () => 0,
+        undefined,
+        {
+          name: "rust-wasm-ts",
+          encodeTimestamps: wasmTs.encodeTimestamps,
+          decodeTimestamps: wasmTs.decodeTimestamps,
+        },
+        rangeCodec
       );
     }
   }

@@ -15,38 +15,57 @@ export const INSTANCES = [
 ];
 export const METRICS = ["http_requests_total", "cpu_usage_percent", "memory_usage_bytes"];
 
-export function generateValue(pattern, i, seriesIdx, _total) {
+/**
+ * Generate a single value for a pattern.
+ * @param {string} pattern - one of sine, sawtooth, random-walk, spiky, constant
+ * @param {number} i - sample index
+ * @param {number} seriesIdx - series index (for phase offset)
+ * @param {number} [_total] - total samples (unused)
+ * @param {number} [decimals] - decimal places to round to.  undefined = full f64 precision
+ */
+export function generateValue(pattern, i, seriesIdx, _total, decimals) {
   const phase = seriesIdx * 0.7;
+  let v;
   switch (pattern) {
     case "sine":
-      return (
+      v =
         100 +
         Math.sin(i / 50 + phase) * 40 +
         Math.sin(i / 200 + phase) * 20 +
-        (Math.random() - 0.5) * 8
-      );
+        (Math.random() - 0.5) * 8;
+      break;
     case "sawtooth":
-      return ((i + seriesIdx * 100) % 200) + Math.random() * 5;
+      v = ((i + seriesIdx * 100) % 200) + Math.random() * 5;
+      break;
     case "random-walk": {
       const seed = seriesIdx * 7919 + 1;
-      const v =
+      v = Math.max(
+        0,
         50 +
-        seriesIdx * 10 +
-        Math.sin(i * 0.01 + seed) * 30 +
-        Math.sin(i * 0.003 + seed * 1.7) * 20 +
-        Math.cos(i * 0.0007 + seed * 2.3) * 15;
-      return Math.max(0, v);
+          seriesIdx * 10 +
+          Math.sin(i * 0.01 + seed) * 30 +
+          Math.sin(i * 0.003 + seed * 1.7) * 20 +
+          Math.cos(i * 0.0007 + seed * 2.3) * 15
+      );
+      break;
     }
     case "spiky": {
       const base = 20 + seriesIdx * 5;
       const spike = i % 100 < 5 ? 200 + Math.random() * 100 : 0;
-      return base + Math.random() * 10 + spike;
+      v = base + Math.random() * 10 + spike;
+      break;
     }
     case "constant":
-      return 42.0 + seriesIdx * 0.001;
+      v = 42.0 + seriesIdx * 0.001;
+      break;
     default:
-      return Math.random() * 100;
+      v = Math.random() * 100;
   }
+  if (decimals !== undefined) {
+    const f = 10 ** decimals;
+    return Math.round(v * f) / f;
+  }
+  return v;
 }
 
 // ── Pre-canned Scenarios ──────────────────────────────────────────────
@@ -61,12 +80,12 @@ export const SCENARIOS = [
     emoji: '🛒',
     description: 'Web traffic, latency percentiles, error rates, and checkout flow across a global fleet of services.',
     metrics: [
-      { name: 'http_requests_total', pattern: 'sine' },
-      { name: 'request_latency_p99_ms', pattern: 'spiky' },
-      { name: 'error_rate', pattern: 'random-walk' },
-      { name: 'cart_events_total', pattern: 'sine' },
-      { name: 'active_sessions', pattern: 'random-walk' },
-      { name: 'checkout_total', pattern: 'sawtooth' },
+      { name: 'http_requests_total', pattern: 'sine', decimals: 0 },
+      { name: 'request_latency_p99_ms', pattern: 'spiky', decimals: 1 },
+      { name: 'error_rate', pattern: 'random-walk', decimals: 4 },
+      { name: 'cart_events_total', pattern: 'sine', decimals: 0 },
+      { name: 'active_sessions', pattern: 'random-walk', decimals: 0 },
+      { name: 'checkout_total', pattern: 'sawtooth', decimals: 0 },
     ],
     labelDimensions: {
       region: ['us-east-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1'],
@@ -82,11 +101,11 @@ export const SCENARIOS = [
     emoji: '☸️',
     description: 'CPU, memory, pod restarts, and network I/O across namespaces, nodes, and pods.',
     metrics: [
-      { name: 'cpu_usage_cores', pattern: 'random-walk' },
-      { name: 'memory_usage_bytes', pattern: 'sawtooth' },
-      { name: 'pod_restart_total', pattern: 'spiky' },
-      { name: 'network_rx_bytes', pattern: 'random-walk' },
-      { name: 'network_tx_bytes', pattern: 'random-walk' },
+      { name: 'cpu_usage_cores', pattern: 'random-walk', decimals: 3 },
+      { name: 'memory_usage_bytes', pattern: 'sawtooth', decimals: 0 },
+      { name: 'pod_restart_total', pattern: 'spiky', decimals: 0 },
+      { name: 'network_rx_bytes', pattern: 'random-walk', decimals: 0 },
+      { name: 'network_tx_bytes', pattern: 'random-walk', decimals: 0 },
     ],
     labelDimensions: {
       namespace: ['prod', 'staging', 'monitoring', 'kube-system'],
@@ -156,7 +175,7 @@ export function generateScenarioData(scenario, onProgress) {
       const values = new Float64Array(numPoints);
       for (let i = 0; i < numPoints; i++) {
         timestamps[i] = startT + BigInt(i) * intervalNs;
-        values[i] = generateValue(m.pattern, i, seriesIdx, numPoints);
+        values[i] = generateValue(m.pattern, i, seriesIdx, numPoints, m.decimals);
       }
       series.push({ labels, timestamps, values });
       seriesIdx++;

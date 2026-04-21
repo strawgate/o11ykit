@@ -34,7 +34,10 @@ function pushWithRetry(worktree: string, branch: string, attempts = 3): void {
     } catch (error) {
       lastError = error;
       if (i === attempts) break;
-      runGit(["fetch", "origin", branch, "--depth=1"], worktree);
+      runGit(
+        ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`, "--depth=1"],
+        worktree
+      );
       runGit(["rebase", `origin/${branch}`], worktree);
     }
   }
@@ -85,7 +88,15 @@ export function stashResult(options: {
   try {
     let branchExists = false;
     try {
-      runGit(["fetch", "origin", options.dataBranch, "--depth=1"], options.workspace);
+      runGit(
+        [
+          "fetch",
+          "origin",
+          `+refs/heads/${options.dataBranch}:refs/remotes/origin/${options.dataBranch}`,
+          "--depth=1",
+        ],
+        options.workspace
+      );
       branchExists = true;
     } catch {
       branchExists = false;

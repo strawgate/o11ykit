@@ -21,7 +21,13 @@
 
 import type { MatchOp, PlanAggFn, PlanMatcher, PlanNode, TransformFn } from "./plan.js";
 import { executePlan } from "./plan-executor.js";
-import type { QueryResult, StorageBackend } from "./types.js";
+import type {
+  ExecutedQuery,
+  MaterializedQueryResult,
+  QueryResult,
+  SeriesResult,
+  StorageBackend,
+} from "./types.js";
 
 // ── Internal state ───────────────────────────────────────────────────
 
@@ -36,6 +42,8 @@ interface BuilderState {
   readonly groupBy: readonly string[] | undefined;
 }
 
+type StepTransform = Extract<TransformFn, "rate" | "increase" | "irate" | "delta">;
+
 const EMPTY_STATE: BuilderState = {
   metric: undefined,
   matchers: [],
@@ -46,6 +54,10 @@ const EMPTY_STATE: BuilderState = {
   agg: undefined,
   groupBy: undefined,
 };
+
+function isStepTransform(fn: TransformFn | undefined): fn is StepTransform {
+  return fn === "rate" || fn === "increase" || fn === "irate" || fn === "delta";
+}
 
 // ── Builder ──────────────────────────────────────────────────────────
 
@@ -106,6 +118,14 @@ export class QueryBuilder {
     return new QueryBuilder({
       ...this.s,
       transforms: [...this.s.transforms, "irate"],
+    });
+  }
+
+  /** Apply delta() — raw difference between consecutive samples (no counter-reset handling). */
+  delta(): QueryBuilder {
+    return new QueryBuilder({
+      ...this.s,
+      transforms: [...this.s.transforms, "delta"],
     });
   }
 
@@ -236,11 +256,21 @@ export class QueryBuilder {
       node = { kind: "transform", input: node, fn };
     }
 
-    if (agg != null || (step != null && transforms.length > 0)) {
+    const trailingTransform = transforms.at(-1);
+    const stepDerivedAgg = isStepTransform(trailingTransform) ? trailingTransform : undefined;
+    if (agg != null) {
       node = {
         kind: "aggregate",
         input: node,
-        fn: (agg ?? transforms[transforms.length - 1]!) as PlanAggFn,
+        fn: agg,
+        ...(step != null && { step }),
+        ...(groupBy != null && { groupBy }),
+      };
+    } else if (step != null && stepDerivedAgg != null) {
+      node = {
+        kind: "aggregate",
+        input: node,
+        fn: stepDerivedAgg as PlanAggFn,
         ...(step != null && { step }),
         ...(groupBy != null && { groupBy }),
       };
@@ -252,14 +282,116 @@ export class QueryBuilder {
   /**
    * Compile and execute the query against a storage backend.
    *
-   * Shorthand for `executePlan(builder.plan(), storage)`.
+   * Returns an executed query handle. Call `.materialize()` to move into the
+   * explicit client-side transformation phase.
    */
-  exec(storage: StorageBackend): QueryResult {
-    return executePlan(this.plan(), storage);
+  exec(storage: StorageBackend): ExecutedQuery {
+    return new ExecutedQueryHandle(executePlan(this.plan(), storage));
   }
 }
 
 /** Start building a new query. */
 export function query(): QueryBuilder {
   return QueryBuilder.create();
+}
+
+class MaterializedQueryResultHandle implements MaterializedQueryResult {
+  readonly series: SeriesResult[];
+  readonly scannedSeries: number;
+  readonly scannedSamples: number;
+
+  private constructor(result: QueryResult, cloneSeries: boolean) {
+    this.series = cloneSeries ? result.series.map(cloneSeriesResult) : result.series;
+    this.scannedSeries = result.scannedSeries;
+    this.scannedSamples = result.scannedSamples;
+  }
+
+  static fromQueryResult(result: QueryResult): MaterializedQueryResultHandle {
+    return new MaterializedQueryResultHandle(result, true);
+  }
+
+  static fromOwnedSeries(result: QueryResult): MaterializedQueryResultHandle {
+    return new MaterializedQueryResultHandle(result, false);
+  }
+
+  mapSeries(
+    mapper: (series: SeriesResult, index: number) => SeriesResult
+  ): MaterializedQueryResult {
+    return MaterializedQueryResultHandle.fromOwnedSeries({
+      series: this.series.map((series, index) => mapper(cloneSeriesResult(series), index)),
+      scannedSeries: this.scannedSeries,
+      scannedSamples: this.scannedSamples,
+    });
+  }
+
+  filterSeries(
+    predicate: (series: SeriesResult, index: number) => boolean
+  ): MaterializedQueryResult {
+    return MaterializedQueryResultHandle.fromOwnedSeries({
+      series: this.series
+        .filter((series, index) => predicate(series, index))
+        .map(cloneSeriesResult),
+      scannedSeries: this.scannedSeries,
+      scannedSamples: this.scannedSamples,
+    });
+  }
+
+  mapPoints(
+    mapper: (
+      value: number,
+      timestamp: bigint,
+      series: SeriesResult,
+      pointIndex: number,
+      seriesIndex: number
+    ) => number
+  ): MaterializedQueryResult {
+    return MaterializedQueryResultHandle.fromOwnedSeries({
+      series: this.series.map((series, seriesIndex) => {
+        const pointCount = series.values.length;
+        if (series.timestamps.length !== pointCount) {
+          throw new RangeError(
+            `mismatched point arrays at series ${seriesIndex}: values=${pointCount}, timestamps=${series.timestamps.length}`
+          );
+        }
+        const values = new Float64Array(pointCount);
+        for (let i = 0; i < pointCount; i++) {
+          const value = series.values[i];
+          const timestamp = series.timestamps[i];
+          if (value === undefined || timestamp === undefined) {
+            throw new RangeError(`missing point at series ${seriesIndex}, index ${i}`);
+          }
+          values[i] = mapper(value, timestamp, series, i, seriesIndex);
+        }
+        return {
+          labels: new Map(series.labels),
+          timestamps: series.timestamps.slice(0, pointCount),
+          values,
+        };
+      }),
+      scannedSeries: this.scannedSeries,
+      scannedSamples: this.scannedSamples,
+    });
+  }
+}
+
+class ExecutedQueryHandle implements ExecutedQuery {
+  readonly scannedSeries: number;
+  readonly scannedSamples: number;
+
+  constructor(private readonly result: QueryResult) {
+    this.scannedSeries = result.scannedSeries;
+    this.scannedSamples = result.scannedSamples;
+  }
+
+  materialize(): MaterializedQueryResult {
+    return MaterializedQueryResultHandle.fromQueryResult(this.result);
+  }
+}
+
+function cloneSeriesResult(series: SeriesResult): SeriesResult {
+  return {
+    labels: new Map(series.labels),
+    timestamps: series.timestamps.slice(),
+    values: series.values.slice(),
+  };
 }

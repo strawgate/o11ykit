@@ -263,6 +263,79 @@ describe("O11yWorkerRuntime", () => {
     });
   });
 
+  // ── batch-ingest ──────────────────────────────────────────────
+
+  describe("batch-ingest", () => {
+    it("ingests multiple series in a single message", async () => {
+      // Init first
+      mock.sendRequest(makeRequest(1, { type: "init", chunkSize: 1024 }));
+      await waitForResponse(mock);
+
+      // Pack 2 series: series A (3 pts), series B (2 pts)
+      const allTimestampsMs = new Float64Array([100, 200, 300, 400, 500]);
+      const allValues = new Float64Array([1.0, 2.0, 3.0, 10.0, 20.0]);
+      const offsets = new Uint32Array([0, 3, 3, 2]);
+
+      mock.sendRequest(
+        makeRequest(2, {
+          type: "batch-ingest",
+          count: 2,
+          labels: [
+            [
+              ["__name__", "cpu"],
+              ["host", "a"],
+            ],
+            [
+              ["__name__", "mem"],
+              ["host", "b"],
+            ],
+          ],
+          allTimestampsMs,
+          allValues,
+          offsets,
+        })
+      );
+      const resp = await waitForResponse(mock);
+
+      expect(resp.payload.ok).toBe(true);
+      expect(resp.payload.type).toBe("batch-ingest");
+      if (resp.payload.type === "batch-ingest") {
+        expect(resp.payload.seriesCount).toBe(2);
+        expect(resp.payload.totalSamples).toBe(5);
+      }
+
+      // Verify stats reflect the ingested data
+      mock.sendRequest(makeRequest(3, { type: "stats" }));
+      const statsResp = await waitForResponse(mock);
+      if (statsResp.payload.type === "stats") {
+        expect(statsResp.payload.stats.seriesCount).toBe(2);
+        expect(statsResp.payload.stats.sampleCount).toBe(5);
+      }
+    });
+
+    it("handles empty batch (all zero-length series)", async () => {
+      mock.sendRequest(makeRequest(1, { type: "init" }));
+      await waitForResponse(mock);
+
+      mock.sendRequest(
+        makeRequest(2, {
+          type: "batch-ingest",
+          count: 1,
+          labels: [[["__name__", "empty"]]],
+          allTimestampsMs: new Float64Array(0),
+          allValues: new Float64Array(0),
+          offsets: new Uint32Array([0, 0]),
+        })
+      );
+      const resp = await waitForResponse(mock);
+
+      expect(resp.payload.ok).toBe(true);
+      if (resp.payload.type === "batch-ingest") {
+        expect(resp.payload.totalSamples).toBe(0);
+      }
+    });
+  });
+
   // ── close ─────────────────────────────────────────────────────
 
   describe("close", () => {

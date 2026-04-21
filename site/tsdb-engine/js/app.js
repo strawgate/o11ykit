@@ -18,7 +18,6 @@ const currentEngine = new ScanEngine();
 let generatedMetrics = [];
 let activeMatchers = []; // [{label, op, value}]
 let availableLabels = new Map(); // label -> Set of values
-let _lastIngestData = null;
 let _lastIngestTime = 0;
 let _storagePopulated = false;
 let _queryPopulated = false;
@@ -43,6 +42,10 @@ function onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs) {
   generatedMetrics = metrics;
   _storagePopulated = false;
   _queryPopulated = false;
+
+  // Reset matchers from previous dataset
+  activeMatchers = [];
+  availableLabels.clear();
 
   // Populate available labels for matcher UI
   _buildAvailableLabels(store);
@@ -318,7 +321,6 @@ function loadScenario(scenario, clickedCard) {
 
       const t0 = performance.now();
       const seriesData = generateScenarioData(scenario);
-      _lastIngestData = seriesData;
 
       for (const sd of seriesData) {
         const id = store.getOrCreateSeries(sd.labels);
@@ -414,12 +416,10 @@ function generateCustomData(numSeries, numPoints, pattern, backendType, interval
     const startT = now - BigInt(numPoints) * intervalNs;
     for (let i = 0; i < numPoints; i++) {
       timestamps[i] = startT + BigInt(i) * intervalNs;
-      values[i] = generateValue(pattern, i, si, numPoints);
+      values[i] = generateValue(pattern, i, si, numPoints, decimals);
     }
     seriesData.push({ labels, timestamps, values });
   }
-
-  _lastIngestData = seriesData;
 
   const t0 = performance.now();
   for (const sd of seriesData) {
@@ -544,6 +544,13 @@ loadWasm().then((ok) => {
     document.querySelectorAll('option[value="column"]').forEach(opt => {
       opt.disabled = true;
       opt.textContent += ' (WASM required)';
+    });
+  }
+  // Disable column options if WASM unavailable
+  if (!ok) {
+    document.querySelectorAll('option[value="column"]').forEach((opt) => {
+      opt.disabled = true;
+      opt.textContent += " (WASM required)";
     });
   }
 

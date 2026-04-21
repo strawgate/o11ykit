@@ -222,41 +222,38 @@ function runOne(name: string, runtime: Runtime, fn: () => void, opts: BenchOptio
   const heapDelta = memAfter.heapUsed - memBefore.heapUsed;
   const abDelta = memAfter.arrayBuffers - memBefore.arrayBuffers;
 
-  // Sort for percentiles.
-  timings.sort();
-
-  const min = timings[0]!;
-  const max = timings[iterations - 1]!;
-  const p50 = timings[Math.floor(iterations * 0.5)]!;
-  const p95 = timings[Math.floor(iterations * 0.95)]!;
-  const p99 = timings[Math.floor(iterations * 0.99)]!;
-
-  let sum = 0;
-  for (let i = 0; i < iterations; i++) sum += timings[i]!;
-  const mean = sum / iterations;
-
-  let sqSum = 0;
-  for (let i = 0; i < iterations; i++) sqSum += (timings[i]! - mean) ** 2;
-  const stddev = Math.sqrt(sqSum / iterations);
-
   // Convert to throughput if itemsPerCall is set.
   const toThroughput = (ms: number): number => {
     if (opts.itemsPerCall) return (opts.itemsPerCall / ms) * 1000;
     return 1000 / ms; // ops/sec
   };
 
+  const throughputSamples = timings.map(toThroughput).sort((a, b) => a - b);
+  const min = throughputSamples[0]!;
+  const max = throughputSamples[iterations - 1]!;
+  const p50 = throughputSamples[Math.floor(iterations * 0.5)]!;
+  const p95 = throughputSamples[Math.floor(iterations * 0.95)]!;
+  const p99 = throughputSamples[Math.floor(iterations * 0.99)]!;
+
+  let sum = 0;
+  for (let i = 0; i < iterations; i++) sum += throughputSamples[i]!;
+  const mean = sum / iterations;
+
+  let sqSum = 0;
+  for (let i = 0; i < iterations; i++) sqSum += (throughputSamples[i]! - mean) ** 2;
+  const stddev = Math.sqrt(sqSum / iterations);
+
   return {
     name,
     runtime,
     unit,
     iterations,
-    // For throughput metrics, higher is better — invert the percentiles.
-    min: toThroughput(max), // worst case → lowest throughput
-    p50: toThroughput(p50),
-    p95: toThroughput(p95),
-    p99: toThroughput(p99),
-    max: toThroughput(min), // best case → highest throughput
-    mean: toThroughput(mean),
+    min,
+    p50,
+    p95,
+    p99,
+    max,
+    mean,
     stddev,
     heapDeltaBytes: Math.max(0, heapDelta),
     arrayBufferDeltaBytes: Math.max(0, abDelta),

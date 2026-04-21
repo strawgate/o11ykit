@@ -122,8 +122,7 @@ function buildSnapshotLabels(
   pointAttrs: Record<string, unknown>
 ): Map<string, string> {
   const labels = new Map<string, string>();
-  for (let i = 0; i < baseEntries.length; i++) {
-    const e = baseEntries[i]!;
+  for (const e of baseEntries) {
     labels.set(e[0], e[1]);
   }
   labels.set("__name__", metricName);
@@ -250,8 +249,7 @@ function ingestMetricsDocument(
       }
 
       let baseHash = FNV_OFFSET >>> 0;
-      for (let i = 0; i < baseEntries.length; i++) {
-        const e = baseEntries[i]!;
+      for (const e of baseEntries) {
         baseHash = fnvHashEntry(baseHash, e[0], e[1]);
       }
       const baseSize = baseEntries.length;
@@ -375,7 +373,16 @@ export function flushSamplesToStorage(
       tsArr = msToNs(Float64Array.from(msArr));
     } else {
       tsArr = new BigInt64Array(len);
-      for (let i = 0; i < len; i++) tsArr[i] = BigInt(msArr[i]!) * 1_000_000n;
+      for (let i = 0; i < len; i++) {
+        const millis = msArr[i];
+        if (millis === undefined) {
+          throw new RangeError(`missing timestamp at batch index ${i}`);
+        }
+        if (!Number.isFinite(millis) || !Number.isInteger(millis)) {
+          throw new RangeError(`invalid timestamp at batch index ${i}: ${String(millis)}`);
+        }
+        tsArr[i] = BigInt(millis) * 1_000_000n;
+      }
     }
     storage.appendBatch(id, tsArr, Float64Array.from(batch.values));
     result.samplesInserted += len;
