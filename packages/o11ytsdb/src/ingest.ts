@@ -1,11 +1,18 @@
 import type {
+  MetricScopeRawVisitContext,
   OtlpExponentialHistogramDataPoint,
   OtlpHistogramDataPoint,
   OtlpKeyValue,
   OtlpMetricsDocument,
   OtlpSummaryDataPoint,
 } from "@otlpkit/otlpjson";
-import { detectSignal, flattenAttributes, isMetricsDocument, toNumber } from "@otlpkit/otlpjson";
+import {
+  detectSignal,
+  forEachAttribute,
+  isMetricsDocument,
+  toNumber,
+  visitMetricPointsRaw,
+} from "@otlpkit/otlpjson";
 
 import type { Labels, StorageBackend } from "./types.js";
 
@@ -88,24 +95,45 @@ let _phCount = 0;
 // Cache the last computePointAttrsHash result. Consecutive points
 // in the same metric with the same attributes ref will hit this.
 let _paBaseHash = 0;
-let _paAttrsRef: Record<string, unknown> | undefined;
+let _paAttrsRef: readonly OtlpKeyValue[] | undefined;
+let _paLabelEntries: Array<readonly [string, string]> = [];
 
-function computePointAttrsHash(baseHash: number, pointAttrs: Record<string, unknown>): void {
+function computePointAttrsHash(
+  baseHash: number,
+  pointAttrs: readonly OtlpKeyValue[] | undefined
+): void {
   if (pointAttrs === _paAttrsRef && baseHash === _paBaseHash) return;
   let hash = baseHash;
   let count = 0;
-  for (const key of Object.keys(pointAttrs)) {
-    hash = fnvHashEntry(
-      hash,
-      `${ATTR_PREFIX_POINT}${sanitizeLabelKey(key)}`,
-      attributeValueToLabel(pointAttrs[key])
-    );
+  const labelEntries: Array<readonly [string, string]> = [];
+  forEachAttribute(pointAttrs, (key, value) => {
+    const labelKey = `${ATTR_PREFIX_POINT}${sanitizeLabelKey(key)}`;
+    const labelValue = attributeValueToLabel(value);
+    hash = fnvHashEntry(hash, labelKey, labelValue);
     count++;
-  }
+    labelEntries.push([labelKey, labelValue]);
+  });
+  _paLabelEntries = labelEntries;
   _phHash = hash;
   _phCount = count;
   _paBaseHash = baseHash;
   _paAttrsRef = pointAttrs;
+}
+
+function buildSnapshotLabels(
+  baseEntries: ReadonlyArray<readonly [string, string]>,
+  metricName: string,
+  pointAttrEntries: ReadonlyArray<readonly [string, string]>
+): Map<string, string> {
+  const labels = new Map<string, string>();
+  for (const e of baseEntries) {
+    labels.set(e[0], e[1]);
+  }
+  labels.set("__name__", metricName);
+  for (const [key, value] of pointAttrEntries) {
+    labels.set(key, value);
+  }
+  return labels;
 }
 
 function toFingerprint(hash: number, size: number): number {
@@ -114,39 +142,6 @@ function toFingerprint(hash: number, size: number): number {
   const h1 = Math.imul((hash ^ size) >>> 0, FNV_PRIME) >>> 0;
   const h2 = Math.imul((hash ^ Math.imul(size, 0x9e3779b9)) >>> 0, 0x517cc1b7) >>> 0;
   return (h1 & 0x1fffff) * 0x100000000 + h2;
-}
-
-function buildSnapshotLabels(
-  baseEntries: ReadonlyArray<readonly [string, string]>,
-  metricName: string,
-  pointAttrs: Record<string, unknown>
-): Map<string, string> {
-  const labels = new Map<string, string>();
-  for (const e of baseEntries) {
-    labels.set(e[0], e[1]);
-  }
-  labels.set("__name__", metricName);
-  for (const key of Object.keys(pointAttrs)) {
-    labels.set(
-      `${ATTR_PREFIX_POINT}${sanitizeLabelKey(key)}`,
-      attributeValueToLabel(pointAttrs[key])
-    );
-  }
-  return labels;
-}
-
-// ── T5: flattenAttributes cache ─────────────────────────────────────
-let cachedAttrRef: readonly OtlpKeyValue[] | undefined;
-let cachedAttrResult: Record<string, unknown> = {};
-
-function cachedFlattenAttributes(
-  attrs: readonly OtlpKeyValue[] | undefined
-): Record<string, unknown> {
-  if (attrs === undefined || attrs === null || attrs.length === 0) return {};
-  if (attrs === cachedAttrRef) return cachedAttrResult;
-  cachedAttrRef = attrs;
-  cachedAttrResult = flattenAttributes(attrs);
-  return cachedAttrResult;
 }
 
 // ── Core ingest functions ───────────────────────────────────────────
@@ -224,104 +219,99 @@ function ingestMetricsDocument(
 ): ParsedOtlpResult {
   const pending = new Map<number, PendingSeriesSamples>();
 
-  for (const resourceMetrics of document.resourceMetrics) {
-    const resourceAttrs = flattenAttributes(resourceMetrics.resource?.attributes);
+  let baseEntries: Array<[string, string]> = [];
+  let baseHash = FNV_OFFSET >>> 0;
+  let baseSize = 0;
 
-    for (const scopeMetrics of resourceMetrics.scopeMetrics ?? []) {
-      const scope = scopeMetrics.scope;
-      const scopeAttrs = flattenAttributes(scope?.attributes);
+  const rebuildScopeBase = ({
+    resourceAttributes,
+    scopeName,
+    scopeVersion,
+    scopeAttributes,
+  }: MetricScopeRawVisitContext): void => {
+    const nextEntries: Array<[string, string]> = [];
+    nextEntries.push([SCOPE_NAME_LABEL, scopeName ?? ""]);
+    nextEntries.push([SCOPE_VERSION_LABEL, scopeVersion ?? ""]);
+    forEachAttribute(resourceAttributes, (key, value) => {
+      nextEntries.push([
+        `${ATTR_PREFIX_RESOURCE}${sanitizeLabelKey(key)}`,
+        attributeValueToLabel(value),
+      ]);
+    });
+    forEachAttribute(scopeAttributes, (key, value) => {
+      nextEntries.push([
+        `${ATTR_PREFIX_SCOPE}${sanitizeLabelKey(key)}`,
+        attributeValueToLabel(value),
+      ]);
+    });
 
-      // Pre-compute base labels and base hash once per scope.
-      const baseEntries: Array<[string, string]> = [];
-      baseEntries.push([SCOPE_NAME_LABEL, scope?.name ?? ""]);
-      baseEntries.push([SCOPE_VERSION_LABEL, scope?.version ?? ""]);
-      for (const [key, value] of Object.entries(resourceAttrs)) {
-        baseEntries.push([
-          `${ATTR_PREFIX_RESOURCE}${sanitizeLabelKey(key)}`,
-          attributeValueToLabel(value),
-        ]);
-      }
-      for (const [key, value] of Object.entries(scopeAttrs)) {
-        baseEntries.push([
-          `${ATTR_PREFIX_SCOPE}${sanitizeLabelKey(key)}`,
-          attributeValueToLabel(value),
-        ]);
-      }
-
-      let baseHash = FNV_OFFSET >>> 0;
-      for (const e of baseEntries) {
-        baseHash = fnvHashEntry(baseHash, e[0], e[1]);
-      }
-      const baseSize = baseEntries.length;
-
-      for (const metric of scopeMetrics.metrics ?? []) {
-        if (metric.gauge?.dataPoints) {
-          result.metricTypeCounts.gauge++;
-          ingestNumberPoints(
-            metric.name,
-            metric.gauge.dataPoints,
-            baseEntries,
-            baseHash,
-            baseSize,
-            pending,
-            result
-          );
-        }
-
-        if (metric.sum?.dataPoints) {
-          result.metricTypeCounts.sum++;
-          ingestNumberPoints(
-            metric.name,
-            metric.sum.dataPoints,
-            baseEntries,
-            baseHash,
-            baseSize,
-            pending,
-            result
-          );
-        }
-
-        if (metric.histogram?.dataPoints) {
-          result.metricTypeCounts.histogram++;
-          ingestHistogramPoints(
-            metric.name,
-            metric.histogram.dataPoints,
-            baseEntries,
-            baseHash,
-            baseSize,
-            pending,
-            result
-          );
-        }
-
-        if (metric.summary?.dataPoints) {
-          result.metricTypeCounts.summary++;
-          ingestSummaryPoints(
-            metric.name,
-            metric.summary.dataPoints,
-            baseEntries,
-            baseHash,
-            baseSize,
-            pending,
-            result
-          );
-        }
-
-        if (metric.exponentialHistogram?.dataPoints) {
-          result.metricTypeCounts.exponentialHistogram++;
-          ingestExponentialHistogramPoints(
-            metric.name,
-            metric.exponentialHistogram.dataPoints,
-            baseEntries,
-            baseHash,
-            baseSize,
-            pending,
-            result
-          );
-        }
-      }
+    let nextHash = FNV_OFFSET >>> 0;
+    for (const e of nextEntries) {
+      nextHash = fnvHashEntry(nextHash, e[0], e[1]);
     }
-  }
+
+    baseEntries = nextEntries;
+    baseHash = nextHash;
+    baseSize = nextEntries.length;
+  };
+
+  visitMetricPointsRaw(document, {
+    onScope(context) {
+      rebuildScopeBase(context);
+    },
+    onNumberDataPoints(context, points) {
+      if (context.metric.kind === "gauge") {
+        result.metricTypeCounts.gauge++;
+      } else {
+        result.metricTypeCounts.sum++;
+      }
+      ingestNumberPoints(
+        context.metric.name,
+        points,
+        baseEntries,
+        baseHash,
+        baseSize,
+        pending,
+        result
+      );
+    },
+    onHistogramDataPoints(context, points) {
+      result.metricTypeCounts.histogram++;
+      ingestHistogramPoints(
+        context.metric.name,
+        points,
+        baseEntries,
+        baseHash,
+        baseSize,
+        pending,
+        result
+      );
+    },
+    onSummaryDataPoints(context, points) {
+      result.metricTypeCounts.summary++;
+      ingestSummaryPoints(
+        context.metric.name,
+        points,
+        baseEntries,
+        baseHash,
+        baseSize,
+        pending,
+        result
+      );
+    },
+    onExponentialHistogramDataPoints(context, points) {
+      result.metricTypeCounts.exponentialHistogram++;
+      ingestExponentialHistogramPoints(
+        context.metric.name,
+        points,
+        baseEntries,
+        baseHash,
+        baseSize,
+        pending,
+        result
+      );
+    },
+  });
 
   return { pending, result };
 }
@@ -420,14 +410,13 @@ function ingestNumberPoints(
       continue;
     }
 
-    const pointAttrs = cachedFlattenAttributes(point.attributes);
-    computePointAttrsHash(metricHash, pointAttrs);
+    computePointAttrsHash(metricHash, point.attributes);
     const fp = toFingerprint(_phHash, metricSize + _phCount);
 
     let batch = pending.get(fp);
     if (!batch) {
       batch = {
-        labels: buildSnapshotLabels(baseEntries, metricName, pointAttrs),
+        labels: buildSnapshotLabels(baseEntries, metricName, _paLabelEntries),
         timestamps: [],
         values: [],
       };
@@ -465,12 +454,11 @@ function ingestHistogramPoints(
       continue;
     }
 
-    const pointAttrs = cachedFlattenAttributes(point.attributes);
     const bucketCounts = parseNumberArray(point.bucketCounts);
     const bounds = parseNumberArray(point.explicitBounds);
 
     // Compute bucket base hash (metricHash + pointAttrs) once for all buckets.
-    computePointAttrsHash(bucketMetricHash, pointAttrs);
+    computePointAttrsHash(bucketMetricHash, point.attributes);
     const bucketPointHash = _phHash;
     const pointSize = metricSize + _phCount;
 
@@ -485,7 +473,7 @@ function ingestHistogramPoints(
 
       let batch = pending.get(fp);
       if (!batch) {
-        const labels = buildSnapshotLabels(baseEntries, bucketName, pointAttrs);
+        const labels = buildSnapshotLabels(baseEntries, bucketName, _paLabelEntries);
         labels.set("le", leValue);
         batch = { labels, timestamps: [], values: [] };
         pending.set(fp, batch);
@@ -497,12 +485,12 @@ function ingestHistogramPoints(
 
     const count = toNumber(point.count ?? null);
     if (count !== null) {
-      computePointAttrsHash(countMetricHash, pointAttrs);
+      computePointAttrsHash(countMetricHash, point.attributes);
       const fp = toFingerprint(_phHash, metricSize + _phCount);
       let batch = pending.get(fp);
       if (!batch) {
         batch = {
-          labels: buildSnapshotLabels(baseEntries, countName, pointAttrs),
+          labels: buildSnapshotLabels(baseEntries, countName, _paLabelEntries),
           timestamps: [],
           values: [],
         };
@@ -515,12 +503,12 @@ function ingestHistogramPoints(
 
     const sum = toNumber(point.sum ?? null);
     if (sum !== null) {
-      computePointAttrsHash(sumMetricHash, pointAttrs);
+      computePointAttrsHash(sumMetricHash, point.attributes);
       const fp = toFingerprint(_phHash, metricSize + _phCount);
       let batch = pending.get(fp);
       if (!batch) {
         batch = {
-          labels: buildSnapshotLabels(baseEntries, sumName, pointAttrs),
+          labels: buildSnapshotLabels(baseEntries, sumName, _paLabelEntries),
           timestamps: [],
           values: [],
         };
@@ -563,11 +551,10 @@ function ingestSummaryPoints(
       continue;
     }
 
-    const pointAttrs = cachedFlattenAttributes(point.attributes);
     let inserted = 0;
 
     // Quantile sub-series.
-    computePointAttrsHash(mainMetricHash, pointAttrs);
+    computePointAttrsHash(mainMetricHash, point.attributes);
     const mainPointHash = _phHash;
     const pointSize = metricSize + _phCount;
 
@@ -581,7 +568,7 @@ function ingestSummaryPoints(
 
       let batch = pending.get(fp);
       if (!batch) {
-        const labels = buildSnapshotLabels(baseEntries, metricName, pointAttrs);
+        const labels = buildSnapshotLabels(baseEntries, metricName, _paLabelEntries);
         labels.set("quantile", qLabel);
         batch = { labels, timestamps: [], values: [] };
         pending.set(fp, batch);
@@ -593,12 +580,12 @@ function ingestSummaryPoints(
 
     const count = toNumber(point.count ?? null);
     if (count !== null) {
-      computePointAttrsHash(countMetricHash, pointAttrs);
+      computePointAttrsHash(countMetricHash, point.attributes);
       const fp = toFingerprint(_phHash, metricSize + _phCount);
       let batch = pending.get(fp);
       if (!batch) {
         batch = {
-          labels: buildSnapshotLabels(baseEntries, countName, pointAttrs),
+          labels: buildSnapshotLabels(baseEntries, countName, _paLabelEntries),
           timestamps: [],
           values: [],
         };
@@ -611,12 +598,12 @@ function ingestSummaryPoints(
 
     const sum = toNumber(point.sum ?? null);
     if (sum !== null) {
-      computePointAttrsHash(sumMetricHash, pointAttrs);
+      computePointAttrsHash(sumMetricHash, point.attributes);
       const fp = toFingerprint(_phHash, metricSize + _phCount);
       let batch = pending.get(fp);
       if (!batch) {
         batch = {
-          labels: buildSnapshotLabels(baseEntries, sumName, pointAttrs),
+          labels: buildSnapshotLabels(baseEntries, sumName, _paLabelEntries),
           timestamps: [],
           values: [],
         };
@@ -664,14 +651,13 @@ function ingestExponentialHistogramPoints(
     }
 
     const scale = toNumber(point.scale ?? null);
-    const pointAttrs = cachedFlattenAttributes(point.attributes);
     let inserted = 0;
 
     inserted += ingestExpBuckets(
       bucketName,
       bucketMetricHash,
       metricSize,
-      pointAttrs,
+      point.attributes,
       ts,
       scale,
       "positive",
@@ -683,7 +669,7 @@ function ingestExponentialHistogramPoints(
       bucketName,
       bucketMetricHash,
       metricSize,
-      pointAttrs,
+      point.attributes,
       ts,
       scale,
       "negative",
@@ -695,7 +681,7 @@ function ingestExponentialHistogramPoints(
     // Zero count.
     const zeroCount = toNumber(point.zeroCount ?? null);
     if (zeroCount !== null) {
-      computePointAttrsHash(bucketMetricHash, pointAttrs);
+      computePointAttrsHash(bucketMetricHash, point.attributes);
       let hash = fnvHashEntry(_phHash, "exp_bucket", "zero");
       let size = metricSize + _phCount + 1;
       if (scale !== null) {
@@ -705,7 +691,7 @@ function ingestExponentialHistogramPoints(
       const fp = toFingerprint(hash, size);
       let batch = pending.get(fp);
       if (!batch) {
-        const labels = buildSnapshotLabels(baseEntries, bucketName, pointAttrs);
+        const labels = buildSnapshotLabels(baseEntries, bucketName, _paLabelEntries);
         labels.set("exp_bucket", "zero");
         if (scale !== null) labels.set("exp_scale", numericLabel(scale));
         batch = { labels, timestamps: [], values: [] };
@@ -718,12 +704,12 @@ function ingestExponentialHistogramPoints(
 
     const count = toNumber(point.count ?? null);
     if (count !== null) {
-      computePointAttrsHash(countMetricHash, pointAttrs);
+      computePointAttrsHash(countMetricHash, point.attributes);
       const fp = toFingerprint(_phHash, metricSize + _phCount);
       let batch = pending.get(fp);
       if (!batch) {
         batch = {
-          labels: buildSnapshotLabels(baseEntries, countName, pointAttrs),
+          labels: buildSnapshotLabels(baseEntries, countName, _paLabelEntries),
           timestamps: [],
           values: [],
         };
@@ -736,12 +722,12 @@ function ingestExponentialHistogramPoints(
 
     const sum = toNumber(point.sum ?? null);
     if (sum !== null) {
-      computePointAttrsHash(sumMetricHash, pointAttrs);
+      computePointAttrsHash(sumMetricHash, point.attributes);
       const fp = toFingerprint(_phHash, metricSize + _phCount);
       let batch = pending.get(fp);
       if (!batch) {
         batch = {
-          labels: buildSnapshotLabels(baseEntries, sumName, pointAttrs),
+          labels: buildSnapshotLabels(baseEntries, sumName, _paLabelEntries),
           timestamps: [],
           values: [],
         };
@@ -766,7 +752,7 @@ function ingestExpBuckets(
   bucketName: string,
   bucketMetricHash: number,
   metricSize: number,
-  pointAttrs: Record<string, unknown>,
+  pointAttrs: readonly OtlpKeyValue[] | undefined,
   ts: number,
   scale: number | null,
   side: "positive" | "negative",
@@ -796,7 +782,7 @@ function ingestExpBuckets(
 
     let batch = pending.get(fp);
     if (!batch) {
-      const labels = buildSnapshotLabels(baseEntries, bucketName, pointAttrs);
+      const labels = buildSnapshotLabels(baseEntries, bucketName, _paLabelEntries);
       labels.set("exp_side", side);
       if (scale !== null) labels.set("exp_scale", numericLabel(scale));
       labels.set("exp_bucket", bucketLabel);

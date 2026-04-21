@@ -135,7 +135,7 @@
           <button type="button" class="fork-card" id="forkStorage">
             <div class="fork-icon">💾</div>
             <h3>Explore Storage</h3>
-            <p>See how millions of data points are compressed and organized in memory. Compare three storage backends side-by-side. Inspect individual compressed chunks byte-by-byte.</p>
+            <p>See how millions of data points are compressed and organized in memory. Inspect individual compressed chunks byte-by-byte.</p>
             <span class="fork-cta">Start Exploring →</span>
           </button>
           <button type="button" class="fork-card" id="forkQuery">
@@ -149,9 +149,9 @@
 
       <!-- ─── Section 3: Storage ────────────────────────────────── -->
       <section class="panel storage-panel" id="section-storage" hidden>
-        <nav class="explore-nav" aria-label="Explorer navigation">
-          <button type="button" class="explore-nav-btn active" data-target="section-storage">💾 Storage</button>
-          <button type="button" class="explore-nav-btn" data-target="section-query">🔍 Query Lab</button>
+        <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
+          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-storage">💾 Storage</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-query">🔍 Query Lab</button>
         </nav>
         <h2>Storage Explorer</h2>
 
@@ -174,9 +174,9 @@
 
       <!-- ─── Section 4: Query Lab ──────────────────────────────── -->
       <section class="panel query-panel" id="section-query" hidden>
-        <nav class="explore-nav" aria-label="Explorer navigation">
-          <button type="button" class="explore-nav-btn" data-target="section-storage">💾 Storage</button>
-          <button type="button" class="explore-nav-btn active" data-target="section-query">🔍 Query Lab</button>
+        <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-storage">💾 Storage</button>
+          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-query">🔍 Query Lab</button>
         </nav>
         <h2>Query Lab</h2>
 

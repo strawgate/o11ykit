@@ -5,7 +5,7 @@ import { generateScenarioData, generateValue, INSTANCES, METRICS, REGIONS, SCENA
 import { ScanEngine } from "./query.js";
 import { buildStorageExplorer, showChunkDetail } from "./storage-explorer.js";
 import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
-import { $, autoSelectQueryStep, formatBytes, formatDuration, formatNum } from "./utils.js";
+import { $, autoSelectQueryStep, escapeHtml, formatBytes, formatDuration, formatNum } from "./utils.js";
 import { loadWasm, wasmReady } from "./wasm.js";
 
 const CHUNK_SIZE = 640;
@@ -24,11 +24,11 @@ let _queryPopulated = false;
 
 // ── Section visibility ────────────────────────────────────────────────
 
-function showSection(id) {
+function showSection(id, scroll = false) {
   const el = document.getElementById(id);
   if (el) {
     el.hidden = false;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (scroll) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
@@ -74,7 +74,7 @@ function onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs) {
   hideSection('section-results');
 
   // Show fork in the road
-  showSection('section-fork');
+  showSection('section-fork', true);
   autoSelectQueryStep(intervalMs, numPoints);
 }
 
@@ -167,9 +167,9 @@ function _renderMatcherChips() {
   if (!chips) return;
   chips.innerHTML = activeMatchers.map((m, i) =>
     `<span class="matcher-chip">
-      <span class="mc-label">${m.label}</span>
-      <span class="mc-op">${m.op}</span>
-      <span class="mc-val">&quot;${m.value}&quot;</span>
+      <span class="mc-label">${escapeHtml(m.label)}</span>
+      <span class="mc-op">${escapeHtml(m.op)}</span>
+      <span class="mc-val">&quot;${escapeHtml(m.value)}&quot;</span>
       <button type="button" class="mc-remove" data-idx="${i}" aria-label="Remove matcher">×</button>
     </span>`
   ).join('');
@@ -215,7 +215,7 @@ function _revealStorage() {
   }
   hideSection('section-query');
   hideSection('section-results');
-  showSection('section-storage');
+  showSection('section-storage', true);
   _updateExploreNav('section-storage');
 }
 
@@ -228,13 +228,15 @@ function _revealQuery() {
     updateQueryPreview();
   }
   hideSection('section-storage');
-  showSection('section-query');
+  showSection('section-query', true);
   _updateExploreNav('section-query');
 }
 
 function _updateExploreNav(activeId) {
   document.querySelectorAll('.explore-nav-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.target === activeId);
+    const isActive = btn.dataset.target === activeId;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
   });
 }
 
@@ -259,12 +261,12 @@ function _renderScenarioCards() {
     const sampleCount = scenarioSampleCount(s);
     const interval = s.intervalMs >= 60000 ? `${s.intervalMs/60000}min` : `${s.intervalMs/1000}s`;
     return `
-    <button type="button" class="scenario-card" data-scenario-id="${s.id}">
+    <button type="button" class="scenario-card" data-scenario-id="${escapeHtml(s.id)}">
       <div class="sc-emoji">${s.emoji}</div>
-      <div class="sc-name">${s.name}</div>
-      <div class="sc-desc">${s.description}</div>
+      <div class="sc-name">${escapeHtml(s.name)}</div>
+      <div class="sc-desc">${escapeHtml(s.description)}</div>
       <div class="sc-meta">
-        ${s.metrics.map(m => `<span class="sc-metric">${m.name}</span>`).join('')}
+        ${s.metrics.map(m => `<span class="sc-metric">${escapeHtml(m.name)}</span>`).join('')}
       </div>
       <div class="sc-stats">${seriesCount.toLocaleString()} series · ${sampleCount.toLocaleString()} pts · ${interval} interval</div>
       <div class="sc-loading-indicator"><span class="sc-spinner"></span><span class="sc-loading-text">Generating data…</span></div>
@@ -316,38 +318,39 @@ function loadScenario(scenario, clickedCard) {
   // Defer heavy work to let the loading spinner render
   requestAnimationFrame(() => {
     setTimeout(() => {
-      const backendType = 'column';
-      const store = _createStore(backendType, CHUNK_SIZE);
-      if (!store) {
-        if (clickedCard) clickedCard.classList.remove('loading');
-        return;
-      }
+      try {
+        const backendType = 'column';
+        const store = _createStore(backendType, CHUNK_SIZE);
 
-      const t0 = performance.now();
-      const seriesData = generateScenarioData(scenario);
+        const t0 = performance.now();
+        const seriesData = generateScenarioData(scenario);
 
-      if (backendType === 'column') {
-        // Create all series first so groups are fully populated
-        const ids = seriesData.map(sd => store.getOrCreateSeries(sd.labels));
-        // Ingest interleaved: one chunk at a time across all series in lock-step
-        const numPoints = seriesData[0]?.timestamps.length || 0;
-        for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
-          const end = Math.min(offset + CHUNK_SIZE, numPoints);
-          for (let i = 0; i < seriesData.length; i++) {
-            store.appendBatch(ids[i], seriesData[i].timestamps.subarray(offset, end), seriesData[i].values.subarray(offset, end));
+        if (store._backendType === 'column') {
+          // Create all series first so groups are fully populated
+          const ids = seriesData.map(sd => store.getOrCreateSeries(sd.labels));
+          // Ingest interleaved: one chunk at a time across all series in lock-step
+          const numPoints = seriesData[0]?.timestamps.length || 0;
+          for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
+            const end = Math.min(offset + CHUNK_SIZE, numPoints);
+            for (let i = 0; i < seriesData.length; i++) {
+              store.appendBatch(ids[i], seriesData[i].timestamps.subarray(offset, end), seriesData[i].values.subarray(offset, end));
+            }
+          }
+        } else {
+          for (const sd of seriesData) {
+            const id = store.getOrCreateSeries(sd.labels);
+            store.appendBatch(id, sd.timestamps, sd.values);
           }
         }
-      } else {
-        for (const sd of seriesData) {
-          const id = store.getOrCreateSeries(sd.labels);
-          store.appendBatch(id, sd.timestamps, sd.values);
-        }
+
+        _lastIngestTime = performance.now() - t0;
+        const metrics = [...new Set(scenario.metrics.map(m => m.name))];
+
+        onDataLoaded(store, metrics, _lastIngestTime, scenario.numPoints, scenario.intervalMs);
+      } catch (err) {
+        console.error('Failed to load scenario:', err);
+        if (clickedCard) clickedCard.classList.remove('loading');
       }
-
-      _lastIngestTime = performance.now() - t0;
-      const metrics = [...new Set(scenario.metrics.map(m => m.name))];
-
-      onDataLoaded(store, metrics, _lastIngestTime, scenario.numPoints, scenario.intervalMs);
     }, 30);
   });
 }
@@ -381,12 +384,10 @@ function _createStore(backendType, chunkSize) {
   let store;
   if (backendType === 'column') {
     if (!wasmReady) {
-      const statusEl = document.getElementById('wasmStatusCustom');
-      if (statusEl) {
-        statusEl.style.display = 'inline-block';
-        statusEl.textContent = '⚠ WASM unavailable — switch to ChunkedStore';
-      }
-      return null;
+      console.warn('WASM unavailable — falling back to ChunkedStore');
+      store = new ChunkedStore(chunkSize);
+      store._backendType = 'chunked';
+      return store;
     }
     store = new ColumnStore(chunkSize);
   } else if (backendType === 'chunked') {
@@ -400,7 +401,6 @@ function _createStore(backendType, chunkSize) {
 
 function generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs) {
   const store = _createStore(backendType, CHUNK_SIZE);
-  if (!store) return;
 
   const now = BigInt(Date.now()) * NS_PER_MS;
   const intervalNs = BigInt(intervalMs) * NS_PER_MS;
@@ -478,13 +478,13 @@ function updateQueryPreview() {
   let matcherStr = '';
   if (activeMatchers.length > 0) {
     const parts = activeMatchers.map(m =>
-      `<span class="qp-label">${m.label}</span><span class="qp-op">${m.op}</span><span class="qp-val">"${m.value}"</span>`
+      `<span class="qp-label">${escapeHtml(m.label)}</span><span class="qp-op">${escapeHtml(m.op)}</span><span class="qp-val">"${escapeHtml(m.value)}"</span>`
     );
     matcherStr = `{${parts.join(', ')}}`;
   }
 
   // Build PromQL-like expression
-  let expr = `<span class="qp-metric">${metric}</span>${matcherStr}`;
+  let expr = `<span class="qp-metric">${escapeHtml(metric)}</span>${matcherStr}`;
 
   if (transform) {
     expr = `<span class="qp-fn">${transform}</span>(${expr})`;
@@ -594,7 +594,7 @@ function runQuery() {
       const color = CHART_COLORS[i % CHART_COLORS.length];
       const labelStr = [...s.labels]
         .filter(([k]) => k !== '__name__')
-        .map(([k, v]) => `${k}="${v}"`)
+        .map(([k, v]) => `${escapeHtml(k)}="${escapeHtml(v)}"`)
         .join(', ') || 'all';
       const item = document.createElement('div');
       item.className = 'legend-item';

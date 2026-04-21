@@ -173,6 +173,10 @@
 
 /* biome-ignore lint/style/noDescendingSpecificity: intentional modifier class */
 .chunk-block {
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
   border-radius: 6px;
   display: flex;
   align-items: center;

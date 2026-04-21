@@ -3,7 +3,7 @@
 import { renderByteExplorer, renderByteExplorerTs } from "./byte-explorer.js";
 import { ALP_HEADER_SIZE } from "./byte-explorer-logic.js";
 import { decodeChunk } from "./codec.js";
-import { $, formatBytes, formatTimeRange, setupCanvasDPR } from "./utils.js";
+import { $, escapeHtml, formatBytes, formatTimeRange, setupCanvasDPR } from "./utils.js";
 import { wasmDecodeTimestamps, wasmDecodeValuesALP } from "./wasm.js";
 
 function renderByteMap(compressed, _sampleCount) {
@@ -265,7 +265,7 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
   const metricName = seriesInfo.labels.get("__name__") || "unknown";
   const labelStr = [...seriesInfo.labels]
     .filter(([k]) => k !== "__name__")
-    .map(([k, v]) => `${k}="${v}"`)
+    .map(([k, v]) => `${escapeHtml(k)}="${escapeHtml(v)}"`)
     .join(", ");
 
   if (type === "frozen") {
@@ -442,7 +442,7 @@ function _buildSeriesRow(si, maxSamples, store) {
     .filter(([k]) => k !== "__name__")
     .map(
       ([k, v]) =>
-        `<span class="label-pair"><span class="label-key">${k}</span>=<span class="label-val">${v}</span></span>`
+        `<span class="label-pair"><span class="label-key">${escapeHtml(k)}</span>=<span class="label-val">${escapeHtml(v)}</span></span>`
     )
     .join(" ");
   const metricName = si.labels.get("__name__") || "unknown";
@@ -465,7 +465,8 @@ function _buildSeriesRow(si, maxSamples, store) {
   const isCol = si.info._isColumnStore;
   for (let ci = 0; ci < si.info.frozen.length; ci++) {
     const chunk = si.info.frozen[ci];
-    const block = document.createElement("div");
+    const block = document.createElement("button");
+    block.type = "button";
     block.className = isCol ? "chunk-block frozen column-store" : "chunk-block frozen";
     if (!compact) {
       const widthPct = Math.max(2, (chunk.count / maxSamples) * 100);
@@ -478,7 +479,8 @@ function _buildSeriesRow(si, maxSamples, store) {
   }
 
   if (si.info.hot.count > 0) {
-    const block = document.createElement("div");
+    const block = document.createElement("button");
+    block.type = "button";
     block.className = "chunk-block hot";
     if (!compact) {
       const widthPct = Math.max(2, (si.info.hot.count / maxSamples) * 100);

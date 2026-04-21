@@ -2,6 +2,10 @@
 
 export const $ = (sel) => document.querySelector(sel);
 
+export function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 export function formatBytes(b) {
   if (b >= 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(2)} MB`;
   if (b >= 1024) return `${(b / 1024).toFixed(1)} KB`;

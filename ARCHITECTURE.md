@@ -52,4 +52,4 @@ Current state in this repo:
 - Generic library packages have been renamed from `@metrickit/*` to `@otlpkit/*`.
 - Demo/examples and build scripts now target the `@otlpkit/*` scope.
 - GitHub Pages publishes a landing page at `/o11ykit/`, with solution paths at
-  `/o11ykit/otlpkit/`, `/o11ykit/octo11y/`, and `/o11ykit/benchkit/`.
+  `/o11ykit/otlpkit/`, `/o11ykit/tsdb-engine/`, `/o11ykit/octo11y/`, and `/o11ykit/benchkit/`.
