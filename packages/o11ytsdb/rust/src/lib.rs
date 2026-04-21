@@ -34,7 +34,7 @@
 // No std, no allocator beyond a static scratch buffer.
 // All bit manipulation is native u64 — no BigInt overhead.
 
-#![no_std]
+#![cfg_attr(not(kani), no_std)]
 
 // Shared lock for tests that mutate global static state.
 // This crate uses static mut arrays (ALP_INTS, SCRATCH, INTERN_BUF, etc.)
@@ -65,3 +65,6 @@ mod range_decode;
 mod interner;
 mod simd;
 mod alp_exc;
+
+#[cfg(kani)]
+mod verification;
