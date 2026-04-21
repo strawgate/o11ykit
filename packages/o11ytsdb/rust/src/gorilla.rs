@@ -576,4 +576,25 @@ mod tests {
         assert_eq!(count, 3);
         assert_eq!(decoded, vals);
     }
+
+    #[test]
+    fn compute_stats_monotonic_no_resets() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let vals: std::vec::Vec<f64> = (0..100).map(|i| i as f64).collect();
+        let mut stats = [0f64; 8];
+        let resets = compute_stats(&vals, &mut stats);
+        assert_eq!(stats[0], 0.0, "min");
+        assert_eq!(stats[1], 99.0, "max");
+        assert_eq!(stats[4], 0.0, "first");
+        assert_eq!(stats[5], 99.0, "last");
+        assert_eq!(resets, 0);
+    }
+
+    #[test]
+    fn values_empty_returns_zero() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let mut buf = [0u8; 128];
+        let written = encodeValues(core::ptr::null(), 0, buf.as_mut_ptr(), 128);
+        assert_eq!(written, 0);
+    }
 }

@@ -281,4 +281,94 @@ mod tests {
             assert_eq!(decoded[i], vals[i], "mismatch at {i}");
         }
     }
+
+    #[test]
+    fn batch_xor_stats_fields() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let vals = [1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        let mut out = [0u8; 4096];
+        let mut offsets = [0u32; 1];
+        let mut sizes = [0u32; 1];
+        let mut stats = [0f64; 8];
+        let total = encodeBatchValuesWithStats(
+            vals.as_ptr(), 8, 1, out.as_mut_ptr(), 4096,
+            offsets.as_mut_ptr(), sizes.as_mut_ptr(), stats.as_mut_ptr(),
+        );
+        assert!(total > 0);
+        assert_eq!(stats[0], 1.0, "min");
+        assert_eq!(stats[1], 8.0, "max");
+        assert_eq!(stats[2], 36.0, "sum");
+        assert_eq!(stats[3], 8.0, "count");
+        assert_eq!(stats[4], 1.0, "first");
+        assert_eq!(stats[5], 8.0, "last");
+    }
+
+    #[test]
+    fn batch_alp_stats_fields() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let vals: std::vec::Vec<f64> = (0..100).map(|i| i as f64 * 0.01).collect();
+        let mut out = [0u8; 65536];
+        let mut offsets = [0u32; 1];
+        let mut sizes = [0u32; 1];
+        let mut stats = [0f64; 8];
+        let total = encodeBatchValuesALPWithStats(
+            vals.as_ptr(), 100, 1, out.as_mut_ptr(), 65536,
+            offsets.as_mut_ptr(), sizes.as_mut_ptr(), stats.as_mut_ptr(),
+        );
+        assert!(total > 0);
+        assert_eq!(stats[0], 0.0, "min");
+        assert_eq!(stats[3], 100.0, "count");
+        assert_eq!(stats[4], 0.0, "first");
+    }
+
+    #[test]
+    fn batch_xor_decode_roundtrip() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let cs: usize = 8;
+        let vals = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0,
+                    10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0];
+        let mut out = [0u8; 8192];
+        let mut offsets = [0u32; 2];
+        let mut sizes = [0u32; 2];
+        let mut stats = [0f64; 16];
+        let total = encodeBatchValuesWithStats(
+            vals.as_ptr(), cs as u32, 2, out.as_mut_ptr(), 8192,
+            offsets.as_mut_ptr(), sizes.as_mut_ptr(), stats.as_mut_ptr(),
+        );
+        assert!(total > 0);
+
+        let mut decoded = [0f64; 16];
+        let n = decodeBatchValues(
+            out.as_ptr(), offsets.as_ptr(), sizes.as_ptr(), 2,
+            decoded.as_mut_ptr(), cs as u32,
+        );
+        assert_eq!(n, 2);
+        assert_eq!(&decoded[..16], &vals);
+    }
+
+    #[test]
+    fn batch_alp_decode_roundtrip() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let cs: usize = 50;
+        let vals: std::vec::Vec<f64> = (0..100).map(|i| i as f64 * 0.1).collect();
+        let mut out = [0u8; 65536];
+        let mut offsets = [0u32; 2];
+        let mut sizes = [0u32; 2];
+        let mut stats = [0f64; 16];
+        let total = encodeBatchValuesALPWithStats(
+            vals.as_ptr(), cs as u32, 2, out.as_mut_ptr(), 65536,
+            offsets.as_mut_ptr(), sizes.as_mut_ptr(), stats.as_mut_ptr(),
+        );
+        assert!(total > 0);
+
+        let mut decoded = [0f64; 100];
+        let n = decodeBatchValuesALP(
+            out.as_ptr(), offsets.as_ptr(), sizes.as_ptr(), 2,
+            decoded.as_mut_ptr(), cs as u32,
+        );
+        assert_eq!(n, 2);
+        for i in 0..100 {
+            assert!((decoded[i] - vals[i]).abs() < 1e-14, "mismatch at {i}");
+        }
+    }
 }

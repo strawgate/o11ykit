@@ -224,4 +224,31 @@ mod tests {
         assert_eq!(out_ts[0], 300);
         assert_eq!(out_vals[0], 3.0);
     }
+
+    #[test]
+    fn range_decode_boundary_timestamps() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        // Encode a chunk with known timestamps.
+        let ts: std::vec::Vec<i64> = (0..100).map(|i| 1000i64 + i * 10).collect();
+        let vals: std::vec::Vec<f64> = (0..100).map(|i| i as f64 * 0.1).collect();
+
+        let mut ts_buf = [0u8; 4096];
+        let ts_bytes = encodeTimestamps(ts.as_ptr(), 100, ts_buf.as_mut_ptr(), 4096);
+        assert!(ts_bytes > 0);
+
+        let mut val_buf = [0u8; 65536];
+        let val_bytes = alp_encode_inner(&vals, &mut val_buf);
+        assert!(val_bytes > 0);
+
+        // Query for exact boundaries.
+        let mut out_ts = [0i64; 100];
+        let mut out_vals = [0f64; 100];
+        let count = rangeDecodeALP(
+            ts_buf.as_ptr(), ts_bytes,
+            val_buf.as_ptr(), val_bytes as u32,
+            1000, 1990,  // exact start and end
+            out_ts.as_mut_ptr(), out_vals.as_mut_ptr(), 100,
+        );
+        assert_eq!(count, 100);
+    }
 }

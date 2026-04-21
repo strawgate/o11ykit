@@ -525,4 +525,55 @@ mod tests {
             assert_eq!(out[i], vals[10 + i], "range mismatch at {i}");
         }
     }
+
+    #[test]
+    fn candidate_non_integer_rejected() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let vals = [1.5, 2.5, 3.5];
+        assert!(!is_delta_alp_candidate(&vals, 0));
+    }
+
+    #[test]
+    fn candidate_decreasing_rejected() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let vals = [10.0, 5.0, 2.0];
+        assert!(!is_delta_alp_candidate(&vals, 0));
+    }
+
+    #[test]
+    fn candidate_with_resets_rejected() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let vals = [1.0, 2.0, 3.0];
+        assert!(!is_delta_alp_candidate(&vals, 1)); // reset_count != 0
+    }
+
+    #[test]
+    fn candidate_single_value_rejected() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        assert!(!is_delta_alp_candidate(&[1.0], 0));
+    }
+
+    #[test]
+    fn candidate_nan_inf_rejected() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        assert!(!is_delta_alp_candidate(&[1.0, f64::NAN, 3.0], 0));
+        assert!(!is_delta_alp_candidate(&[1.0, f64::INFINITY, 3.0], 0));
+    }
+
+    #[test]
+    fn delta_alp_stats_fields() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let vals: std::vec::Vec<f64> = (0..640).map(|i| (i * 100) as f64).collect();
+        let mut buf = [0u8; 65536];
+        let mut stats = [0f64; 8];
+        let written = encodeValuesALPWithStats(
+            vals.as_ptr(), 640, buf.as_mut_ptr(), 65536, stats.as_mut_ptr(),
+        );
+        assert!(written > 0);
+        assert_eq!(stats[0], 0.0, "min");
+        assert_eq!(stats[1], 63900.0, "max");
+        assert_eq!(stats[3], 640.0, "count");
+        assert_eq!(stats[4], 0.0, "first");
+        assert_eq!(stats[5], 63900.0, "last");
+    }
 }

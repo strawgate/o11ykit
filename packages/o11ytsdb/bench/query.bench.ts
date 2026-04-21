@@ -220,6 +220,305 @@ export default async function (): Promise<BenchReport> {
     { warmup: 5, iterations: 10, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
   );
 
+  // ── Missing aggregation benchmarks ──────────────────────────────────
+
+  suite.add(
+    "min-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .min()
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "max-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .max()
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "count-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .count()
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "last-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .last()
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "p90-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .p90()
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 10, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "p95-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .p95()
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 10, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  // ── Transform benchmarks ────────────────────────────────────────────
+
+  suite.add(
+    "increase-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .increase()
+        .step(STEP_1M)
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "irate-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .irate()
+        .step(STEP_1M)
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "delta-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .delta()
+        .step(STEP_1M)
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  // ── GroupBy benchmarks ──────────────────────────────────────────────
+
+  suite.add(
+    "sumBy-region-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .sumBy("region")
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "avgBy-region-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .avgBy("region")
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "minBy-region-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .minBy("region")
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "maxBy-region-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .maxBy("region")
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "countBy-region-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .countBy("region")
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "lastBy-region-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .lastBy("region")
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  // ── Compound transform + aggregation benchmarks ─────────────────────
+
+  suite.add(
+    "increase-sumBy-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .increase()
+        .sumBy("region")
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "delta-avgBy-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .delta()
+        .avgBy("region")
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 15, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
+  suite.add(
+    "irate-maxBy-1m-100",
+    runtime,
+    () => {
+      query()
+        .metric("cpu")
+        .where("shard", "=", "s0")
+        .range(T0, end)
+        .step(STEP_1M)
+        .irate()
+        .maxBy("region")
+        .exec(store)
+        .materialize();
+    },
+    { warmup: 5, iterations: 10, itemsPerCall: 100 * POINTS_PER_SERIES, unit: "samples/sec" }
+  );
+
   suite.add(
     "regex-match-1k",
     runtime,

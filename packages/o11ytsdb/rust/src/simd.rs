@@ -181,4 +181,36 @@ mod tests {
         quantizeBatch(input.as_ptr(), output.as_mut_ptr(), 1, scale);
         assert_eq!(output[0], 0.0);
     }
+
+    #[test]
+    fn ms_to_ns_large_array() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let input: std::vec::Vec<f64> = (0..1000).map(|i| i as f64).collect();
+        let mut output = std::vec![0i64; 1000];
+        msToNs(input.as_ptr(), output.as_mut_ptr(), 1000);
+        for i in 0..1000 {
+            assert_eq!(output[i], (i as i64) * 1_000_000);
+        }
+    }
+
+    #[test]
+    fn quantize_batch_large_scale() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let input = [123456.789f64, 0.001234, 999.9995, 0.0];
+        let mut output = [0f64; 4];
+        quantizeBatch(input.as_ptr(), output.as_mut_ptr(), 4, 100.0); // 2 decimals
+        assert!((output[0] - 123456.79).abs() < 1e-10);
+        assert!((output[1] - 0.0).abs() < 0.01);
+        assert_eq!(output[3], 0.0);
+    }
+
+    #[test]
+    fn quantize_batch_negative_values() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let input = [-1.5f64, -0.005, -100.999];
+        let mut output = [0f64; 3];
+        quantizeBatch(input.as_ptr(), output.as_mut_ptr(), 3, 10.0); // 1 decimal
+        assert_eq!(output[0], -1.5);
+        assert_eq!(output[2], -101.0);
+    }
 }

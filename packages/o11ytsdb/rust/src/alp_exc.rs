@@ -143,3 +143,67 @@ fn decode_for_exceptions(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+    use crate::alp::{alp_decode_regular, alp_encode_inner};
+
+    #[test]
+    fn for_exceptions_roundtrip() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        // Values that produce FoR exceptions (irrational, can't round-trip).
+        let vals: std::vec::Vec<f64> = (0..50)
+            .map(|i| core::f64::consts::PI * (i as f64 + 1.0))
+            .collect();
+        let mut buf = [0u8; 65536];
+        let mut decoded = [0f64; 2048];
+        let written = alp_encode_inner(&vals, &mut buf);
+        assert!(written > 0);
+        let count = alp_decode_regular(&buf[..written], &mut decoded);
+        assert_eq!(count, 50);
+        for i in 0..50 {
+            assert_eq!(decoded[i].to_bits(), vals[i].to_bits(), "mismatch at {i}");
+        }
+    }
+
+    #[test]
+    fn partial_exceptions_roundtrip() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        // Mix of clean values (ALP-encodable) and exceptions.
+        let mut vals = std::vec::Vec::new();
+        for i in 0..40 { vals.push(i as f64 * 0.25); } // clean
+        for i in 0..10 { vals.push(core::f64::consts::SQRT_2 * (i as f64 + 1.0)); } // exceptions
+        let mut buf = [0u8; 65536];
+        let mut decoded = [0f64; 2048];
+        let written = alp_encode_inner(&vals, &mut buf);
+        assert!(written > 0);
+        let count = alp_decode_regular(&buf[..written], &mut decoded);
+        assert_eq!(count, 50);
+        for i in 0..50 {
+            assert_eq!(decoded[i].to_bits(), vals[i].to_bits(), "mismatch at {i}");
+        }
+    }
+
+    #[test]
+    fn delta_for_exceptions_via_counter() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        // A counter-like series that triggers delta-ALP, with exception values.
+        // Use values that are partly clean integers and partly irrational.
+        let mut vals = std::vec::Vec::new();
+        for i in 0..90 { vals.push(i as f64 * 0.01); }
+        // Add tightly-clustered irrational exceptions.
+        for i in 0..10 {
+            vals.push(core::f64::consts::E + (i as f64) * 0.0001);
+        }
+        let mut buf = [0u8; 65536];
+        let mut decoded = [0f64; 2048];
+        let written = alp_encode_inner(&vals, &mut buf);
+        assert!(written > 0);
+        let count = alp_decode_regular(&buf[..written], &mut decoded);
+        assert_eq!(count, 100);
+        for i in 0..100 {
+            assert_eq!(decoded[i].to_bits(), vals[i].to_bits(), "mismatch at {i}");
+        }
+    }
+}

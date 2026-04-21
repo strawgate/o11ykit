@@ -533,4 +533,30 @@ mod tests {
         assert_eq!(bits_needed(256), 9);
         assert_eq!(bits_needed(u64::MAX), 64);
     }
+
+    #[test]
+    fn packed_safe_limit_small_buffer() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        // Buffer too small for any fast-path extraction.
+        assert_eq!(packed_safe_limit(4, 10, 8), 0);
+        // Buffer exactly 8 bytes: max_byte=0, no index safe.
+        assert_eq!(packed_safe_limit(8, 10, 8), 0);
+        // Buffer 9 bytes with bw=8: max_byte=1, max_i=1, index 0 safe.
+        assert_eq!(packed_safe_limit(9, 10, 8), 1);
+        // bw=0 always returns 0.
+        assert_eq!(packed_safe_limit(100, 50, 0), 0);
+        // Large buffer, all indices safe.
+        assert_eq!(packed_safe_limit(1024, 10, 4), 10);
+    }
+
+    #[test]
+    fn alp_encode_decode_empty_and_oversized() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let mut buf = [0u8; 128];
+        // Empty slice should return 0.
+        assert_eq!(alp_encode_inner(&[], &mut buf), 0);
+        // Decoding empty input returns 0.
+        let mut out = [0f64; 8];
+        assert_eq!(alp_decode_regular(&[], &mut out), 0);
+    }
 }
