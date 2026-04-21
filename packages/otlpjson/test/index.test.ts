@@ -24,6 +24,8 @@ import {
   parseOtlpJsonLines,
   toNumber,
   toUnixNanos,
+  visitMetricPoints,
+  visitMetricPointsRaw,
 } from "../src/index.js";
 import { logsDocument, metricsDocument, tracesDocument } from "./fixtures.js";
 
@@ -161,6 +163,248 @@ describe("@otlpkit/otlpjson", () => {
     expect(logs).toHaveLength(1);
     expect(logs[0]?.body).toBe("retry scheduled");
     expect(logs[0]?.observedTimeUnixNano).toBe("7000000100");
+  });
+
+  it("visits metric documents without materializing point records", () => {
+    const scopeNames: string[] = [];
+    const batches: Array<[string, string, number]> = [];
+
+    visitMetricPoints(metricsDocument, {
+      onScope(context) {
+        scopeNames.push(context.scope.name ?? "unknown");
+      },
+      onNumberDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onHistogramDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onSummaryDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onExponentialHistogramDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+    });
+
+    expect(scopeNames).toEqual(["logfwd.pipeline"]);
+    expect(batches).toEqual([
+      ["gauge", "logfwd.inflight_batches", 2],
+      ["sum", "logfwd.retry_total", 1],
+      ["histogram", "logfwd.output.duration", 1],
+      ["summary", "logfwd.queue.latency", 1],
+      ["exponentialHistogram", "logfwd.flush.delay", 1],
+    ]);
+  });
+
+  it("visits metric documents with raw scope and attribute arrays", () => {
+    const scopes: Array<[string | null, string | null, number, number]> = [];
+    const batches: Array<[string, string, number]> = [];
+
+    visitMetricPointsRaw(metricsDocument, {
+      onScope(context) {
+        scopes.push([
+          context.scopeName,
+          context.scopeVersion,
+          context.resourceAttributes?.length ?? 0,
+          context.scopeAttributes?.length ?? 0,
+        ]);
+      },
+      onNumberDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onHistogramDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onSummaryDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+      onExponentialHistogramDataPoints(context, points) {
+        batches.push([context.metric.kind, context.metric.name, points.length]);
+      },
+    });
+
+    expect(scopes).toEqual([["logfwd.pipeline", "1.0.0", 2, 1]]);
+    expect(batches).toEqual([
+      ["gauge", "logfwd.inflight_batches", 2],
+      ["sum", "logfwd.retry_total", 1],
+      ["histogram", "logfwd.output.duration", 1],
+      ["summary", "logfwd.queue.latency", 1],
+      ["exponentialHistogram", "logfwd.flush.delay", 1],
+    ]);
+  });
+
+  it("gives raw metric callbacks distinct per-metric contexts", () => {
+    const contexts: Array<{ kind: string; name: string; context: object }> = [];
+
+    visitMetricPointsRaw(metricsDocument, {
+      onNumberDataPoints(context) {
+        contexts.push({
+          kind: context.metric.kind,
+          name: context.metric.name,
+          context,
+        });
+      },
+      onHistogramDataPoints(context) {
+        contexts.push({
+          kind: context.metric.kind,
+          name: context.metric.name,
+          context,
+        });
+      },
+      onSummaryDataPoints(context) {
+        contexts.push({
+          kind: context.metric.kind,
+          name: context.metric.name,
+          context,
+        });
+      },
+      onExponentialHistogramDataPoints(context) {
+        contexts.push({
+          kind: context.metric.kind,
+          name: context.metric.name,
+          context,
+        });
+      },
+    });
+
+    expect(contexts.map(({ kind, name }) => [kind, name])).toEqual([
+      ["gauge", "logfwd.inflight_batches"],
+      ["sum", "logfwd.retry_total"],
+      ["histogram", "logfwd.output.duration"],
+      ["summary", "logfwd.queue.latency"],
+      ["exponentialHistogram", "logfwd.flush.delay"],
+    ]);
+    expect(new Set(contexts.map(({ context }) => context)).size).toBe(contexts.length);
+  });
+
+  it("rejects non-metrics documents in visitor entry points", () => {
+    expect(() => visitMetricPoints({ resourceSpans: [] }, {})).toThrowError(TypeError);
+    expect(() => visitMetricPointsRaw({ resourceLogs: [] }, {})).toThrowError(TypeError);
+  });
+
+  it("handles sparse visitor documents and missing metric metadata", () => {
+    const sparseVisitorMetrics = {
+      resourceMetrics: [
+        {},
+        {
+          scopeMetrics: [
+            {},
+            {
+              scope: {},
+              metrics: [
+                {
+                  name: "sparse.sum",
+                  sum: {
+                    dataPoints: [{}],
+                  },
+                },
+                {
+                  name: "sparse.histogram",
+                  histogram: {
+                    dataPoints: [{}],
+                  },
+                },
+                {
+                  name: "sparse.summary",
+                  summary: {
+                    dataPoints: [{}],
+                  },
+                },
+                {
+                  name: "sparse.exp",
+                  exponentialHistogram: {
+                    dataPoints: [{}],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const metricKinds: Array<[string, number | null, boolean | null]> = [];
+    visitMetricPoints(sparseVisitorMetrics, {
+      onNumberDataPoints(context) {
+        metricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+      onHistogramDataPoints(context) {
+        metricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+      onSummaryDataPoints(context) {
+        metricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+      onExponentialHistogramDataPoints(context) {
+        metricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+    });
+
+    const rawScopes: Array<[string | null, string | null, number]> = [];
+    const rawMetricKinds: Array<[string, number | null, boolean | null]> = [];
+    visitMetricPointsRaw(sparseVisitorMetrics, {
+      onScope(context) {
+        rawScopes.push([
+          context.scopeName,
+          context.scopeVersion,
+          context.scopeAttributes?.length ?? 0,
+        ]);
+      },
+      onNumberDataPoints(context) {
+        rawMetricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+      onHistogramDataPoints(context) {
+        rawMetricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+      onExponentialHistogramDataPoints(context) {
+        rawMetricKinds.push([
+          context.metric.kind,
+          context.metric.aggregationTemporality,
+          context.metric.isMonotonic,
+        ]);
+      },
+    });
+    visitMetricPointsRaw(sparseVisitorMetrics, {});
+
+    expect(metricKinds).toEqual([
+      ["sum", null, null],
+      ["histogram", null, null],
+      ["summary", null, null],
+      ["exponentialHistogram", null, null],
+    ]);
+    expect(rawScopes).toEqual([
+      [null, null, 0],
+      [null, null, 0],
+    ]);
+    expect(rawMetricKinds).toEqual([
+      ["sum", null, null],
+      ["histogram", null, null],
+      ["exponentialHistogram", null, null],
+    ]);
   });
 
   it("covers sparse optional fields and guard failures", () => {

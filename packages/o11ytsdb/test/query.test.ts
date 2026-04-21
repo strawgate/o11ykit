@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import { ColumnStore } from "../src/column-store.js";
 import { FlatStore } from "../src/flat-store.js";
 import { ScanEngine } from "../src/query.js";
-// biome-ignore lint/correctness/noUnusedImports: test code
 import type { Labels, StorageBackend, ValuesCodec } from "../src/types.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -199,7 +198,8 @@ describe("ScanEngine", () => {
       end: BigInt(Number.MAX_SAFE_INTEGER),
       agg: "irate",
     });
-    const s = result.series[0]!;
+    const s = result.series[0];
+    expect(s).toBeDefined();
     expect(s.values[0]).toBe(0);
     expect(s.values[1]).toBeCloseTo(0.0001);
     expect(s.values[2]).toBeCloseTo(0.0001);
@@ -221,7 +221,8 @@ describe("ScanEngine", () => {
       agg: "irate",
       step: 5_000n,
     });
-    const s = result.series[0]!;
+    const s = result.series[0];
+    expect(s).toBeDefined();
     expect(s.values[0]).toBeCloseTo(150);
   });
 
@@ -266,6 +267,61 @@ describe("ScanEngine", () => {
     expect(s.values[1]).toBeCloseTo(77);
     // bucket 2: 50+60+5+6 = 121
     expect(s.values[2]).toBeCloseTo(121);
+  });
+
+  it("rejects incomplete chunk bounds in step queries", () => {
+    const labels = makeLabels("broken");
+    const storage: StorageBackend = {
+      name: "broken",
+      getOrCreateSeries() {
+        return 0;
+      },
+      append() {},
+      appendBatch() {},
+      matchLabel(label, value) {
+        return label === "__name__" && value === "broken" ? [0] : [];
+      },
+      read() {
+        return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+      },
+      readParts() {
+        return [
+          {
+            timestamps: new BigInt64Array(0),
+            values: new Float64Array(0),
+            stats: {
+              minV: 1,
+              maxV: 1,
+              sum: 1,
+              count: 1,
+              firstV: 1,
+              lastV: 1,
+              sumOfSquares: 1,
+              resetCount: 0,
+            },
+            chunkMinT: 0n,
+          },
+        ];
+      },
+      labels() {
+        return labels;
+      },
+      seriesCount: 1,
+      sampleCount: 0,
+      memoryBytes() {
+        return 0;
+      },
+    };
+
+    expect(() =>
+      engine.query(storage, {
+        metric: "broken",
+        start: 0n,
+        end: 1_000n,
+        agg: "sum",
+        step: 1_000n,
+      })
+    ).toThrow(RangeError);
   });
 
   it("step aggregation min computes correct values", () => {
