@@ -55,6 +55,13 @@ interface LayoutStats {
   totalHotSamples: number;
   maxSeriesHotCapacity: number;
   maxSeriesHotCount: number;
+  groupsOverChunkCapacity: number;
+  seriesOverChunkCapacity: number;
+  hotTimestampBytes: number;
+  frozenTimestampBytes: number;
+  hotValueBytes: number;
+  frozenValueBytes: number;
+  statsMetadataBytes: number;
 }
 
 interface ExperimentResult {
@@ -94,6 +101,16 @@ const SCENARIOS: ScenarioSpec[] = [
     ingestMode: "series-major",
     pointsForSeries: (seriesIndex) => (seriesIndex % 5 === 0 ? 256 : MAX_POINTS),
   },
+  {
+    name: "laggards-interleaved",
+    ingestMode: "interleaved",
+    pointsForSeries: (seriesIndex) => (seriesIndex % 5 === 0 ? 256 : MAX_POINTS),
+  },
+  {
+    name: "short-lived-series-major",
+    ingestMode: "series-major",
+    pointsForSeries: (seriesIndex) => (seriesIndex % 4 === 0 ? 128 : MAX_POINTS),
+  },
 ];
 
 function forceGC(): void {
@@ -105,6 +122,18 @@ function forceGC(): void {
 
 function hasLength(value: unknown): value is { length: number } {
   return typeof value === "object" && value !== null && typeof Reflect.get(value, "length") === "number";
+}
+
+function isIndexableArrayLike(value: unknown): value is { length: number; [index: number]: unknown } {
+  return hasLength(value);
+}
+
+function typedArrayByteLength(value: unknown): number {
+  if (typeof value === "object" && value !== null) {
+    const byteLength = Reflect.get(value, "byteLength");
+    if (typeof byteLength === "number") return byteLength;
+  }
+  throw new Error("expected typed array with byteLength");
 }
 
 function collectLayoutStats(store: StorageBackend): LayoutStats {
@@ -119,6 +148,12 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
   let totalRowGroups = 0;
   let maxHotCount = 0;
   let maxHotCapacity = 0;
+  let groupsOverChunkCapacity = 0;
+  let hotTimestampBytes = 0;
+  let frozenTimestampBytes = 0;
+  let hotValueBytes = 0;
+  let frozenValueBytes = 0;
+  let statsMetadataBytes = 0;
 
   for (const group of groupsValue) {
     if (typeof group !== "object" || group === null) {
@@ -131,7 +166,7 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
     const hotTimestamps = Reflect.get(group, "hotTimestamps");
     if (
       !hasLength(members) ||
-      !hasLength(frozenTimestamps) ||
+      !isIndexableArrayLike(frozenTimestamps) ||
       typeof hotCount !== "number" ||
       !hasLength(hotTimestamps)
     ) {
@@ -142,11 +177,39 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
     totalRowGroups += hasLength(rowGroups) ? rowGroups.length : 0;
     maxHotCount = Math.max(maxHotCount, hotCount);
     maxHotCapacity = Math.max(maxHotCapacity, hotTimestamps.length);
+    if (hotTimestamps.length > CHUNK_SIZE) groupsOverChunkCapacity++;
+    hotTimestampBytes += hotCount * 8;
+    for (let i = 0; i < frozenTimestamps.length; i++) {
+      const chunk = frozenTimestamps[i];
+      if (typeof chunk !== "object" || chunk === null) {
+        throw new Error("invalid frozen timestamp chunk");
+      }
+      const compressed = Reflect.get(chunk, "compressed");
+      const timestamps = Reflect.get(chunk, "timestamps");
+      if (compressed) {
+        frozenTimestampBytes += typedArrayByteLength(compressed);
+      } else if (timestamps) {
+        frozenTimestampBytes += typedArrayByteLength(timestamps);
+      }
+    }
+    if (isIndexableArrayLike(rowGroups)) {
+      for (let i = 0; i < rowGroups.length; i++) {
+        const rowGroup = rowGroups[i];
+        if (typeof rowGroup !== "object" || rowGroup === null) {
+          throw new Error("invalid row group");
+        }
+        frozenValueBytes += typedArrayByteLength(Reflect.get(rowGroup, "valueBuffer"));
+        statsMetadataBytes += typedArrayByteLength(Reflect.get(rowGroup, "offsets"));
+        statsMetadataBytes += typedArrayByteLength(Reflect.get(rowGroup, "sizes"));
+        statsMetadataBytes += typedArrayByteLength(Reflect.get(rowGroup, "packedStats"));
+      }
+    }
   }
 
   let totalHotSamples = 0;
   let maxSeriesHotCapacity = 0;
   let maxSeriesHotCount = 0;
+  let seriesOverChunkCapacity = 0;
   for (const series of seriesValue) {
     if (typeof series !== "object" || series === null) {
       throw new Error("invalid series object in layout diagnostics");
@@ -163,6 +226,25 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
     totalHotSamples += count;
     maxSeriesHotCapacity = Math.max(maxSeriesHotCapacity, values.length);
     maxSeriesHotCount = Math.max(maxSeriesHotCount, count);
+    if (values.length > CHUNK_SIZE) seriesOverChunkCapacity++;
+    hotValueBytes += count * 8;
+
+    const frozen = Reflect.get(series, "frozen");
+    if (typeof frozen === "object" && frozen !== null) {
+      const blobs = Reflect.get(frozen, "blobs");
+      const stats = Reflect.get(frozen, "stats");
+      const tsIndices = Reflect.get(frozen, "tsIndices");
+      const countValue = Reflect.get(frozen, "count");
+      if (Array.isArray(blobs) && typeof countValue === "number") {
+        for (let i = 0; i < countValue; i++) {
+          const blob = blobs[i];
+          if (!blob) throw new Error("missing frozen value blob");
+          frozenValueBytes += typedArrayByteLength(blob);
+        }
+      }
+      if (stats) statsMetadataBytes += typedArrayByteLength(stats);
+      if (tsIndices) statsMetadataBytes += typedArrayByteLength(tsIndices);
+    }
   }
 
   return {
@@ -175,6 +257,13 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
     totalHotSamples,
     maxSeriesHotCapacity,
     maxSeriesHotCount,
+    groupsOverChunkCapacity,
+    seriesOverChunkCapacity,
+    hotTimestampBytes,
+    frozenTimestampBytes,
+    hotValueBytes,
+    frozenValueBytes,
+    statsMetadataBytes,
   };
 }
 
@@ -357,16 +446,30 @@ async function runExperiment(layout: LayoutSpec, scenario: ScenarioSpec): Promis
 function printScenarioResults(scenario: ScenarioSpec, results: ExperimentResult[]): void {
   console.log(`\n  ── ${scenario.name} ──\n`);
   console.log(
-    "| layout | samples | ingest | mem | raw | select | stepAgg | groups | max members | max hot cap | max series hot cap | hot samples |"
+    "| layout | samples | ingest | mem | raw | select | stepAgg | hot % | ts bytes | value bytes | meta bytes | grown groups | grown series |"
   );
   console.log(
-    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
   );
   for (const result of results) {
+    const hotPercent = (result.stats.totalHotSamples / result.totalSamples) * 100;
+    const timestampBytes = result.stats.hotTimestampBytes + result.stats.frozenTimestampBytes;
+    const valueBytes = result.stats.hotValueBytes + result.stats.frozenValueBytes;
     console.log(
-      `| ${result.layout} | ${result.totalSamples.toLocaleString()} | ${fmt(result.ingestSamplesPerSec)} /s | ${fmtBytes(result.memBytes)} | ${result.rawMs.toFixed(1)} ms | ${result.selectMs.toFixed(1)} ms | ${result.stepAggMs.toFixed(1)} ms | ${result.stats.totalGroups} | ${result.stats.maxMembersPerGroup.toLocaleString()} | ${result.stats.maxHotCapacity.toLocaleString()} | ${result.stats.maxSeriesHotCapacity.toLocaleString()} | ${result.stats.totalHotSamples.toLocaleString()} |`
+      `| ${result.layout} | ${result.totalSamples.toLocaleString()} | ${fmt(result.ingestSamplesPerSec)} /s | ${fmtBytes(result.memBytes)} | ${result.rawMs.toFixed(1)} ms | ${result.selectMs.toFixed(1)} ms | ${result.stepAggMs.toFixed(1)} ms | ${hotPercent.toFixed(1)}% | ${fmtBytes(timestampBytes)} | ${fmtBytes(valueBytes)} | ${fmtBytes(result.stats.statsMetadataBytes)} | ${result.stats.groupsOverChunkCapacity} | ${result.stats.seriesOverChunkCapacity} |`
     );
   }
+
+  console.log();
+  console.log(
+    "  detail: groups/maxMembers/maxHotCap/maxSeriesHotCap =",
+    results
+      .map(
+        (result) =>
+          `${result.layout}:${result.stats.totalGroups}/${result.stats.maxMembersPerGroup}/${result.stats.maxHotCapacity}/${result.stats.maxSeriesHotCapacity}`
+      )
+      .join("  ")
+  );
 }
 
 async function main(): Promise<void> {
