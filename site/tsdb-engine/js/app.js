@@ -8,11 +8,20 @@ import {
   METRICS,
   REGIONS,
   SCENARIOS,
+  scenarioSampleCount,
+  scenarioSeriesCount,
 } from "./data-gen.js";
 import { ScanEngine } from "./query.js";
-import { buildLayoutDiagram, buildStorageExplorer, showChunkDetail } from "./storage-explorer.js";
+import { buildStorageExplorer, showChunkDetail } from "./storage-explorer.js";
 import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
-import { $, autoSelectQueryStep, formatBytes, formatDuration, formatNum } from "./utils.js";
+import {
+  $,
+  autoSelectQueryStep,
+  escapeHtml,
+  formatBytes,
+  formatDuration,
+  formatNum,
+} from "./utils.js";
 import { loadWasm, wasmReady } from "./wasm.js";
 
 const CHUNK_SIZE = 640;
@@ -23,50 +32,66 @@ const NS_PER_MS = 1_000_000n;
 let currentStore = null;
 const currentEngine = new ScanEngine();
 let generatedMetrics = [];
-const activeMatchers = []; // [{label, op, value}]
+let activeMatchers = []; // [{label, op, value}]
 const availableLabels = new Map(); // label -> Set of values
+let _lastIngestTime = 0;
+let _storagePopulated = false;
+let _queryPopulated = false;
 
 // ── Section visibility ────────────────────────────────────────────────
 
-function showSection(id) {
+function showSection(id, scroll = false) {
   const el = document.getElementById(id);
-  if (el) el.hidden = false;
+  if (el) {
+    el.hidden = false;
+    if (scroll) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function hideSection(id) {
+  const el = document.getElementById(id);
+  if (el) el.hidden = true;
 }
 
 function onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs) {
   currentStore = store;
   generatedMetrics = metrics;
+  _storagePopulated = false;
+  _queryPopulated = false;
+
+  // Reset matchers from previous dataset
+  activeMatchers = [];
+  availableLabels.clear();
 
   // Populate available labels for matcher UI
   _buildAvailableLabels(store);
 
-  // Show storage section
-  showSection("section-storage");
-  const layoutContainer = document.getElementById("storageLayoutDiagram");
-  if (layoutContainer) buildLayoutDiagram(store, layoutContainer);
-  buildStorageExplorer(store);
-
-  // Update ingest stats
+  // Precompute stats for the fork section
   const totalPts = store.sampleCount;
   const memBytes = store.memoryBytes();
   const rawBytes = totalPts * 16;
   const ratio = rawBytes / memBytes;
+  const ingestRate = totalPts / (ingestTime / 1000);
 
-  document.getElementById("statStoragePts").textContent = totalPts.toLocaleString();
-  document.getElementById("statStorageSeries").textContent = store.seriesCount.toLocaleString();
-  document.getElementById("statStorageMem").textContent = formatBytes(memBytes);
-  document.getElementById("statStorageRatio").textContent = `${ratio.toFixed(1)}×`;
-  document.getElementById("statStorageIngestTime").textContent = `${ingestTime.toFixed(0)} ms`;
-  document.getElementById("statStorageIngestRate").textContent =
-    `${formatNum(totalPts / (ingestTime / 1000))} pts/s`;
+  // Update active card with results
+  const activeCard = document.querySelector(".scenario-card.loading, .scenario-card.active");
+  if (activeCard) {
+    activeCard.classList.remove("loading");
+    activeCard.classList.add("active", "loaded");
+    const doneEl = activeCard.querySelector(".sc-done-stats");
+    if (doneEl) {
+      doneEl.textContent = `✓ ${totalPts.toLocaleString()} pts in ${ingestTime.toFixed(0)} ms · ${ratio.toFixed(0)}× compression · ${formatBytes(memBytes)}`;
+    }
+  }
 
-  // Show query lab
-  showSection("section-query");
-  _populateQueryMetrics(metrics);
-  _populateGroupByOptions(store);
+  // Hide storage/query/results — let user choose via fork
+  hideSection("section-storage");
+  hideSection("section-query");
+  hideSection("section-results");
 
-  // Run default query immediately
-  runQuery();
+  // Show fork in the road
+  showSection("section-fork", true);
+  autoSelectQueryStep(intervalMs, numPoints);
 }
 
 function _buildAvailableLabels(store) {
@@ -160,9 +185,9 @@ function _renderMatcherChips() {
     .map(
       (m, i) =>
         `<span class="matcher-chip">
-      <span class="mc-label">${m.label}</span>
-      <span class="mc-op">${m.op}</span>
-      <span class="mc-val">&quot;${m.value}&quot;</span>
+      <span class="mc-label">${escapeHtml(m.label)}</span>
+      <span class="mc-op">${escapeHtml(m.op)}</span>
+      <span class="mc-val">&quot;${escapeHtml(m.value)}&quot;</span>
       <button type="button" class="mc-remove" data-idx="${i}" aria-label="Remove matcher">×</button>
     </span>`
     )
@@ -174,122 +199,185 @@ function _renderMatcherChips() {
       if (currentStore) runQuery();
     });
   });
+  updateQueryPreview();
 }
 
-// ── Storage backend tabs ──────────────────────────────────────────────
+// ── Fork in the Road ──────────────────────────────────────────────────
 
-document
-  .getElementById("section-storage")
-  ?.querySelectorAll(".backend-tab")
-  .forEach((tab) => {
-    tab.addEventListener("click", () => {
-      const newBackend = tab.dataset.backend;
-      if (!currentStore || currentStore._backendType === newBackend) return;
+function _revealStorage() {
+  if (!currentStore) return;
+  if (!_storagePopulated) {
+    _storagePopulated = true;
+    const totalPts = currentStore.sampleCount;
+    const memBytes = currentStore.memoryBytes();
+    const rawBytes = totalPts * 16;
+    const ratio = rawBytes / memBytes;
+    const ingestRate = totalPts / (_lastIngestTime / 1000);
 
-      document.querySelectorAll(".backend-tab").forEach((t) => {
-        t.classList.toggle("active", t === tab);
-      });
-      _rebuildStoreWithBackend(newBackend);
-    });
-  });
+    document.getElementById("statStoragePts").textContent = totalPts.toLocaleString();
+    document.getElementById("statStorageSeries").textContent =
+      currentStore.seriesCount.toLocaleString();
+    document.getElementById("statStorageMem").textContent = formatBytes(memBytes);
+    document.getElementById("statStorageRatio").textContent = `${ratio.toFixed(1)}×`;
+    document.getElementById("statStorageIngestRate").textContent = `${formatNum(ingestRate)} pts/s`;
 
-function _rebuildStoreWithBackend(backendType) {
-  if (!currentStore || !_lastIngestData) return;
-  const newStore = _createStore(backendType, CHUNK_SIZE);
-  if (!newStore) return;
-
-  for (const sd of _lastIngestData) {
-    const id = newStore.getOrCreateSeries(sd.labels);
-    if (backendType === "column") {
-      const n = sd.timestamps.length;
-      for (let offset = 0; offset < n; offset += CHUNK_SIZE) {
-        const end = Math.min(offset + CHUNK_SIZE, n);
-        newStore.appendBatch(
-          id,
-          sd.timestamps.subarray(offset, end),
-          sd.values.subarray(offset, end)
-        );
-      }
-    } else {
-      newStore.appendBatch(id, sd.timestamps, sd.values);
+    // Compute chunk stats for the merged stats row
+    let totalChunks = 0,
+      totalFrozen = 0;
+    for (let id = 0; id < currentStore.seriesCount; id++) {
+      const info = currentStore.getChunkInfo(id);
+      totalFrozen += info.frozen.length;
+      totalChunks += info.frozen.length + (info.hot.count > 0 ? 1 : 0);
     }
+    document.getElementById("statStorageChunks").textContent = totalChunks.toLocaleString();
+    document.getElementById("statStorageFrozen").textContent = totalFrozen.toLocaleString();
+
+    buildStorageExplorer(currentStore);
   }
-
-  currentStore = newStore;
-
-  const layoutContainer = document.getElementById("storageLayoutDiagram");
-  if (layoutContainer) buildLayoutDiagram(newStore, layoutContainer);
-  buildStorageExplorer(newStore);
-
-  const memBytes = newStore.memoryBytes();
-  const rawBytes = newStore.sampleCount * 16;
-  document.getElementById("statStorageMem").textContent = formatBytes(memBytes);
-  document.getElementById("statStorageRatio").textContent = `${(rawBytes / memBytes).toFixed(1)}×`;
-
-  runQuery();
+  hideSection("section-query");
+  hideSection("section-results");
+  showSection("section-storage", true);
+  _updateExploreNav("section-storage");
 }
+
+function _revealQuery() {
+  if (!currentStore) return;
+  if (!_queryPopulated) {
+    _queryPopulated = true;
+    _populateQueryMetrics(generatedMetrics);
+    _populateGroupByOptions(currentStore);
+    updateQueryPreview();
+  }
+  hideSection("section-storage");
+  showSection("section-query", true);
+  _updateExploreNav("section-query");
+}
+
+function _updateExploreNav(activeId) {
+  document.querySelectorAll(".explore-nav-btn").forEach((btn) => {
+    const isActive = btn.dataset.target === activeId;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+}
+
+document.getElementById("forkStorage")?.addEventListener("click", _revealStorage);
+document.getElementById("forkQuery")?.addEventListener("click", _revealQuery);
+
+// Explore nav buttons (breadcrumb switching)
+document.querySelectorAll(".explore-nav-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (btn.dataset.target === "section-storage") _revealStorage();
+    else if (btn.dataset.target === "section-query") _revealQuery();
+  });
+});
 
 // ── Scenario picker ───────────────────────────────────────────────────
 
 function _renderScenarioCards() {
   const grid = document.getElementById("scenarioGrid");
   if (!grid) return;
-  grid.innerHTML = SCENARIOS.map(
-    (s) => `
-    <button type="button" class="scenario-card" data-scenario-id="${s.id}">
+  const scenarioCards = SCENARIOS.map((s) => {
+    const seriesCount = scenarioSeriesCount(s);
+    const sampleCount = scenarioSampleCount(s);
+    const interval =
+      s.intervalMs >= 60000 ? `${s.intervalMs / 60000}min` : `${s.intervalMs / 1000}s`;
+    return `
+    <button type="button" class="scenario-card" data-scenario-id="${escapeHtml(s.id)}">
       <div class="sc-emoji">${s.emoji}</div>
-      <div class="sc-name">${s.name}</div>
-      <div class="sc-desc">${s.description}</div>
+      <div class="sc-name">${escapeHtml(s.name)}</div>
+      <div class="sc-desc">${escapeHtml(s.description)}</div>
       <div class="sc-meta">
-        ${s.metrics.map((m) => `<span class="sc-metric">${m.name}</span>`).join("")}
+        ${s.metrics.map((m) => `<span class="sc-metric">${escapeHtml(m.name)}</span>`).join("")}
       </div>
-      <div class="sc-stats">${s.metrics.length * s.labelGroups.length} series · ${(s.numPoints).toLocaleString()} pts · ${s.intervalMs >= 60000 ? `${s.intervalMs / 60000}min` : `${s.intervalMs / 1000}s`} interval</div>
-    </button>
-  `
-  ).join("");
+      <div class="sc-stats">${seriesCount.toLocaleString()} series · ${sampleCount.toLocaleString()} pts · ${interval} interval</div>
+      <div class="sc-loading-indicator"><span class="sc-spinner"></span><span class="sc-loading-text">Generating data…</span></div>
+      <div class="sc-done-stats"></div>
+    </button>`;
+  }).join("");
 
-  grid.querySelectorAll(".scenario-card").forEach((card) => {
+  const customCard = `
+    <button type="button" class="scenario-card scenario-card-custom" id="openCustomGenerator">
+      <div class="sc-emoji">⚙️</div>
+      <div class="sc-name">Custom Generator</div>
+      <div class="sc-desc">Choose your own series count, points, data pattern, and sample interval. Full control over the generated dataset.</div>
+      <span class="fork-cta" style="margin-top:auto">Open Generator →</span>
+    </button>`;
+
+  grid.innerHTML = scenarioCards + customCard;
+
+  grid.querySelectorAll(".scenario-card[data-scenario-id]").forEach((card) => {
     card.addEventListener("click", () => {
       const scenario = SCENARIOS.find((s) => s.id === card.dataset.scenarioId);
       if (scenario) loadScenario(scenario, card);
     });
   });
+
+  // Custom generator card toggles inline controls
+  document.getElementById("openCustomGenerator")?.addEventListener("click", () => {
+    const inline = document.getElementById("customGeneratorInline");
+    if (inline) {
+      inline.hidden = !inline.hidden;
+      if (!inline.hidden) inline.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  });
 }
 
-let _lastIngestData = null;
-
 function loadScenario(scenario, clickedCard) {
+  // Show loading state
   document.querySelectorAll(".scenario-card").forEach((c) => {
-    c.classList.remove("active");
+    c.classList.remove("active", "loading", "loaded");
   });
-  if (clickedCard) clickedCard.classList.add("active");
+  if (clickedCard) clickedCard.classList.add("loading");
 
-  const backendType = document.getElementById("scenarioBackend")?.value || "column";
-  const store = _createStore(backendType, CHUNK_SIZE);
-  if (!store) return;
+  // Hide previous fork/storage/query while loading
+  hideSection("section-fork");
+  hideSection("section-storage");
+  hideSection("section-query");
+  hideSection("section-results");
 
-  const t0 = performance.now();
-  const seriesData = generateScenarioData(scenario);
-  _lastIngestData = seriesData;
+  // Defer heavy work to let the loading spinner render
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      try {
+        const backendType = "column";
+        const store = _createStore(backendType, CHUNK_SIZE);
 
-  for (const sd of seriesData) {
-    const id = store.getOrCreateSeries(sd.labels);
-    if (backendType === "column") {
-      const n = sd.timestamps.length;
-      for (let offset = 0; offset < n; offset += CHUNK_SIZE) {
-        const end = Math.min(offset + CHUNK_SIZE, n);
-        store.appendBatch(id, sd.timestamps.subarray(offset, end), sd.values.subarray(offset, end));
+        const t0 = performance.now();
+        const seriesData = generateScenarioData(scenario);
+
+        if (store._backendType === "column") {
+          // Create all series first so groups are fully populated
+          const ids = seriesData.map((sd) => store.getOrCreateSeries(sd.labels));
+          // Ingest interleaved: one chunk at a time across all series in lock-step
+          const numPoints = seriesData[0]?.timestamps.length || 0;
+          for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
+            const end = Math.min(offset + CHUNK_SIZE, numPoints);
+            for (let i = 0; i < seriesData.length; i++) {
+              store.appendBatch(
+                ids[i],
+                seriesData[i].timestamps.subarray(offset, end),
+                seriesData[i].values.subarray(offset, end)
+              );
+            }
+          }
+        } else {
+          for (const sd of seriesData) {
+            const id = store.getOrCreateSeries(sd.labels);
+            store.appendBatch(id, sd.timestamps, sd.values);
+          }
+        }
+
+        _lastIngestTime = performance.now() - t0;
+        const metrics = [...new Set(scenario.metrics.map((m) => m.name))];
+
+        onDataLoaded(store, metrics, _lastIngestTime, scenario.numPoints, scenario.intervalMs);
+      } catch (err) {
+        console.error("Failed to load scenario:", err);
+        if (clickedCard) clickedCard.classList.remove("loading");
       }
-    } else {
-      store.appendBatch(id, sd.timestamps, sd.values);
-    }
-  }
-
-  const ingestTime = performance.now() - t0;
-  const metrics = [...new Set(scenario.metrics.map((m) => m.name))];
-
-  onDataLoaded(store, metrics, ingestTime, scenario.numPoints, scenario.intervalMs);
-  autoSelectQueryStep(scenario.intervalMs, scenario.numPoints);
+    }, 30);
+  });
 }
 
 // ── Custom generator ──────────────────────────────────────────────────
@@ -298,9 +386,7 @@ document.getElementById("btnCustomGenerate")?.addEventListener("click", () => {
   const numSeries = parseInt(document.getElementById("numSeries").value, 10);
   const numPoints = parseInt(document.getElementById("numPoints").value, 10);
   const pattern = document.getElementById("dataPattern").value;
-  const precisionVal = document.getElementById("dataPrecision").value;
-  const decimals = precisionVal !== "" ? parseInt(precisionVal, 10) : undefined;
-  const backendType = document.getElementById("customBackend").value;
+  const backendType = "column";
   const intervalMs = parseInt(document.getElementById("sampleInterval").value, 10);
 
   const btn = document.getElementById("btnCustomGenerate");
@@ -310,7 +396,7 @@ document.getElementById("btnCustomGenerate")?.addEventListener("click", () => {
   requestAnimationFrame(() => {
     setTimeout(() => {
       try {
-        generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs, decimals);
+        generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs);
       } finally {
         btn.disabled = false;
         btn.textContent = "Generate Data";
@@ -323,12 +409,10 @@ function _createStore(backendType, chunkSize) {
   let store;
   if (backendType === "column") {
     if (!wasmReady) {
-      const statusEl = document.getElementById("wasmStatusCustom");
-      if (statusEl) {
-        statusEl.style.display = "inline-block";
-        statusEl.textContent = "⚠ WASM unavailable — switch to ChunkedStore";
-      }
-      return null;
+      console.warn("WASM unavailable — falling back to ChunkedStore");
+      store = new ChunkedStore(chunkSize);
+      store._backendType = "chunked";
+      return store;
     }
     store = new ColumnStore(chunkSize);
   } else if (backendType === "chunked") {
@@ -340,9 +424,8 @@ function _createStore(backendType, chunkSize) {
   return store;
 }
 
-function generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs, decimals) {
+function generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs) {
   const store = _createStore(backendType, CHUNK_SIZE);
-  if (!store) return;
 
   const now = BigInt(Date.now()) * NS_PER_MS;
   const intervalNs = BigInt(intervalMs) * NS_PER_MS;
@@ -367,29 +450,35 @@ function generateCustomData(numSeries, numPoints, pattern, backendType, interval
     const startT = now - BigInt(numPoints) * intervalNs;
     for (let i = 0; i < numPoints; i++) {
       timestamps[i] = startT + BigInt(i) * intervalNs;
-      values[i] = generateValue(pattern, i, si, numPoints, decimals);
+      values[i] = generateValue(pattern, i, si, numPoints);
     }
     seriesData.push({ labels, timestamps, values });
   }
 
-  _lastIngestData = seriesData;
-
   const t0 = performance.now();
-  for (const sd of seriesData) {
-    const id = store.getOrCreateSeries(sd.labels);
-    if (backendType === "column") {
-      for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
-        const end = Math.min(offset + CHUNK_SIZE, numPoints);
-        store.appendBatch(id, sd.timestamps.subarray(offset, end), sd.values.subarray(offset, end));
+  if (backendType === "column") {
+    const ids = seriesData.map((sd) => store.getOrCreateSeries(sd.labels));
+    for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
+      const end = Math.min(offset + CHUNK_SIZE, numPoints);
+      for (let i = 0; i < seriesData.length; i++) {
+        store.appendBatch(
+          ids[i],
+          seriesData[i].timestamps.subarray(offset, end),
+          seriesData[i].values.subarray(offset, end)
+        );
       }
-    } else {
+    }
+  } else {
+    for (const sd of seriesData) {
+      const id = store.getOrCreateSeries(sd.labels);
       store.appendBatch(id, sd.timestamps, sd.values);
     }
   }
   const ingestTime = performance.now() - t0;
+  _lastIngestTime = ingestTime;
 
   document.querySelectorAll(".scenario-card").forEach((c) => {
-    c.classList.remove("active");
+    c.classList.remove("active", "loading", "loaded");
   });
   onDataLoaded(store, [...metricsUsed], ingestTime, numPoints, intervalMs);
   autoSelectQueryStep(intervalMs, numPoints);
@@ -401,8 +490,50 @@ document.getElementById("btnQuery")?.addEventListener("click", runQuery);
 
 for (const id of ["queryMetric", "queryAgg", "queryGroupBy", "queryStep", "queryTransform"]) {
   document.getElementById(id)?.addEventListener("change", () => {
+    updateQueryPreview();
     if (currentStore) runQuery();
   });
+}
+
+function updateQueryPreview() {
+  const el = document.getElementById("queryPreview")?.querySelector(".query-preview-code");
+  if (!el) return;
+
+  const metric = document.getElementById("queryMetric")?.value || "…";
+  const agg = document.getElementById("queryAgg")?.value;
+  const transform = document.getElementById("queryTransform")?.value;
+  const groupByVal = document.getElementById("queryGroupBy")?.value;
+  const stepMs = parseInt(document.getElementById("queryStep")?.value || "0", 10);
+
+  // Build matcher string
+  let matcherStr = "";
+  if (activeMatchers.length > 0) {
+    const parts = activeMatchers.map(
+      (m) =>
+        `<span class="qp-label">${escapeHtml(m.label)}</span><span class="qp-op">${escapeHtml(m.op)}</span><span class="qp-val">"${escapeHtml(m.value)}"</span>`
+    );
+    matcherStr = `{${parts.join(", ")}}`;
+  }
+
+  // Build PromQL-like expression
+  let expr = `<span class="qp-metric">${escapeHtml(metric)}</span>${matcherStr}`;
+
+  if (transform) {
+    expr = `<span class="qp-fn">${transform}</span>(${expr})`;
+  }
+
+  if (agg) {
+    expr = `<span class="qp-fn">${agg}</span>(${expr}`;
+    if (stepMs > 0) {
+      expr += ` <span class="qp-kw">[${formatDuration(stepMs)}]</span>`;
+    }
+    expr += ")";
+    if (groupByVal) {
+      expr += ` <span class="qp-kw">by</span> (<span class="qp-group">${groupByVal}</span>)`;
+    }
+  }
+
+  el.innerHTML = expr;
 }
 
 function runQuery() {
@@ -416,7 +547,15 @@ function runQuery() {
   const step = stepMs > 0 ? BigInt(stepMs) * NS_PER_MS : undefined;
   const transform = document.getElementById("queryTransform")?.value || undefined;
 
+  // Pipeline stage 1: Label matching
+  const totalSeries = currentStore.seriesCount || 0;
   const ids = currentStore.matchLabel("__name__", metric);
+  let matchedIds = ids;
+  if (activeMatchers.length > 0) {
+    matchedIds = [...ids]; // copy for intersection
+    // matchLabel is called inside ScanEngine, but we can count here
+  }
+
   if (ids.length === 0) return;
 
   let minT = BigInt("9223372036854775807");
@@ -444,6 +583,32 @@ function runQuery() {
   const queryTime = performance.now() - t0;
 
   showSection("section-results");
+  updateQueryPreview();
+
+  // ── Pipeline visualization ──
+  const pipelineEl = document.getElementById("queryPipeline");
+  if (pipelineEl) {
+    pipelineEl.hidden = false;
+    // Stage 1: Label matching
+    const matchEl = document.getElementById("pipelineMatchDetail");
+    if (matchEl) {
+      matchEl.innerHTML = `<strong>${result.scannedSeries.toLocaleString()}</strong> of ${totalSeries.toLocaleString()} series matched`;
+    }
+    // Stage 2: Chunk scan
+    const chunksEl = document.getElementById("pipelineChunksDetail");
+    if (chunksEl) {
+      chunksEl.innerHTML = `<strong>${result.scannedSamples.toLocaleString()}</strong> samples across ${result.scannedSeries.toLocaleString()} series`;
+    }
+    // Stage 3: Decode & aggregate
+    const decodeEl = document.getElementById("pipelineDecodeDetail");
+    if (decodeEl) {
+      decodeEl.innerHTML = `<strong>${result.series.length.toLocaleString()}</strong> result series · <strong>${queryTime.toFixed(1)} ms</strong>`;
+    }
+    // Animate stages in
+    for (const stage of pipelineEl.querySelectorAll(".pipeline-stage")) {
+      stage.classList.add("pipeline-active");
+    }
+  }
 
   document.getElementById("qStatScannedSeries").innerHTML =
     `Scanned: <strong>${result.scannedSeries}</strong> series`;
@@ -454,13 +619,7 @@ function runQuery() {
   document.getElementById("qStatQueryTime").innerHTML =
     `Time: <strong>${queryTime.toFixed(1)} ms</strong>`;
 
-  const transformLabel = transform ? `${transform}(${metric})` : metric;
-  const aggLabel = agg ? `${agg}(${transformLabel})` : transformLabel;
-  const groupLabel = groupBy ? ` by ${groupBy.join(", ")}` : "";
-  const stepLabel = step ? ` [${formatDuration(stepMs)} step]` : "";
-  const chartTitle = `${aggLabel}${groupLabel}${stepLabel}`;
-
-  renderChart(document.getElementById("chartCanvas"), result.series, chartTitle);
+  renderChart(document.getElementById("chartCanvas"), result.series, "");
   setupChartTooltip();
 
   const legendEl = document.getElementById("chartLegend");
@@ -472,7 +631,7 @@ function runQuery() {
       const labelStr =
         [...s.labels]
           .filter(([k]) => k !== "__name__")
-          .map(([k, v]) => `${k}="${v}"`)
+          .map(([k, v]) => `${escapeHtml(k)}="${escapeHtml(v)}"`)
           .join(", ") || "all";
       const item = document.createElement("div");
       item.className = "legend-item";
@@ -502,34 +661,10 @@ installResizeListener();
 // ── WASM init + auto-load ─────────────────────────────────────────────
 
 loadWasm().then((ok) => {
-  const statusEls = document.querySelectorAll(".wasm-status-badge");
-  for (const el of statusEls) {
-    el.style.display = "inline-block";
-    if (ok) {
-      el.className = "wasm-status-badge wasm-ok";
-      el.textContent = "✓ WASM";
-    } else {
-      el.className = "wasm-status-badge wasm-err";
-      el.textContent = "✗ WASM unavailable";
-    }
-  }
-  // Disable column options if WASM unavailable
   if (!ok) {
-    document.querySelectorAll('option[value="column"]').forEach((opt) => {
-      opt.disabled = true;
-      opt.textContent += " (WASM required)";
-    });
+    console.warn("WASM unavailable — ColumnStore features disabled");
   }
 
-  // Render scenario cards
+  // Render scenario cards (user clicks to load — no auto-load)
   _renderScenarioCards();
-
-  // Auto-load first scenario
-  const firstScenario = SCENARIOS[0];
-  requestAnimationFrame(() => {
-    setTimeout(() => {
-      const firstCard = document.querySelector(".scenario-card");
-      loadScenario(firstScenario, firstCard);
-    }, 100);
-  });
 });
