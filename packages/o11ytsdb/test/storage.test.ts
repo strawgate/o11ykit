@@ -3,6 +3,7 @@ import { ChunkedStore } from "../src/chunked-store.js";
 import { decodeChunk, encodeChunk } from "../src/codec.js";
 import { ColumnStore } from "../src/column-store.js";
 import { FlatStore } from "../src/flat-store.js";
+import { LaneRowGroupStore } from "../src/lane-row-group-store.js";
 import type { Codec, Labels, StorageBackend, ValuesCodec } from "../src/types.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -190,6 +191,7 @@ describeStorageBackend("FlatStore", () => new FlatStore());
 describeStorageBackend("ChunkedStore (chunk=64)", () => new ChunkedStore(tsCodec, 64));
 describeStorageBackend("ChunkedStore (chunk=640)", () => new ChunkedStore(tsCodec, 640));
 describeStorageBackend("ColumnStore (chunk=64)", () => new ColumnStore(tsValuesCodec, 64));
+describeStorageBackend("LaneRowGroupStore (chunk=64 lane=2)", () => new LaneRowGroupStore(tsValuesCodec, 64, () => 0, 2));
 
 // ── ChunkedStore-specific tests ──────────────────────────────────────
 
@@ -221,5 +223,54 @@ describe("ChunkedStore freeze behavior", () => {
     for (let i = 0; i < 25; i++) {
       expect(data.values[i]).toBeCloseTo(i * 1.5);
     }
+  });
+});
+
+describe("LaneRowGroupStore freeze behavior", () => {
+  it("freezes lanes independently within the same logical group", () => {
+    const store = new LaneRowGroupStore(tsValuesCodec, 64, () => 0, 2);
+    const labels = ["a", "b", "c", "d"].map((host) => makeLabels("lane_metric", { host }));
+    const ids = labels.map((label) => store.getOrCreateSeries(label));
+
+    const laggardTs = new BigInt64Array(32);
+    const laggardVals = new Float64Array(32);
+    for (let i = 0; i < 32; i++) {
+      laggardTs[i] = 1_000_000n + BigInt(i) * 15_000n;
+      laggardVals[i] = i;
+    }
+
+    const fullTs = new BigInt64Array(128);
+    const fullVals = new Float64Array(128);
+    for (let i = 0; i < 128; i++) {
+      fullTs[i] = 1_000_000n + BigInt(i) * 15_000n;
+      fullVals[i] = i;
+    }
+
+    store.appendBatch(ids[0]!, laggardTs, laggardVals);
+    store.appendBatch(ids[1]!, laggardTs, laggardVals);
+    store.appendBatch(ids[2]!, fullTs, fullVals);
+    store.appendBatch(ids[3]!, fullTs, fullVals);
+
+    const groups = Reflect.get(store, "groups");
+    expect(Array.isArray(groups)).toBe(true);
+    const group = groups[0];
+    expect(group).toBeDefined();
+    const lanes = Reflect.get(group, "lanes");
+    expect(Array.isArray(lanes)).toBe(true);
+    expect(lanes.length).toBe(2);
+
+    const lane0 = lanes[0];
+    const lane1 = lanes[1];
+    const lane0Frozen = Reflect.get(lane0, "frozenTimestamps");
+    const lane1Frozen = Reflect.get(lane1, "frozenTimestamps");
+    const lane0HotCount = Reflect.get(lane0, "hotCount");
+    const lane1HotCount = Reflect.get(lane1, "hotCount");
+
+    expect(Array.isArray(lane0Frozen)).toBe(true);
+    expect(Array.isArray(lane1Frozen)).toBe(true);
+    expect(lane0Frozen.length).toBe(0);
+    expect(lane1Frozen.length).toBe(2);
+    expect(lane0HotCount).toBe(32);
+    expect(lane1HotCount).toBe(0);
   });
 });

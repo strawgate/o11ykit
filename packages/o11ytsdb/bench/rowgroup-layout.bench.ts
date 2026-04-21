@@ -35,8 +35,9 @@ const STEP = 60_000n;
 
 interface LayoutSpec {
   name: string;
-  kind: "column" | "rowgroup";
+  kind: "column" | "rowgroup" | "lane-rowgroup";
   groupSize: number | "all";
+  laneSize?: number;
 }
 
 interface ScenarioSpec {
@@ -81,6 +82,7 @@ interface ExperimentResult {
 const LAYOUTS: LayoutSpec[] = [
   { name: "column-all", kind: "column", groupSize: "all" },
   { name: "rowgroup-all", kind: "rowgroup", groupSize: "all" },
+  { name: "lane-rowgroup-32", kind: "lane-rowgroup", groupSize: "all", laneSize: 32 },
   { name: "rowgroup-32", kind: "rowgroup", groupSize: 32 },
   { name: "rowgroup-5", kind: "rowgroup", groupSize: 5 },
 ];
@@ -136,6 +138,15 @@ function typedArrayByteLength(value: unknown): number {
   throw new Error("expected typed array with byteLength");
 }
 
+function collectPhysicalGroups(group: unknown): object[] {
+  if (typeof group !== "object" || group === null) {
+    throw new Error("invalid group object in layout diagnostics");
+  }
+  const lanes = Reflect.get(group, "lanes");
+  if (Array.isArray(lanes)) return lanes.filter((lane): lane is object => typeof lane === "object" && lane !== null);
+  return [group];
+}
+
 function collectLayoutStats(store: StorageBackend): LayoutStats {
   const groupsValue = Reflect.get(store, "groups");
   const seriesValue = Reflect.get(store, "allSeries");
@@ -148,6 +159,7 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
   let totalRowGroups = 0;
   let maxHotCount = 0;
   let maxHotCapacity = 0;
+  let totalPhysicalGroups = 0;
   let groupsOverChunkCapacity = 0;
   let hotTimestampBytes = 0;
   let frozenTimestampBytes = 0;
@@ -156,52 +168,52 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
   let statsMetadataBytes = 0;
 
   for (const group of groupsValue) {
-    if (typeof group !== "object" || group === null) {
-      throw new Error("invalid group object in layout diagnostics");
-    }
-    const members = Reflect.get(group, "members");
-    const frozenTimestamps = Reflect.get(group, "frozenTimestamps");
-    const rowGroups = Reflect.get(group, "rowGroups");
-    const hotCount = Reflect.get(group, "hotCount");
-    const hotTimestamps = Reflect.get(group, "hotTimestamps");
-    if (
-      !hasLength(members) ||
-      !isIndexableArrayLike(frozenTimestamps) ||
-      typeof hotCount !== "number" ||
-      !hasLength(hotTimestamps)
-    ) {
-      throw new Error("group shape mismatch in layout diagnostics");
-    }
-    maxMembersPerGroup = Math.max(maxMembersPerGroup, members.length);
-    totalFrozenTimestampChunks += frozenTimestamps.length;
-    totalRowGroups += hasLength(rowGroups) ? rowGroups.length : 0;
-    maxHotCount = Math.max(maxHotCount, hotCount);
-    maxHotCapacity = Math.max(maxHotCapacity, hotTimestamps.length);
-    if (hotTimestamps.length > CHUNK_SIZE) groupsOverChunkCapacity++;
-    hotTimestampBytes += hotCount * 8;
-    for (let i = 0; i < frozenTimestamps.length; i++) {
-      const chunk = frozenTimestamps[i];
-      if (typeof chunk !== "object" || chunk === null) {
-        throw new Error("invalid frozen timestamp chunk");
+    for (const physicalGroup of collectPhysicalGroups(group)) {
+      totalPhysicalGroups++;
+      const members = Reflect.get(physicalGroup, "members");
+      const frozenTimestamps = Reflect.get(physicalGroup, "frozenTimestamps");
+      const rowGroups = Reflect.get(physicalGroup, "rowGroups");
+      const hotCount = Reflect.get(physicalGroup, "hotCount");
+      const hotTimestamps = Reflect.get(physicalGroup, "hotTimestamps");
+      if (
+        !hasLength(members) ||
+        !isIndexableArrayLike(frozenTimestamps) ||
+        typeof hotCount !== "number" ||
+        !hasLength(hotTimestamps)
+      ) {
+        throw new Error("group shape mismatch in layout diagnostics");
       }
-      const compressed = Reflect.get(chunk, "compressed");
-      const timestamps = Reflect.get(chunk, "timestamps");
-      if (compressed) {
-        frozenTimestampBytes += typedArrayByteLength(compressed);
-      } else if (timestamps) {
-        frozenTimestampBytes += typedArrayByteLength(timestamps);
-      }
-    }
-    if (isIndexableArrayLike(rowGroups)) {
-      for (let i = 0; i < rowGroups.length; i++) {
-        const rowGroup = rowGroups[i];
-        if (typeof rowGroup !== "object" || rowGroup === null) {
-          throw new Error("invalid row group");
+      maxMembersPerGroup = Math.max(maxMembersPerGroup, members.length);
+      totalFrozenTimestampChunks += frozenTimestamps.length;
+      totalRowGroups += hasLength(rowGroups) ? rowGroups.length : 0;
+      maxHotCount = Math.max(maxHotCount, hotCount);
+      maxHotCapacity = Math.max(maxHotCapacity, hotTimestamps.length);
+      if (hotTimestamps.length > CHUNK_SIZE) groupsOverChunkCapacity++;
+      hotTimestampBytes += hotCount * 8;
+      for (let i = 0; i < frozenTimestamps.length; i++) {
+        const chunk = frozenTimestamps[i];
+        if (typeof chunk !== "object" || chunk === null) {
+          throw new Error("invalid frozen timestamp chunk");
         }
-        frozenValueBytes += typedArrayByteLength(Reflect.get(rowGroup, "valueBuffer"));
-        statsMetadataBytes += typedArrayByteLength(Reflect.get(rowGroup, "offsets"));
-        statsMetadataBytes += typedArrayByteLength(Reflect.get(rowGroup, "sizes"));
-        statsMetadataBytes += typedArrayByteLength(Reflect.get(rowGroup, "packedStats"));
+        const compressed = Reflect.get(chunk, "compressed");
+        const timestamps = Reflect.get(chunk, "timestamps");
+        if (compressed) {
+          frozenTimestampBytes += typedArrayByteLength(compressed);
+        } else if (timestamps) {
+          frozenTimestampBytes += typedArrayByteLength(timestamps);
+        }
+      }
+      if (isIndexableArrayLike(rowGroups)) {
+        for (let i = 0; i < rowGroups.length; i++) {
+          const rowGroup = rowGroups[i];
+          if (typeof rowGroup !== "object" || rowGroup === null) {
+            throw new Error("invalid row group");
+          }
+          frozenValueBytes += typedArrayByteLength(Reflect.get(rowGroup, "valueBuffer"));
+          statsMetadataBytes += typedArrayByteLength(Reflect.get(rowGroup, "offsets"));
+          statsMetadataBytes += typedArrayByteLength(Reflect.get(rowGroup, "sizes"));
+          statsMetadataBytes += typedArrayByteLength(Reflect.get(rowGroup, "packedStats"));
+        }
       }
     }
   }
@@ -248,7 +260,7 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
   }
 
   return {
-    totalGroups: groupsValue.length,
+    totalGroups: totalPhysicalGroups,
     maxMembersPerGroup,
     totalFrozenTimestampChunks,
     totalRowGroups,
@@ -337,6 +349,19 @@ async function createStore(layout: LayoutSpec): Promise<StorageBackend> {
   if (layout.kind === "column") {
     const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
     return new ColumnStore(valuesCodec, CHUNK_SIZE, resolver, layout.name, tsCodec, rangeCodec);
+  }
+
+  if (layout.kind === "lane-rowgroup") {
+    const { LaneRowGroupStore } = await import(pkgPath("dist/lane-row-group-store.js"));
+    return new LaneRowGroupStore(
+      valuesCodec,
+      CHUNK_SIZE,
+      resolver,
+      layout.laneSize ?? 32,
+      layout.name,
+      tsCodec,
+      rangeCodec
+    );
   }
 
   const { RowGroupStore } = await import(pkgPath("dist/row-group-store.js"));
