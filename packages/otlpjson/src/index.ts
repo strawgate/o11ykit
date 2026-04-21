@@ -162,6 +162,11 @@ export interface MetricPointVisitor {
 }
 
 export interface MetricPointRawVisitor {
+  /**
+   * Raw metric contexts are optimized for low allocation and may be reused
+   * across callbacks within a scope walk. Treat them as callback-scoped values
+   * rather than storing the object reference for deferred use.
+   */
   onScope?(context: MetricScopeRawVisitContext): void;
   onNumberDataPoints?(
     context: MetricPointRawVisitContext,

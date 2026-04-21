@@ -43,6 +43,17 @@ function readItemAt<T>(arr: readonly T[], index: number, label: string): T {
   return value;
 }
 
+function readChunkBounds(range: TimeRange, rangeIndex: number): [bigint, bigint] | null {
+  const { chunkMinT, chunkMaxT } = range;
+  if ((chunkMinT === undefined) !== (chunkMaxT === undefined)) {
+    throw new RangeError(`incomplete chunk bounds at range ${rangeIndex}`);
+  }
+  if (chunkMinT === undefined || chunkMaxT === undefined) {
+    return null;
+  }
+  return [chunkMinT, chunkMaxT];
+}
+
 /** Galloping lower bound on a sorted number array. */
 function gallopLowerBound(arr: number[], target: number, from: number): number {
   if (from >= arr.length) return arr.length;
@@ -418,15 +429,18 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   // Find time bounds (account for both sample-bearing and stats-only parts).
   let minT = BigInt("9223372036854775807");
   let maxT = -minT;
-  for (const r of ranges) {
+  for (let ri = 0; ri < ranges.length; ri++) {
+    const r = readItemAt(ranges, ri, "range");
+    const chunkBounds = readChunkBounds(r, ri);
     if (r.timestamps.length > 0) {
       const firstTimestamp = readBigIntAt(r.timestamps, 0, "range timestamp");
       const lastTimestamp = readBigIntAt(r.timestamps, r.timestamps.length - 1, "range timestamp");
       if (firstTimestamp < minT) minT = firstTimestamp;
       if (lastTimestamp > maxT) maxT = lastTimestamp;
-    } else if (r.stats && r.chunkMinT !== undefined && r.chunkMaxT !== undefined) {
-      if (r.chunkMinT < minT) minT = r.chunkMinT;
-      if (r.chunkMaxT > maxT) maxT = r.chunkMaxT;
+    } else if (r.stats && chunkBounds) {
+      const [chunkMinT, chunkMaxT] = chunkBounds;
+      if (chunkMinT < minT) minT = chunkMinT;
+      if (chunkMaxT > maxT) maxT = chunkMaxT;
     }
   }
 
@@ -752,13 +766,9 @@ function _stepAggregateRate(
     const vs = decoded.values;
 
     // Use chunk metadata to derive interval when available.
-    const hasChunkMeta = r.chunkMinT !== undefined && r.chunkMaxT !== undefined;
-    if (len >= 2 && hasChunkMeta) {
-      const chunkMinT = r.chunkMinT;
-      const chunkMaxT = r.chunkMaxT;
-      if (chunkMinT === undefined || chunkMaxT === undefined) {
-        throw new RangeError(`missing chunk bounds at range ${ri}`);
-      }
+    const chunkBounds = readChunkBounds(r, ri);
+    if (len >= 2 && chunkBounds) {
+      const [chunkMinT, chunkMaxT] = chunkBounds;
       const chunkMinTN = Number(chunkMinT - minT) + minTN;
       const chunkMaxTN = Number(chunkMaxT - minT) + minTN;
       const span = chunkMaxTN - chunkMinTN;
@@ -863,13 +873,9 @@ function _stepAggregateIrate(
     if (len === 0) continue;
     const vs = decoded.values;
 
-    const hasChunkMeta = r.chunkMinT !== undefined && r.chunkMaxT !== undefined;
-    if (len >= 2 && hasChunkMeta) {
-      const chunkMinT = r.chunkMinT;
-      const chunkMaxT = r.chunkMaxT;
-      if (chunkMinT === undefined || chunkMaxT === undefined) {
-        throw new RangeError(`missing chunk bounds at range ${ri}`);
-      }
+    const chunkBounds = readChunkBounds(r, ri);
+    if (len >= 2 && chunkBounds) {
+      const [chunkMinT, chunkMaxT] = chunkBounds;
       const chunkMinTN = Number(chunkMinT - minT) + minTN;
       const chunkMaxTN = Number(chunkMaxT - minT) + minTN;
       const span = chunkMaxTN - chunkMinTN;
@@ -943,13 +949,9 @@ function _stepAggregatePercentile(
     const vs = decoded.values;
 
     // Use chunk metadata for arithmetic bucket indexing when available.
-    const hasChunkMeta = r.chunkMinT !== undefined && r.chunkMaxT !== undefined;
-    if (len >= 2 && hasChunkMeta) {
-      const chunkMinT = r.chunkMinT;
-      const chunkMaxT = r.chunkMaxT;
-      if (chunkMinT === undefined || chunkMaxT === undefined) {
-        throw new RangeError(`missing chunk bounds at range ${ri}`);
-      }
+    const chunkBounds = readChunkBounds(r, ri);
+    if (len >= 2 && chunkBounds) {
+      const [chunkMinT, chunkMaxT] = chunkBounds;
       const chunkMinTN = Number(chunkMinT - minT) + minTN;
       const chunkMaxTN = Number(chunkMaxT - minT) + minTN;
       const span = chunkMaxTN - chunkMinTN;
