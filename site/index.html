@@ -6,7 +6,7 @@
     <title>o11ykit — Telemetry building blocks for browser apps and CI</title>
     <meta
       name="description"
-      content="Shape OTLP, compress time-series in the browser, publish GitHub-native metrics, and gate regressions. OtlpKit, o11ytsdb, Octo11y, and Benchkit in one stack."
+      content="Shape OTLP, compress time-series in the browser, publish GitHub-native metrics, and gate regressions. OtlpKit, @o11ykit/metricsdb, Octo11y, and Benchkit in one stack."
     />
     <meta name="theme-color" content="#f8fafb" />
     <link rel="icon" href="./logo.svg" type="image/svg+xml" />
@@ -40,7 +40,7 @@
         <p class="eyebrow">platform overview</p>
         <h1>Shape, store, publish,<br/>and compare telemetry.</h1>
         <p class="lede">
-          OtlpKit turns OTLP into chart-ready views. o11ytsdb adds browser-native time-series
+          OtlpKit turns OTLP into chart-ready views. @o11ykit/metricsdb adds browser-native time-series
           storage with interchangeable TypeScript and Rust→WASM codecs. Octo11y publishes metrics
           from GitHub Actions, and Benchkit adds regression automation on top.
         </p>
@@ -203,7 +203,7 @@
           </div>
           <div class="pipeline-arrow">→</div>
           <div class="pipeline-stage accent-tsdb">
-            <div class="stage-name">Store with o11ytsdb</div>
+            <div class="stage-name">Store with MetricsDB</div>
             <div class="stage-desc">Compress and query browser-local time-series with TS or WASM codecs</div>
           </div>
           <div class="pipeline-arrow">→</div>
@@ -256,10 +256,10 @@
       </section>
 
       <section class="callout">
-        <h3>Keep OtlpKit and o11ytsdb adjacent, not merged</h3>
+        <h3>Keep OtlpKit and @o11ykit/metricsdb adjacent, not merged</h3>
         <p>
           They can both hand you series, but they do different jobs. OtlpKit parses OTLP JSON and
-          shapes it into view-friendly data for charts. o11ytsdb owns compressed persistence,
+          shapes it into view-friendly data for charts. @o11ykit/metricsdb owns compressed persistence,
           backend layout, codec selection, and query execution over stored chunks. The overlap is at
           the boundary, not in the core responsibility.
         </p>
@@ -297,7 +297,7 @@
 
       <footer class="site-footer">
         <p>
-          Layering: <code>@benchkit/* → @octo11y/* → @otlpkit/*</code>, with <code>o11ytsdb</code>
+          Layering: <code>@benchkit/* → @octo11y/* → @otlpkit/*</code>, with <code>@o11ykit/metricsdb</code>
           as the browser-native storage engine beside the OTLP foundation.
         </p>
       </footer>

@@ -1,5 +1,5 @@
 /**
- * o11ytsdb — Browser-native time-series database for OpenTelemetry data.
+ * @o11ykit/metricsdb — Browser-native time-series database for OpenTelemetry data.
  *
  * Public API surface.
  */

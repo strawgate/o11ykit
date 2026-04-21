@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>o11ytsdb — Browser-Native Time-Series Database Engine</title>
+    <title>@o11ykit/metricsdb — Browser-Native Time-Series Database Engine</title>
     <meta
       name="description"
-      content="Interactive documentation for o11ytsdb: a browser-native TSDB with XOR-delta compression, pluggable storage backends, and real-time query engine. Generate millions of data points and query them live."
+      content="Interactive documentation for @o11ykit/metricsdb: a browser-native TSDB with XOR-delta compression, pluggable storage backends, and real-time query engine. Generate millions of data points and query them live."
     />
     <meta name="theme-color" content="#0a1624" />
     <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
-    <meta property="og:title" content="o11ytsdb — Browser-Native Time-Series Database Engine" />
-    <meta property="og:description" content="Interactive documentation for o11ytsdb, a browser-native time-series database with ALP compression, Gorilla encoding, and real-time querying." />
+    <meta property="og:title" content="@o11ykit/metricsdb — Browser-Native Time-Series Database Engine" />
+    <meta property="og:description" content="Interactive documentation for @o11ykit/metricsdb, a browser-native time-series database with ALP compression, Gorilla encoding, and real-time querying." />
     <meta property="og:type" content="website" />
     <base href="/o11ykit/tsdb-engine/" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -47,7 +47,7 @@
 
       <!-- ─── Hero ────────────────────────────────────────────── -->
       <section class="hero panel">
-        <p class="eyebrow">o11ytsdb engine</p>
+        <p class="eyebrow">@o11ykit/metricsdb</p>
         <h1>A time-series database<br/>that runs in your browser.</h1>
         <p class="lede">
           Gorilla-style XOR-delta compression. Three pluggable storage backends.
@@ -481,7 +481,7 @@ New window       → '11' + 6L + 6M   (14 + N bits)</code></pre>
         <h2>Fluent Query Builder</h2>
         <p class="section-intro">The query builder compiles a typed <code>PlanNode</code> AST and executes it against any <code>StorageBackend</code>. It's the preferred high-level query API.</p>
 
-<pre><code>import { query, executePlan } from 'o11ytsdb';
+<pre><code>import { query, executePlan } from '@o11ykit/metricsdb';
 
 // Composable, immutable builder — chain any combination (exec is synchronous)
 const result = query()
@@ -539,7 +539,7 @@ const { series, scannedSamples } = executePlan(plan, storage);</code></pre>
         <h2>Quick Start</h2>
         <p class="section-intro">Create a store, ingest data, and query with the fluent builder or the low-level engine.</p>
 
-<pre><code>import { ChunkedStore, encodeChunk, decodeChunk, query } from 'o11ytsdb';
+<pre><code>import { ChunkedStore, encodeChunk, decodeChunk, query } from '@o11ykit/metricsdb';
 
 // 1. Create a storage backend
 const store = new ChunkedStore({ name: 'xor-delta', encode: encodeChunk, decode: decodeChunk });
@@ -569,7 +569,7 @@ console.log(`Found ${result.series.length} groups, scanned ${result.scannedSampl
         <h2>OTLP Ingest Pipeline</h2>
         <p class="section-intro">Ingest OpenTelemetry JSON payloads directly at up to <strong>1.2M points/sec</strong>. Supports gauge, sum, histogram, summary, and exponential histogram. FNV-1a fingerprinting + lazy label snapshots keep the hot path allocation-free.</p>
 
-<pre><code>import { ingestOtlpJson, ingestOtlpObject, ChunkedStore } from 'o11ytsdb';
+<pre><code>import { ingestOtlpJson, ingestOtlpObject, ChunkedStore } from '@o11ykit/metricsdb';
 
 const store = new ChunkedStore(codec);
 
@@ -593,7 +593,7 @@ const result2 = ingestOtlpObject(parsedDocument, store);
         <h2>Web Worker Isolation</h2>
         <p class="section-intro">Move all TSDB operations off the main thread. The worker protocol sends OTLP payloads as transferable <code>Uint8Array</code> buffers — <strong>main-thread blocking drops from ~19ms to ~1.9ms</strong> for a 10K-point batch.</p>
 
-<pre><code>import { WorkerClient } from 'o11ytsdb';
+<pre><code>import { WorkerClient } from '@o11ykit/metricsdb';
 
 const client = new WorkerClient(new Worker('./tsdb-worker.js'));
 await client.init({ chunkSize: 1024 });

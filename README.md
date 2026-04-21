@@ -5,7 +5,7 @@
 Top-level projects:
 
 - `@otlpkit/*` (root `packages/*`): OTLP parsing/query/view/adapters for browser dashboards and app diagnostics.
-- `o11ytsdb` (root `packages/o11ytsdb`): browser-native time-series database for OpenTelemetry data with WASM-accelerated codecs.
+- `@o11ykit/metricsdb` (root `packages/o11ytsdb`): browser-native time-series database for OpenTelemetry data with WASM-accelerated codecs.
 - `octo11y` (`/octo11y`): GitHub Actions-driven metrics pipeline and UI packages.
 - `benchkit` (`/octo11y`): benchmark-focused packages/actions layered on octo11y.
 
@@ -16,9 +16,10 @@ The root project currently hosts the `@otlpkit/*` JavaScript libraries:
 - `@otlpkit/views`: build reusable frames such as time series, latest-value tables, histograms, trace waterfalls, and event timelines
 - `@otlpkit/adapters`: project frames into library-native Chart.js, Recharts, ECharts, and uPlot shapes
 
-And the `o11ytsdb` time-series database:
+And the metrics backend:
 
-- `o11ytsdb`: XOR-delta (Gorilla) codec with TypeScript, Zig→WASM, and Rust→WASM implementations; chunked and columnar storage backends; baseline query engine. See [`packages/o11ytsdb/README.md`](./packages/o11ytsdb/README.md) for benchmarks and status.
+- `@o11ykit/metricsdb`: XOR-delta (Gorilla) codec with TypeScript, Zig→WASM, and Rust→WASM implementations; chunked and columnar storage backends; baseline query engine. See [`packages/o11ytsdb/README.md`](./packages/o11ytsdb/README.md) for benchmarks and status.
+- `o11ytsdb`: compatibility wrapper that re-exports `@o11ykit/metricsdb` during the transition.
 
 The root project currently hosts this GitHub Action:
 
@@ -41,8 +42,8 @@ Dependency rule: `benchkit -> octo11y -> otlpkit`.
 
 GitHub Pages publishes a small portal:
 
-- `/o11ykit/` platform overview for OtlpKit, o11ytsdb, Octo11y, and Benchkit
-- `/o11ykit/tsdb-engine/` TSDB engine site and interactive codec demos
+- `/o11ykit/` platform overview for OtlpKit, MetricsDB, Octo11y, and Benchkit
+- `/o11ykit/tsdb-engine/` MetricsDB engine site and interactive codec demos
 - `/o11ykit/otlpkit/` OtlpKit incident-story site
 - `/o11ykit/octo11y/` Octo11y guide and pipeline walkthrough
 - `/o11ykit/benchkit/` Benchkit demo and regression-automation handoff

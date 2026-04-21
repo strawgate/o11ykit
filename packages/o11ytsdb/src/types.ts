@@ -1,5 +1,5 @@
 /**
- * Core interfaces for the o11ytsdb experimentation framework.
+ * Core interfaces for the @o11ykit/metricsdb engine.
  *
  * Every component is pluggable — swap storage backends, codecs, and
  * query strategies to benchmark different approaches end-to-end.

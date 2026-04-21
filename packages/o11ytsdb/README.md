@@ -1,7 +1,10 @@
-# o11ytsdb
+# @o11ykit/metricsdb
 
 Browser-native time-series compression for OpenTelemetry data. XOR-delta
 encoding with two interchangeable implementations: TypeScript and Rust→WASM.
+
+The primary package name is now `@o11ykit/metricsdb`. The legacy `o11ytsdb`
+package remains as a compatibility wrapper that re-exports the same API.
 
 ## Status: M1 — XOR-Delta Codec ✅
 

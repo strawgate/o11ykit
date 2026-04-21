@@ -1,0 +1,47 @@
+{
+  "name": "o11ytsdb",
+  "version": "0.0.1",
+  "description": "Compatibility wrapper that re-exports @o11ykit/metricsdb.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "opentelemetry",
+    "otlp",
+    "tsdb",
+    "time-series",
+    "metrics",
+    "compatibility"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@o11ykit/metricsdb": "^0.0.1"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/strawgate/o11ykit.git",
+    "directory": "packages/o11ytsdb-compat"
+  }
+}

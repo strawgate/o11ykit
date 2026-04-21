@@ -1,9 +1,8 @@
 {
-  "name": "o11ytsdb",
+  "name": "@o11ykit/metricsdb",
   "version": "0.0.1",
   "description": "Browser-native time-series database for OpenTelemetry data.",
   "license": "UNLICENSED",
-  "private": true,
   "engines": {
     "node": ">=22.0.0"
   },
@@ -52,5 +51,10 @@
     "bench:compare": "npm run bench -- --compare",
     "smoke": "npm run build && node bench/smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/strawgate/o11ykit.git",
+    "directory": "packages/o11ytsdb"
   }
 }

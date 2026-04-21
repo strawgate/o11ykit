@@ -1,5 +1,5 @@
 /**
- * Production WASM codec loader for o11ytsdb.
+ * Production WASM codec loader for @o11ykit/metricsdb.
  *
  * Wraps the Rust WASM binary into typed codec interfaces (ValuesCodec,
  * TimestampCodec, RangeDecodeCodec) and SIMD accelerators (msToNs,

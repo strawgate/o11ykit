@@ -26,6 +26,8 @@ npm trust github @otlpkit/otlpjson --repo strawgate/o11ykit --file release.yml -
 npm trust github @otlpkit/query --repo strawgate/o11ykit --file release.yml --yes
 npm trust github @otlpkit/views --repo strawgate/o11ykit --file release.yml --yes
 npm trust github @otlpkit/adapters --repo strawgate/o11ykit --file release.yml --yes
+npm trust github @o11ykit/metricsdb --repo strawgate/o11ykit --file release.yml --yes
+npm trust github o11ytsdb --repo strawgate/o11ykit --file release.yml --yes
 npm trust github @octo11y/core --repo strawgate/o11ykit --file release.yml --yes
 npm trust github @benchkit/format --repo strawgate/o11ykit --file release.yml --yes
 npm trust github @benchkit/chart --repo strawgate/o11ykit --file release.yml --yes
@@ -52,6 +54,8 @@ pkgs=(
   @otlpkit/query
   @otlpkit/views
   @otlpkit/adapters
+  @o11ykit/metricsdb
+  o11ytsdb
   @octo11y/core
   @benchkit/format
   @benchkit/chart

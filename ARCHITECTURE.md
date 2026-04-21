@@ -3,7 +3,7 @@
 This repository is organized as a layered monorepo:
 
 1. `@otlpkit/*` (foundation)
-2. `o11ytsdb` (browser-native time-series database)
+2. `@o11ykit/metricsdb` (browser-native time-series database)
 3. `@octo11y/*` (GitHub-driven metrics product layer)
 4. `@benchkit/*` (benchmark + monitor extensions)
 
@@ -11,25 +11,25 @@ This repository is organized as a layered monorepo:
 
 Allowed:
 
-- `o11ytsdb` depends on `@otlpkit/*`
+- `@o11ykit/metricsdb` depends on `@otlpkit/*`
 - `@octo11y/*` depends on `@otlpkit/*`
 - `@benchkit/*` depends on `@octo11y/*`
 
 Disallowed:
 
-- `@otlpkit/*` depending on `@octo11y/*`, `@benchkit/*`, or `o11ytsdb`
+- `@otlpkit/*` depending on `@octo11y/*`, `@benchkit/*`, or `@o11ykit/metricsdb`
 - `@octo11y/*` depending on `@benchkit/*`
 
 ## Package Scope Rules
 
 - Generic OTLP parsing, query, view shaping, and chart adapters belong in `@otlpkit/*`.
-- Time-series storage, compression codecs, and in-browser query execution belong in `o11ytsdb`.
+- Time-series storage, compression codecs, and in-browser query execution belong in `@o11ykit/metricsdb`.
 - GitHub Actions/workflows and GitHub-derived metric logic belong in `@octo11y/*`.
 - Benchmark-specific parsers, semantics, and monitor-centric extensions belong in `@benchkit/*`.
 
-## o11ytsdb Compression Codecs
+## @o11ykit/metricsdb Compression Codecs
 
-`o11ytsdb` compresses f64 time-series values using three codecs, selected
+`@o11ykit/metricsdb` compresses f64 time-series values using three codecs, selected
 automatically per chunk:
 
 | Codec | Mechanism | Best For | Typical B/pt |

@@ -1,6 +1,6 @@
 # Codec Reference
 
-o11ytsdb ships three value compression codecs, selected automatically
+@o11ykit/metricsdb ships three value compression codecs, selected automatically
 per-chunk at encode time. All run as Rust→WASM with a TypeScript fallback.
 
 ## Codec Pipeline
