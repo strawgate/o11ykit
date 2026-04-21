@@ -477,6 +477,9 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       endT: bigint
     ): RangeDecodeResult {
       wasm.resetScratch();
+      if (compressedTimestamps.length < 2) {
+        return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+      }
 
       const tsInPtr = wasm.allocScratch(compressedTimestamps.length);
       checkScratch(tsInPtr, "rangeDecodeValues/tsInPtr");

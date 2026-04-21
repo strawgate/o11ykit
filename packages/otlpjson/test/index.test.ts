@@ -234,9 +234,53 @@ describe("@otlpkit/otlpjson", () => {
     ]);
   });
 
+  it("gives raw metric callbacks distinct per-metric contexts", () => {
+    const contexts: Array<{ kind: string; name: string; context: object }> = [];
+
+    visitMetricPointsRaw(metricsDocument, {
+      onNumberDataPoints(context) {
+        contexts.push({
+          kind: context.metric.kind,
+          name: context.metric.name,
+          context,
+        });
+      },
+      onHistogramDataPoints(context) {
+        contexts.push({
+          kind: context.metric.kind,
+          name: context.metric.name,
+          context,
+        });
+      },
+      onSummaryDataPoints(context) {
+        contexts.push({
+          kind: context.metric.kind,
+          name: context.metric.name,
+          context,
+        });
+      },
+      onExponentialHistogramDataPoints(context) {
+        contexts.push({
+          kind: context.metric.kind,
+          name: context.metric.name,
+          context,
+        });
+      },
+    });
+
+    expect(contexts.map(({ kind, name }) => [kind, name])).toEqual([
+      ["gauge", "logfwd.inflight_batches"],
+      ["sum", "logfwd.retry_total"],
+      ["histogram", "logfwd.output.duration"],
+      ["summary", "logfwd.queue.latency"],
+      ["exponentialHistogram", "logfwd.flush.delay"],
+    ]);
+    expect(new Set(contexts.map(({ context }) => context)).size).toBe(contexts.length);
+  });
+
   it("rejects non-metrics documents in visitor entry points", () => {
-    expect(() => visitMetricPoints({ resourceSpans: [] })).toThrowError(TypeError);
-    expect(() => visitMetricPointsRaw({ resourceLogs: [] })).toThrowError(TypeError);
+    expect(() => visitMetricPoints({ resourceSpans: [] }, {})).toThrowError(TypeError);
+    expect(() => visitMetricPointsRaw({ resourceLogs: [] }, {})).toThrowError(TypeError);
   });
 
   it("handles sparse visitor documents and missing metric metadata", () => {

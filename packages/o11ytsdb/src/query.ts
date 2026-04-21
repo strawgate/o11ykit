@@ -27,6 +27,10 @@ function readNumberAt(arr: ArrayLike<number>, index: number, label: string): num
   return value;
 }
 
+function readNumberAtUnchecked(arr: Float64Array, index: number): number {
+  return arr[index] as number;
+}
+
 function readBigIntAt(arr: BigInt64Array, index: number, label: string): bigint {
   const value = arr[index];
   if (value === undefined) {
@@ -600,14 +604,14 @@ function _makeAccumulator(
         const interval = span / (len - 1);
         const base = chunkMinTN - minTN;
         for (let i = 0; i < len; i++) {
-          fold(((base + i * interval) / stepN) | 0, readNumberAt(vs, i, "sample value"));
+          fold(((base + i * interval) / stepN) | 0, readNumberAtUnchecked(vs, i));
         }
         return;
       }
     }
     const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
     for (let i = 0; i < len; i++) {
-      fold(((readTs(dv, i) - minTN) / stepN) | 0, readNumberAt(vs, i, "sample value"));
+      fold(((readTs(dv, i) - minTN) / stepN) | 0, readNumberAtUnchecked(vs, i));
     }
   };
 
@@ -628,7 +632,7 @@ function _makeAccumulator(
         const base = chunkMinTN - minTN;
         for (let i = 0; i < len; i++) {
           const t = chunkMinTN + i * interval;
-          fold(((base + i * interval) / stepN) | 0, readNumberAt(vs, i, "sample value"), t);
+          fold(((base + i * interval) / stepN) | 0, readNumberAtUnchecked(vs, i), t);
         }
         return;
       }
@@ -636,7 +640,7 @@ function _makeAccumulator(
     const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
     for (let i = 0; i < len; i++) {
       const t = readTs(dv, i);
-      fold(((t - minTN) / stepN) | 0, readNumberAt(vs, i, "sample value"), t);
+      fold(((t - minTN) / stepN) | 0, readNumberAtUnchecked(vs, i), t);
     }
   };
 
@@ -781,11 +785,11 @@ function _stepAggregateRate(
           counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           if (t < readNumberAt(firstTs, bucket, "first timestamp")) {
             firstTs[bucket] = t;
-            firstVal[bucket] = readNumberAt(vs, i, "sample value");
+            firstVal[bucket] = readNumberAtUnchecked(vs, i);
           }
           if (t >= readNumberAt(lastTs, bucket, "last timestamp")) {
             lastTs[bucket] = t;
-            lastVal[bucket] = readNumberAt(vs, i, "sample value");
+            lastVal[bucket] = readNumberAtUnchecked(vs, i);
           }
         }
         continue;
@@ -802,11 +806,11 @@ function _stepAggregateRate(
       counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
       if (t < readNumberAt(firstTs, bucket, "first timestamp")) {
         firstTs[bucket] = t;
-        firstVal[bucket] = readNumberAt(vs, i, "sample value");
+        firstVal[bucket] = readNumberAtUnchecked(vs, i);
       }
       if (t >= readNumberAt(lastTs, bucket, "last timestamp")) {
         lastTs[bucket] = t;
-        lastVal[bucket] = readNumberAt(vs, i, "sample value");
+        lastVal[bucket] = readNumberAtUnchecked(vs, i);
       }
     }
   }
@@ -885,7 +889,7 @@ function _stepAggregateIrate(
         for (let i = 0; i < len; i++) {
           const t = chunkMinTN + i * interval;
           const bucket = ((base + i * interval) / stepN) | 0;
-          insertSample(bucket, t, readNumberAt(vs, i, "sample value"));
+          insertSample(bucket, t, readNumberAtUnchecked(vs, i));
         }
         continue;
       }
@@ -898,7 +902,7 @@ function _stepAggregateIrate(
     for (let i = 0; i < len; i++) {
       const t = readTs(i);
       const bucket = ((t - minTN) / stepN) | 0;
-      insertSample(bucket, t, readNumberAt(vs, i, "sample value"));
+      insertSample(bucket, t, readNumberAtUnchecked(vs, i));
     }
   }
   for (let i = 0; i < bucketCount; i++) {
@@ -960,7 +964,7 @@ function _stepAggregatePercentile(
         const base = chunkMinTN - minTN;
         for (let i = 0; i < len; i++) {
           readItemAt(buckets, ((base + i * interval) / stepN) | 0, "percentile bucket").push(
-            readNumberAt(vs, i, "sample value")
+            readNumberAtUnchecked(vs, i)
           );
         }
         continue;
@@ -969,7 +973,7 @@ function _stepAggregatePercentile(
     const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
     for (let i = 0; i < len; i++) {
       readItemAt(buckets, ((readTs(dv, i) - minTN) / stepN) | 0, "percentile bucket").push(
-        readNumberAt(vs, i, "sample value")
+        readNumberAtUnchecked(vs, i)
       );
     }
   }

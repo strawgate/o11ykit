@@ -163,9 +163,8 @@ export interface MetricPointVisitor {
 
 export interface MetricPointRawVisitor {
   /**
-   * Raw metric contexts are optimized for low allocation and may be reused
-   * across callbacks within a scope walk. Treat them as callback-scoped values
-   * rather than storing the object reference for deferred use.
+   * Raw scope callbacks receive the original OTLP attribute arrays without
+   * flattening them into JS objects first.
    */
   onScope?(context: MetricScopeRawVisitContext): void;
   onNumberDataPoints?(
@@ -778,21 +777,10 @@ export function visitMetricPointsRaw(
         scopeAttributes: scopeMetrics.scope?.attributes,
       };
       visitor.onScope?.(rawContext);
-      let pointContext: {
-        resourceAttributes: typeof rawContext.resourceAttributes;
-        scopeName: typeof rawContext.scopeName;
-        scopeVersion: typeof rawContext.scopeVersion;
-        scopeAttributes: typeof rawContext.scopeAttributes;
-        metric: MetricInfo;
-      } | null = null;
-      const withMetric = (metricInfo: MetricInfo) => {
-        if (pointContext) {
-          pointContext.metric = metricInfo;
-          return pointContext;
-        }
-        pointContext = { ...rawContext, metric: metricInfo };
-        return pointContext;
-      };
+      const withMetric = (metricInfo: MetricInfo): MetricPointRawVisitContext => ({
+        ...rawContext,
+        metric: metricInfo,
+      });
       for (const metric of scopeMetrics.metrics ?? []) {
         const gaugePoints = metric.gauge?.dataPoints;
         if (gaugePoints) {

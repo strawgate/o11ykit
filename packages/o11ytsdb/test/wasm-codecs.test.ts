@@ -71,4 +71,23 @@ describe("initWasmCodecs", () => {
       ])
     ).toThrowError(/invalid batch slice at index 1/);
   });
+
+  it("returns empty range decode results for short timestamp blobs", async () => {
+    const fakeExports = createFakeWasmExports();
+    const rangeDecodeALP = vi.fn(fakeExports.rangeDecodeALP);
+    fakeExports.rangeDecodeALP = rangeDecodeALP;
+    vi.spyOn(WebAssembly, "instantiate").mockResolvedValue({
+      exports: fakeExports,
+    } as unknown as WebAssembly.Instance);
+
+    const codecs = await initWasmCodecs({} as WebAssembly.Module);
+
+    expect(
+      codecs.rangeCodec.rangeDecodeValues(new Uint8Array([0]), new Uint8Array(0), 0n, 1n)
+    ).toEqual({
+      timestamps: new BigInt64Array(0),
+      values: new Float64Array(0),
+    });
+    expect(rangeDecodeALP).not.toHaveBeenCalled();
+  });
 });
