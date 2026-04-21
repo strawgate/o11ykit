@@ -133,6 +133,7 @@ mod tests {
 
     #[test]
     fn intern_and_resolve_single() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         internerReset();
         let id = reset_and_intern(b"hello");
         assert_eq!(id, 0);
@@ -141,6 +142,7 @@ mod tests {
 
     #[test]
     fn intern_deduplication() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         internerReset();
         let id1 = reset_and_intern(b"metric.cpu");
         let id2 = reset_and_intern(b"metric.cpu");
@@ -149,6 +151,7 @@ mod tests {
 
     #[test]
     fn intern_distinct_strings() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         internerReset();
         let id1 = reset_and_intern(b"alpha");
         let id2 = reset_and_intern(b"beta");
@@ -159,6 +162,7 @@ mod tests {
 
     #[test]
     fn intern_reset_clears_state() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         internerReset();
         reset_and_intern(b"before_reset");
         internerReset();
@@ -173,12 +177,14 @@ mod tests {
 
     #[test]
     fn intern_null_ptr_returns_max() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let id = internerIntern(core::ptr::null(), 5);
         assert_eq!(id, u32::MAX);
     }
 
     #[test]
     fn resolve_invalid_id() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         internerReset();
         let mut buf = [0u8; 64];
         let len = internerResolve(999, buf.as_mut_ptr(), 64);
@@ -187,12 +193,14 @@ mod tests {
 
     #[test]
     fn resolve_null_ptr() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let len = internerResolve(0, core::ptr::null_mut(), 64);
         assert_eq!(len, 0);
     }
 
     #[test]
     fn intern_empty_string() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         internerReset();
         let id = reset_and_intern(b"");
         assert_eq!(id, 0);
@@ -201,6 +209,7 @@ mod tests {
 
     #[test]
     fn intern_many_strings() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         internerReset();
         let mut ids = std::vec::Vec::new();
         for i in 0u32..100 {
@@ -222,6 +231,7 @@ mod tests {
 
     #[test]
     fn fnv1a32_basic() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         // Known FNV-1a values.
         assert_eq!(fnv1a32(b""), 0x811c9dc5);
         let h1 = fnv1a32(b"a");

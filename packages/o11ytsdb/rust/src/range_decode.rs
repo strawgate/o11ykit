@@ -92,6 +92,7 @@ mod tests {
 
     #[test]
     fn lower_bound_basic() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let buf = [10i64, 20, 30, 40, 50];
         assert_eq!(lower_bound_i64(&buf, 5, 10), 0);
         assert_eq!(lower_bound_i64(&buf, 5, 25), 2);
@@ -102,6 +103,7 @@ mod tests {
 
     #[test]
     fn upper_bound_basic() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let buf = [10i64, 20, 30, 40, 50];
         assert_eq!(upper_bound_i64(&buf, 5, 10), 1);
         assert_eq!(upper_bound_i64(&buf, 5, 25), 2);
@@ -111,6 +113,7 @@ mod tests {
 
     #[test]
     fn lower_upper_bound_duplicates() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let buf = [10i64, 20, 20, 20, 30];
         assert_eq!(lower_bound_i64(&buf, 5, 20), 1); // first 20
         assert_eq!(upper_bound_i64(&buf, 5, 20), 4); // past last 20
@@ -118,6 +121,7 @@ mod tests {
 
     #[test]
     fn range_decode_full() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let n = 100;
         let ts: std::vec::Vec<i64> = (0..n).map(|i| 1000 + i * 15).collect();
         let vals: std::vec::Vec<f64> = (0..n).map(|i| (i as f64) * 0.1).collect();
@@ -148,6 +152,7 @@ mod tests {
 
     #[test]
     fn range_decode_partial() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let n = 100;
         let ts: std::vec::Vec<i64> = (0..n).map(|i| 1000 + i * 15).collect();
         let vals: std::vec::Vec<f64> = (0..n).map(|i| (i as f64) * 0.1).collect();
@@ -174,6 +179,7 @@ mod tests {
 
     #[test]
     fn range_decode_no_match() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let ts: [i64; 5] = [100, 200, 300, 400, 500];
         let vals = [1.0f64; 5];
 
@@ -196,6 +202,7 @@ mod tests {
 
     #[test]
     fn range_decode_single_match() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let ts: [i64; 5] = [100, 200, 300, 400, 500];
         let vals: [f64; 5] = [1.0, 2.0, 3.0, 4.0, 5.0];
 

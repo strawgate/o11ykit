@@ -40,6 +40,9 @@ impl<'a> BitWriter<'a> {
 
     #[inline(always)]
     pub fn write_bits(&mut self, value: u64, count: u8) {
+        if count == 0 {
+            return;
+        }
         // Fast path: byte-aligned writes for 8, 16, 32, 64 bits.
         if self.bit_pos == 0 {
             match count {
@@ -259,12 +262,14 @@ mod tests {
     #[test]
     fn bitwriter_single_bits() {
         let mut buf = [0u8; 4];
-        let mut w = BitWriter::new(&mut buf);
-        w.write_bit(1);
-        w.write_bit(0);
-        w.write_bit(1);
+        {
+            let mut w = BitWriter::new(&mut buf);
+            w.write_bit(1);
+            w.write_bit(0);
+            w.write_bit(1);
+            assert_eq!(w.bytes_written(), 1);
+        }
         assert_eq!(buf[0], 0b10100000);
-        assert_eq!(w.bytes_written(), 1);
     }
 
     #[test]
@@ -289,15 +294,17 @@ mod tests {
     #[test]
     fn bitwriter_cross_byte_boundary() {
         let mut buf = [0u8; 4];
-        let mut w = BitWriter::new(&mut buf);
-        w.write_bits(0b101, 3);      // 3 bits
-        w.write_bits(0b11010, 5);    // 5 bits → crosses byte
-        w.write_bits(0b1111, 4);     // 4 more bits
+        {
+            let mut w = BitWriter::new(&mut buf);
+            w.write_bits(0b101, 3);      // 3 bits
+            w.write_bits(0b11010, 5);    // 5 bits → crosses byte
+            w.write_bits(0b1111, 4);     // 4 more bits
+            assert_eq!(w.bytes_written(), 2);
+        }
         // byte 0: 101_11010 = 0xBA
         // byte 1: 1111_0000 = 0xF0
         assert_eq!(buf[0], 0xBA);
         assert_eq!(buf[1], 0xF0);
-        assert_eq!(w.bytes_written(), 2);
     }
 
     #[test]
@@ -367,7 +374,8 @@ mod tests {
 
     #[test]
     fn bitwriter_reader_roundtrip_various_widths() {
-        let mut buf = [0u8; 128];
+        // Sum of bits 1..64 = 2080, need 260 bytes.
+        let mut buf = [0u8; 512];
         let mut w = BitWriter::new(&mut buf);
         // Write values at every width from 1 to 64
         for width in 1u8..=64 {

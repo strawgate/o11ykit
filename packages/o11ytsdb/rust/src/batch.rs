@@ -170,10 +170,11 @@ pub extern "C" fn decodeBatchValuesALP(
 mod tests {
     extern crate std;
     use super::*;
-    use crate::gorilla::{encodeValues, decodeValues};
+    // Batch tests use the batch encode/decode functions directly.
 
     #[test]
     fn batch_xor_single_array() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let vals: [f64; 10] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
         let mut out = [0u8; 1024];
         let mut offsets = [0u32; 1];
@@ -202,6 +203,7 @@ mod tests {
 
     #[test]
     fn batch_xor_multiple_arrays() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let cs = 10;
         let mut vals = [0f64; 30];
         for i in 0..30 {
@@ -230,6 +232,7 @@ mod tests {
 
     #[test]
     fn batch_alp_single_array() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let vals: std::vec::Vec<f64> = (0..100).map(|i| (i as f64) * 0.01).collect();
         let mut out = [0u8; 4096];
         let mut offsets = [0u32; 1];
@@ -254,6 +257,7 @@ mod tests {
 
     #[test]
     fn batch_alp_counter_uses_delta() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let vals: std::vec::Vec<f64> = (0..640).map(|i| (i * 100) as f64).collect();
         let mut out = [0u8; 65536];
         let mut offsets = [0u32; 1];

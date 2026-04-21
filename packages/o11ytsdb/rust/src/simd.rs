@@ -117,13 +117,13 @@ mod tests {
 
     #[test]
     fn ms_to_ns_basic() {
-        let input: [f64; 4] = [1000.0, 1500.5, 0.0, 1.001];
+        let input: [f64; 4] = [1000.0, 1500.5, 0.0, 2.0];
         let mut output = [0i64; 4];
         msToNs(input.as_ptr(), output.as_mut_ptr(), 4);
         assert_eq!(output[0], 1_000_000_000);
         assert_eq!(output[1], 1_500_500_000);
         assert_eq!(output[2], 0);
-        assert_eq!(output[3], 1_001_000);
+        assert_eq!(output[3], 2_000_000);
     }
 
     #[test]

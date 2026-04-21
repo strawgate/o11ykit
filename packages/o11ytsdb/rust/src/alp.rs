@@ -23,6 +23,19 @@ use core::sync::atomic::Ordering;
 use crate::alloc::ALP_EXC_MODE;
 use crate::bitio::{bits_needed, extract_packed, extract_packed_safe, BitReader, BitWriter};
 
+/// Compute the largest index `i` where `extract_packed(buf, i, bw)` is safe
+/// (i.e., `byte_pos + 8 <= buf.len()`). Returns 0 when buf is too small.
+#[inline(always)]
+pub(crate) fn packed_safe_limit(buf_len: usize, n: usize, bw: u8) -> usize {
+    if bw == 0 || buf_len < 8 {
+        return 0;
+    }
+    let max_byte = buf_len - 8;
+    // Largest i where (i * bw) / 8 <= max_byte.
+    let max_i = (max_byte * 8) / bw as usize;
+    max_i.min(n)
+}
+
 pub(crate) const ALP_HEADER_SIZE: usize = 14;
 pub(crate) const ALP_MAX_CHUNK: usize = 2048;
 const ALP_MAX_EXP: usize = 18;
@@ -122,7 +135,7 @@ pub(crate) fn alp_find_exponent(vals: &[f64]) -> u8 {
         let exc_count = sample - match_count;
 
         let bw = if match_count >= 2 {
-            bits_needed((max_int - min_int) as u64) as usize
+            bits_needed((max_int as i128 - min_int as i128) as u64) as usize
         } else {
             0
         };
@@ -362,7 +375,7 @@ pub(crate) fn alp_decode_regular(input: &[u8], val_out: &mut [f64]) -> usize {
     if bw > 0 && bw <= 57 {
         let packed = &input[pos..];
         let inv_factor = 1.0 / factor;
-        let safe_limit = if n > 8 { n - 8 } else { 0 };
+        let safe_limit = packed_safe_limit(packed.len(), n, bw);
         for i in 0..safe_limit {
             let offset = extract_packed(packed, i, bw) as i64;
             val_out[i] = (min_int + offset) as f64 * inv_factor;
@@ -389,145 +402,9 @@ pub(crate) fn alp_decode_regular(input: &[u8], val_out: &mut [f64]) -> usize {
 
     // Decode exceptions (handles both FoR and delta-FoR).
     if exc_count > 0 {
-        decode_exceptions(input, &mut pos, n, exc_count, val_out);
+        crate::alp_exc::decode_exceptions(input, &mut pos, n, exc_count, val_out);
     }
     n
-}
-
-/// Decode exception values and patch them into val_out.
-fn decode_exceptions(
-    input: &[u8],
-    pos: &mut usize,
-    n: usize,
-    exc_count: usize,
-    val_out: &mut [f64],
-) {
-    let mut exc_positions = [0u16; ALP_MAX_CHUNK];
-    if exc_count < n {
-        for i in 0..exc_count {
-            exc_positions[i] = ((input[*pos] as u16) << 8) | (input[*pos + 1] as u16);
-            *pos += 2;
-        }
-    }
-
-    let mut header_bytes = [0u8; 8];
-    header_bytes.copy_from_slice(&input[*pos..*pos + 8]);
-    let header_u64 = u64::from_be_bytes(header_bytes);
-    *pos += 8;
-    let raw_bw = input[*pos];
-    *pos += 1;
-
-    let is_delta = raw_bw & 0x80 != 0;
-    let actual_bw = raw_bw & 0x7F;
-
-    if is_delta {
-        decode_delta_for_exceptions(
-            input, pos, header_u64, actual_bw, exc_count, n, &exc_positions, val_out,
-        );
-    } else {
-        decode_for_exceptions(
-            input, pos, header_u64, actual_bw, exc_count, n, &exc_positions, val_out,
-        );
-    }
-}
-
-fn decode_delta_for_exceptions(
-    input: &[u8],
-    _pos: &mut usize,
-    first_su64: u64,
-    actual_bw: u8,
-    exc_count: usize,
-    n: usize,
-    exc_positions: &[u16],
-    val_out: &mut [f64],
-) {
-    let exc_u64 = unsafe { &mut ALP_EXC_U64[..exc_count] };
-    exc_u64[0] = first_su64;
-
-    if actual_bw > 0 {
-        let mut r = BitReader::new(&input[*_pos..]);
-        let mut prev = first_su64;
-        for i in 1..exc_count {
-            let zz = r.read_bits(actual_bw);
-            let d = ((zz >> 1) as i64) ^ (-((zz & 1) as i64));
-            let cur = (prev as i128 + d as i128) as u64;
-            exc_u64[i] = cur;
-            prev = cur;
-        }
-    } else {
-        for i in 1..exc_count {
-            exc_u64[i] = first_su64;
-        }
-    }
-
-    if exc_count == n {
-        for i in 0..n {
-            val_out[i] = sortable_u64_to_f64(exc_u64[i]);
-        }
-    } else {
-        for i in 0..exc_count {
-            val_out[exc_positions[i] as usize] = sortable_u64_to_f64(exc_u64[i]);
-        }
-    }
-}
-
-fn decode_for_exceptions(
-    input: &[u8],
-    pos: &mut usize,
-    min_su64: u64,
-    exc_bw: u8,
-    exc_count: usize,
-    n: usize,
-    exc_positions: &[u16],
-    val_out: &mut [f64],
-) {
-    if exc_count == n {
-        if exc_bw > 0 && exc_bw <= 57 {
-            let packed = &input[*pos..];
-            let safe_limit = if n > 8 { n - 8 } else { 0 };
-            for i in 0..safe_limit {
-                val_out[i] = sortable_u64_to_f64(min_su64 + extract_packed(packed, i, exc_bw));
-            }
-            for i in safe_limit..n {
-                val_out[i] =
-                    sortable_u64_to_f64(min_su64 + extract_packed_safe(packed, i, exc_bw));
-            }
-        } else if exc_bw > 0 {
-            let mut r = BitReader::new(&input[*pos..]);
-            for i in 0..n {
-                val_out[i] = sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
-            }
-        } else {
-            let base = sortable_u64_to_f64(min_su64);
-            for i in 0..n {
-                val_out[i] = base;
-            }
-        }
-    } else {
-        if exc_bw > 0 && exc_bw <= 57 {
-            let packed = &input[*pos..];
-            let safe_limit = if exc_count > 8 { exc_count - 8 } else { 0 };
-            for i in 0..safe_limit {
-                val_out[exc_positions[i] as usize] =
-                    sortable_u64_to_f64(min_su64 + extract_packed(packed, i, exc_bw));
-            }
-            for i in safe_limit..exc_count {
-                val_out[exc_positions[i] as usize] =
-                    sortable_u64_to_f64(min_su64 + extract_packed_safe(packed, i, exc_bw));
-            }
-        } else if exc_bw > 0 {
-            let mut r = BitReader::new(&input[*pos..]);
-            for i in 0..exc_count {
-                val_out[exc_positions[i] as usize] =
-                    sortable_u64_to_f64(min_su64 + r.read_bits(exc_bw));
-            }
-        } else {
-            let base = sortable_u64_to_f64(min_su64);
-            for i in 0..exc_count {
-                val_out[exc_positions[i] as usize] = base;
-            }
-        }
-    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -542,125 +419,65 @@ mod tests {
         let mut buf = [0u8; 65536];
         let mut decoded = [0f64; 2048];
         let written = alp_encode_inner(vals, &mut buf);
-        assert!(written > 0, "ALP encode failed for {} values", n);
+        assert!(written > 0, "ALP encode failed for {n} values");
         let count = alp_decode_regular(&buf[..written], &mut decoded);
-        assert_eq!(count, n, "count mismatch");
+        assert_eq!(count, n);
         for i in 0..n {
-            assert_eq!(decoded[i], vals[i], "mismatch at index {i}: expected {}, got {}", vals[i], decoded[i]);
+            assert_eq!(decoded[i], vals[i], "mismatch at {i}");
         }
     }
 
     #[test]
-    fn alp_clean_2dp() {
+    fn alp_basic_patterns() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        // Clean 2-decimal-place data
         let vals: std::vec::Vec<f64> = (0..100).map(|i| (i as f64) * 0.01).collect();
         roundtrip(&vals);
-    }
-
-    #[test]
-    fn alp_clean_integers() {
+        // Clean integers
         let vals: std::vec::Vec<f64> = (0..640).map(|i| i as f64).collect();
         roundtrip(&vals);
-    }
-
-    #[test]
-    fn alp_constant_value() {
-        let vals = [42.5f64; 100];
+        // Constant value (bw=0)
+        roundtrip(&[42.5f64; 100]);
+        // Single and two values
+        roundtrip(&[3.14]);
+        roundtrip(&[1.0, 2.0]);
+        // Large integers
+        let vals: std::vec::Vec<f64> = (0..100).map(|i| (i as f64) * 1_000_000.0).collect();
         roundtrip(&vals);
     }
 
     #[test]
-    fn alp_single_value() {
-        roundtrip(&[3.14]);
-    }
-
-    #[test]
-    fn alp_two_values() {
-        roundtrip(&[1.0, 2.0]);
-    }
-
-    #[test]
-    fn alp_all_exceptions() {
-        // Values that won't round-trip through any exponent.
+    fn alp_exceptions() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        // 100% exceptions (irrational values)
         let vals: std::vec::Vec<f64> = (0..100)
             .map(|i| core::f64::consts::PI * (i as f64 + 1.0))
             .collect();
         roundtrip(&vals);
-    }
-
-    #[test]
-    fn alp_mixed_match_and_exceptions() {
+        // Mixed: 90 clean + 10 exceptions
         let mut vals = std::vec::Vec::new();
-        for i in 0..90 {
-            vals.push(i as f64 * 0.1); // clean
-        }
-        for i in 0..10 {
-            vals.push(core::f64::consts::E * (i as f64 + 1.0)); // exceptions
-        }
+        for i in 0..90 { vals.push(i as f64 * 0.1); }
+        for i in 0..10 { vals.push(core::f64::consts::E * (i as f64 + 1.0)); }
         roundtrip(&vals);
     }
 
     #[test]
     fn alp_max_chunk() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let vals: std::vec::Vec<f64> = (0..2048).map(|i| (i as f64) * 0.001).collect();
         roundtrip(&vals);
     }
 
     #[test]
-    fn sortable_u64_roundtrip() {
-        let test_vals = [
-            0.0, -0.0, 1.0, -1.0, f64::MIN, f64::MAX,
-            f64::MIN_POSITIVE, f64::EPSILON, 1e-300, 1e300,
-        ];
-        for &v in &test_vals {
-            let su = f64_to_sortable_u64(v);
-            let back = sortable_u64_to_f64(su);
-            assert_eq!(v.to_bits(), back.to_bits(), "sortable u64 roundtrip failed for {v}");
-        }
-    }
-
-    #[test]
-    fn sortable_u64_ordering() {
-        let mut vals = [-100.0f64, -1.0, -0.001, 0.0, 0.001, 1.0, 100.0];
-        let su64s: std::vec::Vec<u64> = vals.iter().map(|&v| f64_to_sortable_u64(v)).collect();
-        for i in 1..su64s.len() {
-            assert!(su64s[i] > su64s[i - 1], "ordering violated at index {i}");
-        }
-    }
-
-    #[test]
-    fn bits_needed_values() {
-        assert_eq!(bits_needed(0), 0);
-        assert_eq!(bits_needed(1), 1);
-        assert_eq!(bits_needed(255), 8);
-        assert_eq!(bits_needed(256), 9);
-        assert_eq!(bits_needed(u64::MAX), 64);
-    }
-
-    #[test]
-    fn alp_try_clean_values() {
-        assert_eq!(alp_try(1.23, 2), Some(123));
-        assert_eq!(alp_try(0.0, 0), Some(0));
-        assert_eq!(alp_try(42.0, 0), Some(42));
-    }
-
-    #[test]
-    fn alp_try_nan_inf() {
-        assert_eq!(alp_try(f64::NAN, 2), None);
-        assert_eq!(alp_try(f64::INFINITY, 2), None);
-        assert_eq!(alp_try(f64::NEG_INFINITY, 2), None);
-    }
-
-    #[test]
-    fn alp_exponent_selection() {
-        // Clean 2dp data should pick e=2.
-        let vals: std::vec::Vec<f64> = (0..100).map(|i| (i as f64) * 0.01).collect();
-        let e = alp_find_exponent(&vals);
-        assert_eq!(e, 2, "expected e=2 for 2dp data, got {e}");
+    fn alp_negative_values() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let vals: std::vec::Vec<f64> = (-50..50).map(|i| i as f64 * 0.1).collect();
+        roundtrip(&vals);
     }
 
     #[test]
     fn alp_special_floats() {
-        // NaN and Inf become exceptions; should still roundtrip.
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let vals = [1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 2.0];
         let mut buf = [0u8; 1024];
         let mut decoded = [0f64; 8];
@@ -676,14 +493,44 @@ mod tests {
     }
 
     #[test]
-    fn alp_negative_values() {
-        let vals: std::vec::Vec<f64> = (-50..50).map(|i| i as f64 * 0.1).collect();
-        roundtrip(&vals);
+    fn sortable_u64_roundtrip_and_ordering() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let test_vals = [
+            0.0, -0.0, 1.0, -1.0, f64::MIN, f64::MAX,
+            f64::MIN_POSITIVE, f64::EPSILON, 1e-300, 1e300,
+        ];
+        for &v in &test_vals {
+            let back = sortable_u64_to_f64(f64_to_sortable_u64(v));
+            assert_eq!(v.to_bits(), back.to_bits(), "roundtrip failed for {v}");
+        }
+        // Ordering: sortable u64 should preserve f64 total order.
+        let ordered = [-100.0f64, -1.0, -0.001, 0.0, 0.001, 1.0, 100.0];
+        let su64s: std::vec::Vec<u64> = ordered.iter().map(|&v| f64_to_sortable_u64(v)).collect();
+        for i in 1..su64s.len() {
+            assert!(su64s[i] > su64s[i - 1], "ordering violated at {i}");
+        }
     }
 
     #[test]
-    fn alp_large_integers() {
-        let vals: std::vec::Vec<f64> = (0..100).map(|i| (i as f64) * 1_000_000.0).collect();
-        roundtrip(&vals);
+    fn alp_try_and_exponent() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        assert_eq!(alp_try(1.23, 2), Some(123));
+        assert_eq!(alp_try(0.0, 0), Some(0));
+        assert_eq!(alp_try(42.0, 0), Some(42));
+        assert_eq!(alp_try(f64::NAN, 2), None);
+        assert_eq!(alp_try(f64::INFINITY, 2), None);
+        // Clean 2dp data should pick e=2.
+        let vals: std::vec::Vec<f64> = (0..100).map(|i| (i as f64) * 0.01).collect();
+        assert_eq!(alp_find_exponent(&vals), 2);
+    }
+
+    #[test]
+    fn bits_needed_values() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        assert_eq!(bits_needed(0), 0);
+        assert_eq!(bits_needed(1), 1);
+        assert_eq!(bits_needed(255), 8);
+        assert_eq!(bits_needed(256), 9);
+        assert_eq!(bits_needed(u64::MAX), 64);
     }
 }

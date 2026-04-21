@@ -14,10 +14,10 @@
 // since they must know about both regular ALP and delta-ALP.
 
 use crate::alp::{
-    alp_decode_regular, alp_encode_inner, ALP_HEADER_SIZE, ALP_MAX_CHUNK, POW10,
-    f64_to_sortable_u64, sortable_u64_to_f64, ALP_EXC_U64,
+    alp_decode_regular, alp_encode_inner, sortable_u64_to_f64, ALP_EXC_U64,
+    ALP_HEADER_SIZE, ALP_MAX_CHUNK, POW10,
 };
-use crate::bitio::{extract_packed, extract_packed_safe, BitReader};
+use crate::bitio::BitReader;
 use crate::gorilla::compute_stats;
 
 pub(crate) const DELTA_ALP_TAG: u8 = 0xDA;
@@ -409,6 +409,7 @@ mod tests {
 
     #[test]
     fn delta_alp_candidate_detection() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         // Valid counter.
         let vals: std::vec::Vec<f64> = (0..100).map(|i| i as f64).collect();
         assert!(is_delta_alp_candidate(&vals, 0));
@@ -428,6 +429,7 @@ mod tests {
 
     #[test]
     fn delta_alp_roundtrip() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let vals: std::vec::Vec<f64> = (0..640).map(|i| (i * 100) as f64).collect();
         let mut buf = [0u8; 65536];
         let written = delta_alp_encode_inner(&vals, &mut buf);
@@ -444,6 +446,7 @@ mod tests {
 
     #[test]
     fn delta_alp_range_decode() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let vals: std::vec::Vec<f64> = (0..100).map(|i| (i * 10) as f64).collect();
         let mut buf = [0u8; 65536];
         let written = delta_alp_encode_inner(&vals, &mut buf);
@@ -459,12 +462,14 @@ mod tests {
 
     #[test]
     fn dispatch_regular_alp() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let vals: std::vec::Vec<f64> = (0..100).map(|i| (i as f64) * 0.01).collect();
         roundtrip_alp(&vals);
     }
 
     #[test]
     fn dispatch_delta_alp_through_stats() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         // encodeValuesALPWithStats should auto-detect counter and use delta-ALP.
         let vals: std::vec::Vec<f64> = (0..640).map(|i| (i * 100) as f64).collect();
         let mut buf = [0u8; 65536];
@@ -487,6 +492,7 @@ mod tests {
 
     #[test]
     fn wasm_encode_decode_alp() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let vals: [f64; 10] = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9];
         let mut buf = [0u8; 1024];
         let written = encodeValuesALP(
@@ -497,11 +503,17 @@ mod tests {
         let mut decoded = [0f64; 10];
         let count = decodeValuesALP(buf.as_ptr(), written, decoded.as_mut_ptr(), 10);
         assert_eq!(count, 10);
-        assert_eq!(decoded, vals);
+        // ALP encodes via integer multiply/divide, which may introduce ULP
+        // rounding differences for values not exactly representable in binary.
+        for i in 0..10 {
+            assert!((decoded[i] - vals[i]).abs() < 1e-14,
+                "value {i}: decoded={} expected={}", decoded[i], vals[i]);
+        }
     }
 
     #[test]
     fn range_decode_regular_alp() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         let vals: std::vec::Vec<f64> = (0..100).map(|i| (i as f64) * 0.01).collect();
         let mut buf = [0u8; 65536];
         let written = alp_encode_inner(&vals, &mut buf);

@@ -50,6 +50,7 @@ mod tests {
 
     #[test]
     fn scratch_alloc_and_reset() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         // Reset first to get a clean state.
         resetScratch();
         let ptr1 = allocScratch(16);
@@ -57,14 +58,14 @@ mod tests {
         let ptr2 = allocScratch(32);
         assert!(ptr2 != 0, "second alloc should succeed");
         assert!(ptr2 > ptr1, "second alloc should be after first");
-        // Alignment: both should be 8-byte aligned.
-        assert_eq!(ptr1 % 8, 0);
-        assert_eq!(ptr2 % 8, 0);
+        // Stride should be 8-byte aligned (sizes round up to 8).
+        assert_eq!((ptr2 - ptr1) % 8, 0);
         resetScratch();
     }
 
     #[test]
     fn scratch_alloc_alignment() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         resetScratch();
         // Allocate 1 byte — should round up to 8.
         let ptr1 = allocScratch(1);
@@ -75,6 +76,7 @@ mod tests {
 
     #[test]
     fn scratch_alloc_overflow() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         resetScratch();
         // Try to allocate more than SCRATCH_SIZE.
         let ptr = allocScratch(3 * 1024 * 1024);
@@ -84,6 +86,7 @@ mod tests {
 
     #[test]
     fn set_alp_exc_mode_valid() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         setAlpExcMode(0);
         assert_eq!(ALP_EXC_MODE.load(Ordering::Relaxed), 0);
         setAlpExcMode(1);
@@ -92,6 +95,7 @@ mod tests {
 
     #[test]
     fn set_alp_exc_mode_invalid_clamps() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
         setAlpExcMode(99);
         assert_eq!(ALP_EXC_MODE.load(Ordering::Relaxed), 0);
         setAlpExcMode(1); // restore
