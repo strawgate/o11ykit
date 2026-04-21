@@ -298,8 +298,13 @@ export class ColumnStore {
     }
     const id = this._allSeries.length;
 
-    const groupId = 0;
-    while (this._groups.length <= groupId) {
+    // Group by __name__ so series with the same metric share timestamps
+    const metricName = labels.get('__name__') || '';
+    if (!this._groupByName) this._groupByName = new Map();
+    let groupId = this._groupByName.get(metricName);
+    if (groupId === undefined) {
+      groupId = this._groups.length;
+      this._groupByName.set(metricName, groupId);
       this._groups.push({
         hotTimestamps: new BigInt64Array(this.chunkSize),
         hotCount: 0,

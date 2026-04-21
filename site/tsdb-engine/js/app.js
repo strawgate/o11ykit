@@ -326,15 +326,20 @@ function loadScenario(scenario, clickedCard) {
       const t0 = performance.now();
       const seriesData = generateScenarioData(scenario);
 
-      for (const sd of seriesData) {
-        const id = store.getOrCreateSeries(sd.labels);
-        if (backendType === 'column') {
-          const n = sd.timestamps.length;
-          for (let offset = 0; offset < n; offset += CHUNK_SIZE) {
-            const end = Math.min(offset + CHUNK_SIZE, n);
-            store.appendBatch(id, sd.timestamps.subarray(offset, end), sd.values.subarray(offset, end));
+      if (backendType === 'column') {
+        // Create all series first so groups are fully populated
+        const ids = seriesData.map(sd => store.getOrCreateSeries(sd.labels));
+        // Ingest interleaved: one chunk at a time across all series in lock-step
+        const numPoints = seriesData[0]?.timestamps.length || 0;
+        for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
+          const end = Math.min(offset + CHUNK_SIZE, numPoints);
+          for (let i = 0; i < seriesData.length; i++) {
+            store.appendBatch(ids[i], seriesData[i].timestamps.subarray(offset, end), seriesData[i].values.subarray(offset, end));
           }
-        } else {
+        }
+      } else {
+        for (const sd of seriesData) {
+          const id = store.getOrCreateSeries(sd.labels);
           store.appendBatch(id, sd.timestamps, sd.values);
         }
       }
@@ -426,14 +431,17 @@ function generateCustomData(numSeries, numPoints, pattern, backendType, interval
   }
 
   const t0 = performance.now();
-  for (const sd of seriesData) {
-    const id = store.getOrCreateSeries(sd.labels);
-    if (backendType === 'column') {
-      for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
-        const end = Math.min(offset + CHUNK_SIZE, numPoints);
-        store.appendBatch(id, sd.timestamps.subarray(offset, end), sd.values.subarray(offset, end));
+  if (backendType === 'column') {
+    const ids = seriesData.map(sd => store.getOrCreateSeries(sd.labels));
+    for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
+      const end = Math.min(offset + CHUNK_SIZE, numPoints);
+      for (let i = 0; i < seriesData.length; i++) {
+        store.appendBatch(ids[i], seriesData[i].timestamps.subarray(offset, end), seriesData[i].values.subarray(offset, end));
       }
-    } else {
+    }
+  } else {
+    for (const sd of seriesData) {
+      const id = store.getOrCreateSeries(sd.labels);
       store.appendBatch(id, sd.timestamps, sd.values);
     }
   }
