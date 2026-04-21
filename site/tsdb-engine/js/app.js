@@ -1,11 +1,27 @@
 // ── App Entry Point ──────────────────────────────────────────────────
 
 import { CHART_COLORS, renderChart, setupChartTooltip } from "./chart.js";
-import { generateScenarioData, generateValue, INSTANCES, METRICS, REGIONS, SCENARIOS, scenarioSampleCount, scenarioSeriesCount } from "./data-gen.js";
+import {
+  generateScenarioData,
+  generateValue,
+  INSTANCES,
+  METRICS,
+  REGIONS,
+  SCENARIOS,
+  scenarioSampleCount,
+  scenarioSeriesCount,
+} from "./data-gen.js";
 import { ScanEngine } from "./query.js";
 import { buildStorageExplorer, showChunkDetail } from "./storage-explorer.js";
 import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
-import { $, autoSelectQueryStep, escapeHtml, formatBytes, formatDuration, formatNum } from "./utils.js";
+import {
+  $,
+  autoSelectQueryStep,
+  escapeHtml,
+  formatBytes,
+  formatDuration,
+  formatNum,
+} from "./utils.js";
 import { loadWasm, wasmReady } from "./wasm.js";
 
 const CHUNK_SIZE = 640;
@@ -17,7 +33,7 @@ let currentStore = null;
 const currentEngine = new ScanEngine();
 let generatedMetrics = [];
 let activeMatchers = []; // [{label, op, value}]
-let availableLabels = new Map(); // label -> Set of values
+const availableLabels = new Map(); // label -> Set of values
 let _lastIngestTime = 0;
 let _storagePopulated = false;
 let _queryPopulated = false;
@@ -28,7 +44,7 @@ function showSection(id, scroll = false) {
   const el = document.getElementById(id);
   if (el) {
     el.hidden = false;
-    if (scroll) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (scroll) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
 
@@ -58,23 +74,23 @@ function onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs) {
   const ingestRate = totalPts / (ingestTime / 1000);
 
   // Update active card with results
-  const activeCard = document.querySelector('.scenario-card.loading, .scenario-card.active');
+  const activeCard = document.querySelector(".scenario-card.loading, .scenario-card.active");
   if (activeCard) {
-    activeCard.classList.remove('loading');
-    activeCard.classList.add('active', 'loaded');
-    const doneEl = activeCard.querySelector('.sc-done-stats');
+    activeCard.classList.remove("loading");
+    activeCard.classList.add("active", "loaded");
+    const doneEl = activeCard.querySelector(".sc-done-stats");
     if (doneEl) {
       doneEl.textContent = `✓ ${totalPts.toLocaleString()} pts in ${ingestTime.toFixed(0)} ms · ${ratio.toFixed(0)}× compression · ${formatBytes(memBytes)}`;
     }
   }
 
   // Hide storage/query/results — let user choose via fork
-  hideSection('section-storage');
-  hideSection('section-query');
-  hideSection('section-results');
+  hideSection("section-storage");
+  hideSection("section-query");
+  hideSection("section-results");
 
   // Show fork in the road
-  showSection('section-fork', true);
+  showSection("section-fork", true);
   autoSelectQueryStep(intervalMs, numPoints);
 }
 
@@ -84,7 +100,7 @@ function _buildAvailableLabels(store) {
     const labels = store.labels(id);
     if (!labels) continue;
     for (const [k, v] of labels) {
-      if (k === '__name__') continue;
+      if (k === "__name__") continue;
       if (!availableLabels.has(k)) availableLabels.set(k, new Set());
       availableLabels.get(k).add(v);
     }
@@ -94,11 +110,11 @@ function _buildAvailableLabels(store) {
 }
 
 function _populateQueryMetrics(metrics) {
-  const sel = document.getElementById('queryMetric');
+  const sel = document.getElementById("queryMetric");
   if (!sel) return;
-  sel.innerHTML = '';
+  sel.innerHTML = "";
   for (const m of metrics) {
-    const opt = document.createElement('option');
+    const opt = document.createElement("option");
     opt.value = m;
     opt.textContent = m;
     sel.appendChild(opt);
@@ -106,13 +122,13 @@ function _populateQueryMetrics(metrics) {
 }
 
 function _populateGroupByOptions(store) {
-  const sel = document.getElementById('queryGroupBy');
+  const sel = document.getElementById("queryGroupBy");
   if (!sel) return;
   const existing = [...availableLabels.keys()];
   sel.innerHTML = '<option value="">No grouping</option>';
   for (const k of existing) {
-    if (k === '__name__') continue;
-    const opt = document.createElement('option');
+    if (k === "__name__") continue;
+    const opt = document.createElement("option");
     opt.value = k;
     opt.textContent = k;
     sel.appendChild(opt);
@@ -126,35 +142,35 @@ function _refreshGroupByOptions() {
 // ── Matcher UI ────────────────────────────────────────────────────────
 
 function _refreshMatcherLabelSelect() {
-  const sel = document.getElementById('matcherLabel');
+  const sel = document.getElementById("matcherLabel");
   if (!sel) return;
   sel.innerHTML = '<option value="">label…</option>';
   for (const k of availableLabels.keys()) {
-    const opt = document.createElement('option');
+    const opt = document.createElement("option");
     opt.value = k;
     opt.textContent = k;
     sel.appendChild(opt);
   }
 }
 
-document.getElementById('matcherLabel')?.addEventListener('change', () => {
-  const label = document.getElementById('matcherLabel').value;
-  const valSel = document.getElementById('matcherValue');
+document.getElementById("matcherLabel")?.addEventListener("change", () => {
+  const label = document.getElementById("matcherLabel").value;
+  const valSel = document.getElementById("matcherValue");
   if (!valSel) return;
   valSel.innerHTML = '<option value="">value…</option>';
   const vals = availableLabels.get(label) || new Set();
   for (const v of vals) {
-    const opt = document.createElement('option');
+    const opt = document.createElement("option");
     opt.value = v;
     opt.textContent = v;
     valSel.appendChild(opt);
   }
 });
 
-document.getElementById('btnAddMatcher')?.addEventListener('click', () => {
-  const label = document.getElementById('matcherLabel')?.value;
-  const op = document.getElementById('matcherOp')?.value || '=';
-  const value = document.getElementById('matcherValue')?.value;
+document.getElementById("btnAddMatcher")?.addEventListener("click", () => {
+  const label = document.getElementById("matcherLabel")?.value;
+  const op = document.getElementById("matcherOp")?.value || "=";
+  const value = document.getElementById("matcherValue")?.value;
   if (!label || !value) return;
 
   activeMatchers.push({ label, op, value });
@@ -163,18 +179,21 @@ document.getElementById('btnAddMatcher')?.addEventListener('click', () => {
 });
 
 function _renderMatcherChips() {
-  const chips = document.getElementById('matcherChips');
+  const chips = document.getElementById("matcherChips");
   if (!chips) return;
-  chips.innerHTML = activeMatchers.map((m, i) =>
-    `<span class="matcher-chip">
+  chips.innerHTML = activeMatchers
+    .map(
+      (m, i) =>
+        `<span class="matcher-chip">
       <span class="mc-label">${escapeHtml(m.label)}</span>
       <span class="mc-op">${escapeHtml(m.op)}</span>
       <span class="mc-val">&quot;${escapeHtml(m.value)}&quot;</span>
       <button type="button" class="mc-remove" data-idx="${i}" aria-label="Remove matcher">×</button>
     </span>`
-  ).join('');
-  chips.querySelectorAll('.mc-remove').forEach(btn => {
-    btn.addEventListener('click', () => {
+    )
+    .join("");
+  chips.querySelectorAll(".mc-remove").forEach((btn) => {
+    btn.addEventListener("click", () => {
       activeMatchers.splice(parseInt(btn.dataset.idx, 10), 1);
       _renderMatcherChips();
       if (currentStore) runQuery();
@@ -195,28 +214,30 @@ function _revealStorage() {
     const ratio = rawBytes / memBytes;
     const ingestRate = totalPts / (_lastIngestTime / 1000);
 
-    document.getElementById('statStoragePts').textContent = totalPts.toLocaleString();
-    document.getElementById('statStorageSeries').textContent = currentStore.seriesCount.toLocaleString();
-    document.getElementById('statStorageMem').textContent = formatBytes(memBytes);
-    document.getElementById('statStorageRatio').textContent = `${ratio.toFixed(1)}×`;
-    document.getElementById('statStorageIngestRate').textContent = `${formatNum(ingestRate)} pts/s`;
+    document.getElementById("statStoragePts").textContent = totalPts.toLocaleString();
+    document.getElementById("statStorageSeries").textContent =
+      currentStore.seriesCount.toLocaleString();
+    document.getElementById("statStorageMem").textContent = formatBytes(memBytes);
+    document.getElementById("statStorageRatio").textContent = `${ratio.toFixed(1)}×`;
+    document.getElementById("statStorageIngestRate").textContent = `${formatNum(ingestRate)} pts/s`;
 
     // Compute chunk stats for the merged stats row
-    let totalChunks = 0, totalFrozen = 0;
+    let totalChunks = 0,
+      totalFrozen = 0;
     for (let id = 0; id < currentStore.seriesCount; id++) {
       const info = currentStore.getChunkInfo(id);
       totalFrozen += info.frozen.length;
       totalChunks += info.frozen.length + (info.hot.count > 0 ? 1 : 0);
     }
-    document.getElementById('statStorageChunks').textContent = totalChunks.toLocaleString();
-    document.getElementById('statStorageFrozen').textContent = totalFrozen.toLocaleString();
+    document.getElementById("statStorageChunks").textContent = totalChunks.toLocaleString();
+    document.getElementById("statStorageFrozen").textContent = totalFrozen.toLocaleString();
 
     buildStorageExplorer(currentStore);
   }
-  hideSection('section-query');
-  hideSection('section-results');
-  showSection('section-storage', true);
-  _updateExploreNav('section-storage');
+  hideSection("section-query");
+  hideSection("section-results");
+  showSection("section-storage", true);
+  _updateExploreNav("section-storage");
 }
 
 function _revealQuery() {
@@ -227,52 +248,53 @@ function _revealQuery() {
     _populateGroupByOptions(currentStore);
     updateQueryPreview();
   }
-  hideSection('section-storage');
-  showSection('section-query', true);
-  _updateExploreNav('section-query');
+  hideSection("section-storage");
+  showSection("section-query", true);
+  _updateExploreNav("section-query");
 }
 
 function _updateExploreNav(activeId) {
-  document.querySelectorAll('.explore-nav-btn').forEach(btn => {
+  document.querySelectorAll(".explore-nav-btn").forEach((btn) => {
     const isActive = btn.dataset.target === activeId;
-    btn.classList.toggle('active', isActive);
-    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-selected", isActive ? "true" : "false");
   });
 }
 
-document.getElementById('forkStorage')?.addEventListener('click', _revealStorage);
-document.getElementById('forkQuery')?.addEventListener('click', _revealQuery);
+document.getElementById("forkStorage")?.addEventListener("click", _revealStorage);
+document.getElementById("forkQuery")?.addEventListener("click", _revealQuery);
 
 // Explore nav buttons (breadcrumb switching)
-document.querySelectorAll('.explore-nav-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (btn.dataset.target === 'section-storage') _revealStorage();
-    else if (btn.dataset.target === 'section-query') _revealQuery();
+document.querySelectorAll(".explore-nav-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (btn.dataset.target === "section-storage") _revealStorage();
+    else if (btn.dataset.target === "section-query") _revealQuery();
   });
 });
 
 // ── Scenario picker ───────────────────────────────────────────────────
 
 function _renderScenarioCards() {
-  const grid = document.getElementById('scenarioGrid');
+  const grid = document.getElementById("scenarioGrid");
   if (!grid) return;
-  const scenarioCards = SCENARIOS.map(s => {
+  const scenarioCards = SCENARIOS.map((s) => {
     const seriesCount = scenarioSeriesCount(s);
     const sampleCount = scenarioSampleCount(s);
-    const interval = s.intervalMs >= 60000 ? `${s.intervalMs/60000}min` : `${s.intervalMs/1000}s`;
+    const interval =
+      s.intervalMs >= 60000 ? `${s.intervalMs / 60000}min` : `${s.intervalMs / 1000}s`;
     return `
     <button type="button" class="scenario-card" data-scenario-id="${escapeHtml(s.id)}">
       <div class="sc-emoji">${s.emoji}</div>
       <div class="sc-name">${escapeHtml(s.name)}</div>
       <div class="sc-desc">${escapeHtml(s.description)}</div>
       <div class="sc-meta">
-        ${s.metrics.map(m => `<span class="sc-metric">${escapeHtml(m.name)}</span>`).join('')}
+        ${s.metrics.map((m) => `<span class="sc-metric">${escapeHtml(m.name)}</span>`).join("")}
       </div>
       <div class="sc-stats">${seriesCount.toLocaleString()} series · ${sampleCount.toLocaleString()} pts · ${interval} interval</div>
       <div class="sc-loading-indicator"><span class="sc-spinner"></span><span class="sc-loading-text">Generating data…</span></div>
       <div class="sc-done-stats"></div>
     </button>`;
-  }).join('');
+  }).join("");
 
   const customCard = `
     <button type="button" class="scenario-card scenario-card-custom" id="openCustomGenerator">
@@ -284,56 +306,59 @@ function _renderScenarioCards() {
 
   grid.innerHTML = scenarioCards + customCard;
 
-  grid.querySelectorAll('.scenario-card[data-scenario-id]').forEach(card => {
-    card.addEventListener('click', () => {
-      const scenario = SCENARIOS.find(s => s.id === card.dataset.scenarioId);
+  grid.querySelectorAll(".scenario-card[data-scenario-id]").forEach((card) => {
+    card.addEventListener("click", () => {
+      const scenario = SCENARIOS.find((s) => s.id === card.dataset.scenarioId);
       if (scenario) loadScenario(scenario, card);
     });
   });
 
   // Custom generator card toggles inline controls
-  document.getElementById('openCustomGenerator')?.addEventListener('click', () => {
-    const inline = document.getElementById('customGeneratorInline');
+  document.getElementById("openCustomGenerator")?.addEventListener("click", () => {
+    const inline = document.getElementById("customGeneratorInline");
     if (inline) {
       inline.hidden = !inline.hidden;
-      if (!inline.hidden) inline.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (!inline.hidden) inline.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
   });
 }
 
-
 function loadScenario(scenario, clickedCard) {
   // Show loading state
-  document.querySelectorAll('.scenario-card').forEach(c => {
-    c.classList.remove('active', 'loading', 'loaded');
+  document.querySelectorAll(".scenario-card").forEach((c) => {
+    c.classList.remove("active", "loading", "loaded");
   });
-  if (clickedCard) clickedCard.classList.add('loading');
+  if (clickedCard) clickedCard.classList.add("loading");
 
   // Hide previous fork/storage/query while loading
-  hideSection('section-fork');
-  hideSection('section-storage');
-  hideSection('section-query');
-  hideSection('section-results');
+  hideSection("section-fork");
+  hideSection("section-storage");
+  hideSection("section-query");
+  hideSection("section-results");
 
   // Defer heavy work to let the loading spinner render
   requestAnimationFrame(() => {
     setTimeout(() => {
       try {
-        const backendType = 'column';
+        const backendType = "column";
         const store = _createStore(backendType, CHUNK_SIZE);
 
         const t0 = performance.now();
         const seriesData = generateScenarioData(scenario);
 
-        if (store._backendType === 'column') {
+        if (store._backendType === "column") {
           // Create all series first so groups are fully populated
-          const ids = seriesData.map(sd => store.getOrCreateSeries(sd.labels));
+          const ids = seriesData.map((sd) => store.getOrCreateSeries(sd.labels));
           // Ingest interleaved: one chunk at a time across all series in lock-step
           const numPoints = seriesData[0]?.timestamps.length || 0;
           for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
             const end = Math.min(offset + CHUNK_SIZE, numPoints);
             for (let i = 0; i < seriesData.length; i++) {
-              store.appendBatch(ids[i], seriesData[i].timestamps.subarray(offset, end), seriesData[i].values.subarray(offset, end));
+              store.appendBatch(
+                ids[i],
+                seriesData[i].timestamps.subarray(offset, end),
+                seriesData[i].values.subarray(offset, end)
+              );
             }
           }
         } else {
@@ -344,12 +369,12 @@ function loadScenario(scenario, clickedCard) {
         }
 
         _lastIngestTime = performance.now() - t0;
-        const metrics = [...new Set(scenario.metrics.map(m => m.name))];
+        const metrics = [...new Set(scenario.metrics.map((m) => m.name))];
 
         onDataLoaded(store, metrics, _lastIngestTime, scenario.numPoints, scenario.intervalMs);
       } catch (err) {
-        console.error('Failed to load scenario:', err);
-        if (clickedCard) clickedCard.classList.remove('loading');
+        console.error("Failed to load scenario:", err);
+        if (clickedCard) clickedCard.classList.remove("loading");
       }
     }, 30);
   });
@@ -357,16 +382,16 @@ function loadScenario(scenario, clickedCard) {
 
 // ── Custom generator ──────────────────────────────────────────────────
 
-document.getElementById('btnCustomGenerate')?.addEventListener('click', () => {
-  const numSeries = parseInt(document.getElementById('numSeries').value, 10);
-  const numPoints = parseInt(document.getElementById('numPoints').value, 10);
-  const pattern = document.getElementById('dataPattern').value;
-  const backendType = 'column';
-  const intervalMs = parseInt(document.getElementById('sampleInterval').value, 10);
+document.getElementById("btnCustomGenerate")?.addEventListener("click", () => {
+  const numSeries = parseInt(document.getElementById("numSeries").value, 10);
+  const numPoints = parseInt(document.getElementById("numPoints").value, 10);
+  const pattern = document.getElementById("dataPattern").value;
+  const backendType = "column";
+  const intervalMs = parseInt(document.getElementById("sampleInterval").value, 10);
 
-  const btn = document.getElementById('btnCustomGenerate');
+  const btn = document.getElementById("btnCustomGenerate");
   btn.disabled = true;
-  btn.textContent = 'Generating…';
+  btn.textContent = "Generating…";
 
   requestAnimationFrame(() => {
     setTimeout(() => {
@@ -374,7 +399,7 @@ document.getElementById('btnCustomGenerate')?.addEventListener('click', () => {
         generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs);
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Generate Data';
+        btn.textContent = "Generate Data";
       }
     }, 50);
   });
@@ -382,15 +407,15 @@ document.getElementById('btnCustomGenerate')?.addEventListener('click', () => {
 
 function _createStore(backendType, chunkSize) {
   let store;
-  if (backendType === 'column') {
+  if (backendType === "column") {
     if (!wasmReady) {
-      console.warn('WASM unavailable — falling back to ChunkedStore');
+      console.warn("WASM unavailable — falling back to ChunkedStore");
       store = new ChunkedStore(chunkSize);
-      store._backendType = 'chunked';
+      store._backendType = "chunked";
       return store;
     }
     store = new ColumnStore(chunkSize);
-  } else if (backendType === 'chunked') {
+  } else if (backendType === "chunked") {
     store = new ChunkedStore(chunkSize);
   } else {
     store = new FlatStore();
@@ -414,10 +439,10 @@ function generateCustomData(numSeries, numPoints, pattern, backendType, interval
     metricsUsed.add(metricName);
 
     const labels = new Map([
-      ['__name__', metricName],
-      ['region', region],
-      ['instance', instance],
-      ['job', 'demo'],
+      ["__name__", metricName],
+      ["region", region],
+      ["instance", instance],
+      ["job", "demo"],
     ]);
 
     const timestamps = new BigInt64Array(numPoints);
@@ -431,12 +456,16 @@ function generateCustomData(numSeries, numPoints, pattern, backendType, interval
   }
 
   const t0 = performance.now();
-  if (backendType === 'column') {
-    const ids = seriesData.map(sd => store.getOrCreateSeries(sd.labels));
+  if (backendType === "column") {
+    const ids = seriesData.map((sd) => store.getOrCreateSeries(sd.labels));
     for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
       const end = Math.min(offset + CHUNK_SIZE, numPoints);
       for (let i = 0; i < seriesData.length; i++) {
-        store.appendBatch(ids[i], seriesData[i].timestamps.subarray(offset, end), seriesData[i].values.subarray(offset, end));
+        store.appendBatch(
+          ids[i],
+          seriesData[i].timestamps.subarray(offset, end),
+          seriesData[i].values.subarray(offset, end)
+        );
       }
     }
   } else {
@@ -448,39 +477,42 @@ function generateCustomData(numSeries, numPoints, pattern, backendType, interval
   const ingestTime = performance.now() - t0;
   _lastIngestTime = ingestTime;
 
-  document.querySelectorAll('.scenario-card').forEach(c => c.classList.remove('active', 'loading', 'loaded'));
+  document.querySelectorAll(".scenario-card").forEach((c) => {
+    c.classList.remove("active", "loading", "loaded");
+  });
   onDataLoaded(store, [...metricsUsed], ingestTime, numPoints, intervalMs);
   autoSelectQueryStep(intervalMs, numPoints);
 }
 
 // ── Query Lab ─────────────────────────────────────────────────────────
 
-document.getElementById('btnQuery')?.addEventListener('click', runQuery);
+document.getElementById("btnQuery")?.addEventListener("click", runQuery);
 
-for (const id of ['queryMetric', 'queryAgg', 'queryGroupBy', 'queryStep', 'queryTransform']) {
-  document.getElementById(id)?.addEventListener('change', () => {
+for (const id of ["queryMetric", "queryAgg", "queryGroupBy", "queryStep", "queryTransform"]) {
+  document.getElementById(id)?.addEventListener("change", () => {
     updateQueryPreview();
     if (currentStore) runQuery();
   });
 }
 
 function updateQueryPreview() {
-  const el = document.getElementById('queryPreview')?.querySelector('.query-preview-code');
+  const el = document.getElementById("queryPreview")?.querySelector(".query-preview-code");
   if (!el) return;
 
-  const metric = document.getElementById('queryMetric')?.value || '…';
-  const agg = document.getElementById('queryAgg')?.value;
-  const transform = document.getElementById('queryTransform')?.value;
-  const groupByVal = document.getElementById('queryGroupBy')?.value;
-  const stepMs = parseInt(document.getElementById('queryStep')?.value || '0', 10);
+  const metric = document.getElementById("queryMetric")?.value || "…";
+  const agg = document.getElementById("queryAgg")?.value;
+  const transform = document.getElementById("queryTransform")?.value;
+  const groupByVal = document.getElementById("queryGroupBy")?.value;
+  const stepMs = parseInt(document.getElementById("queryStep")?.value || "0", 10);
 
   // Build matcher string
-  let matcherStr = '';
+  let matcherStr = "";
   if (activeMatchers.length > 0) {
-    const parts = activeMatchers.map(m =>
-      `<span class="qp-label">${escapeHtml(m.label)}</span><span class="qp-op">${escapeHtml(m.op)}</span><span class="qp-val">"${escapeHtml(m.value)}"</span>`
+    const parts = activeMatchers.map(
+      (m) =>
+        `<span class="qp-label">${escapeHtml(m.label)}</span><span class="qp-op">${escapeHtml(m.op)}</span><span class="qp-val">"${escapeHtml(m.value)}"</span>`
     );
-    matcherStr = `{${parts.join(', ')}}`;
+    matcherStr = `{${parts.join(", ")}}`;
   }
 
   // Build PromQL-like expression
@@ -495,7 +527,7 @@ function updateQueryPreview() {
     if (stepMs > 0) {
       expr += ` <span class="qp-kw">[${formatDuration(stepMs)}]</span>`;
     }
-    expr += ')';
+    expr += ")";
     if (groupByVal) {
       expr += ` <span class="qp-kw">by</span> (<span class="qp-group">${groupByVal}</span>)`;
     }
@@ -507,17 +539,17 @@ function updateQueryPreview() {
 function runQuery() {
   if (!currentStore) return;
 
-  const metric = document.getElementById('queryMetric')?.value;
-  const agg = document.getElementById('queryAgg')?.value || undefined;
-  const groupByVal = document.getElementById('queryGroupBy')?.value;
+  const metric = document.getElementById("queryMetric")?.value;
+  const agg = document.getElementById("queryAgg")?.value || undefined;
+  const groupByVal = document.getElementById("queryGroupBy")?.value;
   const groupBy = groupByVal ? [groupByVal] : undefined;
-  const stepMs = parseInt(document.getElementById('queryStep')?.value || '0', 10);
+  const stepMs = parseInt(document.getElementById("queryStep")?.value || "0", 10);
   const step = stepMs > 0 ? BigInt(stepMs) * NS_PER_MS : undefined;
-  const transform = document.getElementById('queryTransform')?.value || undefined;
+  const transform = document.getElementById("queryTransform")?.value || undefined;
 
   // Pipeline stage 1: Label matching
   const totalSeries = currentStore.seriesCount || 0;
-  const ids = currentStore.matchLabel('__name__', metric);
+  const ids = currentStore.matchLabel("__name__", metric);
   let matchedIds = ids;
   if (activeMatchers.length > 0) {
     matchedIds = [...ids]; // copy for intersection
@@ -526,7 +558,7 @@ function runQuery() {
 
   if (ids.length === 0) return;
 
-  let minT = BigInt('9223372036854775807');
+  let minT = BigInt("9223372036854775807");
   let maxT = -minT;
   for (const id of ids) {
     const data = currentStore.read(id, -minT, minT);
@@ -550,54 +582,59 @@ function runQuery() {
   });
   const queryTime = performance.now() - t0;
 
-  showSection('section-results');
+  showSection("section-results");
   updateQueryPreview();
 
   // ── Pipeline visualization ──
-  const pipelineEl = document.getElementById('queryPipeline');
+  const pipelineEl = document.getElementById("queryPipeline");
   if (pipelineEl) {
     pipelineEl.hidden = false;
     // Stage 1: Label matching
-    const matchEl = document.getElementById('pipelineMatchDetail');
+    const matchEl = document.getElementById("pipelineMatchDetail");
     if (matchEl) {
       matchEl.innerHTML = `<strong>${result.scannedSeries.toLocaleString()}</strong> of ${totalSeries.toLocaleString()} series matched`;
     }
     // Stage 2: Chunk scan
-    const chunksEl = document.getElementById('pipelineChunksDetail');
+    const chunksEl = document.getElementById("pipelineChunksDetail");
     if (chunksEl) {
       chunksEl.innerHTML = `<strong>${result.scannedSamples.toLocaleString()}</strong> samples across ${result.scannedSeries.toLocaleString()} series`;
     }
     // Stage 3: Decode & aggregate
-    const decodeEl = document.getElementById('pipelineDecodeDetail');
+    const decodeEl = document.getElementById("pipelineDecodeDetail");
     if (decodeEl) {
       decodeEl.innerHTML = `<strong>${result.series.length.toLocaleString()}</strong> result series · <strong>${queryTime.toFixed(1)} ms</strong>`;
     }
     // Animate stages in
-    for (const stage of pipelineEl.querySelectorAll('.pipeline-stage')) {
-      stage.classList.add('pipeline-active');
+    for (const stage of pipelineEl.querySelectorAll(".pipeline-stage")) {
+      stage.classList.add("pipeline-active");
     }
   }
 
-  document.getElementById('qStatScannedSeries').innerHTML = `Scanned: <strong>${result.scannedSeries}</strong> series`;
-  document.getElementById('qStatScannedSamples').innerHTML = `Samples: <strong>${result.scannedSamples.toLocaleString()}</strong>`;
-  document.getElementById('qStatResultSeries').innerHTML = `Result: <strong>${result.series.length}</strong> series`;
-  document.getElementById('qStatQueryTime').innerHTML = `Time: <strong>${queryTime.toFixed(1)} ms</strong>`;
+  document.getElementById("qStatScannedSeries").innerHTML =
+    `Scanned: <strong>${result.scannedSeries}</strong> series`;
+  document.getElementById("qStatScannedSamples").innerHTML =
+    `Samples: <strong>${result.scannedSamples.toLocaleString()}</strong>`;
+  document.getElementById("qStatResultSeries").innerHTML =
+    `Result: <strong>${result.series.length}</strong> series`;
+  document.getElementById("qStatQueryTime").innerHTML =
+    `Time: <strong>${queryTime.toFixed(1)} ms</strong>`;
 
-  renderChart(document.getElementById('chartCanvas'), result.series, '');
+  renderChart(document.getElementById("chartCanvas"), result.series, "");
   setupChartTooltip();
 
-  const legendEl = document.getElementById('chartLegend');
+  const legendEl = document.getElementById("chartLegend");
   if (legendEl) {
-    legendEl.innerHTML = '';
+    legendEl.innerHTML = "";
     for (let i = 0; i < result.series.length; i++) {
       const s = result.series[i];
       const color = CHART_COLORS[i % CHART_COLORS.length];
-      const labelStr = [...s.labels]
-        .filter(([k]) => k !== '__name__')
-        .map(([k, v]) => `${escapeHtml(k)}="${escapeHtml(v)}"`)
-        .join(', ') || 'all';
-      const item = document.createElement('div');
-      item.className = 'legend-item';
+      const labelStr =
+        [...s.labels]
+          .filter(([k]) => k !== "__name__")
+          .map(([k, v]) => `${escapeHtml(k)}="${escapeHtml(v)}"`)
+          .join(", ") || "all";
+      const item = document.createElement("div");
+      item.className = "legend-item";
       item.innerHTML = `<span class="legend-swatch" style="background:${color}"></span>${labelStr} (${s.timestamps.length.toLocaleString()} pts)`;
       legendEl.appendChild(item);
     }
@@ -610,10 +647,14 @@ let resizeController = null;
 function installResizeListener() {
   if (resizeController) resizeController.abort();
   resizeController = new AbortController();
-  window.addEventListener('resize', () => {
-    const resultsSection = document.getElementById('section-results');
-    if (currentStore && resultsSection && !resultsSection.hidden) runQuery();
-  }, { signal: resizeController.signal });
+  window.addEventListener(
+    "resize",
+    () => {
+      const resultsSection = document.getElementById("section-results");
+      if (currentStore && resultsSection && !resultsSection.hidden) runQuery();
+    },
+    { signal: resizeController.signal }
+  );
 }
 installResizeListener();
 
@@ -621,7 +662,7 @@ installResizeListener();
 
 loadWasm().then((ok) => {
   if (!ok) {
-    console.warn('WASM unavailable — ColumnStore features disabled');
+    console.warn("WASM unavailable — ColumnStore features disabled");
   }
 
   // Render scenario cards (user clicks to load — no auto-load)

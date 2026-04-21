@@ -299,7 +299,7 @@ export class ColumnStore {
     const id = this._allSeries.length;
 
     // Group by __name__ so series with the same metric share timestamps
-    const metricName = labels.get('__name__') || '';
+    const metricName = labels.get("__name__") || "";
     if (!this._groupByName) this._groupByName = new Map();
     let groupId = this._groupByName.get(metricName);
     if (groupId === undefined) {

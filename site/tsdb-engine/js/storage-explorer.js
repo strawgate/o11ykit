@@ -397,7 +397,10 @@ export function buildStorageExplorer(store) {
     groupEl.className = "metric-group";
 
     const totalPts = members.reduce((s, m) => s + m.frozenSamples + m.info.hot.count, 0);
-    const totalBytes = members.reduce((s, m) => s + m.frozenBytes + (m.info.hot.count > 0 ? m.info.hot.rawBytes : 0), 0);
+    const totalBytes = members.reduce(
+      (s, m) => s + m.frozenBytes + (m.info.hot.count > 0 ? m.info.hot.rawBytes : 0),
+      0
+    );
 
     groupEl.innerHTML = `
       <div class="metric-group-header">

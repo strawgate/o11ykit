@@ -403,7 +403,9 @@
 }
 
 @media (max-width: 700px) {
-  .chunk-detail-body { grid-template-columns: 1fr; }
+  .chunk-detail-body {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Time range in the header */

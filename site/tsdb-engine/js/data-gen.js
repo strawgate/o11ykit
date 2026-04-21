@@ -75,44 +75,56 @@ export function generateValue(pattern, i, seriesIdx, _total, decimals) {
 
 export const SCENARIOS = [
   {
-    id: 'ecommerce',
-    name: 'E-Commerce Platform',
-    emoji: '🛒',
-    description: 'Web traffic, latency percentiles, error rates, and checkout flow across a global fleet of services.',
+    id: "ecommerce",
+    name: "E-Commerce Platform",
+    emoji: "🛒",
+    description:
+      "Web traffic, latency percentiles, error rates, and checkout flow across a global fleet of services.",
     metrics: [
-      { name: 'http_requests_total', pattern: 'sine', decimals: 0 },
-      { name: 'request_latency_p99_ms', pattern: 'spiky', decimals: 1 },
-      { name: 'error_rate', pattern: 'random-walk', decimals: 4 },
-      { name: 'cart_events_total', pattern: 'sine', decimals: 0 },
-      { name: 'active_sessions', pattern: 'random-walk', decimals: 0 },
-      { name: 'checkout_total', pattern: 'sawtooth', decimals: 0 },
+      { name: "http_requests_total", pattern: "sine", decimals: 0 },
+      { name: "request_latency_p99_ms", pattern: "spiky", decimals: 1 },
+      { name: "error_rate", pattern: "random-walk", decimals: 4 },
+      { name: "cart_events_total", pattern: "sine", decimals: 0 },
+      { name: "active_sessions", pattern: "random-walk", decimals: 0 },
+      { name: "checkout_total", pattern: "sawtooth", decimals: 0 },
     ],
     labelDimensions: {
-      region: ['us-east-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1'],
-      service: ['web', 'api', 'checkout', 'search', 'cart', 'auth', 'cdn', 'payments'],
-      endpoint: ['/home', '/search', '/cart', '/checkout'],
+      region: ["us-east-1", "us-west-2", "eu-west-1", "eu-central-1", "ap-southeast-1"],
+      service: ["web", "api", "checkout", "search", "cart", "auth", "cdn", "payments"],
+      endpoint: ["/home", "/search", "/cart", "/checkout"],
     },
     numPoints: 7500,
     intervalMs: 10000,
   },
   {
-    id: 'kubernetes',
-    name: 'Kubernetes Cluster',
-    emoji: '☸️',
-    description: 'CPU, memory, pod restarts, and network I/O across namespaces, nodes, and pods.',
+    id: "kubernetes",
+    name: "Kubernetes Cluster",
+    emoji: "☸️",
+    description: "CPU, memory, pod restarts, and network I/O across namespaces, nodes, and pods.",
     metrics: [
-      { name: 'cpu_usage_cores', pattern: 'random-walk', decimals: 3 },
-      { name: 'memory_usage_bytes', pattern: 'sawtooth', decimals: 0 },
-      { name: 'pod_restart_total', pattern: 'spiky', decimals: 0 },
-      { name: 'network_rx_bytes', pattern: 'random-walk', decimals: 0 },
-      { name: 'network_tx_bytes', pattern: 'random-walk', decimals: 0 },
+      { name: "cpu_usage_cores", pattern: "random-walk", decimals: 3 },
+      { name: "memory_usage_bytes", pattern: "sawtooth", decimals: 0 },
+      { name: "pod_restart_total", pattern: "spiky", decimals: 0 },
+      { name: "network_rx_bytes", pattern: "random-walk", decimals: 0 },
+      { name: "network_tx_bytes", pattern: "random-walk", decimals: 0 },
     ],
     labelDimensions: {
-      namespace: ['prod', 'staging', 'monitoring', 'kube-system'],
-      node: ['node-01', 'node-02', 'node-03', 'node-04', 'node-05',
-             'node-06', 'node-07', 'node-08', 'node-09', 'node-10',
-             'node-11', 'node-12'],
-      pod: ['web', 'api', 'worker', 'cache', 'queue', 'cron'],
+      namespace: ["prod", "staging", "monitoring", "kube-system"],
+      node: [
+        "node-01",
+        "node-02",
+        "node-03",
+        "node-04",
+        "node-05",
+        "node-06",
+        "node-07",
+        "node-08",
+        "node-09",
+        "node-10",
+        "node-11",
+        "node-12",
+      ],
+      pod: ["web", "api", "worker", "cache", "queue", "cron"],
     },
     numPoints: 6000,
     intervalMs: 15000,
@@ -124,7 +136,7 @@ function _expandLabelDimensions(dims) {
   const keys = Object.keys(dims);
   if (keys.length === 0) return [{}];
   const result = [];
-  const values = keys.map(k => dims[k]);
+  const values = keys.map((k) => dims[k]);
   const indices = new Array(keys.length).fill(0);
 
   for (;;) {
@@ -148,8 +160,8 @@ function _expandLabelDimensions(dims) {
 export function scenarioSeriesCount(scenario) {
   const dims = scenario.labelDimensions || {};
   const keys = Object.keys(dims);
-  const labelCombinations = keys.length === 0 ? 1
-    : keys.reduce((acc, k) => acc * dims[k].length, 1);
+  const labelCombinations =
+    keys.length === 0 ? 1 : keys.reduce((acc, k) => acc * dims[k].length, 1);
   return scenario.metrics.length * labelCombinations;
 }
 
@@ -170,7 +182,7 @@ export function generateScenarioData(scenario, onProgress) {
   let seriesIdx = 0;
   for (const m of metrics) {
     for (const lg of labelGroups) {
-      const labels = new Map([['__name__', m.name], ...Object.entries(lg)]);
+      const labels = new Map([["__name__", m.name], ...Object.entries(lg)]);
       const timestamps = new BigInt64Array(numPoints);
       const values = new Float64Array(numPoints);
       for (let i = 0; i < numPoints; i++) {
