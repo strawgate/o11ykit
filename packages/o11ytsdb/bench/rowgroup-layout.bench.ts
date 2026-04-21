@@ -226,6 +226,30 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
     if (typeof series !== "object" || series === null) {
       throw new Error("invalid series object in layout diagnostics");
     }
+    const segments = Reflect.get(series, "segments");
+    if (Array.isArray(segments)) {
+      for (const segment of segments) {
+        if (typeof segment !== "object" || segment === null) {
+          throw new Error("invalid lane segment");
+        }
+        const hot = Reflect.get(segment, "hot");
+        if (typeof hot !== "object" || hot === null) {
+          throw new Error("missing hot values in lane segment");
+        }
+        const count = Reflect.get(hot, "count");
+        const values = Reflect.get(hot, "values");
+        if (typeof count !== "number" || !hasLength(values)) {
+          throw new Error("lane hot values shape mismatch");
+        }
+        totalHotSamples += count;
+        maxSeriesHotCapacity = Math.max(maxSeriesHotCapacity, values.length);
+        maxSeriesHotCount = Math.max(maxSeriesHotCount, count);
+        if (values.length > CHUNK_SIZE) seriesOverChunkCapacity++;
+        hotValueBytes += count * 8;
+      }
+      continue;
+    }
+
     const hot = Reflect.get(series, "hot");
     if (typeof hot !== "object" || hot === null) {
       throw new Error("missing hot values in layout diagnostics");

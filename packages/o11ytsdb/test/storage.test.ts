@@ -273,4 +273,48 @@ describe("LaneRowGroupStore freeze behavior", () => {
     expect(lane0HotCount).toBe(32);
     expect(lane1HotCount).toBe(0);
   });
+
+  it("rolls a stalled fast series into a fresh lane instead of growing unbounded", () => {
+    const store = new LaneRowGroupStore(tsValuesCodec, 64, () => 0, 2);
+    const fastId = store.getOrCreateSeries(makeLabels("lane_metric", { host: "fast" }));
+    const slowId = store.getOrCreateSeries(makeLabels("lane_metric", { host: "slow" }));
+
+    const slowTs = new BigInt64Array(32);
+    const slowVals = new Float64Array(32);
+    for (let i = 0; i < 32; i++) {
+      slowTs[i] = 1_000_000n + BigInt(i) * 15_000n;
+      slowVals[i] = i;
+    }
+
+    const fastTs = new BigInt64Array(256);
+    const fastVals = new Float64Array(256);
+    for (let i = 0; i < 256; i++) {
+      fastTs[i] = 1_000_000n + BigInt(i) * 15_000n;
+      fastVals[i] = i;
+    }
+
+    store.appendBatch(slowId, slowTs, slowVals);
+    store.appendBatch(fastId, fastTs, fastVals);
+
+    const groups = Reflect.get(store, "groups");
+    expect(Array.isArray(groups)).toBe(true);
+    const group = groups[0];
+    expect(group).toBeDefined();
+    const lanes = Reflect.get(group, "lanes");
+    expect(Array.isArray(lanes)).toBe(true);
+    expect(lanes.length).toBeGreaterThanOrEqual(2);
+
+    const stalledLane = lanes[0];
+    expect(Reflect.get(stalledLane, "hotCount")).toBe(128);
+
+    const fastSeries = Reflect.get(store, "allSeries")[fastId];
+    const segments = Reflect.get(fastSeries, "segments");
+    expect(Array.isArray(segments)).toBe(true);
+    expect(segments.length).toBeGreaterThanOrEqual(2);
+
+    const data = store.read(fastId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
+    expect(data.timestamps.length).toBe(256);
+    expect(data.values[0]).toBe(0);
+    expect(data.values[255]).toBe(255);
+  });
 });

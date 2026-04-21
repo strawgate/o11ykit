@@ -2,8 +2,8 @@
  * Lane row-group store — bounded physical row groups inside a logical group.
  *
  * Unlike RowGroupStore, freeze coordination happens per lane instead of per
- * logical group. This keeps shared timestamps within a bounded set of series
- * while preserving the packed row-group layout for frozen data.
+ * logical group. When a lane stalls and hits its hot-buffer cap, the active
+ * series is rolled into a fresh lane so the stalled lane stays bounded.
  */
 
 import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
@@ -34,11 +34,21 @@ interface HotValues {
   count: number;
 }
 
-interface LaneSeries {
-  groupId: number;
+interface LaneSegment {
   laneId: number;
   laneMemberIndex: number;
   hot: HotValues;
+}
+
+interface LaneSeries {
+  groupId: number;
+  segments: LaneSegment[];
+  activeSegmentIndex: number;
+}
+
+interface LaneMember {
+  seriesId: SeriesId;
+  segmentIndex: number;
 }
 
 interface TimestampChunk {
@@ -53,7 +63,7 @@ interface GroupLane {
   hotTimestamps: BigInt64Array;
   hotCount: number;
   frozenTimestamps: TimestampChunk[];
-  members: SeriesId[];
+  members: LaneMember[];
   rowGroups: RowGroup[];
 }
 
@@ -83,6 +93,7 @@ export class LaneRowGroupStore implements StorageBackend {
   private labelIndex: LabelIndex;
   private _sampleCount = 0;
   private quantize: ((v: number) => number) | undefined;
+  private readonly maxHotWindowsPerLane = 2;
 
   constructor(
     valuesCodec: ValuesCodec,
@@ -132,45 +143,32 @@ export class LaneRowGroupStore implements StorageBackend {
       this.groups.push({ lanes: [createLane(this.chunkSize)] });
     }
 
-    const group = this.groups[groupId]!;
-    let laneId = group.lanes.length - 1;
-    let lane = group.lanes[laneId]!;
-    if (lane.members.length >= this.maxSeriesPerLane) {
-      lane = createLane(this.chunkSize);
-      group.lanes.push(lane);
-      laneId = group.lanes.length - 1;
-    }
-
-    const laneMemberIndex = lane.members.length;
-    lane.members.push(id);
-
-    this.allSeries.push({
+    const series: LaneSeries = {
       groupId,
-      laneId,
-      laneMemberIndex,
-      hot: { values: new Float64Array(this.chunkSize), count: 0 },
-    });
+      segments: [],
+      activeSegmentIndex: 0,
+    };
+    this.allSeries.push(series);
+    this.attachInitialSegment(id, groupId);
     return id;
   }
 
   append(id: SeriesId, timestamp: bigint, value: number): void {
-    const s = this.allSeries[id]!;
-    const lane = this.groups[s.groupId]!.lanes[s.laneId]!;
-
-    if (s.hot.count === lane.hotCount) {
-      lane.hotTimestamps[lane.hotCount] = timestamp;
+    const state = this.ensureWriteSpace(id);
+    if (state.segment.hot.count === state.lane.hotCount) {
+      state.lane.hotTimestamps[state.lane.hotCount] = timestamp;
     }
 
-    s.hot.values[s.hot.count] = this.quantize ? this.quantize(value) : value;
-    s.hot.count++;
+    state.segment.hot.values[state.segment.hot.count] = this.quantize ? this.quantize(value) : value;
+    state.segment.hot.count++;
     this._sampleCount++;
 
-    if (s.hot.count > lane.hotCount) {
-      lane.hotCount = s.hot.count;
+    if (state.segment.hot.count > state.lane.hotCount) {
+      state.lane.hotCount = state.segment.hot.count;
     }
 
-    if (s.hot.count === this.chunkSize) {
-      this.maybeFreeze(lane);
+    if (state.segment.hot.count === this.chunkSize) {
+      this.maybeFreeze(state.lane);
     }
   }
 
@@ -181,57 +179,39 @@ export class LaneRowGroupStore implements StorageBackend {
       );
     }
     if (timestamps.length === 0) return;
-    const s = this.allSeries[id]!;
-    const lane = this.groups[s.groupId]!.lanes[s.laneId]!;
+
     let offset = 0;
     const len = timestamps.length;
 
     while (offset < len) {
-      let space = s.hot.values.length - s.hot.count;
-
-      if (space === 0) {
-        const countBefore = s.hot.count;
-        this.maybeFreeze(lane);
-        if (s.hot.count < countBefore) {
-          space = s.hot.values.length - s.hot.count;
-        } else {
-          const newSize = s.hot.values.length + this.chunkSize;
-          const newVals = new Float64Array(newSize);
-          newVals.set(s.hot.values);
-          s.hot.values = newVals;
-          if (lane.hotTimestamps.length < newSize) {
-            const newTs = new BigInt64Array(newSize);
-            newTs.set(lane.hotTimestamps);
-            lane.hotTimestamps = newTs;
-          }
-          space = newSize - s.hot.count;
-        }
-      }
-
+      const state = this.ensureWriteSpace(id);
+      const space = state.segment.hot.values.length - state.segment.hot.count;
       const batch = Math.min(space, len - offset);
       const tsSlice = timestamps.subarray(offset, offset + batch);
-      if (s.hot.count <= lane.hotCount) {
-        lane.hotTimestamps.set(tsSlice, s.hot.count);
+
+      if (state.segment.hot.count <= state.lane.hotCount) {
+        state.lane.hotTimestamps.set(tsSlice, state.segment.hot.count);
       }
 
       if (this.quantize) {
         const q = this.quantize;
         for (let i = 0; i < batch; i++) {
-          s.hot.values[s.hot.count + i] = q(values[offset + i]!);
+          state.segment.hot.values[state.segment.hot.count + i] = q(values[offset + i]!);
         }
       } else {
-        s.hot.values.set(values.subarray(offset, offset + batch), s.hot.count);
+        state.segment.hot.values.set(values.subarray(offset, offset + batch), state.segment.hot.count);
       }
-      s.hot.count += batch;
+
+      state.segment.hot.count += batch;
       this._sampleCount += batch;
       offset += batch;
 
-      if (s.hot.count > lane.hotCount) {
-        lane.hotCount = s.hot.count;
+      if (state.segment.hot.count > state.lane.hotCount) {
+        state.lane.hotCount = state.segment.hot.count;
       }
 
-      if (s.hot.count >= this.chunkSize) {
-        this.maybeFreeze(lane);
+      if (state.segment.hot.count >= this.chunkSize) {
+        this.maybeFreeze(state.lane);
       }
     }
   }
@@ -245,69 +225,72 @@ export class LaneRowGroupStore implements StorageBackend {
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
-    const s = this.allSeries[id]!;
-    const lane = this.groups[s.groupId]!.lanes[s.laneId]!;
+    const series = this.allSeries[id]!;
     const parts: TimeRange[] = [];
 
-    if (this.rangeCodec && this.tsCodec) {
-      for (const rg of lane.rowGroups) {
-        if (s.laneMemberIndex >= rg.memberCount) continue;
-        const tsChunk = lane.frozenTimestamps[rg.tsChunkIndex]!;
-        if (tsChunk.maxT < start || tsChunk.minT > end) continue;
+    for (const segment of series.segments) {
+      const lane = this.groups[series.groupId]!.lanes[segment.laneId]!;
 
-        const compressedValues = rg.valueBuffer.subarray(
-          rg.offsets[s.laneMemberIndex]!,
-          rg.offsets[s.laneMemberIndex]! + rg.sizes[s.laneMemberIndex]!
-        );
+      if (this.rangeCodec && this.tsCodec) {
+        for (const rg of lane.rowGroups) {
+          if (segment.laneMemberIndex >= rg.memberCount) continue;
+          const tsChunk = lane.frozenTimestamps[rg.tsChunkIndex]!;
+          if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
-        const result = this.rangeCodec.rangeDecodeValues(
-          tsChunk.compressed!,
-          compressedValues,
-          start,
-          end
-        );
-        if (result.timestamps.length > 0) {
-          parts.push(result);
-          if (!tsChunk.timestamps) {
-            tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed!);
+          const compressedValues = rg.valueBuffer.subarray(
+            rg.offsets[segment.laneMemberIndex]!,
+            rg.offsets[segment.laneMemberIndex]! + rg.sizes[segment.laneMemberIndex]!
+          );
+
+          const result = this.rangeCodec.rangeDecodeValues(
+            tsChunk.compressed!,
+            compressedValues,
+            start,
+            end
+          );
+          if (result.timestamps.length > 0) {
+            parts.push(result);
+            if (!tsChunk.timestamps) {
+              tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed!);
+            }
+          }
+        }
+      } else {
+        for (const rg of lane.rowGroups) {
+          if (segment.laneMemberIndex >= rg.memberCount) continue;
+          const tsChunk = lane.frozenTimestamps[rg.tsChunkIndex]!;
+          if (tsChunk.maxT < start || tsChunk.minT > end) continue;
+
+          if (!tsChunk.timestamps && this.tsCodec && tsChunk.compressed) {
+            tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed);
+          }
+          const timestamps = tsChunk.timestamps!;
+
+          const compressedValues = rg.valueBuffer.subarray(
+            rg.offsets[segment.laneMemberIndex]!,
+            rg.offsets[segment.laneMemberIndex]! + rg.sizes[segment.laneMemberIndex]!
+          );
+          const values = this.valuesCodec.decodeValues(compressedValues);
+          const lo = lowerBound(timestamps, start, 0, tsChunk.count);
+          const hi = upperBound(timestamps, end, lo, tsChunk.count);
+          if (hi > lo) {
+            parts.push({
+              timestamps: timestamps.slice(lo, hi),
+              values: values.slice(lo, hi),
+            });
           }
         }
       }
-    } else {
-      for (const rg of lane.rowGroups) {
-        if (s.laneMemberIndex >= rg.memberCount) continue;
-        const tsChunk = lane.frozenTimestamps[rg.tsChunkIndex]!;
-        if (tsChunk.maxT < start || tsChunk.minT > end) continue;
 
-        if (!tsChunk.timestamps && this.tsCodec && tsChunk.compressed) {
-          tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed);
-        }
-        const timestamps = tsChunk.timestamps!;
-
-        const compressedValues = rg.valueBuffer.subarray(
-          rg.offsets[s.laneMemberIndex]!,
-          rg.offsets[s.laneMemberIndex]! + rg.sizes[s.laneMemberIndex]!
-        );
-        const values = this.valuesCodec.decodeValues(compressedValues);
-        const lo = lowerBound(timestamps, start, 0, tsChunk.count);
-        const hi = upperBound(timestamps, end, lo, tsChunk.count);
+      if (segment.hot.count > 0) {
+        const lo = lowerBound(lane.hotTimestamps, start, 0, segment.hot.count);
+        const hi = upperBound(lane.hotTimestamps, end, lo, segment.hot.count);
         if (hi > lo) {
           parts.push({
-            timestamps: timestamps.slice(lo, hi),
-            values: values.slice(lo, hi),
+            timestamps: lane.hotTimestamps.slice(lo, hi),
+            values: segment.hot.values.slice(lo, hi),
           });
         }
-      }
-    }
-
-    if (s.hot.count > 0) {
-      const lo = lowerBound(lane.hotTimestamps, start, 0, s.hot.count);
-      const hi = upperBound(lane.hotTimestamps, end, lo, s.hot.count);
-      if (hi > lo) {
-        parts.push({
-          timestamps: lane.hotTimestamps.slice(lo, hi),
-          values: s.hot.values.slice(lo, hi),
-        });
       }
     }
 
@@ -348,19 +331,101 @@ export class LaneRowGroupStore implements StorageBackend {
       }
     }
 
-    for (const s of this.allSeries) {
-      bytes += s.hot.count * 8;
+    for (const series of this.allSeries) {
+      for (const segment of series.segments) {
+        bytes += segment.hot.count * 8;
+      }
     }
 
     bytes += this.labelIndex.memoryBytes();
     return bytes;
   }
 
+  private attachInitialSegment(seriesId: SeriesId, groupId: number): void {
+    const group = this.groups[groupId]!;
+    let laneId = group.lanes.length - 1;
+    let lane = group.lanes[laneId]!;
+    if (lane.members.length >= this.maxSeriesPerLane) {
+      lane = createLane(this.chunkSize);
+      group.lanes.push(lane);
+      laneId = group.lanes.length - 1;
+    }
+    this.attachSegmentToLane(seriesId, laneId, lane, false);
+  }
+
+  private attachSegmentToLane(
+    seriesId: SeriesId,
+    laneId: number,
+    lane: GroupLane,
+    activate: boolean
+  ): LaneSegment {
+    const series = this.allSeries[seriesId]!;
+    const segment: LaneSegment = {
+      laneId,
+      laneMemberIndex: lane.members.length,
+      hot: { values: new Float64Array(this.chunkSize), count: 0 },
+    };
+    const segmentIndex = series.segments.length;
+    series.segments.push(segment);
+    lane.members.push({ seriesId, segmentIndex });
+    if (activate) {
+      series.activeSegmentIndex = segmentIndex;
+    }
+    return segment;
+  }
+
+  private rollSeriesToFreshLane(seriesId: SeriesId): { series: LaneSeries; segment: LaneSegment; lane: GroupLane } {
+    const series = this.allSeries[seriesId]!;
+    const group = this.groups[series.groupId]!;
+    const lane = createLane(this.chunkSize);
+    group.lanes.push(lane);
+    const laneId = group.lanes.length - 1;
+    const segment = this.attachSegmentToLane(seriesId, laneId, lane, true);
+    return { series, segment, lane };
+  }
+
+  private getActiveState(seriesId: SeriesId): { series: LaneSeries; segment: LaneSegment; lane: GroupLane } {
+    const series = this.allSeries[seriesId]!;
+    const segment = series.segments[series.activeSegmentIndex]!;
+    const lane = this.groups[series.groupId]!.lanes[segment.laneId]!;
+    return { series, segment, lane };
+  }
+
+  private ensureWriteSpace(seriesId: SeriesId): { series: LaneSeries; segment: LaneSegment; lane: GroupLane } {
+    let state = this.getActiveState(seriesId);
+    if (state.segment.hot.values.length > state.segment.hot.count) {
+      return state;
+    }
+
+    const countBefore = state.segment.hot.count;
+    this.maybeFreeze(state.lane);
+    state = this.getActiveState(seriesId);
+    if (state.segment.hot.count < countBefore) {
+      return state;
+    }
+
+    const maxHotSamples = this.chunkSize * this.maxHotWindowsPerLane;
+    if (state.segment.hot.values.length >= maxHotSamples) {
+      return this.rollSeriesToFreshLane(seriesId);
+    }
+
+    const newSize = state.segment.hot.values.length + this.chunkSize;
+    const newVals = new Float64Array(newSize);
+    newVals.set(state.segment.hot.values);
+    state.segment.hot.values = newVals;
+    if (state.lane.hotTimestamps.length < newSize) {
+      const newTs = new BigInt64Array(newSize);
+      newTs.set(state.lane.hotTimestamps);
+      state.lane.hotTimestamps = newTs;
+    }
+    return state;
+  }
+
   private maybeFreeze(lane: GroupLane): void {
     let minCount = Infinity;
-    for (const memberId of lane.members) {
-      const c = this.allSeries[memberId]!.hot.count;
-      if (c < minCount) minCount = c;
+    for (const member of lane.members) {
+      const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+      if (segment.hot.count < minCount) minCount = segment.hot.count;
     }
 
     const chunksToFreeze = Math.floor(minCount / this.chunkSize);
@@ -401,8 +466,9 @@ export class LaneRowGroupStore implements StorageBackend {
           const bEnd = Math.min(bStart + BATCH_CAP, numMembers);
           const arrays: Float64Array[] = [];
           for (let m = bStart; m < bEnd; m++) {
-            const s = this.allSeries[lane.members[m]!]!;
-            arrays.push(s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize));
+            const member = lane.members[m]!;
+            const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+            arrays.push(segment.hot.values.subarray(chunkStart, chunkStart + this.chunkSize));
           }
           const results = this.valuesCodec.encodeBatchValuesWithStats!(arrays);
           for (let m = 0; m < results.length; m++) {
@@ -412,9 +478,9 @@ export class LaneRowGroupStore implements StorageBackend {
           }
         }
       } else {
-        for (const memberId of lane.members) {
-          const s = this.allSeries[memberId]!;
-          const vals = s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
+        for (const member of lane.members) {
+          const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+          const vals = segment.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
 
           let compressed: Uint8Array;
           let stats: ChunkStats;
@@ -470,14 +536,14 @@ export class LaneRowGroupStore implements StorageBackend {
     }
 
     const frozenSamples = chunksToFreeze * this.chunkSize;
-    for (const memberId of lane.members) {
-      const s = this.allSeries[memberId]!;
-      const remaining = s.hot.count - frozenSamples;
+    for (const member of lane.members) {
+      const segment = this.allSeries[member.seriesId]!.segments[member.segmentIndex]!;
+      const remaining = segment.hot.count - frozenSamples;
       if (remaining > 0) {
-        s.hot.values.copyWithin(0, frozenSamples, s.hot.count);
-        s.hot.count = remaining;
+        segment.hot.values.copyWithin(0, frozenSamples, segment.hot.count);
+        segment.hot.count = remaining;
       } else {
-        s.hot.count = 0;
+        segment.hot.count = 0;
       }
     }
 

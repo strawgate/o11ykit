@@ -36,6 +36,7 @@ export type { InternId } from "./interner.js";
 export { Interner } from "./interner.js";
 // Label index — shared label management for storage backends
 export { LabelIndex } from "./label-index.js";
+export { LaneRowGroupStore } from "./lane-row-group-store.js";
 export { MemPostings } from "./postings.js";
 // Query engine
 export { ScanEngine } from "./query.js";
