@@ -1,5 +1,9 @@
 # Experiment: direct-to-storage flush — eliminate intermediate copy
 
+> Historical note: this prompt predates `RowGroupStore` becoming the canonical
+> packed backend. Backend references below describe the repository state when
+> the experiment was commissioned.
+
 You are handling one workstream inside a larger Codex Cloud fanout for this repository.
 
 ## Objective

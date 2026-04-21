@@ -35,7 +35,7 @@ const STEP = 60_000n;
 
 interface LayoutSpec {
   name: string;
-  kind: "column" | "rowgroup";
+  kind: "rowgroup";
   groupSize: number | "all";
   laneSize?: number;
 }
@@ -80,7 +80,6 @@ interface ExperimentResult {
 }
 
 const LAYOUTS: LayoutSpec[] = [
-  { name: "column-all", kind: "column", groupSize: "all" },
   { name: "rowgroup-all", kind: "rowgroup", groupSize: "all", laneSize: 32 },
   { name: "rowgroup-32", kind: "rowgroup", groupSize: 32, laneSize: 32 },
   { name: "rowgroup-5", kind: "rowgroup", groupSize: 5, laneSize: 32 },
@@ -355,7 +354,7 @@ async function createStore(layout: LayoutSpec): Promise<StorageBackend> {
   const wasmTs = makeTimestampCodec(wasm);
   const rangeCodec = makeALPRangeCodec(wasm);
   const valuesCodec = {
-    name: layout.kind === "column" ? "alp-range" : "rg-alp-range",
+    name: "rg-alp-range",
     encodeValues: alpVals.encodeValues,
     decodeValues: alpVals.decodeValues,
     encodeValuesWithStats: alpVals.encodeValuesWithStats,
@@ -368,11 +367,6 @@ async function createStore(layout: LayoutSpec): Promise<StorageBackend> {
     decodeTimestamps: wasmTs.decodeTimestamps,
   };
   const resolver = makeResolver(layout.groupSize);
-
-  if (layout.kind === "column") {
-    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
-    return new ColumnStore(valuesCodec, CHUNK_SIZE, resolver, layout.name, tsCodec, rangeCodec);
-  }
 
   if (layout.kind === "rowgroup") {
     const { RowGroupStore } = await import(pkgPath("dist/row-group-store.js"));

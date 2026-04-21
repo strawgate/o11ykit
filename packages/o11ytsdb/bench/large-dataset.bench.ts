@@ -168,10 +168,10 @@ function generateValues(
   return { timestamps: ts, values: vs };
 }
 
-// ── Load best backend (ALP+range ColumnStore) ────────────────────────
+// ── Load canonical backend (ALP+range RowGroupStore) ─────────────────
 
 async function loadBestBackend(): Promise<StorageBackend> {
-  const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+  const { RowGroupStore } = await import(pkgPath("dist/row-group-store.js"));
   const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } =
     await import("./wasm-loader.js");
   const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
@@ -180,7 +180,7 @@ async function loadBestBackend(): Promise<StorageBackend> {
   const wasmTs = makeTimestampCodec(wasm);
   const rangeCodec = makeALPRangeCodec(wasm);
 
-  return new ColumnStore(
+  return new RowGroupStore(
     {
       name: "alp-range",
       encodeValues: alpVals.encodeValues,
@@ -191,6 +191,7 @@ async function loadBestBackend(): Promise<StorageBackend> {
     },
     CHUNK_SIZE,
     () => 0,
+    32,
     "alp-range-1gb",
     {
       name: "rust-wasm-ts",
@@ -394,7 +395,7 @@ async function main(): Promise<void> {
   console.log("║  o11ytsdb — Large Dataset Benchmark (1 GB memory ceiling)   ║");
   console.log("╚══════════════════════════════════════════════════════════════╝");
   console.log();
-  console.log(`  Backend: ColumnStore + ALP + delta-of-delta timestamps + range-decode`);
+  console.log(`  Backend: RowGroupStore + ALP + delta-of-delta timestamps + range-decode`);
   console.log(`  Chunk size: ${CHUNK_SIZE}`);
   console.log(`  Memory ceiling: ${fmtBytes(STORE_MEMORY_CEILING)}`);
   console.log(`  Node: ${process.version}`);

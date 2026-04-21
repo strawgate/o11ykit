@@ -50,8 +50,9 @@
         <p class="eyebrow">o11ytsdb engine</p>
         <h1>A time-series database<br/>that runs in your browser.</h1>
         <p class="lede">
-          Gorilla-style XOR-delta compression. Three pluggable storage backends.
-          A scan query engine with aggregation, grouping, and rate computation.
+          Gorilla-style XOR-delta compression, a scan query engine with aggregation and grouping,
+          and historical in-browser storage-layout demos. The package itself now centers on
+          <code>RowGroupStore</code>.
           Generate a million data points below and query them in&nbsp;real&nbsp;time.
         </p>
         <div class="hero-actions">
@@ -74,7 +75,7 @@
       <!-- ─── Section 1: Dataset ────────────────────────────────── -->
       <section class="panel dataset-panel" id="section-dataset">
         <h2>Load a Dataset</h2>
-        <p class="section-intro">Choose a pre-built scenario or generate custom data. Everything runs in your browser.</p>
+        <p class="section-intro">Choose a pre-built scenario or generate custom data. Everything runs in your browser. The backend selector below compares historical demo layouts; the package itself now centers on <code>RowGroupStore</code>.</p>
 
         <div class="dataset-tabs" role="tablist">
           <button type="button" class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-scenarios" id="tab-scenarios-btn">Scenarios</button>
@@ -84,10 +85,10 @@
         <!-- Scenarios tab -->
         <div class="tab-panel active" id="tab-scenarios" role="tabpanel" aria-labelledby="tab-scenarios-btn">
           <div class="scenario-backend-row">
-            <label for="scenarioBackend">Storage backend</label>
+            <label for="scenarioBackend">Demo storage layout</label>
             <select id="scenarioBackend">
-              <option value="column" selected>ColumnStore (ALP + shared timestamps)</option>
-              <option value="chunked">ChunkedStore (XOR-delta)</option>
+              <option value="column" selected>ColumnStore (historical demo)</option>
+              <option value="chunked">ChunkedStore (historical demo)</option>
               <option value="flat">FlatStore (no compression)</option>
             </select>
             <span class="wasm-status-badge" style="display:none"></span>
@@ -148,11 +149,11 @@
               </select>
             </div>
             <div class="control-group">
-              <label for="customBackend">Storage backend</label>
+              <label for="customBackend">Demo storage layout</label>
               <select id="customBackend">
                 <option value="flat">FlatStore (no compression)</option>
-                <option value="chunked">ChunkedStore (XOR-delta)</option>
-                <option value="column" selected>ColumnStore (ALP + shared ts)</option>
+                <option value="chunked">ChunkedStore (historical demo)</option>
+                <option value="column" selected>ColumnStore (historical demo)</option>
               </select>
               <span id="wasmStatusCustom" class="wasm-status" style="display:none"></span>
             </div>
@@ -176,8 +177,8 @@
 
         <!-- Backend switcher tabs -->
         <div class="backend-tabs" role="tablist" aria-label="Storage backend">
-          <button type="button" class="backend-tab active" data-backend="column" role="tab">ColumnStore</button>
-          <button type="button" class="backend-tab" data-backend="chunked" role="tab">ChunkedStore</button>
+          <button type="button" class="backend-tab active" data-backend="column" role="tab">ColumnStore demo</button>
+          <button type="button" class="backend-tab" data-backend="chunked" role="tab">ChunkedStore demo</button>
           <button type="button" class="backend-tab" data-backend="flat" role="tab">FlatStore</button>
         </div>
 
@@ -305,7 +306,7 @@
             <div class="arch-box arch-storage">
               <div class="arch-icon">💾</div>
               <h4>Storage Backends</h4>
-              <p>FlatStore · ChunkedStore · ColumnStore — hot chunks + frozen compressed blocks</p>
+              <p>Browser demo of historical layouts: FlatStore · ChunkedStore · ColumnStore</p>
             </div>
             <div class="arch-arrow">→</div>
             <div class="arch-box arch-query">
@@ -336,7 +337,7 @@
 
       <!-- ─── Storage Backends ────────────────────────────────── -->
       <section class="panel" id="backends">
-        <h2>Three Storage Backends</h2>
+        <h2>Historical Storage Layout Demos</h2>
         <div class="grid grid-3">
           <article class="feature-card backend-card">
             <div class="backend-badge flat">Baseline</div>

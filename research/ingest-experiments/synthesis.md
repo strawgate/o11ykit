@@ -1,5 +1,9 @@
 # Ingest Performance Experiments — Synthesis
 
+> Historical note: these experiments predate `RowGroupStore` becoming the
+> canonical packed backend. References to `FlatStore`, `ChunkedStore`, and
+> `ColumnStore` reflect the repository state at the time of the fanout.
+
 ## Inputs
 
 5 Codex Cloud experiments on branch `copilot/improving-ingest-performance`, run against the 10× optimized TS baseline (1.20M pts/sec p50, 10K gauge points):
@@ -38,7 +42,7 @@ Both attempts on each multi-attempt task converged on the same approach and dire
 
 ## Disagreements
 
-- **direct-flush attempt 2** found append-per-sample slightly beat reserve-and-write on FlatStore (+7% vs +1.5%), while attempt 1 only tested reserve-and-write. This is FlatStore-specific and may not generalize to ChunkedStore.
+- **direct-flush attempt 2** found append-per-sample slightly beat reserve-and-write on FlatStore (+7% vs +1.5%), while attempt 1 only tested reserve-and-write. This is FlatStore-specific and may not generalize to other packed backends.
 - **worker attempt 1** measured 550K sync vs 280K worker throughput; attempt 2 measured 187K sync vs 154K worker. The absolute numbers vary wildly across cloud runner environments, but the relative pattern holds: worker halves throughput while dramatically cutting main-thread blocking.
 - **WASM attempt 1** extracted the most careful crossover analysis and showed no crossover up to 20K points. The other attempts concurred.
 
