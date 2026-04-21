@@ -112,17 +112,33 @@ export interface WasmCodecs {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
+function readNumberAt(arr: ArrayLike<number>, index: number, label: string): number {
+  const value = arr[index];
+  if (value === undefined) {
+    throw new RangeError(`missing ${label} at index ${index}`);
+  }
+  return value;
+}
+
+function readItemAt<T>(arr: readonly T[], index: number, label: string): T {
+  const value = arr[index];
+  if (value === undefined) {
+    throw new RangeError(`missing ${label} at index ${index}`);
+  }
+  return value;
+}
+
 function parseStats(wasm: WasmExports, statsPtr: number): ChunkStats {
   const s = new Float64Array(wasm.memory.buffer.slice(statsPtr, statsPtr + 64));
   return {
-    minV: s[0]!,
-    maxV: s[1]!,
-    sum: s[2]!,
-    count: s[3]!,
-    firstV: s[4]!,
-    lastV: s[5]!,
-    sumOfSquares: s[6]!,
-    resetCount: s[7]!,
+    minV: readNumberAt(s, 0, "chunk stat"),
+    maxV: readNumberAt(s, 1, "chunk stat"),
+    sum: readNumberAt(s, 2, "chunk stat"),
+    count: readNumberAt(s, 3, "chunk stat"),
+    firstV: readNumberAt(s, 4, "chunk stat"),
+    lastV: readNumberAt(s, 5, "chunk stat"),
+    sumOfSquares: readNumberAt(s, 6, "chunk stat"),
+    resetCount: readNumberAt(s, 7, "chunk stat"),
   };
 }
 
@@ -137,9 +153,15 @@ const DELTA_ALP_TAG = 0xda;
  */
 function readAlpSampleCount(buf: Uint8Array): number {
   if (buf.length < 2) return 0;
-  if (buf[0] !== DELTA_ALP_TAG) return (buf[0]! << 8) | buf[1]!;
+  if (buf[0] !== DELTA_ALP_TAG) {
+    return (readNumberAt(buf, 0, "ALP header byte") << 8) | readNumberAt(buf, 1, "ALP header byte");
+  }
   if (buf.length < 11) return 0;
-  return ((buf[9]! << 8) | buf[10]!) + 1;
+  return (
+    (readNumberAt(buf, 9, "delta-ALP header byte") << 8) +
+    readNumberAt(buf, 10, "delta-ALP header byte") +
+    1
+  );
 }
 
 /** Throw if the scratch allocator overflowed (returned 0). */
@@ -229,7 +251,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       checkScratch(valsPtr, "encodeBatchValuesWithStats/valsPtr");
       const wasmMem = mem();
       for (let i = 0; i < numArrays; i++) {
-        const arr = arrays[i]!;
+        const arr = readItemAt(arrays, i, "batch values array");
         wasmMem.set(
           new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength),
           valsPtr + i * chunkSize * 8
@@ -268,19 +290,21 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const results: Array<{ compressed: Uint8Array; stats: ChunkStats }> = [];
       for (let i = 0; i < numArrays; i++) {
         const si = i * 8;
+        const offset = readNumberAt(offsets, i, "batch offset");
+        const size = readNumberAt(sizes, i, "batch size");
         results.push({
           compressed: new Uint8Array(
-            wasm.memory.buffer.slice(outPtr + offsets[i]!, outPtr + offsets[i]! + sizes[i]!)
+            wasm.memory.buffer.slice(outPtr + offset, outPtr + offset + size)
           ),
           stats: {
-            minV: allStats[si]!,
-            maxV: allStats[si + 1]!,
-            sum: allStats[si + 2]!,
-            count: allStats[si + 3]!,
-            firstV: allStats[si + 4]!,
-            lastV: allStats[si + 5]!,
-            sumOfSquares: allStats[si + 6]!,
-            resetCount: allStats[si + 7]!,
+            minV: readNumberAt(allStats, si, "batch stat"),
+            maxV: readNumberAt(allStats, si + 1, "batch stat"),
+            sum: readNumberAt(allStats, si + 2, "batch stat"),
+            count: readNumberAt(allStats, si + 3, "batch stat"),
+            firstV: readNumberAt(allStats, si + 4, "batch stat"),
+            lastV: readNumberAt(allStats, si + 5, "batch stat"),
+            sumOfSquares: readNumberAt(allStats, si + 6, "batch stat"),
+            resetCount: readNumberAt(allStats, si + 7, "batch stat"),
           },
         });
       }
@@ -306,7 +330,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const sizes = new Uint32Array(numBlobs);
       let off = 0;
       for (let i = 0; i < numBlobs; i++) {
-        const b = blobs[i]!;
+        const b = readItemAt(blobs, i, "compressed blob");
         wasmMem.set(b, blobsPtr + off);
         offsets[i] = off;
         sizes[i] = b.length;
@@ -355,7 +379,8 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const inPtr = wasm.allocScratch(buf.length);
       checkScratch(inPtr, "xor/decodeValues/inPtr");
       mem().set(buf, inPtr);
-      const maxSamples = (buf[0]! << 8) | buf[1]!;
+      const maxSamples =
+        (readNumberAt(buf, 0, "XOR header byte") << 8) | readNumberAt(buf, 1, "XOR header byte");
       const valPtr = wasm.allocScratch(maxSamples * 8);
       checkScratch(valPtr, "xor/decodeValues/valPtr");
       const n = wasm.decodeValues(inPtr, buf.length, valPtr, maxSamples);
@@ -408,7 +433,9 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       const inPtr = wasm.allocScratch(buf.length);
       checkScratch(inPtr, "decodeTimestamps/inPtr");
       mem().set(buf, inPtr);
-      const maxSamples = (buf[0]! << 8) | buf[1]!;
+      const maxSamples =
+        (readNumberAt(buf, 0, "timestamp header byte") << 8) |
+        readNumberAt(buf, 1, "timestamp header byte");
       const tsPtr = wasm.allocScratch(maxSamples * 8);
       checkScratch(tsPtr, "decodeTimestamps/tsPtr");
       const n = wasm.decodeTimestamps(inPtr, buf.length, tsPtr, maxSamples);
@@ -436,7 +463,9 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       mem().set(compressedValues, valInPtr);
 
       // Derive sample count from the timestamp blob (always regular ALP, never delta-ALP).
-      const maxSamples = (compressedTimestamps[0]! << 8) | compressedTimestamps[1]!;
+      const maxSamples =
+        (readNumberAt(compressedTimestamps, 0, "compressed timestamp header byte") << 8) |
+        readNumberAt(compressedTimestamps, 1, "compressed timestamp header byte");
       if (maxSamples === 0) {
         return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
       }

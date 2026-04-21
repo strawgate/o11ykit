@@ -773,14 +773,26 @@ export function visitMetricPointsRaw(
         scopeAttributes: scopeMetrics.scope?.attributes,
       };
       visitor.onScope?.(rawContext);
+      let pointContext: {
+        resourceAttributes: typeof rawContext.resourceAttributes;
+        scopeName: typeof rawContext.scopeName;
+        scopeVersion: typeof rawContext.scopeVersion;
+        scopeAttributes: typeof rawContext.scopeAttributes;
+        metric: MetricInfo;
+      } | null = null;
+      const withMetric = (metricInfo: MetricInfo) => {
+        if (pointContext) {
+          pointContext.metric = metricInfo;
+          return pointContext;
+        }
+        pointContext = { ...rawContext, metric: metricInfo };
+        return pointContext;
+      };
       for (const metric of scopeMetrics.metrics ?? []) {
         const gaugePoints = metric.gauge?.dataPoints;
         if (gaugePoints) {
           visitor.onNumberDataPoints?.(
-            {
-              ...rawContext,
-              metric: mapMetricInfo(metric, "gauge", null, null),
-            },
+            withMetric(mapMetricInfo(metric, "gauge", null, null)),
             gaugePoints
           );
         }
@@ -789,15 +801,14 @@ export function visitMetricPointsRaw(
         const sumPoints = sum?.dataPoints;
         if (sumPoints) {
           visitor.onNumberDataPoints?.(
-            {
-              ...rawContext,
-              metric: mapMetricInfo(
+            withMetric(
+              mapMetricInfo(
                 metric,
                 "sum",
                 sum?.aggregationTemporality ?? null,
                 sum?.isMonotonic ?? null
-              ),
-            },
+              )
+            ),
             sumPoints
           );
         }
@@ -806,15 +817,9 @@ export function visitMetricPointsRaw(
         const histogramPoints = histogram?.dataPoints;
         if (histogramPoints) {
           visitor.onHistogramDataPoints?.(
-            {
-              ...rawContext,
-              metric: mapMetricInfo(
-                metric,
-                "histogram",
-                histogram?.aggregationTemporality ?? null,
-                null
-              ),
-            },
+            withMetric(
+              mapMetricInfo(metric, "histogram", histogram?.aggregationTemporality ?? null, null)
+            ),
             histogramPoints
           );
         }
@@ -822,10 +827,7 @@ export function visitMetricPointsRaw(
         const summaryPoints = metric.summary?.dataPoints;
         if (summaryPoints) {
           visitor.onSummaryDataPoints?.(
-            {
-              ...rawContext,
-              metric: mapMetricInfo(metric, "summary", null, null),
-            },
+            withMetric(mapMetricInfo(metric, "summary", null, null)),
             summaryPoints
           );
         }
@@ -834,15 +836,14 @@ export function visitMetricPointsRaw(
         const exponentialHistogramPoints = exponentialHistogram?.dataPoints;
         if (exponentialHistogramPoints) {
           visitor.onExponentialHistogramDataPoints?.(
-            {
-              ...rawContext,
-              metric: mapMetricInfo(
+            withMetric(
+              mapMetricInfo(
                 metric,
                 "exponentialHistogram",
                 exponentialHistogram?.aggregationTemporality ?? null,
                 null
-              ),
-            },
+              )
+            ),
             exponentialHistogramPoints
           );
         }

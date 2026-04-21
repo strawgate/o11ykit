@@ -19,14 +19,38 @@ import type {
   TimeRange,
 } from "./types.js";
 
+function readNumberAt(arr: ArrayLike<number>, index: number, label: string): number {
+  const value = arr[index];
+  if (value === undefined) {
+    throw new RangeError(`missing ${label} at index ${index}`);
+  }
+  return value;
+}
+
+function readBigIntAt(arr: BigInt64Array, index: number, label: string): bigint {
+  const value = arr[index];
+  if (value === undefined) {
+    throw new RangeError(`missing ${label} at index ${index}`);
+  }
+  return value;
+}
+
+function readItemAt<T>(arr: readonly T[], index: number, label: string): T {
+  const value = arr[index];
+  if (value === undefined) {
+    throw new RangeError(`missing ${label} at index ${index}`);
+  }
+  return value;
+}
+
 /** Galloping lower bound on a sorted number array. */
 function gallopLowerBound(arr: number[], target: number, from: number): number {
   if (from >= arr.length) return arr.length;
-  if (arr[from]! >= target) return from;
+  if (readNumberAt(arr, from, "gallop value") >= target) return from;
   let step = 1;
   let lo = from + 1;
   let hi = lo;
-  while (hi < arr.length && arr[hi]! < target) {
+  while (hi < arr.length && readNumberAt(arr, hi, "gallop value") < target) {
     lo = hi + 1;
     step <<= 1;
     hi = from + step;
@@ -36,7 +60,7 @@ function gallopLowerBound(arr: number[], target: number, from: number): number {
   let right = hi;
   while (left <= right) {
     const mid = (left + right) >>> 1;
-    if (arr[mid]! < target) left = mid + 1;
+    if (readNumberAt(arr, mid, "gallop value") < target) left = mid + 1;
     else right = mid - 1;
   }
   return left;
@@ -50,7 +74,7 @@ function sortedIntersect(a: number[], b: number[]): number[] {
   const out: number[] = [];
   let j = 0;
   for (let i = 0; i < small.length; i++) {
-    const v = small[i]!;
+    const v = readNumberAt(small, i, "intersection value");
     j = gallopLowerBound(big, v, j);
     if (j >= big.length) break;
     if (big[j] === v) out.push(v);
@@ -65,7 +89,7 @@ function sortedDifference(a: number[], b: number[]): number[] {
   const out: number[] = [];
   let j = 0;
   for (let i = 0; i < a.length; i++) {
-    const v = a[i]!;
+    const v = readNumberAt(a, i, "difference value");
     j = gallopLowerBound(b, v, j);
     if (j < b.length && b[j] === v) continue;
     out.push(v);
@@ -284,7 +308,10 @@ function aggAccumulate(accum: number, v: number, fn: AggFn): number {
 function aggFinalize(values: Float64Array, counts: Float64Array, fn: AggFn): void {
   if (fn === "avg") {
     for (let i = 0; i < values.length; i++) {
-      if (counts[i]! > 0) values[i]! /= counts[i]!;
+      const count = readNumberAt(counts, i, "aggregation count");
+      if (count > 0) {
+        values[i] = readNumberAt(values, i, "aggregation value") / count;
+      }
     }
   }
 }
@@ -311,7 +338,7 @@ function aggregate(ranges: TimeRange[], fn: AggFn, step?: bigint): TimeRange {
 
 function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
   // Use the longest series as the timestamp base.
-  let longest = ranges[0]!;
+  let longest = readItemAt(ranges, 0, "range");
   for (const r of ranges) {
     if (r.timestamps.length > longest.timestamps.length) longest = r;
   }
@@ -325,27 +352,37 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
         `${fn}() without a subsequent aggregation must be evaluated per series (got ${ranges.length} ranges)`
       );
     }
-    const src = ranges[0]!;
+    const src = readItemAt(ranges, 0, "range");
     if (fn === "irate") {
       for (let i = 1; i < src.timestamps.length; i++) {
-        const delta = src.values[i]! - src.values[i - 1]!;
-        const dt = Number(src.timestamps[i]! - src.timestamps[i - 1]!) / 1000;
-        values[i] = dt > 0 ? (delta >= 0 ? delta : src.values[i]!) / dt : 0;
+        const currentValue = readNumberAt(src.values, i, "point value");
+        const previousValue = readNumberAt(src.values, i - 1, "point value");
+        const currentTimestamp = readBigIntAt(src.timestamps, i, "point timestamp");
+        const previousTimestamp = readBigIntAt(src.timestamps, i - 1, "point timestamp");
+        const delta = currentValue - previousValue;
+        const dt = Number(currentTimestamp - previousTimestamp) / 1000;
+        values[i] = dt > 0 ? (delta >= 0 ? delta : currentValue) / dt : 0;
       }
     } else if (fn === "delta") {
       // Raw difference — no counter-reset handling
       for (let i = 1; i < src.timestamps.length; i++) {
-        values[i] = src.values[i]! - src.values[i - 1]!;
+        const currentValue = readNumberAt(src.values, i, "point value");
+        const previousValue = readNumberAt(src.values, i - 1, "point value");
+        values[i] = currentValue - previousValue;
       }
     } else {
       for (let i = 1; i < src.timestamps.length; i++) {
+        const currentValue = readNumberAt(src.values, i, "point value");
+        const previousValue = readNumberAt(src.values, i - 1, "point value");
         if (fn === "increase") {
-          const delta = src.values[i]! - src.values[i - 1]!;
-          values[i] = delta >= 0 ? delta : src.values[i]!;
+          const delta = currentValue - previousValue;
+          values[i] = delta >= 0 ? delta : currentValue;
         } else {
-          const dt = Number(src.timestamps[i]! - src.timestamps[i - 1]!) / 1000;
-          const delta = src.values[i]! - src.values[i - 1]!;
-          values[i] = dt > 0 ? (delta >= 0 ? delta : src.values[i]!) / dt : 0;
+          const currentTimestamp = readBigIntAt(src.timestamps, i, "point timestamp");
+          const previousTimestamp = readBigIntAt(src.timestamps, i - 1, "point timestamp");
+          const dt = Number(currentTimestamp - previousTimestamp) / 1000;
+          const delta = currentValue - previousValue;
+          values[i] = dt > 0 ? (delta >= 0 ? delta : currentValue) / dt : 0;
         }
       }
     }
@@ -359,8 +396,12 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
     // Simple: assume aligned timestamps. Real engine would merge-sort.
     const len = Math.min(r.values.length, timestamps.length);
     for (let i = 0; i < len; i++) {
-      values[i] = aggAccumulate(values[i]!, r.values[i]!, fn);
-      counts[i]!++;
+      values[i] = aggAccumulate(
+        readNumberAt(values, i, "aggregate value"),
+        readNumberAt(r.values, i, "range value"),
+        fn
+      );
+      counts[i] = readNumberAt(counts, i, "aggregate count") + 1;
     }
   }
 
@@ -379,9 +420,10 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   let maxT = -minT;
   for (const r of ranges) {
     if (r.timestamps.length > 0) {
-      if (r.timestamps[0]! < minT) minT = r.timestamps[0]!;
-      if (r.timestamps[r.timestamps.length - 1]! > maxT)
-        maxT = r.timestamps[r.timestamps.length - 1]!;
+      const firstTimestamp = readBigIntAt(r.timestamps, 0, "range timestamp");
+      const lastTimestamp = readBigIntAt(r.timestamps, r.timestamps.length - 1, "range timestamp");
+      if (firstTimestamp < minT) minT = firstTimestamp;
+      if (lastTimestamp > maxT) maxT = lastTimestamp;
     } else if (r.stats && r.chunkMinT !== undefined && r.chunkMaxT !== undefined) {
       if (r.chunkMinT < minT) minT = r.chunkMinT;
       if (r.chunkMaxT > maxT) maxT = r.chunkMaxT;
@@ -428,7 +470,7 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
     const lastTsTracker = fn === "last" ? new Float64Array(bucketCount).fill(-Infinity) : undefined;
     const accumulate = _makeAccumulator(fn, values, counts, minTN, stepN, lastTsTracker);
     for (let ri = 0; ri < ranges.length; ri++) {
-      const r = ranges[ri]!;
+      const r = readItemAt(ranges, ri, "range");
       if (r.stats && r.chunkMinT !== undefined && r.chunkMaxT !== undefined) {
         const chunkMinTN = Number(r.chunkMinT - minT) + minTN;
         const chunkMaxTN = Number(r.chunkMaxT - minT) + minTN;
@@ -459,7 +501,7 @@ function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange 
   // see "no data" instead of Infinity / -Infinity / 0.
   if (fn !== "sum" && fn !== "count") {
     for (let i = 0; i < bucketCount; i++) {
-      if (counts[i]! === 0) values[i] = NaN;
+      if (readNumberAt(counts, i, "bucket count") === 0) values[i] = NaN;
     }
   }
 
@@ -478,22 +520,22 @@ function _foldStats(
 ): void {
   switch (fn) {
     case "min":
-      if (st.minV < values[bucket]!) values[bucket] = st.minV;
+      if (st.minV < readNumberAt(values, bucket, "bucket value")) values[bucket] = st.minV;
       break;
     case "max":
-      if (st.maxV > values[bucket]!) values[bucket] = st.maxV;
+      if (st.maxV > readNumberAt(values, bucket, "bucket value")) values[bucket] = st.maxV;
       break;
     case "sum":
     case "avg":
-      values[bucket]! += st.sum;
+      values[bucket] = readNumberAt(values, bucket, "bucket value") + st.sum;
       break;
     case "count":
-      values[bucket]! += st.count;
+      values[bucket] = readNumberAt(values, bucket, "bucket value") + st.count;
       break;
     case "last":
       // Use chunk maxT to ensure temporally-last value wins across series.
       if (lastTsTracker && chunkMaxTN !== undefined) {
-        if (chunkMaxTN >= lastTsTracker[bucket]!) {
+        if (chunkMaxTN >= readNumberAt(lastTsTracker, bucket, "last timestamp")) {
           lastTsTracker[bucket] = chunkMaxTN;
           values[bucket] = st.lastV;
         }
@@ -502,7 +544,7 @@ function _foldStats(
       }
       break;
   }
-  counts[bucket]! += st.count;
+  counts[bucket] = readNumberAt(counts, bucket, "bucket count") + st.count;
 }
 
 /**
@@ -544,14 +586,14 @@ function _makeAccumulator(
         const interval = span / (len - 1);
         const base = chunkMinTN - minTN;
         for (let i = 0; i < len; i++) {
-          fold(((base + i * interval) / stepN) | 0, vs[i]!);
+          fold(((base + i * interval) / stepN) | 0, readNumberAt(vs, i, "sample value"));
         }
         return;
       }
     }
     const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
     for (let i = 0; i < len; i++) {
-      fold(((readTs(dv, i) - minTN) / stepN) | 0, vs[i]!);
+      fold(((readTs(dv, i) - minTN) / stepN) | 0, readNumberAt(vs, i, "sample value"));
     }
   };
 
@@ -572,7 +614,7 @@ function _makeAccumulator(
         const base = chunkMinTN - minTN;
         for (let i = 0; i < len; i++) {
           const t = chunkMinTN + i * interval;
-          fold(((base + i * interval) / stepN) | 0, vs[i]!, t);
+          fold(((base + i * interval) / stepN) | 0, readNumberAt(vs, i, "sample value"), t);
         }
         return;
       }
@@ -580,7 +622,7 @@ function _makeAccumulator(
     const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
     for (let i = 0; i < len; i++) {
       const t = readTs(dv, i);
-      fold(((t - minTN) / stepN) | 0, vs[i]!, t);
+      fold(((t - minTN) / stepN) | 0, readNumberAt(vs, i, "sample value"), t);
     }
   };
 
@@ -591,8 +633,8 @@ function _makeAccumulator(
           ts,
           vs,
           (bucket, v) => {
-            if (v < values[bucket]!) values[bucket] = v;
-            counts[bucket]!++;
+            if (v < readNumberAt(values, bucket, "bucket value")) values[bucket] = v;
+            counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           },
           cMin,
           cMax
@@ -603,8 +645,8 @@ function _makeAccumulator(
           ts,
           vs,
           (bucket, v) => {
-            if (v > values[bucket]!) values[bucket] = v;
-            counts[bucket]!++;
+            if (v > readNumberAt(values, bucket, "bucket value")) values[bucket] = v;
+            counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           },
           cMin,
           cMax
@@ -616,8 +658,8 @@ function _makeAccumulator(
           ts,
           vs,
           (bucket, v) => {
-            values[bucket]! += v;
-            counts[bucket]!++;
+            values[bucket] = readNumberAt(values, bucket, "bucket value") + v;
+            counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           },
           cMin,
           cMax
@@ -628,8 +670,8 @@ function _makeAccumulator(
           ts,
           _vs,
           (bucket, _v) => {
-            values[bucket]!++;
-            counts[bucket]!++;
+            values[bucket] = readNumberAt(values, bucket, "bucket value") + 1;
+            counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           },
           cMin,
           cMax
@@ -641,11 +683,11 @@ function _makeAccumulator(
             ts,
             vs,
             (bucket, v, t) => {
-              if (t >= lastTsTracker[bucket]!) {
+              if (t >= readNumberAt(lastTsTracker, bucket, "last timestamp")) {
                 lastTsTracker[bucket] = t;
                 values[bucket] = v;
               }
-              counts[bucket]!++;
+              counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
             },
             cMin,
             cMax
@@ -657,7 +699,7 @@ function _makeAccumulator(
           vs,
           (bucket, v) => {
             values[bucket] = v;
-            counts[bucket]!++;
+            counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           },
           cMin,
           cMax
@@ -668,8 +710,8 @@ function _makeAccumulator(
           ts,
           vs,
           (bucket, v) => {
-            values[bucket] = aggAccumulate(values[bucket]!, v, fn);
-            counts[bucket]!++;
+            values[bucket] = aggAccumulate(readNumberAt(values, bucket, "bucket value"), v, fn);
+            counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           },
           cMin,
           cMax
@@ -700,7 +742,7 @@ function _stepAggregateRate(
   const lastVal = new Float64Array(bucketCount);
 
   for (let ri = 0; ri < ranges.length; ri++) {
-    const r = ranges[ri]!;
+    const r = readItemAt(ranges, ri, "range");
     // Rate needs per-sample timestamps — always decode stats-only parts.
     const decoded =
       r.timestamps.length === 0 && r.decode ? (r.decodeView ? r.decodeView() : r.decode()) : r;
@@ -712,8 +754,13 @@ function _stepAggregateRate(
     // Use chunk metadata to derive interval when available.
     const hasChunkMeta = r.chunkMinT !== undefined && r.chunkMaxT !== undefined;
     if (len >= 2 && hasChunkMeta) {
-      const chunkMinTN = Number(r.chunkMinT! - minT) + minTN;
-      const chunkMaxTN = Number(r.chunkMaxT! - minT) + minTN;
+      const chunkMinT = r.chunkMinT;
+      const chunkMaxT = r.chunkMaxT;
+      if (chunkMinT === undefined || chunkMaxT === undefined) {
+        throw new RangeError(`missing chunk bounds at range ${ri}`);
+      }
+      const chunkMinTN = Number(chunkMinT - minT) + minTN;
+      const chunkMaxTN = Number(chunkMaxT - minT) + minTN;
       const span = chunkMaxTN - chunkMinTN;
       if (span > 0 && span % (len - 1) === 0) {
         const interval = span / (len - 1);
@@ -721,14 +768,14 @@ function _stepAggregateRate(
         for (let i = 0; i < len; i++) {
           const t = chunkMinTN + i * interval;
           const bucket = ((base + i * interval) / stepN) | 0;
-          counts[bucket]!++;
-          if (t < firstTs[bucket]!) {
+          counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
+          if (t < readNumberAt(firstTs, bucket, "first timestamp")) {
             firstTs[bucket] = t;
-            firstVal[bucket] = vs[i]!;
+            firstVal[bucket] = readNumberAt(vs, i, "sample value");
           }
-          if (t >= lastTs[bucket]!) {
+          if (t >= readNumberAt(lastTs, bucket, "last timestamp")) {
             lastTs[bucket] = t;
-            lastVal[bucket] = vs[i]!;
+            lastVal[bucket] = readNumberAt(vs, i, "sample value");
           }
         }
         continue;
@@ -742,29 +789,33 @@ function _stepAggregateRate(
     for (let i = 0; i < len; i++) {
       const t = readTs(i);
       const bucket = ((t - minTN) / stepN) | 0;
-      counts[bucket]!++;
-      if (t < firstTs[bucket]!) {
+      counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
+      if (t < readNumberAt(firstTs, bucket, "first timestamp")) {
         firstTs[bucket] = t;
-        firstVal[bucket] = vs[i]!;
+        firstVal[bucket] = readNumberAt(vs, i, "sample value");
       }
-      if (t >= lastTs[bucket]!) {
+      if (t >= readNumberAt(lastTs, bucket, "last timestamp")) {
         lastTs[bucket] = t;
-        lastVal[bucket] = vs[i]!;
+        lastVal[bucket] = readNumberAt(vs, i, "sample value");
       }
     }
   }
   for (let i = 0; i < bucketCount; i++) {
     if (isIncrease) {
-      const delta = lastVal[i]! - firstVal[i]!;
+      const delta =
+        readNumberAt(lastVal, i, "last value") - readNumberAt(firstVal, i, "first value");
       if (rawDelta) {
         values[i] = delta; // delta(): no counter-reset handling
       } else {
-        values[i] = delta >= 0 ? delta : lastVal[i]!; // counter reset: use last value
+        values[i] = delta >= 0 ? delta : readNumberAt(lastVal, i, "last value"); // counter reset: use last value
       }
     } else {
-      const delta = lastVal[i]! - firstVal[i]!;
-      const dt = (lastTs[i]! - firstTs[i]!) / 1000;
-      values[i] = dt > 0 ? (delta >= 0 ? delta : lastVal[i]!) / dt : 0;
+      const delta =
+        readNumberAt(lastVal, i, "last value") - readNumberAt(firstVal, i, "first value");
+      const dt =
+        (readNumberAt(lastTs, i, "last timestamp") - readNumberAt(firstTs, i, "first timestamp")) /
+        1000;
+      values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : 0;
     }
   }
 }
@@ -789,22 +840,22 @@ function _stepAggregateIrate(
   const secondVal = new Float64Array(bucketCount);
 
   const insertSample = (bucket: number, t: number, v: number): void => {
-    if (t > lastTs[bucket]!) {
-      secondTs[bucket] = lastTs[bucket]!;
-      secondVal[bucket] = lastVal[bucket]!;
+    if (t > readNumberAt(lastTs, bucket, "last timestamp")) {
+      secondTs[bucket] = readNumberAt(lastTs, bucket, "last timestamp");
+      secondVal[bucket] = readNumberAt(lastVal, bucket, "last value");
       lastTs[bucket] = t;
       lastVal[bucket] = v;
-    } else if (t === lastTs[bucket]!) {
+    } else if (t === readNumberAt(lastTs, bucket, "last timestamp")) {
       lastVal[bucket] = v;
-    } else if (t > secondTs[bucket]!) {
+    } else if (t > readNumberAt(secondTs, bucket, "second timestamp")) {
       secondTs[bucket] = t;
       secondVal[bucket] = v;
     }
-    counts[bucket]!++;
+    counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
   };
 
   for (let ri = 0; ri < ranges.length; ri++) {
-    const r = ranges[ri]!;
+    const r = readItemAt(ranges, ri, "range");
     const decoded =
       r.timestamps.length === 0 && r.decode ? (r.decodeView ? r.decodeView() : r.decode()) : r;
     const src = decoded.timestamps;
@@ -814,8 +865,13 @@ function _stepAggregateIrate(
 
     const hasChunkMeta = r.chunkMinT !== undefined && r.chunkMaxT !== undefined;
     if (len >= 2 && hasChunkMeta) {
-      const chunkMinTN = Number(r.chunkMinT! - minT) + minTN;
-      const chunkMaxTN = Number(r.chunkMaxT! - minT) + minTN;
+      const chunkMinT = r.chunkMinT;
+      const chunkMaxT = r.chunkMaxT;
+      if (chunkMinT === undefined || chunkMaxT === undefined) {
+        throw new RangeError(`missing chunk bounds at range ${ri}`);
+      }
+      const chunkMinTN = Number(chunkMinT - minT) + minTN;
+      const chunkMaxTN = Number(chunkMaxT - minT) + minTN;
       const span = chunkMaxTN - chunkMinTN;
       if (span > 0 && span % (len - 1) === 0) {
         const interval = span / (len - 1);
@@ -823,7 +879,7 @@ function _stepAggregateIrate(
         for (let i = 0; i < len; i++) {
           const t = chunkMinTN + i * interval;
           const bucket = ((base + i * interval) / stepN) | 0;
-          insertSample(bucket, t, vs[i]!);
+          insertSample(bucket, t, readNumberAt(vs, i, "sample value"));
         }
         continue;
       }
@@ -836,16 +892,20 @@ function _stepAggregateIrate(
     for (let i = 0; i < len; i++) {
       const t = readTs(i);
       const bucket = ((t - minTN) / stepN) | 0;
-      insertSample(bucket, t, vs[i]!);
+      insertSample(bucket, t, readNumberAt(vs, i, "sample value"));
     }
   }
   for (let i = 0; i < bucketCount; i++) {
-    if (secondTs[i]! === -Infinity) {
+    if (readNumberAt(secondTs, i, "second timestamp") === -Infinity) {
       values[i] = 0; // Only one or zero samples — can't compute rate
     } else {
-      const delta = lastVal[i]! - secondVal[i]!;
-      const dt = (lastTs[i]! - secondTs[i]!) / 1000;
-      values[i] = dt > 0 ? (delta >= 0 ? delta : lastVal[i]!) / dt : 0;
+      const delta =
+        readNumberAt(lastVal, i, "last value") - readNumberAt(secondVal, i, "second value");
+      const dt =
+        (readNumberAt(lastTs, i, "last timestamp") -
+          readNumberAt(secondTs, i, "second timestamp")) /
+        1000;
+      values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : 0;
     }
   }
 }
@@ -873,8 +933,7 @@ function _stepAggregatePercentile(
   };
 
   for (let ri = 0; ri < ranges.length; ri++) {
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    const r = ranges[ri]!;
+    const r = readItemAt(ranges, ri, "range");
     // Always decode stats-only parts — we need individual values.
     const decoded =
       r.timestamps.length === 0 && r.decode ? (r.decodeView ? r.decodeView() : r.decode()) : r;
@@ -886,30 +945,36 @@ function _stepAggregatePercentile(
     // Use chunk metadata for arithmetic bucket indexing when available.
     const hasChunkMeta = r.chunkMinT !== undefined && r.chunkMaxT !== undefined;
     if (len >= 2 && hasChunkMeta) {
-      const chunkMinTN = Number(r.chunkMinT! - minT) + minTN;
-      const chunkMaxTN = Number(r.chunkMaxT! - minT) + minTN;
+      const chunkMinT = r.chunkMinT;
+      const chunkMaxT = r.chunkMaxT;
+      if (chunkMinT === undefined || chunkMaxT === undefined) {
+        throw new RangeError(`missing chunk bounds at range ${ri}`);
+      }
+      const chunkMinTN = Number(chunkMinT - minT) + minTN;
+      const chunkMaxTN = Number(chunkMaxT - minT) + minTN;
       const span = chunkMaxTN - chunkMinTN;
       if (span > 0 && span % (len - 1) === 0) {
         const interval = span / (len - 1);
         const base = chunkMinTN - minTN;
         for (let i = 0; i < len; i++) {
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          buckets[((base + i * interval) / stepN) | 0]!.push(vs[i]!);
+          readItemAt(buckets, ((base + i * interval) / stepN) | 0, "percentile bucket").push(
+            readNumberAt(vs, i, "sample value")
+          );
         }
         continue;
       }
     }
     const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
     for (let i = 0; i < len; i++) {
-      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-      buckets[((readTs(dv, i) - minTN) / stepN) | 0]!.push(vs[i]!);
+      readItemAt(buckets, ((readTs(dv, i) - minTN) / stepN) | 0, "percentile bucket").push(
+        readNumberAt(vs, i, "sample value")
+      );
     }
   }
 
   // Sort each bucket and pick the percentile value.
   for (let i = 0; i < bucketCount; i++) {
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    const b = buckets[i]!;
+    const b = readItemAt(buckets, i, "percentile bucket");
     counts[i] = b.length;
     if (b.length === 0) {
       values[i] = NaN;
@@ -917,7 +982,6 @@ function _stepAggregatePercentile(
     }
     b.sort((a, c) => a - c);
     const idx = Math.min(Math.ceil(fraction * b.length) - 1, b.length - 1);
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    values[i] = b[idx]!;
+    values[i] = readNumberAt(b, idx, "percentile value");
   }
 }
