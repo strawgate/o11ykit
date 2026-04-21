@@ -396,12 +396,11 @@ export class ColumnStore implements StorageBackend {
     return concatRanges(parts);
   }
 
-  readParts(id: SeriesId, start: bigint, end: bigint): TimeRange[] {
+  scanParts(id: SeriesId, start: bigint, end: bigint, visit: (part: TimeRange) => void): void {
     // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.allSeries[id]!;
     // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const group = this.groups[s.groupId]!;
-    const parts: TimeRange[] = [];
     const fc = s.frozen;
 
     // ── Path A: Fused range-decode (best — ts decode + binary search + partial values decode in one WASM call) ──
@@ -414,16 +413,11 @@ export class ColumnStore implements StorageBackend {
         // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const cv = fc.blobs[ci]!;
 
-        // Stats-skip: when the entire chunk is within the query range,
-        // emit a stats-only part so the query engine can fold pre-computed
-        // aggregates instead of decoding + iterating every sample.
-        // Includes a lazy decode() callback for cases where the chunk
-        // spans multiple aggregation buckets and needs sample iteration.
         if (tsChunk.minT >= start && tsChunk.maxT <= end) {
           const rc = this.rangeCodec;
           // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
           const tc = tsChunk.compressed!;
-          parts.push({
+          visit({
             timestamps: new BigInt64Array(0),
             values: new Float64Array(0),
             stats: frozenGetStats(fc, ci),
@@ -442,9 +436,8 @@ export class ColumnStore implements StorageBackend {
           end
         );
         if (result.timestamps.length > 0) {
-          parts.push(result);
+          visit(result);
 
-          // Cache decoded timestamps if not already cached.
           if (!tsChunk.timestamps) {
             // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
             tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed!);
@@ -461,16 +454,14 @@ export class ColumnStore implements StorageBackend {
         // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const cv = fc.blobs[ci]!;
 
-        // Stats-skip: entire chunk within query range.
         if (tsChunk.minT >= start && tsChunk.maxT <= end) {
           const vc = this.valuesCodec;
           const tsc = this.tsCodec;
           const tcc = tsChunk.compressed;
-          const stats = frozenGetStats(fc, ci);
           const part: TimeRange = {
             timestamps: new BigInt64Array(0),
             values: new Float64Array(0),
-            stats,
+            stats: frozenGetStats(fc, ci),
             chunkMinT: tsChunk.minT,
             chunkMaxT: tsChunk.maxT,
             decode: () => {
@@ -500,11 +491,10 @@ export class ColumnStore implements StorageBackend {
               return { timestamps, values: decView(cv) };
             };
           }
-          parts.push(part);
+          visit(part);
           continue;
         }
 
-        // Decompress timestamps if needed.
         const timestamps =
           tsChunk.timestamps ??
           // biome-ignore lint/style/noNonNullAssertion lint/suspicious/noAssignInExpressions: bounds-checked by construction
@@ -514,7 +504,7 @@ export class ColumnStore implements StorageBackend {
         const lo = lowerBound(timestamps, start, 0, tsChunk.count);
         const hi = upperBound(timestamps, end, lo, tsChunk.count);
         if (hi > lo) {
-          parts.push({
+          visit({
             timestamps: timestamps.slice(lo, hi),
             values: values.slice(lo, hi),
           });
@@ -522,18 +512,23 @@ export class ColumnStore implements StorageBackend {
       }
     }
 
-    // Scan hot chunk.
     if (s.hot.count > 0) {
       const lo = lowerBound(group.hotTimestamps, start, 0, s.hot.count);
       const hi = upperBound(group.hotTimestamps, end, lo, s.hot.count);
       if (hi > lo) {
-        parts.push({
+        visit({
           timestamps: group.hotTimestamps.slice(lo, hi),
           values: s.hot.values.slice(lo, hi),
         });
       }
     }
+  }
 
+  readParts(id: SeriesId, start: bigint, end: bigint): TimeRange[] {
+    const parts: TimeRange[] = [];
+    this.scanParts(id, start, end, (part) => {
+      parts.push(part);
+    });
     return parts;
   }
 

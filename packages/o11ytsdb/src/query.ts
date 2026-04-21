@@ -57,6 +57,7 @@ function readChunkBounds(range: TimeRange, rangeIndex: number): [bigint, bigint]
   }
   return [chunkMinT, chunkMaxT];
 }
+type SimpleStepAgg = Extract<AggFn, "sum" | "avg" | "min" | "max" | "count" | "last">;
 
 /** Galloping lower bound on a sorted number array. */
 function gallopLowerBound(arr: number[], target: number, from: number): number {
@@ -225,6 +226,14 @@ export class ScanEngine implements QueryEngine {
       return { series, scannedSeries: ids.length, scannedSamples };
     }
 
+    if (opts.step && storage.scanParts && !opts.transform && isSimpleStepAgg(opts.agg)) {
+      return streamStepAggregateByGroup(storage, ids, {
+        ...opts,
+        step: opts.step,
+        agg: opts.agg,
+      });
+    }
+
     // With aggregation — read all, group, aggregate.
     const groups = new Map<string, { labels: Labels; ranges: TimeRange[] }>();
 
@@ -273,6 +282,156 @@ export class ScanEngine implements QueryEngine {
 
     return { series, scannedSeries: ids.length, scannedSamples };
   }
+}
+
+function isSimpleStepAgg(fn: AggFn): fn is SimpleStepAgg {
+  return (
+    fn === "sum" || fn === "avg" || fn === "min" || fn === "max" || fn === "count" || fn === "last"
+  );
+}
+
+function makeGroupLabels(
+  metric: string,
+  groupBy: readonly string[] | undefined,
+  labels: Labels
+): Labels {
+  const groupLabels = new Map<string, string>();
+  groupLabels.set("__name__", metric);
+  if (groupBy) {
+    for (const k of groupBy) {
+      const v = labels.get(k);
+      if (v !== undefined) groupLabels.set(k, v);
+    }
+  }
+  return groupLabels;
+}
+
+function updateBounds(bounds: { minT?: bigint; maxT?: bigint }, part: TimeRange): void {
+  if (part.timestamps.length > 0) {
+    const start = part.timestamps[0];
+    const end = part.timestamps[part.timestamps.length - 1];
+    if (start !== undefined && (bounds.minT === undefined || start < bounds.minT))
+      bounds.minT = start;
+    if (end !== undefined && (bounds.maxT === undefined || end > bounds.maxT)) bounds.maxT = end;
+    return;
+  }
+  if (part.stats && part.chunkMinT !== undefined && part.chunkMaxT !== undefined) {
+    if (bounds.minT === undefined || part.chunkMinT < bounds.minT) bounds.minT = part.chunkMinT;
+    if (bounds.maxT === undefined || part.chunkMaxT > bounds.maxT) bounds.maxT = part.chunkMaxT;
+  }
+}
+
+function streamStepAggregateByGroup(
+  storage: StorageBackend,
+  ids: SeriesId[],
+  opts: QueryOpts & { step: bigint; agg: SimpleStepAgg }
+): QueryResult {
+  const scanParts = storage.scanParts;
+  if (!scanParts) {
+    throw new Error("streamStepAggregateByGroup requires scanParts()");
+  }
+
+  const groups = new Map<
+    string,
+    { labels: Labels; minT?: bigint; maxT?: bigint; state?: ReturnType<typeof createStepState> }
+  >();
+  let scannedSamples = 0;
+
+  for (const id of ids) {
+    const labels = storage.labels(id) ?? new Map();
+    const groupKey = opts.groupBy
+      ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0")
+      : "__all__";
+    let group = groups.get(groupKey);
+    if (!group) {
+      group = { labels: makeGroupLabels(opts.metric, opts.groupBy, labels) };
+      groups.set(groupKey, group);
+    }
+    scanParts.call(storage, id, opts.start, opts.end, (part) => {
+      scannedSamples += part.timestamps.length || part.stats?.count || 0;
+      updateBounds(group, part);
+    });
+  }
+
+  for (const [, group] of groups) {
+    if (group.minT !== undefined && group.maxT !== undefined) {
+      group.state = createStepState(opts.agg, opts.step, group.minT, group.maxT);
+    }
+  }
+
+  for (const id of ids) {
+    const labels = storage.labels(id) ?? new Map();
+    const groupKey = opts.groupBy
+      ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0")
+      : "__all__";
+    const state = groups.get(groupKey)?.state;
+    if (!state) continue;
+    scanParts.call(storage, id, opts.start, opts.end, (part) => {
+      state.addPart(part);
+    });
+  }
+
+  const series: SeriesResult[] = [];
+  for (const [, group] of groups) {
+    const result = group.state
+      ? group.state.finish()
+      : { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+    series.push({
+      labels: group.labels,
+      timestamps: result.timestamps,
+      values: result.values,
+    });
+  }
+  return { series, scannedSeries: ids.length, scannedSamples };
+}
+
+function createStepState(fn: SimpleStepAgg, step: bigint, minT: bigint, maxT: bigint) {
+  const bucketCount = Number((maxT - minT) / step) + 1;
+  const timestamps = new BigInt64Array(bucketCount);
+  const values = new Float64Array(bucketCount);
+  const counts = new Float64Array(bucketCount);
+  const lastTsTracker = fn === "last" ? new Float64Array(bucketCount).fill(-Infinity) : undefined;
+  const minTN = Number(minT);
+  const stepN = Number(step);
+
+  for (let i = 0; i < bucketCount; i++) {
+    timestamps[i] = minT + BigInt(i) * step;
+  }
+  values.fill(aggInit(fn));
+
+  const accumulate = _makeAccumulator(fn, values, counts, minTN, stepN, lastTsTracker);
+
+  return {
+    addPart(part: TimeRange): void {
+      if (part.stats && part.chunkMinT !== undefined && part.chunkMaxT !== undefined) {
+        const chunkMinTN = Number(part.chunkMinT - minT) + minTN;
+        const chunkMaxTN = Number(part.chunkMaxT - minT) + minTN;
+        const bucketLo = ((chunkMinTN - minTN) / stepN) | 0;
+        const bucketHi = ((chunkMaxTN - minTN) / stepN) | 0;
+        if (bucketLo === bucketHi) {
+          _foldStats(fn, part.stats, values, counts, bucketLo, chunkMaxTN, lastTsTracker);
+          return;
+        }
+        if (part.decode) {
+          const decoded = part.decodeView ? part.decodeView() : part.decode();
+          accumulate(decoded.timestamps, decoded.values, chunkMinTN, chunkMaxTN);
+          return;
+        }
+      }
+      if (part.timestamps.length > 0) {
+        accumulate(part.timestamps, part.values);
+      }
+    },
+    finish(): TimeRange {
+      aggFinalize(values, counts, fn);
+      if (fn !== "sum" && fn !== "count") {
+        for (let i = 0; i < bucketCount; i++) {
+          if (counts[i] === 0) values[i] = NaN;
+        }
+      }
+      return { timestamps, values };
+    },
+  };
 }
 
 // ── Aggregation ──────────────────────────────────────────────────────

@@ -8,7 +8,15 @@
  * Usage:
  *   const module = await WebAssembly.compile(wasmBytes);
  *   const codecs = await initWasmCodecs(module);
- *   const store = new ColumnStore(codecs.valuesCodec, 640, ..., codecs.tsCodec, codecs.rangeCodec);
+ *   const store = new RowGroupStore(
+ *     codecs.valuesCodec,
+ *     640,
+ *     () => 0,
+ *     32,
+ *     undefined,
+ *     codecs.tsCodec,
+ *     codecs.rangeCodec
+ *   );
  */
 
 import type {
@@ -258,7 +266,7 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       };
     },
 
-    /** All arrays must have identical length (column-store invariant). */
+    /** All arrays must have identical length (batch ingest invariant). */
     encodeBatchValuesWithStats(arrays: Float64Array[]) {
       const numArrays = arrays.length;
       if (numArrays === 0) return [];

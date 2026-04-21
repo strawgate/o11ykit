@@ -49,6 +49,7 @@
     "bench:postings": "npm run bench -- postings",
     "bench:ingest": "npm run bench -- ingest",
     "bench:query": "npm run bench -- query",
+    "bench:rowgroup-layout": "npm run build && npm run bench:build && node --expose-gc bench/dist/rowgroup-layout.bench.js",
     "bench:compare": "npm run bench -- --compare",
     "smoke": "npm run build && node bench/smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
