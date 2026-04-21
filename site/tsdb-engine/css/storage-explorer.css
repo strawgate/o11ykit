@@ -255,6 +255,13 @@
 
 /* Chunk Detail Panel */
 
+.chunk-detail-section-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f3a5e;
+  margin: 24px 0 4px;
+}
+
 .chunk-detail-panel {
   margin-top: 16px;
   background: white;

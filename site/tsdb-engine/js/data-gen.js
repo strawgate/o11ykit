@@ -27,6 +27,14 @@ export function generateValue(pattern, i, seriesIdx, _total, decimals) {
   const phase = seriesIdx * 0.7;
   let v;
   switch (pattern) {
+    case "rounded-sine":
+      v =
+        100 +
+        Math.sin(i / 50 + phase) * 40 +
+        Math.sin(i / 200 + phase) * 20 +
+        (Math.random() - 0.5) * 8;
+      v = Math.round(v);
+      break;
     case "sine":
       v =
         100 +

@@ -80,9 +80,9 @@ function _renderTsByteMap(tsBlob, _sharedCount) {
 function renderSparkline(canvasId, decoded) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
-  const dpr = window.devicePixelRatio || 1;
-  const w = canvas.width / dpr || 600;
-  const h = canvas.height / dpr || 120;
+  const container = canvas.parentElement;
+  const w = container.clientWidth || 300;
+  const h = container.clientHeight - 24 || 80;
   const ctx = setupCanvasDPR(canvas, w, h);
 
   const values = decoded.values;
@@ -100,7 +100,7 @@ function renderSparkline(canvasId, decoded) {
     maxV += 1;
   }
   const vRange = maxV - minV;
-  const pad = 8;
+  const pad = 4;
   const plotW = w - pad * 2;
   const plotH = h - pad * 2;
 
@@ -257,7 +257,9 @@ function _buildChunkDetailHTML(
 
 export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
   const panel = $("#chunkDetailPanel");
+  const title = $("#chunkDetailTitle");
   panel.style.display = "";
+  if (title) title.style.display = "";
   panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
   const metricName = seriesInfo.labels.get("__name__") || "unknown";
@@ -387,7 +389,7 @@ export function buildStorageExplorer(store) {
   }
 
   const maxSamples = Math.max(...seriesInfos.map((s) => s.frozenSamples + s.info.hot.count));
-  const INITIAL_SHOW = 5;
+  const INITIAL_SHOW = 3;
 
   seriesList.innerHTML = "";
   for (const [metricName, members] of groups) {
@@ -459,9 +461,7 @@ function _buildSeriesRow(si, maxSamples, store) {
     <div class="chunk-bar-container"></div>`;
 
   const barContainer = row.querySelector(".chunk-bar-container");
-  const totalChunksInSeries = si.info.frozen.length + (si.info.hot.count > 0 ? 1 : 0);
-  const compact = totalChunksInSeries > 40;
-  if (compact) barContainer.classList.add("compact-chunks");
+  barContainer.classList.add("compact-chunks");
 
   const isCol = si.info._isColumnStore;
   for (let ci = 0; ci < si.info.frozen.length; ci++) {
@@ -469,12 +469,7 @@ function _buildSeriesRow(si, maxSamples, store) {
     const block = document.createElement("button");
     block.type = "button";
     block.className = isCol ? "chunk-block frozen column-store" : "chunk-block frozen";
-    if (!compact) {
-      const widthPct = Math.max(2, (chunk.count / maxSamples) * 100);
-      block.style.width = `${widthPct}%`;
-    }
     block.title = `Chunk ${ci}: ${chunk.count} pts, ${formatBytes(chunk.compressedBytes)}, ${chunk.ratio.toFixed(1)}× compression`;
-    if (!compact) block.innerHTML = `<span class="chunk-label">${chunk.count}</span>`;
     block.addEventListener("click", () => showChunkDetail(si, ci, "frozen", store));
     barContainer.appendChild(block);
   }
@@ -483,27 +478,20 @@ function _buildSeriesRow(si, maxSamples, store) {
     const block = document.createElement("button");
     block.type = "button";
     block.className = "chunk-block hot";
-    if (!compact) {
-      const widthPct = Math.max(2, (si.info.hot.count / maxSamples) * 100);
-      block.style.width = `${widthPct}%`;
-    }
     block.title = `Hot buffer: ${si.info.hot.count} pts, ${formatBytes(si.info.hot.rawBytes)} (uncompressed)`;
-    if (!compact) block.innerHTML = `<span class="chunk-label">${si.info.hot.count}</span>`;
     block.addEventListener("click", () => showChunkDetail(si, -1, "hot", store));
     barContainer.appendChild(block);
   }
 
-  if (compact) {
-    const summary = document.createElement("div");
-    summary.className = "chunk-summary-bar";
-    summary.innerHTML =
-      `<span class="chunk-count-badge">${si.info.frozen.length} frozen</span>` +
-      (si.info.hot.count > 0
-        ? `<span class="chunk-count-badge hot">1 hot (${si.info.hot.count.toLocaleString()} pts)</span>`
-        : "") +
-      `<span>Click any block to explore</span>`;
-    row.appendChild(summary);
-  }
+  const summary = document.createElement("div");
+  summary.className = "chunk-summary-bar";
+  summary.innerHTML =
+    `<span class="chunk-count-badge">${si.info.frozen.length} frozen</span>` +
+    (si.info.hot.count > 0
+      ? `<span class="chunk-count-badge hot">1 hot (${si.info.hot.count.toLocaleString()} pts)</span>`
+      : "") +
+    `<span>Click any block to explore</span>`;
+  row.appendChild(summary);
 
   return row;
 }
