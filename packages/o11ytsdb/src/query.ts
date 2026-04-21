@@ -227,7 +227,11 @@ export class ScanEngine implements QueryEngine {
     }
 
     if (opts.step && storage.scanParts && !opts.transform && isSimpleStepAgg(opts.agg)) {
-      return streamStepAggregateByGroup(storage, ids, opts, opts.agg);
+      return streamStepAggregateByGroup(storage, ids, {
+        ...opts,
+        step: opts.step,
+        agg: opts.agg,
+      });
     }
 
     // With aggregation — read all, group, aggregate.
