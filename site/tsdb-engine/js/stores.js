@@ -376,51 +376,59 @@ export class ColumnStore {
   }
 
   _maybeFreeze(group) {
-    let minCount = Infinity;
+    // Per-series freezing: each series independently freezes when it has
+    // enough hot data, even if other series in the group haven't caught up.
+    // This is critical when a metric stops arriving — other metrics keep freezing.
     for (const memberId of group.members) {
-      const c = this._allSeries[memberId].hot.count;
-      if (c < minCount) minCount = c;
-    }
+      const s = this._allSeries[memberId];
+      const frozenInHot = s._frozenInHot || 0;
+      const availableChunks = Math.floor(s.hot.count / this.chunkSize);
 
-    const chunksToFreeze = Math.floor(minCount / this.chunkSize);
-    if (chunksToFreeze === 0) return;
+      for (let c = frozenInHot; c < availableChunks; c++) {
+        const chunkStart = c * this.chunkSize;
+        const tsChunkIndex = s.frozen.length;
 
-    for (let c = 0; c < chunksToFreeze; c++) {
-      const chunkStart = c * this.chunkSize;
+        // Create shared timestamp chunk on demand (first series to need it wins)
+        if (tsChunkIndex >= group.frozenTimestamps.length) {
+          const ts = group.hotTimestamps.slice(chunkStart, chunkStart + this.chunkSize);
+          const compressedTs = wasmEncodeTimestamps(ts);
+          group.frozenTimestamps.push({
+            compressed: compressedTs,
+            timestamps: null,
+            minT: ts[0],
+            maxT: ts[this.chunkSize - 1],
+            count: this.chunkSize,
+          });
+        }
 
-      const ts = group.hotTimestamps.slice(chunkStart, chunkStart + this.chunkSize);
-      const tsChunkIndex = group.frozenTimestamps.length;
-      const compressedTs = wasmEncodeTimestamps(ts);
-      group.frozenTimestamps.push({
-        compressed: compressedTs,
-        timestamps: null,
-        minT: ts[0],
-        maxT: ts[this.chunkSize - 1],
-        count: this.chunkSize,
-      });
-
-      for (const memberId of group.members) {
-        const s = this._allSeries[memberId];
         const vals = s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
         const compressedValues = wasmEncodeValuesALP(vals);
         s.frozen.push({ compressedValues, tsChunkIndex, count: this.chunkSize });
       }
+      s._frozenInHot = availableChunks;
     }
 
-    const frozenSamples = chunksToFreeze * this.chunkSize;
+    // Compact: shift out data that ALL series have frozen
+    let minFrozen = Infinity;
+    for (const memberId of group.members) {
+      const n = this._allSeries[memberId]._frozenInHot || 0;
+      if (n < minFrozen) minFrozen = n;
+    }
+    if (minFrozen <= 0) return;
+
+    const compactSamples = minFrozen * this.chunkSize;
     for (const memberId of group.members) {
       const s = this._allSeries[memberId];
-      const remaining = s.hot.count - frozenSamples;
+      const remaining = s.hot.count - compactSamples;
       if (remaining > 0) {
-        s.hot.values.copyWithin(0, frozenSamples, s.hot.count);
-        s.hot.count = remaining;
-      } else {
-        s.hot.count = 0;
+        s.hot.values.copyWithin(0, compactSamples, s.hot.count);
       }
+      s.hot.count = remaining;
+      s._frozenInHot -= minFrozen;
     }
-    const tsRemaining = group.hotCount - frozenSamples;
+    const tsRemaining = group.hotCount - compactSamples;
     if (tsRemaining > 0) {
-      group.hotTimestamps.copyWithin(0, frozenSamples, group.hotCount);
+      group.hotTimestamps.copyWithin(0, compactSamples, group.hotCount);
       group.hotCount = tsRemaining;
     } else {
       group.hotCount = 0;
@@ -453,9 +461,12 @@ export class ColumnStore {
       }
     }
 
-    if (s.hot.count > 0) {
-      const lo = lowerBound(group.hotTimestamps, start, 0, s.hot.count);
-      const hi = upperBound(group.hotTimestamps, end, lo, s.hot.count);
+    // Hot buffer: skip frozen-in-hot prefix
+    const hotOffset = (s._frozenInHot || 0) * this.chunkSize;
+    const hotCount = s.hot.count - hotOffset;
+    if (hotCount > 0) {
+      const lo = lowerBound(group.hotTimestamps, start, hotOffset, hotOffset + hotCount);
+      const hi = upperBound(group.hotTimestamps, end, lo, hotOffset + hotCount);
       if (hi > lo) {
         parts.push({
           timestamps: group.hotTimestamps.slice(lo, hi),
@@ -492,7 +503,8 @@ export class ColumnStore {
       }
     }
     for (const s of this._allSeries) {
-      bytes += s.hot.count * 8;
+      const hotOffset = (s._frozenInHot || 0) * this.chunkSize;
+      bytes += (s.hot.count - hotOffset) * 8;
       for (const c of s.frozen) {
         bytes += c.compressedValues.byteLength;
       }
@@ -503,6 +515,8 @@ export class ColumnStore {
   getChunkInfo(id) {
     const s = this._allSeries[id];
     const group = this._groups[s.groupId];
+    const hotOffset = (s._frozenInHot || 0) * this.chunkSize;
+    const hotCount = s.hot.count - hotOffset;
     return {
       frozen: s.frozen.map((c, i) => {
         const tsChunk = group.frozenTimestamps[c.tsChunkIndex];
@@ -529,13 +543,13 @@ export class ColumnStore {
         };
       }),
       hot: {
-        count: s.hot.count,
-        rawBytes: s.hot.count * 16,
+        count: hotCount,
+        rawBytes: hotCount * 16,
         allocatedBytes:
           s.hot.values.byteLength +
           group.hotTimestamps.byteLength / Math.max(1, group.members.length),
-        timestamps: group.hotTimestamps,
-        values: s.hot.values,
+        timestamps: group.hotTimestamps.subarray(hotOffset, hotOffset + hotCount),
+        values: s.hot.values.subarray(hotOffset, hotOffset + hotCount),
       },
       _isColumnStore: true,
       _groupMembers: group.members.length,
