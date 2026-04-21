@@ -426,7 +426,7 @@ function createStepState(fn: SimpleStepAgg, step: bigint, minT: bigint, maxT: bi
       aggFinalize(values, counts, fn);
       if (fn !== "sum" && fn !== "count") {
         for (let i = 0; i < bucketCount; i++) {
-          if (counts[i]! === 0) values[i] = NaN;
+          if (counts[i] === 0) values[i] = NaN;
         }
       }
       return { timestamps, values };

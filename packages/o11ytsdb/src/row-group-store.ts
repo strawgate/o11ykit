@@ -239,9 +239,19 @@ export class RowGroupStore implements StorageBackend {
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
-    const series = requireDefined(this.allSeries[id], `unknown series id ${id}`);
-    const parts: TimeRange[] = [];
+    return concatRanges(this.readParts(id, start, end));
+  }
 
+  readParts(id: SeriesId, start: bigint, end: bigint): TimeRange[] {
+    const parts: TimeRange[] = [];
+    this.scanParts(id, start, end, (part) => {
+      parts.push(part);
+    });
+    return parts;
+  }
+
+  scanParts(id: SeriesId, start: bigint, end: bigint, visit: (part: TimeRange) => void): void {
+    const series = requireDefined(this.allSeries[id], `unknown series id ${id}`);
     for (const segment of series.segments) {
       const lane = this.getLane(series.groupId, segment.laneId);
 
@@ -275,7 +285,7 @@ export class RowGroupStore implements StorageBackend {
             end
           );
           if (result.timestamps.length > 0) {
-            parts.push(result);
+            visit(result);
             if (!tsChunk.timestamps) {
               tsChunk.timestamps = this.tsCodec.decodeTimestamps(compressedTimestamps);
             }
@@ -311,7 +321,7 @@ export class RowGroupStore implements StorageBackend {
           const lo = lowerBound(timestamps, start, 0, tsChunk.count);
           const hi = upperBound(timestamps, end, lo, tsChunk.count);
           if (hi > lo) {
-            parts.push({
+            visit({
               timestamps: timestamps.slice(lo, hi),
               values: values.slice(lo, hi),
             });
@@ -323,15 +333,13 @@ export class RowGroupStore implements StorageBackend {
         const lo = lowerBound(lane.hotTimestamps, start, 0, segment.hot.count);
         const hi = upperBound(lane.hotTimestamps, end, lo, segment.hot.count);
         if (hi > lo) {
-          parts.push({
+          visit({
             timestamps: lane.hotTimestamps.slice(lo, hi),
             values: segment.hot.values.slice(lo, hi),
           });
         }
       }
     }
-
-    return concatRanges(parts);
   }
 
   labels(id: SeriesId): Labels | undefined {
@@ -382,7 +390,7 @@ export class RowGroupStore implements StorageBackend {
     const group = this.getGroup(groupId);
     let laneId = group.lanes.length - 1;
     let lane = requireDefined(group.lanes[laneId], `missing lane ${laneId} for group ${groupId}`);
-    if (lane.members.length >= this.maxSeriesPerLane) {
+    if (lane.members.length >= this.maxSeriesPerLane || lane.hotCount > 0) {
       lane = createLane(this.chunkSize);
       group.lanes.push(lane);
       laneId = group.lanes.length - 1;
@@ -633,19 +641,19 @@ export class RowGroupStore implements StorageBackend {
       );
       const remaining = segment.hot.count - frozenSamples;
       if (remaining > 0) {
-        segment.hot.values.copyWithin(0, frozenSamples, segment.hot.count);
-        segment.hot.count = remaining;
+        segment.hot.values = segment.hot.values.slice(frozenSamples, segment.hot.count);
       } else {
-        segment.hot.count = 0;
+        segment.hot.values = new Float64Array(0);
       }
+      segment.hot.count = Math.max(remaining, 0);
     }
 
     const tsRemaining = lane.hotCount - frozenSamples;
     if (tsRemaining > 0) {
-      lane.hotTimestamps.copyWithin(0, frozenSamples, lane.hotCount);
-      lane.hotCount = tsRemaining;
+      lane.hotTimestamps = lane.hotTimestamps.slice(frozenSamples, lane.hotCount);
     } else {
-      lane.hotCount = 0;
+      lane.hotTimestamps = new BigInt64Array(0);
     }
+    lane.hotCount = Math.max(tsRemaining, 0);
   }
 }

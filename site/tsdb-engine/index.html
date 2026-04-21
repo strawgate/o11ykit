@@ -540,10 +540,12 @@ const { series, scannedSamples } = executePlan(plan, storage);</code></pre>
         <h2>Quick Start</h2>
         <p class="section-intro">Create a store, ingest data, and query with the fluent builder or the low-level engine.</p>
 
-<pre><code>import { ChunkedStore, encodeChunk, decodeChunk, query } from 'o11ytsdb';
+<pre><code>import { RowGroupStore, ScanEngine } from 'o11ytsdb';
 
 // 1. Create a storage backend
-const store = new ChunkedStore({ name: 'xor-delta', encode: encodeChunk, decode: decodeChunk });
+const valuesCodec = /* your ValuesCodec implementation */;
+const store = new RowGroupStore(valuesCodec, 640, () =&gt; 0, 32);
+const engine = new ScanEngine();
 
 // 2. Ingest time-series data
 const labels = new Map([['__name__', 'http_requests'], ['method', 'GET'], ['region', 'us-east']]);
@@ -553,14 +555,15 @@ const timestamps = BigInt64Array.from({ length: 10000 }, (_, i) =&gt; BigInt(Dat
 const values = Float64Array.from({ length: 10000 }, (_, i) =&gt; 100 + Math.sin(i / 50) * 30 + Math.random() * 5);
 store.appendBatch(seriesId, timestamps, values);
 
-// 3. Query with the fluent builder (recommended — exec is synchronous)
-const result = query()
-  .metric('http_requests')
-  .where('region', '=', 'us-east')
-  .range(timestamps[0], timestamps[timestamps.length - 1])
-  .agg('avg')
-  .step(10_000_000_000n)   // 10-second buckets
-  .exec(store);
+// 3. Query with the scan engine
+const result = engine.query(store, {
+  metric: 'http_requests',
+  start: timestamps[0],
+  end: timestamps[timestamps.length - 1],
+  matchers: [{ label: 'region', op: '=', value: 'us-east' }],
+  agg: 'avg',
+  step: 10_000_000_000n // 10-second buckets
+});
 
 console.log(`Found ${result.series.length} groups, scanned ${result.scannedSamples} samples`);</code></pre>
       </section>
@@ -570,9 +573,10 @@ console.log(`Found ${result.series.length} groups, scanned ${result.scannedSampl
         <h2>OTLP Ingest Pipeline</h2>
         <p class="section-intro">Ingest OpenTelemetry JSON payloads directly at up to <strong>1.2M points/sec</strong>. Supports gauge, sum, histogram, summary, and exponential histogram. FNV-1a fingerprinting + lazy label snapshots keep the hot path allocation-free.</p>
 
-<pre><code>import { ingestOtlpJson, ingestOtlpObject, ChunkedStore } from 'o11ytsdb';
+<pre><code>import { ingestOtlpJson, ingestOtlpObject, RowGroupStore } from 'o11ytsdb';
 
-const store = new ChunkedStore(codec);
+const valuesCodec = /* your ValuesCodec implementation */;
+const store = new RowGroupStore(valuesCodec, 640, () =&gt; 0, 32);
 
 // From a raw JSON string (e.g., HTTP request body)
 const result = ingestOtlpJson(otlpPayload, store);

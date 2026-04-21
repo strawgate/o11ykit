@@ -56,6 +56,13 @@ function insertBatch(
   return id;
 }
 
+function requireDefined<T>(value: T | undefined, message: string): T {
+  if (value === undefined) {
+    throw new Error(message);
+  }
+  return value;
+}
+
 // ── Generic storage backend contract tests ───────────────────────────
 
 function describeStorageBackend(name: string, create: () => StorageBackend) {
@@ -204,10 +211,10 @@ describe("RowGroupStore freeze behavior", () => {
       fullVals[i] = i;
     }
 
-    store.appendBatch(ids[0]!, laggardTs, laggardVals);
-    store.appendBatch(ids[1]!, laggardTs, laggardVals);
-    store.appendBatch(ids[2]!, fullTs, fullVals);
-    store.appendBatch(ids[3]!, fullTs, fullVals);
+    store.appendBatch(requireDefined(ids[0], "missing lane id 0"), laggardTs, laggardVals);
+    store.appendBatch(requireDefined(ids[1], "missing lane id 1"), laggardTs, laggardVals);
+    store.appendBatch(requireDefined(ids[2], "missing lane id 2"), fullTs, fullVals);
+    store.appendBatch(requireDefined(ids[3], "missing lane id 3"), fullTs, fullVals);
 
     const groups = Reflect.get(store, "groups");
     expect(Array.isArray(groups)).toBe(true);

@@ -138,13 +138,15 @@ async function loadBackends(): Promise<StorageBackend[]> {
         },
         CHUNK_SIZE,
         () => 0,
-        32,
-        undefined,
+        "rust-wasm-full",
         {
           name: "rust-wasm-ts",
           encodeTimestamps: wasmTs.encodeTimestamps,
           decodeTimestamps: wasmTs.decodeTimestamps,
-        }
+        },
+        undefined,
+        undefined,
+        32
       )
     );
   } catch (e) {
@@ -171,13 +173,15 @@ async function loadBackends(): Promise<StorageBackend[]> {
         },
         CHUNK_SIZE,
         () => 0,
-        32,
-        undefined,
+        "alp-full",
         {
           name: "rust-wasm-ts",
           encodeTimestamps: wasmTs.encodeTimestamps,
           decodeTimestamps: wasmTs.decodeTimestamps,
-        }
+        },
+        undefined,
+        undefined,
+        32
       )
     );
   } catch (e) {

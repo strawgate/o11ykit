@@ -8,7 +8,15 @@
  * Usage:
  *   const module = await WebAssembly.compile(wasmBytes);
  *   const codecs = await initWasmCodecs(module);
- *   const store = new RowGroupStore(codecs.valuesCodec, 640, ..., 32, codecs.tsCodec, codecs.rangeCodec);
+ *   const store = new RowGroupStore(
+ *     codecs.valuesCodec,
+ *     640,
+ *     () => 0,
+ *     32,
+ *     undefined,
+ *     codecs.tsCodec,
+ *     codecs.rangeCodec
+ *   );
  */
 
 import type {

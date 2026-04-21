@@ -71,7 +71,7 @@ interface ExperimentResult {
   totalSamples: number;
   ingestMs: number;
   ingestSamplesPerSec: number;
-  memBytes: number;
+   payloadBytes: number;
   rss: number;
   rawMs: number;
   selectMs: number;
@@ -475,7 +475,7 @@ async function runExperiment(layout: LayoutSpec, scenario: ScenarioSpec): Promis
     totalSamples,
     ingestMs,
     ingestSamplesPerSec: totalSamples / (ingestMs / 1000),
-    memBytes: store.memoryBytes(),
+    payloadBytes: store.memoryBytes(),
     rss,
     rawMs,
     selectMs,
@@ -487,7 +487,7 @@ async function runExperiment(layout: LayoutSpec, scenario: ScenarioSpec): Promis
 function printScenarioResults(scenario: ScenarioSpec, results: ExperimentResult[]): void {
   console.log(`\n  ── ${scenario.name} ──\n`);
   console.log(
-    "| layout | samples | ingest | mem | raw | select | stepAgg | hot % | ts bytes | value bytes | meta bytes | grown groups | grown series |"
+    "| layout | samples | ingest | payload | raw | select | stepAgg | hot % | ts bytes | value bytes | meta bytes | grown groups | grown series |"
   );
   console.log(
     "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
@@ -497,7 +497,7 @@ function printScenarioResults(scenario: ScenarioSpec, results: ExperimentResult[
     const timestampBytes = result.stats.hotTimestampBytes + result.stats.frozenTimestampBytes;
     const valueBytes = result.stats.hotValueBytes + result.stats.frozenValueBytes;
     console.log(
-      `| ${result.layout} | ${result.totalSamples.toLocaleString()} | ${fmt(result.ingestSamplesPerSec)} /s | ${fmtBytes(result.memBytes)} | ${result.rawMs.toFixed(1)} ms | ${result.selectMs.toFixed(1)} ms | ${result.stepAggMs.toFixed(1)} ms | ${hotPercent.toFixed(1)}% | ${fmtBytes(timestampBytes)} | ${fmtBytes(valueBytes)} | ${fmtBytes(result.stats.statsMetadataBytes)} | ${result.stats.groupsOverChunkCapacity} | ${result.stats.seriesOverChunkCapacity} |`
+      `| ${result.layout} | ${result.totalSamples.toLocaleString()} | ${fmt(result.ingestSamplesPerSec)} /s | ${fmtBytes(result.payloadBytes)} | ${result.rawMs.toFixed(1)} ms | ${result.selectMs.toFixed(1)} ms | ${result.stepAggMs.toFixed(1)} ms | ${hotPercent.toFixed(1)}% | ${fmtBytes(timestampBytes)} | ${fmtBytes(valueBytes)} | ${fmtBytes(result.stats.statsMetadataBytes)} | ${result.stats.groupsOverChunkCapacity} | ${result.stats.seriesOverChunkCapacity} |`
     );
   }
 
