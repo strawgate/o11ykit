@@ -35,7 +35,7 @@ const STEP = 60_000n;
 
 interface LayoutSpec {
   name: string;
-  kind: "column" | "rowgroup" | "legacy-rowgroup";
+  kind: "column" | "rowgroup";
   groupSize: number | "all";
   laneSize?: number;
 }
@@ -81,10 +81,9 @@ interface ExperimentResult {
 
 const LAYOUTS: LayoutSpec[] = [
   { name: "column-all", kind: "column", groupSize: "all" },
-  { name: "legacy-rowgroup-all", kind: "legacy-rowgroup", groupSize: "all" },
-  { name: "rowgroup-32", kind: "rowgroup", groupSize: "all", laneSize: 32 },
-  { name: "legacy-rowgroup-32", kind: "legacy-rowgroup", groupSize: 32 },
-  { name: "legacy-rowgroup-5", kind: "legacy-rowgroup", groupSize: 5 },
+  { name: "rowgroup-all", kind: "rowgroup", groupSize: "all", laneSize: 32 },
+  { name: "rowgroup-32", kind: "rowgroup", groupSize: 32, laneSize: 32 },
+  { name: "rowgroup-5", kind: "rowgroup", groupSize: 5, laneSize: 32 },
 ];
 
 const SCENARIOS: ScenarioSpec[] = [
@@ -388,8 +387,7 @@ async function createStore(layout: LayoutSpec): Promise<StorageBackend> {
     );
   }
 
-  const { LegacyRowGroupStore } = await import(pkgPath("dist/legacy-row-group-store.js"));
-  return new LegacyRowGroupStore(valuesCodec, CHUNK_SIZE, resolver, layout.name, tsCodec, rangeCodec);
+  throw new Error(`unsupported layout kind: ${layout.kind satisfies never}`);
 }
 
 function median(values: number[]): number {
