@@ -283,6 +283,12 @@ describe("RowGroupStore freeze behavior", () => {
 
     const data = store.read(fastId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
     expect(data.timestamps.length).toBe(256);
+    expect(data.timestamps[0]).toBe(1_000_000n);
+    expect(data.timestamps[255]).toBe(1_000_000n + 255n * 15_000n);
+    for (let i = 1; i < data.timestamps.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by data.timestamps.length
+      expect(data.timestamps[i]!).toBeGreaterThan(data.timestamps[i - 1]!);
+    }
     expect(data.values[0]).toBe(0);
     expect(data.values[255]).toBe(255);
   });

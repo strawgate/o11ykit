@@ -138,7 +138,7 @@ async function loadBackends(): Promise<StorageBackend[]> {
         },
         CHUNK_SIZE,
         () => 0,
-        "rust-wasm-full",
+        undefined,
         {
           name: "rust-wasm-ts",
           encodeTimestamps: wasmTs.encodeTimestamps,
@@ -170,7 +170,7 @@ async function loadBackends(): Promise<StorageBackend[]> {
         },
         CHUNK_SIZE,
         () => 0,
-        "alp-full",
+        undefined,
         {
           name: "rust-wasm-ts",
           encodeTimestamps: wasmTs.encodeTimestamps,

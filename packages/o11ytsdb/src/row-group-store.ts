@@ -216,12 +216,15 @@ export class RowGroupStore implements StorageBackend {
       const batch = Math.min(space, len - offset);
       const tsSlice = timestamps.subarray(offset, offset + batch);
 
-      // Leader-only timestamp write (mirrors append()): the segment whose
-      // count matches lane.hotCount is the "leader" for that lane and owns
-      // the shared timestamp column. Lagging segments skip this write and
-      // inherit the leader's timestamps when they catch up.
-      if (state.segment.hot.count === state.lane.hotCount) {
-        state.lane.hotTimestamps.set(tsSlice, state.lane.hotCount);
+      // Write the suffix of this batch that extends past the lane's current
+      // high-water mark into the shared timestamp column. Positions <=
+      // lane.hotCount are already owned by the lane leader and must not be
+      // overwritten; positions > lane.hotCount are still uninitialized and
+      // are this batch's responsibility (otherwise reads of the new range
+      // would observe zero/garbage timestamps).
+      if (state.segment.hot.count + batch > state.lane.hotCount) {
+        const tsOffset = Math.max(0, state.lane.hotCount - state.segment.hot.count);
+        state.lane.hotTimestamps.set(tsSlice.subarray(tsOffset), state.lane.hotCount);
       }
 
       if (this.quantize) {
@@ -402,7 +405,10 @@ export class RowGroupStore implements StorageBackend {
 
     for (const group of this.groups) {
       for (const lane of group.lanes) {
-        bytes += lane.hotCount * 8;
+        // Account for the full allocated capacity of the hot timestamp buffer,
+        // not just populated samples — rollover/grow can leave the buffer
+        // larger than hotCount and that overhead is what callers want to see.
+        bytes += lane.hotTimestamps.byteLength;
         for (const tc of lane.frozenTimestamps) {
           if (tc.compressed) {
             bytes += tc.compressed.byteLength;
@@ -421,7 +427,7 @@ export class RowGroupStore implements StorageBackend {
 
     for (const series of this.allSeries) {
       for (const segment of series.segments) {
-        bytes += segment.hot.count * 8;
+        bytes += segment.hot.values.byteLength;
       }
     }
 
