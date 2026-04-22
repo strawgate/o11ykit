@@ -216,6 +216,10 @@ export class RowGroupStore implements StorageBackend {
       const batch = Math.min(space, len - offset);
       const tsSlice = timestamps.subarray(offset, offset + batch);
 
+      // Leader-only timestamp write (mirrors append()): the segment whose
+      // count matches lane.hotCount is the "leader" for that lane and owns
+      // the shared timestamp column. Lagging segments skip this write and
+      // inherit the leader's timestamps when they catch up.
       if (state.segment.hot.count === state.lane.hotCount) {
         state.lane.hotTimestamps.set(tsSlice, state.lane.hotCount);
       }
@@ -517,7 +521,14 @@ export class RowGroupStore implements StorageBackend {
     const countBefore = state.segment.hot.count;
     this.maybeFreeze(state.lane);
     state = this.getActiveState(seriesId);
-    if (state.segment.hot.count < countBefore) {
+    // maybeFreeze slices hot.values to exactly the remaining count, so
+    // values.length === count after a freeze. Only return early if the freeze
+    // actually opened up space; otherwise fall through to the grow path so
+    // appendBatch never sees a zero-space state and spins forever.
+    if (
+      state.segment.hot.count < countBefore &&
+      state.segment.hot.values.length > state.segment.hot.count
+    ) {
       return state;
     }
 
