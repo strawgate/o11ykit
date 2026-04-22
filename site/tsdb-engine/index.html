@@ -52,10 +52,10 @@
         <p class="lede">
           Gorilla-style XOR-delta compression. Three pluggable storage backends.
           A scan query engine with aggregation, grouping, and rate computation.
-          Generate a million data points below and query them in&nbsp;real&nbsp;time.
+          Generate millions of data points below and query them in&nbsp;real&nbsp;time.
         </p>
         <div class="hero-actions">
-          <a class="cta cta-primary" href="#live-demo">Launch Live Demo ↓</a>
+          <a class="cta cta-primary" href="#section-dataset">Launch Live Demo ↓</a>
           <a class="cta" href="learn/">Learn How It Works</a>
           <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ytsdb" target="_blank" rel="noreferrer">
             Browse Source
@@ -74,46 +74,36 @@
       <!-- ─── Section 1: Dataset ────────────────────────────────── -->
       <section class="panel dataset-panel" id="section-dataset">
         <h2>Load a Dataset</h2>
-        <p class="section-intro">Choose a pre-built scenario or generate custom data. Everything runs in your browser.</p>
+        <p class="section-intro">Choose a pre-built scenario or configure custom data. Everything runs in your browser — no server, no network, no latency.</p>
 
-        <div class="dataset-tabs" role="tablist">
-          <button type="button" class="tab-btn active" role="tab" aria-selected="true" aria-controls="tab-scenarios" id="tab-scenarios-btn">Scenarios</button>
-          <button type="button" class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-custom" id="tab-custom-btn">Custom Generator</button>
+        <div class="scenario-grid" id="scenarioGrid">
+          <!-- populated by JS -->
         </div>
 
-        <!-- Scenarios tab -->
-        <div class="tab-panel active" id="tab-scenarios" role="tabpanel" aria-labelledby="tab-scenarios-btn">
-          <div class="scenario-backend-row">
-            <label for="scenarioBackend">Storage backend</label>
-            <select id="scenarioBackend">
-              <option value="column" selected>ColumnStore (ALP + shared timestamps)</option>
-              <option value="chunked">ChunkedStore (XOR-delta)</option>
-              <option value="flat">FlatStore (no compression)</option>
-            </select>
-            <span class="wasm-status-badge" style="display:none"></span>
-          </div>
-          <div class="scenario-grid" id="scenarioGrid">
-            <!-- populated by JS -->
-          </div>
-        </div>
-
-        <!-- Custom generator tab -->
-        <div class="tab-panel" id="tab-custom" role="tabpanel" aria-labelledby="tab-custom-btn" hidden>
+        <!-- Custom generator (inline, hidden until Custom card clicked) -->
+        <div class="custom-generator-inline" id="customGeneratorInline" hidden>
+          <h3 class="custom-gen-title">Custom Generator</h3>
           <div class="demo-controls">
             <div class="control-group">
               <label for="numSeries">Series</label>
               <select id="numSeries">
                 <option value="5">5 series</option>
-                <option value="10" selected>10 series</option>
+                <option value="10">10 series</option>
                 <option value="25">25 series</option>
-                <option value="50">50 series</option>
+                <option value="50" selected>50 series</option>
+                <option value="100">100 series</option>
+                <option value="500">500 series</option>
+                <option value="1000">1,000 series</option>
+                <option value="5000">5,000 series</option>
+                <option value="10000">10,000 series</option>
               </select>
             </div>
             <div class="control-group">
               <label for="numPoints">Points per series</label>
               <select id="numPoints">
                 <option value="1000">1,000</option>
-                <option value="10000" selected>10,000</option>
+                <option value="5000" selected>5,000</option>
+                <option value="10000">10,000</option>
                 <option value="50000">50,000</option>
                 <option value="100000">100,000</option>
               </select>
@@ -121,21 +111,12 @@
             <div class="control-group">
               <label for="dataPattern">Data pattern</label>
               <select id="dataPattern">
+                <option value="rounded-sine" selected>Rounded sine</option>
                 <option value="sine">Sine wave</option>
                 <option value="sawtooth">Sawtooth</option>
                 <option value="random-walk">Random walk</option>
                 <option value="spiky">Spiky traffic</option>
                 <option value="constant">Constant (best compression)</option>
-              </select>
-            </div>
-            <div class="control-group">
-              <label for="dataPrecision">Value precision</label>
-              <select id="dataPrecision">
-                <option value="0">Integer (counters, bytes)</option>
-                <option value="1">1 decimal (°C, ms)</option>
-                <option value="2" selected>2 decimals (%, currency)</option>
-                <option value="4">4 decimals (ratios)</option>
-                <option value="">Full f64 (worst case)</option>
               </select>
             </div>
             <div class="control-group">
@@ -147,56 +128,70 @@
                 <option value="300000">5 min</option>
               </select>
             </div>
-            <div class="control-group">
-              <label for="customBackend">Storage backend</label>
-              <select id="customBackend">
-                <option value="flat">FlatStore (no compression)</option>
-                <option value="chunked">ChunkedStore (XOR-delta)</option>
-                <option value="column" selected>ColumnStore (ALP + shared ts)</option>
-              </select>
-              <span id="wasmStatusCustom" class="wasm-status" style="display:none"></span>
-            </div>
             <button type="button" id="btnCustomGenerate" class="cta cta-primary demo-btn">Generate Data</button>
           </div>
         </div>
       </section>
 
-      <!-- ─── Section 2: Storage ────────────────────────────────── -->
+      <!-- ─── Section 2: Fork in the Road ──────────────────────── -->
+      <section class="panel fork-panel" id="section-fork" hidden>
+        <h2>What would you like to explore?</h2>
+        <p class="section-intro">Your dataset is loaded and ready. Choose a path — you can always switch later.</p>
+
+        <div class="fork-grid">
+          <button type="button" class="fork-card" id="forkStorage">
+            <div class="fork-icon">💾</div>
+            <h3>Explore Storage</h3>
+            <p>See how millions of data points are compressed and organized in memory. Inspect individual compressed chunks byte-by-byte.</p>
+            <span class="fork-cta">Start Exploring →</span>
+          </button>
+          <button type="button" class="fork-card" id="forkQuery">
+            <div class="fork-icon">🔍</div>
+            <h3>Explore Queries</h3>
+            <p>Write queries against your live dataset. Filter by labels, aggregate across series, compute rates and percentiles, and see results charted in real time.</p>
+            <span class="fork-cta">Open Query Lab →</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ─── Section 3: Storage ────────────────────────────────── -->
       <section class="panel storage-panel" id="section-storage" hidden>
-        <h2>Storage</h2>
+        <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
+          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-storage">💾 Storage</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-query">🔍 Query Lab</button>
+        </nav>
+        <h2>Storage Explorer</h2>
 
         <div class="storage-stats-row" id="storageStatsRow">
           <div class="stat-card"><div class="stat-big" id="statStoragePts">—</div><div class="stat-desc">Total points</div></div>
           <div class="stat-card"><div class="stat-big" id="statStorageSeries">—</div><div class="stat-desc">Series</div></div>
           <div class="stat-card"><div class="stat-big" id="statStorageMem">—</div><div class="stat-desc">Memory used</div></div>
           <div class="stat-card"><div class="stat-big" id="statStorageRatio">—</div><div class="stat-desc">Compression ratio</div></div>
-          <div class="stat-card"><div class="stat-big" id="statStorageIngestTime">—</div><div class="stat-desc">Ingest time</div></div>
           <div class="stat-card"><div class="stat-big" id="statStorageIngestRate">—</div><div class="stat-desc">Ingest rate</div></div>
+          <div class="stat-card"><div class="stat-big" id="statStorageChunks">—</div><div class="stat-desc">Total chunks</div></div>
+          <div class="stat-card"><div class="stat-big" id="statStorageFrozen">—</div><div class="stat-desc">Frozen (compressed)</div></div>
         </div>
 
-        <!-- Backend switcher tabs -->
-        <div class="backend-tabs" role="tablist" aria-label="Storage backend">
-          <button type="button" class="backend-tab active" data-backend="column" role="tab">ColumnStore</button>
-          <button type="button" class="backend-tab" data-backend="chunked" role="tab">ChunkedStore</button>
-          <button type="button" class="backend-tab" data-backend="flat" role="tab">FlatStore</button>
-        </div>
+        <p class="storage-intro">Each row is a series. Frozen compressed chunks are <span class="tag-frozen">frozen</span> and the active write buffer is <span class="tag-hot">hot</span>. Click any chunk to inspect it.</p>
 
-        <!-- Memory layout diagram -->
-        <div id="storageLayoutDiagram" class="storage-layout-diagram"></div>
-
-        <!-- Series chunk explorer (existing) -->
-        <div class="storage-explorer" id="storageExplorer" role="region" aria-label="Storage explorer">
-          <h3>💾 Series Explorer</h3>
-          <p class="storage-intro">Each row is a series. Frozen compressed chunks are <span class="tag-frozen">frozen</span> and the active write buffer is <span class="tag-hot">hot</span>. Click any chunk to inspect it.</p>
-          <div class="storage-overview" id="storageOverview"></div>
-          <div class="storage-series-list" id="storageSeriesList"></div>
-          <div class="chunk-detail-panel" id="chunkDetailPanel" style="display:none;"></div>
-        </div>
+        <!-- Series explorer (grouped by metric) -->
+        <div class="storage-series-list" id="storageSeriesList"></div>
+        <h3 class="chunk-detail-section-title" id="chunkDetailTitle" style="display:none;">Chunk Details</h3>
+        <div class="chunk-detail-panel" id="chunkDetailPanel" style="display:none;"></div>
       </section>
 
-      <!-- ─── Section 3: Query Lab ──────────────────────────────── -->
+      <!-- ─── Section 4: Query Lab ──────────────────────────────── -->
       <section class="panel query-panel" id="section-query" hidden>
+        <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-storage">💾 Storage</button>
+          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-query">🔍 Query Lab</button>
+        </nav>
         <h2>Query Lab</h2>
+
+        <!-- Query preview (PromQL-like) -->
+        <div class="query-preview" id="queryPreview">
+          <code class="query-preview-code">Select a metric to build a query…</code>
+        </div>
 
         <div class="query-lab-grid">
           <!-- Metric + filters -->
@@ -211,12 +206,12 @@
               <label class="matcher-label">Label filters</label>
               <div class="matcher-chips" id="matcherChips"></div>
               <div class="matcher-add-row">
-                <select id="matcherLabel" class="matcher-select"><option value="">label…</option></select>
-                <select id="matcherOp" class="matcher-op-select">
+                <select id="matcherLabel" class="matcher-select" aria-label="Label"><option value="">label…</option></select>
+                <select id="matcherOp" class="matcher-op-select" aria-label="Operator">
                   <option value="=">=</option>
                   <option value="!=">!=</option>
                 </select>
-                <select id="matcherValue" class="matcher-select"><option value="">value…</option></select>
+                <select id="matcherValue" class="matcher-select" aria-label="Value"><option value="">value…</option></select>
                 <button type="button" id="btnAddMatcher" class="btn-add-filter">+ Add</button>
               </div>
             </div>
@@ -270,10 +265,37 @@
           </div>
         </div>
 
-        <button type="button" id="btnQuery" class="cta cta-primary demo-btn">Run Query</button>
+        <button type="button" id="btnQuery" class="cta cta-primary demo-btn">▶ Execute Query</button>
+
+        <!-- Pipeline visualization (shown after query runs) -->
+        <div class="query-pipeline" id="queryPipeline" hidden>
+          <div class="pipeline-stage" id="pipelineMatch">
+            <div class="pipeline-icon">🏷️</div>
+            <div class="pipeline-info">
+              <div class="pipeline-title">Label Matching</div>
+              <div class="pipeline-detail" id="pipelineMatchDetail">—</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+          </div>
+          <div class="pipeline-stage" id="pipelineChunks">
+            <div class="pipeline-icon">📦</div>
+            <div class="pipeline-info">
+              <div class="pipeline-title">Chunk Scan</div>
+              <div class="pipeline-detail" id="pipelineChunksDetail">—</div>
+            </div>
+            <div class="pipeline-arrow">→</div>
+          </div>
+          <div class="pipeline-stage" id="pipelineDecode">
+            <div class="pipeline-icon">🔓</div>
+            <div class="pipeline-info">
+              <div class="pipeline-title">Decode &amp; Aggregate</div>
+              <div class="pipeline-detail" id="pipelineDecodeDetail">—</div>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <!-- ─── Section 4: Results ────────────────────────────────── -->
+      <!-- ─── Section 5: Results ────────────────────────────────── -->
       <section class="panel results-panel" id="section-results" hidden>
         <h2>Results</h2>
         <div class="query-stats" id="queryStats">
@@ -289,331 +311,6 @@
       </section>
 
 
-      <!-- ─── Architecture ────────────────────────────────────── -->
-      <section class="panel" id="architecture">
-        <h2>Engine Architecture</h2>
-        <p class="section-intro">Every component is a pluggable interface — swap codecs, storage backends, and query strategies independently.</p>
-
-        <div class="arch-diagram">
-          <div class="arch-row">
-            <div class="arch-box arch-ingest">
-              <div class="arch-icon">📥</div>
-              <h4>Ingest Pipeline</h4>
-              <p>OTLP JSON → FNV-1a fingerprint → lazy label snapshot → normalized samples → storage</p>
-            </div>
-            <div class="arch-arrow">→</div>
-            <div class="arch-box arch-storage">
-              <div class="arch-icon">💾</div>
-              <h4>Storage Backends</h4>
-              <p>FlatStore · ChunkedStore · ColumnStore — hot chunks + frozen compressed blocks</p>
-            </div>
-            <div class="arch-arrow">→</div>
-            <div class="arch-box arch-query">
-              <div class="arch-icon">🔍</div>
-              <h4>Query Engine + Builder</h4>
-              <p>Fluent query builder → PlanNode AST → scan engine with label matching, aggregation, groupBy, and rate</p>
-            </div>
-          </div>
-          <div class="arch-row arch-bottom">
-            <div class="arch-box arch-codec">
-              <div class="arch-icon">🗜️</div>
-              <h4>XOR-Delta Codec</h4>
-              <p>Gorilla-style: DoD timestamps + XOR float64 values. TS / Zig WASM / Rust WASM</p>
-            </div>
-            <div class="arch-box arch-labels">
-              <div class="arch-icon">🏷️</div>
-              <h4>Label Index</h4>
-              <p>FNV-1a string interner + inverted postings lists with gallop search</p>
-            </div>
-            <div class="arch-box arch-worker">
-              <div class="arch-icon">⚡</div>
-              <h4>Worker Isolation</h4>
-              <p>Off-main-thread via Web Workers with transferable buffers</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ─── Storage Backends ────────────────────────────────── -->
-      <section class="panel" id="backends">
-        <h2>Three Storage Backends</h2>
-        <div class="grid grid-3">
-          <article class="feature-card backend-card">
-            <div class="backend-badge flat">Baseline</div>
-            <h3>FlatStore</h3>
-            <p>Raw TypedArrays with exponential doubling. Zero encode/decode overhead. <strong>16 bytes/sample.</strong></p>
-            <div class="backend-stat">
-              <span class="stat-label">Memory</span>
-              <div class="stat-bar"><div class="stat-fill" style="width:100%"></div></div>
-              <span class="stat-value">16 B/pt</span>
-            </div>
-            <div class="backend-stat">
-              <span class="stat-label">Write</span>
-              <div class="stat-bar"><div class="stat-fill fast" style="width:100%"></div></div>
-              <span class="stat-value">Fastest</span>
-            </div>
-            <div class="backend-stat">
-              <span class="stat-label">Read</span>
-              <div class="stat-bar"><div class="stat-fill fast" style="width:95%"></div></div>
-              <span class="stat-value">O(log n)</span>
-            </div>
-          </article>
-
-          <article class="feature-card backend-card">
-            <div class="backend-badge chunked">Compressed</div>
-            <h3>ChunkedStore</h3>
-            <p>Hot chunks → freeze → compress with pluggable codec. Amortized encode cost. <strong>~2–4 bytes/sample.</strong></p>
-            <div class="backend-stat">
-              <span class="stat-label">Memory</span>
-              <div class="stat-bar"><div class="stat-fill" style="width:22%"></div></div>
-              <span class="stat-value">~3 B/pt</span>
-            </div>
-            <div class="backend-stat">
-              <span class="stat-label">Write</span>
-              <div class="stat-bar"><div class="stat-fill fast" style="width:82%"></div></div>
-              <span class="stat-value">Amortized</span>
-            </div>
-            <div class="backend-stat">
-              <span class="stat-label">Read</span>
-              <div class="stat-bar"><div class="stat-fill fast" style="width:70%"></div></div>
-              <span class="stat-value">Decode + scan</span>
-            </div>
-          </article>
-
-          <article class="feature-card backend-card">
-            <div class="backend-badge column">Optimal</div>
-            <h3>ColumnStore</h3>
-            <p>Shared timestamp columns for co-scraped metrics. Values-only compression per series. <strong>~1–2 bytes/sample.</strong></p>
-            <div class="backend-stat">
-              <span class="stat-label">Memory</span>
-              <div class="stat-bar"><div class="stat-fill" style="width:10%"></div></div>
-              <span class="stat-value">~1.5 B/pt</span>
-            </div>
-            <div class="backend-stat">
-              <span class="stat-label">Write</span>
-              <div class="stat-bar"><div class="stat-fill fast" style="width:75%"></div></div>
-              <span class="stat-value">Batch freeze</span>
-            </div>
-            <div class="backend-stat">
-              <span class="stat-label">Read</span>
-              <div class="stat-bar"><div class="stat-fill fast" style="width:85%"></div></div>
-              <span class="stat-value">Fused range</span>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <!-- ─── Compression Deep Dive ───────────────────────────── -->
-      <section class="panel code-panel" id="compression">
-        <h2>XOR-Delta Compression</h2>
-        <p class="section-intro">Based on Facebook's Gorilla paper (VLDB 2015). Timestamps use delta-of-delta with zigzag encoding. Values use XOR with leading/trailing zero tracking.</p>
-
-        <div class="compression-explainer">
-          <div class="compression-step">
-            <div class="step-num">1</div>
-            <div class="step-content">
-              <h4>Timestamp: Delta-of-Delta</h4>
-              <p>Regular intervals compress to <strong>1 bit per sample</strong>. Irregular intervals use 9–68 bits with zigzag encoding.</p>
-<pre><code>DoD == 0            → '0'              (1 bit)
-DoD in [-63, 64]    → '10' + 7-bit zz  (9 bits)
-DoD in [-255, 256]  → '110' + 9-bit zz (12 bits)
-DoD in [-2047,2048] → '1110' + 12-bit  (16 bits)
-Otherwise           → '1111' + raw 64  (68 bits)</code></pre>
-            </div>
-          </div>
-
-          <div class="compression-step">
-            <div class="step-num">2</div>
-            <div class="step-content">
-              <h4>Value: XOR Encoding</h4>
-              <p>Identical values: <strong>1 bit</strong>. Similar values reuse the leading/trailing zero window from the previous sample.</p>
-<pre><code>XOR == 0         → '0'              (1 bit)
-Reuse window     → '10' + meaningful (2 + N bits)
-New window       → '11' + 6L + 6M   (14 + N bits)</code></pre>
-            </div>
-          </div>
-
-          <div class="compression-step">
-            <div class="step-num">3</div>
-            <div class="step-content">
-              <h4>Result: Massive Compression</h4>
-              <p>Constant-interval gauges achieve <strong>57× compression</strong> vs raw Float64. Even noisy data compresses 4–8×.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ─── Query Engine ────────────────────────────────────── -->
-      <section class="panel" id="query-engine">
-        <h2>Query Engine</h2>
-        <p class="section-intro">The scan engine supports label matching, time windowing, six aggregation functions, groupBy, and rate computation. A 18–30% optimization pass in April 2026 improved step-aggregation throughput across all backends.</p>
-
-        <div class="grid grid-2">
-          <div class="query-feature">
-            <h4>Aggregation Functions</h4>
-            <div class="agg-pills">
-              <span class="agg-pill">sum</span>
-              <span class="agg-pill">avg</span>
-              <span class="agg-pill">min</span>
-              <span class="agg-pill">max</span>
-              <span class="agg-pill">count</span>
-              <span class="agg-pill">last</span>
-              <span class="agg-pill">rate</span>
-            </div>
-          </div>
-          <div class="query-feature">
-            <h4>Low-level QueryOpts</h4>
-<pre><code>interface QueryOpts {
-  metric: string;
-  matchers?: { label, value }[];
-  start: bigint;   // ns epoch
-  end: bigint;     // ns epoch
-  step?: bigint;   // bucket size
-  agg?: AggFn;
-  groupBy?: string[];
-}</code></pre>
-          </div>
-        </div>
-      </section>
-
-      <!-- ─── Query Builder ───────────────────────────────────── -->
-      <section class="panel code-panel" id="query-builder">
-        <h2>Fluent Query Builder</h2>
-        <p class="section-intro">The query builder compiles a typed <code>PlanNode</code> AST and executes it against any <code>StorageBackend</code>. It's the preferred high-level query API.</p>
-
-<pre><code>import { query, executePlan } from 'o11ytsdb';
-
-// Composable, immutable builder — chain any combination (exec is synchronous)
-const result = query()
-  .metric('http_request_duration_seconds')
-  .where('method', '=', 'GET')
-  .where('status', '=~', '2..')   // regex matcher
-  .range(start, end)
-  .rate()
-  .step(60_000n)                  // 1-minute buckets
-  .sumBy('endpoint')
-  .exec(storage);
-
-// Or compile to a plan first (inspect / defer / pass around)
-const plan = query()
-  .metric('cpu_usage')
-  .where('host', '!=', 'canary')
-  .range(start, end)
-  .agg('avg')
-  .groupBy(['region', 'az'])
-  .plan();
-
-// plan.kind === 'aggregate' | 'timeRange' | 'select' | 'transform'
-// Execute later with any compatible storage backend
-const { series, scannedSamples } = executePlan(plan, storage);</code></pre>
-
-        <div class="grid grid-2" style="margin-top:18px">
-          <div class="query-feature">
-            <h4>Builder Methods</h4>
-            <div class="agg-pills">
-              <span class="agg-pill">.metric(name)</span>
-              <span class="agg-pill">.where(label, op, value)</span>
-              <span class="agg-pill">.range(start, end)</span>
-              <span class="agg-pill">.step(ns)</span>
-              <span class="agg-pill">.agg(fn)</span>
-              <span class="agg-pill">.groupBy([...])</span>
-              <span class="agg-pill">.rate()</span>
-              <span class="agg-pill">.plan()</span>
-              <span class="agg-pill">.exec(storage)</span>
-            </div>
-          </div>
-          <div class="query-feature">
-            <h4>Matcher Operators</h4>
-            <div class="agg-pills">
-              <span class="agg-pill"><code>=</code> exact</span>
-              <span class="agg-pill"><code>!=</code> not equal</span>
-              <span class="agg-pill"><code>=~</code> regex match</span>
-              <span class="agg-pill"><code>!~</code> regex not-match</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ─── Code Examples ───────────────────────────────────── -->
-      <section class="panel code-panel" id="code-examples">
-        <h2>Quick Start</h2>
-        <p class="section-intro">Create a store, ingest data, and query with the fluent builder or the low-level engine.</p>
-
-<pre><code>import { ChunkedStore, encodeChunk, decodeChunk, query } from 'o11ytsdb';
-
-// 1. Create a storage backend
-const store = new ChunkedStore({ name: 'xor-delta', encode: encodeChunk, decode: decodeChunk });
-
-// 2. Ingest time-series data
-const labels = new Map([['__name__', 'http_requests'], ['method', 'GET'], ['region', 'us-east']]);
-const seriesId = store.getOrCreateSeries(labels);
-
-const timestamps = BigInt64Array.from({ length: 10000 }, (_, i) =&gt; BigInt(Date.now() - (10000 - i) * 1000) * 1_000_000n);
-const values = Float64Array.from({ length: 10000 }, (_, i) =&gt; 100 + Math.sin(i / 50) * 30 + Math.random() * 5);
-store.appendBatch(seriesId, timestamps, values);
-
-// 3. Query with the fluent builder (recommended — exec is synchronous)
-const result = query()
-  .metric('http_requests')
-  .where('region', '=', 'us-east')
-  .range(timestamps[0], timestamps[timestamps.length - 1])
-  .agg('avg')
-  .step(10_000_000_000n)   // 10-second buckets
-  .exec(store);
-
-console.log(`Found ${result.series.length} groups, scanned ${result.scannedSamples} samples`);</code></pre>
-      </section>
-
-      <!-- ─── OTLP Ingest ─────────────────────────────────────── -->
-      <section class="panel code-panel">
-        <h2>OTLP Ingest Pipeline</h2>
-        <p class="section-intro">Ingest OpenTelemetry JSON payloads directly at up to <strong>1.2M points/sec</strong>. Supports gauge, sum, histogram, summary, and exponential histogram. FNV-1a fingerprinting + lazy label snapshots keep the hot path allocation-free.</p>
-
-<pre><code>import { ingestOtlpJson, ingestOtlpObject, ChunkedStore } from 'o11ytsdb';
-
-const store = new ChunkedStore(codec);
-
-// From a raw JSON string (e.g., HTTP request body)
-const result = ingestOtlpJson(otlpPayload, store);
-console.log(`${result.pointsAccepted} points, ${result.seriesCreated} new series`);
-console.log(`Types: ${JSON.stringify(result.metricTypeCounts)}`);
-// → { gauge: 42, sum: 18, histogram: 6, summary: 2 }
-
-// From a pre-parsed/pre-validated OTLP object (faster — skips JSON.parse)
-const result2 = ingestOtlpObject(parsedDocument, store);
-
-// Labels are auto-extracted:
-//   resource.service.name, scope_attr.*, attr.*, __name__
-// Histogram generates derived series:
-//   metric_bucket, metric_count, metric_sum</code></pre>
-      </section>
-
-      <!-- ─── Worker Isolation ────────────────────────────────── -->
-      <section class="panel code-panel">
-        <h2>Web Worker Isolation</h2>
-        <p class="section-intro">Move all TSDB operations off the main thread. The worker protocol sends OTLP payloads as transferable <code>Uint8Array</code> buffers — <strong>main-thread blocking drops from ~19ms to ~1.9ms</strong> for a 10K-point batch.</p>
-
-<pre><code>import { WorkerClient } from 'o11ytsdb';
-
-const client = new WorkerClient(new Worker('./tsdb-worker.js'));
-await client.init({ chunkSize: 1024 });
-
-// Ingest an OTLP JSON payload off the main thread
-// Data is encoded as a transferable Uint8Array — zero-copy to worker
-await client.ingest(otlpPayload);
-
-// Query returns results back to main thread
-const result = await client.query({
-  metric: 'http_requests',
-  start: 0n,
-  end: BigInt(Date.now()) * 1_000_000n,
-  agg: 'avg',
-  step: 10_000_000_000n,
-});
-
-const stats = await client.stats();
-console.log(`${stats.seriesCount} series, ${stats.sampleCount} samples, ${stats.memoryBytes} bytes`);</code></pre>
-      </section>
 
       <!-- ─── Footer ──────────────────────────────────────────── -->
       <footer class="site-footer">
@@ -625,23 +322,6 @@ console.log(`${stats.seriesCount} series, ${stats.sampleCount} samples, ${stats.
       </footer>
     </main>
 
-    <script>
-      // Dataset panel tabs
-      document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const panel = btn.closest('.dataset-panel');
-          panel.querySelectorAll('.tab-btn').forEach(b => {
-            b.classList.toggle('active', b === btn);
-            b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
-          });
-          panel.querySelectorAll('.tab-panel').forEach(p => {
-            const show = p.id === btn.getAttribute('aria-controls');
-            p.classList.toggle('active', show);
-            p.hidden = !show;
-          });
-        });
-      });
-    </script>
     <script type="module" src="js/app.js"></script>
   </body>
 </html>
