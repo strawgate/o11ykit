@@ -726,6 +726,11 @@ export class RowGroupStore implements StorageBackend {
           .segments[member.segmentIndex],
         `missing segment ${member.segmentIndex} for series ${member.seriesId}`
       );
+      // Slice bounds: segment.hot.count is the leader's high-water mark for
+      // populated samples, so [frozenSamples, segment.hot.count) is exactly
+      // `remaining` entries — no off-by-one. ensureWriteSpace() will grow the
+      // buffer back on the next append, so shrinking to the live count here
+      // is what keeps stalled-lane overhead bounded.
       const remaining = segment.hot.count - frozenSamples;
       if (remaining > 0) {
         segment.hot.values = segment.hot.values.slice(frozenSamples, segment.hot.count);

@@ -261,7 +261,7 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
     maxSeriesHotCapacity = Math.max(maxSeriesHotCapacity, values.length);
     maxSeriesHotCount = Math.max(maxSeriesHotCount, count);
     if (values.length > CHUNK_SIZE) seriesOverChunkCapacity++;
-    hotValueBytes += count * 8;
+    hotValueBytes += typedArrayByteLength(values);
 
     const frozen = Reflect.get(series, "frozen");
     if (typeof frozen === "object" && frozen !== null) {
@@ -385,6 +385,9 @@ async function createStore(layout: LayoutSpec): Promise<StorageBackend> {
 }
 
 function median(values: number[]): number {
+  if (values.length === 0) {
+    throw new Error("median requires at least one value");
+  }
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.floor(sorted.length / 2)]!;
 }
