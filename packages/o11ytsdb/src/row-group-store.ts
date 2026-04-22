@@ -128,6 +128,16 @@ export class RowGroupStore implements StorageBackend {
         `maxSeriesPerLane must be a finite integer >= 1, got ${maxSeriesPerLane}`
       );
     }
+    if (
+      precision != null &&
+      (!Number.isFinite(precision) || !Number.isInteger(precision) || precision < 0)
+    ) {
+      // appendBatch's all-integer fast path skips quantization; that is only
+      // sound when precision actually rounds to an integer or coarser scale,
+      // i.e. a non-negative integer. Reject NaN, fractional, or negative
+      // values up front so append() and appendBatch() can't diverge.
+      throw new RangeError(`precision must be a finite integer >= 0, got ${precision}`);
+    }
     this.valuesCodec = valuesCodec;
     this.tsCodec = tsCodec;
     this.rangeCodec = rangeCodec;
@@ -407,9 +417,13 @@ export class RowGroupStore implements StorageBackend {
         // larger than hotCount and that overhead is what callers want to see.
         bytes += lane.hotTimestamps.byteLength;
         for (const tc of lane.frozenTimestamps) {
+          // A chunk can hold both the compressed buffer and a decoded
+          // timestamps cache after a non-range read, so count them
+          // independently to avoid understating resident memory.
           if (tc.compressed) {
             bytes += tc.compressed.byteLength;
-          } else if (tc.timestamps) {
+          }
+          if (tc.timestamps) {
             bytes += tc.timestamps.byteLength;
           }
         }
