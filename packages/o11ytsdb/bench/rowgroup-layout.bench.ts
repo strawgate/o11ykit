@@ -22,9 +22,9 @@ function pkgPath(rel: string): string {
   return join(__dirname, "..", "..", rel);
 }
 
-type StorageBackend = import("./types.js").StorageBackend;
-type Labels = import("./types.js").Labels;
-type QueryEngine = import("./types.js").QueryEngine;
+type StorageBackend = import("../src/types.js").StorageBackend;
+type Labels = import("../src/types.js").Labels;
+type QueryEngine = import("../src/types.js").QueryEngine;
 
 const SERIES_COUNT = 10_000;
 const MAX_POINTS = 1_024;
