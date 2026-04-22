@@ -25,6 +25,11 @@ pub extern "C" fn encodeBatchValuesWithStats(
 ) -> u32 {
     let n_arrays = num_arrays as usize;
     let cs = chunk_size as usize;
+    // compute_stats reads vals[0], so a zero chunk would panic before the
+    // encoder could return 0.
+    if cs == 0 {
+        return 0;
+    }
     let out = unsafe { core::slice::from_raw_parts_mut(out_ptr, out_cap as usize) };
     let offsets = unsafe { core::slice::from_raw_parts_mut(offsets_ptr, n_arrays) };
     let sizes = unsafe { core::slice::from_raw_parts_mut(sizes_ptr, n_arrays) };
@@ -40,6 +45,11 @@ pub extern "C" fn encodeBatchValuesWithStats(
         offsets[a] = total_out as u32;
         let remaining = &mut out[total_out..];
         let bytes_written = encode_values_inner(vals, remaining);
+        // An inner return of 0 (capacity exhausted / invalid input) is a
+        // batch failure — don't keep appending bogus offsets past the buffer.
+        if bytes_written == 0 {
+            return 0;
+        }
         sizes[a] = bytes_written as u32;
         total_out += bytes_written;
     }
@@ -63,6 +73,9 @@ pub extern "C" fn encodeBatchValuesALPWithStats(
 ) -> u32 {
     let n_arrays = num_arrays as usize;
     let cs = chunk_size as usize;
+    if cs == 0 {
+        return 0;
+    }
     let out = unsafe { core::slice::from_raw_parts_mut(out_ptr, out_cap as usize) };
     let offsets = unsafe { core::slice::from_raw_parts_mut(offsets_ptr, n_arrays) };
     let sizes = unsafe { core::slice::from_raw_parts_mut(sizes_ptr, n_arrays) };
@@ -101,6 +114,9 @@ pub extern "C" fn encodeBatchValuesALPWithStats(
             alp_encode_inner(vals, remaining)
         };
 
+        if bytes_written == 0 {
+            return 0;
+        }
         sizes[a] = bytes_written as u32;
         total_out += bytes_written;
     }
@@ -122,6 +138,9 @@ pub extern "C" fn decodeBatchValues(
 ) -> u32 {
     let nb = num_blobs as usize;
     let cs = chunk_size as usize;
+    if cs == 0 {
+        return 0;
+    }
     let offsets = unsafe { core::slice::from_raw_parts(offsets_ptr, nb) };
     let sizes = unsafe { core::slice::from_raw_parts(sizes_ptr, nb) };
     let blobs_base = blobs_ptr;
@@ -131,7 +150,12 @@ pub extern "C" fn decodeBatchValues(
             core::slice::from_raw_parts(blobs_base.add(offsets[a] as usize), sizes[a] as usize)
         };
         let val_out = unsafe { core::slice::from_raw_parts_mut(out_ptr.add(a * cs), cs) };
-        decode_values_inner(blob, val_out);
+        // Propagate truncated / malformed blobs so callers don't read
+        // stale data from out_ptr as if it were successfully decoded.
+        let decoded = decode_values_inner(blob, val_out);
+        if decoded != cs {
+            return 0;
+        }
     }
 
     nb as u32
@@ -149,6 +173,9 @@ pub extern "C" fn decodeBatchValuesALP(
 ) -> u32 {
     let nb = num_blobs as usize;
     let cs = chunk_size as usize;
+    if cs == 0 {
+        return 0;
+    }
     let offsets = unsafe { core::slice::from_raw_parts(offsets_ptr, nb) };
     let sizes = unsafe { core::slice::from_raw_parts(sizes_ptr, nb) };
     let blobs_base = blobs_ptr;
@@ -158,7 +185,10 @@ pub extern "C" fn decodeBatchValuesALP(
             core::slice::from_raw_parts(blobs_base.add(offsets[a] as usize), sizes[a] as usize)
         };
         let val_out = unsafe { core::slice::from_raw_parts_mut(out_ptr.add(a * cs), cs) };
-        decode_values_alp_inner(blob, val_out);
+        let decoded = decode_values_alp_inner(blob, val_out);
+        if decoded != cs {
+            return 0;
+        }
     }
 
     nb as u32

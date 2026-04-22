@@ -16,6 +16,17 @@ pub(crate) fn decode_exceptions(
     exc_count: usize,
     val_out: &mut [f64],
 ) {
+    if exc_count > ALP_MAX_CHUNK {
+        return;
+    }
+    // Minimum size = (exception position table when exc_count < n) + 8-byte
+    // FoR/delta header + 1-byte bit width. Reject truncated blobs up front
+    // instead of trapping inside a copy_from_slice.
+    let pos_bytes = if exc_count < n { exc_count * 2 } else { 0 };
+    if input.len().saturating_sub(*pos) < pos_bytes + 9 {
+        return;
+    }
+
     let mut exc_positions = [0u16; ALP_MAX_CHUNK];
     if exc_count < n {
         for i in 0..exc_count {
@@ -80,7 +91,13 @@ fn decode_delta_for_exceptions(
         }
     } else {
         for i in 0..exc_count {
-            val_out[exc_positions[i] as usize] = sortable_u64_to_f64(exc_u64[i]);
+            // Position table comes from untrusted input — reject frames
+            // whose exception index falls outside val_out / the series.
+            let idx = exc_positions[i] as usize;
+            if idx >= n || idx >= val_out.len() {
+                return;
+            }
+            val_out[idx] = sortable_u64_to_f64(exc_u64[i]);
         }
     }
 }
@@ -118,6 +135,14 @@ fn decode_for_exceptions(
             }
         }
     } else {
+        // Exception positions are untrusted; validate every index before
+        // writing so a malformed frame cannot panic the decoder.
+        for i in 0..exc_count {
+            let idx = exc_positions[i] as usize;
+            if idx >= n || idx >= val_out.len() {
+                return;
+            }
+        }
         if exc_bw > 0 && exc_bw <= 57 {
             let packed = &input[*pos..];
             let safe_limit = packed_safe_limit(packed.len(), exc_count, exc_bw);

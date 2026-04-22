@@ -97,7 +97,10 @@ pub(crate) fn alp_try(val: f64, e: usize) -> Option<i64> {
         -(((-scaled) + 0.5) as i64)
     };
     let reconstructed = int_val as f64 / POW10[e];
-    if reconstructed == val {
+    // Compare bit patterns so +0.0 and -0.0 do not collapse to the same
+    // ALP representation — `==` would accept -0.0 and round-trip it as
+    // +0.0, silently losing the sign bit.
+    if reconstructed.to_bits() == val.to_bits() {
         Some(int_val)
     } else {
         None
@@ -241,7 +244,10 @@ pub(crate) fn alp_encode_inner(vals: &[f64], out: &mut [u8]) -> usize {
         let mut w = BitWriter::new(&mut out[pos..]);
         for i in 0..n {
             if exc[i] == 0 {
-                w.write_bits((ints[i] - min_int) as u64, bw);
+                // Widen to i128 so wide cross-zero blocks (range > i64::MAX)
+                // do not wrap during subtraction.
+                let offset = (ints[i] as i128 - min_int as i128) as u64;
+                w.write_bits(offset, bw);
             } else {
                 w.write_bits(0, bw);
             }
@@ -361,43 +367,64 @@ pub(crate) fn alp_decode_regular(input: &[u8], val_out: &mut [f64]) -> usize {
     let mut pos: usize = 0;
     let n = ((input[0] as usize) << 8) | (input[1] as usize);
     pos += 2;
-    if n == 0 {
+    // Validate count against output capacity and codec limits before any
+    // indexing. Malformed blobs should fail cleanly rather than trap.
+    if n == 0 || n > ALP_MAX_CHUNK || n > val_out.len() {
         return 0;
     }
     let e = input[pos] as usize;
     pos += 1;
+    // POW10 is 19 entries long (e in [0, 18]); rejects out-of-range exponents.
+    if e > ALP_MAX_EXP {
+        return 0;
+    }
     let bw = input[pos];
     pos += 1;
+    if bw > 64 {
+        return 0;
+    }
     let mut min_bytes = [0u8; 8];
     min_bytes.copy_from_slice(&input[pos..pos + 8]);
     let min_int = i64::from_be_bytes(min_bytes);
     pos += 8;
     let exc_count = ((input[pos] as usize) << 8) | (input[pos + 1] as usize);
     pos += 2;
+    if exc_count > n {
+        return 0;
+    }
 
     let factor = POW10[e];
+    // Ensure the packed payload is actually present before indexing into it.
+    let packed_bytes = (n * bw as usize + 7) / 8;
+    if bw > 0 && input.len() < pos + packed_bytes {
+        return 0;
+    }
 
     if bw > 0 && bw <= 57 {
         let packed = &input[pos..];
         let inv_factor = 1.0 / factor;
         let safe_limit = packed_safe_limit(packed.len(), n, bw);
         for i in 0..safe_limit {
-            let offset = extract_packed(packed, i, bw) as i64;
-            val_out[i] = (min_int + offset) as f64 * inv_factor;
+            let offset = extract_packed(packed, i, bw);
+            // Widen so offsets greater than i64::MAX reconstruct correctly.
+            let value = (min_int as i128 + offset as i128) as i64;
+            val_out[i] = value as f64 * inv_factor;
         }
         for i in safe_limit..n {
-            let offset = extract_packed_safe(packed, i, bw) as i64;
-            val_out[i] = (min_int + offset) as f64 * inv_factor;
+            let offset = extract_packed_safe(packed, i, bw);
+            let value = (min_int as i128 + offset as i128) as i64;
+            val_out[i] = value as f64 * inv_factor;
         }
-        pos += (n * bw as usize + 7) / 8;
+        pos += packed_bytes;
     } else if bw > 57 {
         let mut r = BitReader::new(&input[pos..]);
         let inv_factor = 1.0 / factor;
         for i in 0..n {
-            let offset = r.read_bits(bw) as i64;
-            val_out[i] = (min_int + offset) as f64 * inv_factor;
+            let offset = r.read_bits(bw);
+            let value = (min_int as i128 + offset as i128) as i64;
+            val_out[i] = value as f64 * inv_factor;
         }
-        pos += (n * bw as usize + 7) / 8;
+        pos += packed_bytes;
     } else {
         let base = min_int as f64 / factor;
         for i in 0..n {

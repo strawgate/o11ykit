@@ -6,7 +6,14 @@
 use core::sync::atomic::{AtomicU8, Ordering};
 
 const SCRATCH_SIZE: usize = 2 * 1024 * 1024; // 2 MB
-static mut SCRATCH: [u8; SCRATCH_SIZE] = [0u8; SCRATCH_SIZE];
+
+// `#[repr(align(8))]` ensures the backing storage starts on an 8-byte
+// boundary so pointers returned by `allocScratch` can be consumed directly
+// by Float64Array / BigInt64Array views on the JS side.
+#[repr(align(8))]
+struct Scratch([u8; SCRATCH_SIZE]);
+
+static mut SCRATCH: Scratch = Scratch([0u8; SCRATCH_SIZE]);
 static mut BUMP_OFFSET: usize = 0;
 
 /// ALP exception encoding mode: 0 = FoR (default), 1 = delta-FoR.
@@ -15,14 +22,21 @@ pub(crate) static ALP_EXC_MODE: AtomicU8 = AtomicU8::new(0);
 /// Allocate from scratch buffer. Returns pointer into WASM memory.
 #[no_mangle]
 pub extern "C" fn allocScratch(size: u32) -> u32 {
-    let aligned = ((size as usize) + 7) & !7;
+    // Checked arithmetic avoids u32 wrap (`size + 7`) producing a bogus
+    // zero-sized alignment, which could hand out overlapping regions.
+    let Some(aligned) = (size as usize).checked_add(7).map(|n| n & !7) else {
+        return 0;
+    };
     unsafe {
-        if BUMP_OFFSET + aligned > SCRATCH_SIZE {
+        let Some(end) = BUMP_OFFSET.checked_add(aligned) else {
+            return 0;
+        };
+        if end > SCRATCH_SIZE {
             return 0;
         }
         let offset = BUMP_OFFSET;
-        BUMP_OFFSET += aligned;
-        core::ptr::addr_of!(SCRATCH).cast::<u8>().add(offset) as u32
+        BUMP_OFFSET = end;
+        core::ptr::addr_of!(SCRATCH.0).cast::<u8>().add(offset) as u32
     }
 }
 

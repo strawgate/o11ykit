@@ -60,6 +60,13 @@ pub extern "C" fn rangeDecodeALP(
         return 0;
     }
 
+    // Binary search assumes ascending timestamps. The codec itself accepts
+    // arbitrary sequences, so validate monotonicity here before trusting
+    // lower_bound_i64 / upper_bound_i64.
+    if ts_buf[..ts_count].windows(2).any(|w| w[0] > w[1]) {
+        return 0;
+    }
+
     let lo = lower_bound_i64(ts_buf, ts_count, start_t);
     let hi = upper_bound_i64(ts_buf, ts_count, end_t);
     if lo >= hi {
@@ -71,12 +78,16 @@ pub extern "C" fn rangeDecodeALP(
         return 0;
     }
 
-    let out_ts = unsafe { core::slice::from_raw_parts_mut(out_ts_ptr, range_count) };
-    out_ts.copy_from_slice(&ts_buf[lo..hi]);
-
     let val_input = unsafe { core::slice::from_raw_parts(val_ptr, val_len as usize) };
     let out_vals = unsafe { core::slice::from_raw_parts_mut(out_val_ptr, range_count) };
-    decode_values_alp_range(val_input, lo, hi, out_vals);
+    // Decode values first so we can bail out without mutating the ts output
+    // if the value blob is malformed.
+    if !decode_values_alp_range(val_input, lo, hi, out_vals) {
+        return 0;
+    }
+
+    let out_ts = unsafe { core::slice::from_raw_parts_mut(out_ts_ptr, range_count) };
+    out_ts.copy_from_slice(&ts_buf[lo..hi]);
 
     range_count as u32
 }

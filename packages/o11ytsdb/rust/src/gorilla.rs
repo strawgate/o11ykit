@@ -22,7 +22,9 @@ pub extern "C" fn encodeChunk(
     out_cap: u32,
 ) -> u32 {
     let n = count as usize;
-    if n == 0 {
+    // Count is serialized as a 16-bit header field — reject larger inputs
+    // so decode cannot reconstruct a truncated length.
+    if n == 0 || n > u16::MAX as usize {
         return 0;
     }
 
@@ -123,13 +125,20 @@ pub extern "C" fn decodeChunk(
     in_len: u32,
     ts_ptr: *mut i64,
     val_ptr: *mut f64,
-    _max_samples: u32,
+    max_samples: u32,
 ) -> u32 {
     let input = unsafe { core::slice::from_raw_parts(in_ptr, in_len as usize) };
+    // Header is 18 bytes: 16-bit count + 64-bit ts0 + 64-bit val0.
+    if input.len() < 18 {
+        return 0;
+    }
     let mut r = BitReader::new(input);
 
     let n = r.read_bits(16) as usize;
-    if n == 0 {
+    // Reject counts that exceed the caller-allocated output capacity,
+    // otherwise `from_raw_parts_mut` would produce an oversized slice
+    // pointing past the caller's buffer.
+    if n == 0 || n > max_samples as usize {
         return 0;
     }
 
@@ -315,7 +324,8 @@ pub extern "C" fn encodeValuesWithStats(
 /// Internal: encode a single values array. Shared by encodeValues and batch.
 pub(crate) fn encode_values_inner(vals: &[f64], out: &mut [u8]) -> usize {
     let n = vals.len();
-    if n == 0 {
+    // Same 16-bit count guard as encodeChunk.
+    if n == 0 || n > u16::MAX as usize {
         return 0;
     }
 
@@ -367,9 +377,13 @@ pub(crate) fn encode_values_inner(vals: &[f64], out: &mut [u8]) -> usize {
 
 /// Internal: decode XOR values from a compressed blob.
 pub(crate) fn decode_values_inner(input: &[u8], val_out: &mut [f64]) -> usize {
+    // Header is 10 bytes: 16-bit count + 64-bit first value.
+    if input.len() < 10 {
+        return 0;
+    }
     let mut r = BitReader::new(input);
     let n = r.read_bits(16) as usize;
-    if n == 0 {
+    if n == 0 || n > val_out.len() {
         return 0;
     }
 

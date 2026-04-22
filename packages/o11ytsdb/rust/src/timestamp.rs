@@ -19,7 +19,13 @@ pub extern "C" fn encodeTimestamps(
     out_cap: u32,
 ) -> u32 {
     let n = count as usize;
-    if n == 0 {
+    // Header serializes `n` as 16 bits — reject anything that would wrap.
+    if n == 0 || n > u16::MAX as usize {
+        return 0;
+    }
+    // 10-byte header (16-bit count + 64-bit first timestamp) is the minimum
+    // footprint. Tiny buffers would make BitWriter panic on the header writes.
+    if (out_cap as usize) < 10 {
         return 0;
     }
 
@@ -94,9 +100,13 @@ pub extern "C" fn decodeTimestamps(
 
 /// Internal: decode timestamps into a buffer. Returns count.
 pub(crate) fn decode_timestamps_inner(input: &[u8], ts_out: &mut [i64]) -> usize {
+    // Header is 10 bytes: 16-bit count + 64-bit first timestamp.
+    if input.len() < 10 {
+        return 0;
+    }
     let mut r = BitReader::new(input);
     let n = r.read_bits(16) as usize;
-    if n == 0 {
+    if n == 0 || n > ts_out.len() {
         return 0;
     }
 

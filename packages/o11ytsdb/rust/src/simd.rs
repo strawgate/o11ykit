@@ -8,6 +8,9 @@
 /// Uses SIMD i64x2_mul to process 2 timestamps per iteration.
 #[no_mangle]
 pub extern "C" fn msToNs(in_ptr: *const f64, out_ptr: *mut i64, count: u32) {
+    if count == 0 {
+        return;
+    }
     #[cfg(target_arch = "wasm32")]
     {
         use core::arch::wasm32::*;
@@ -56,6 +59,11 @@ pub extern "C" fn quantizeBatch(
     count: u32,
     scale: f64,
 ) {
+    // Reject non-finite / non-positive scales up front: `1.0 / scale` would
+    // otherwise surface NaN/Inf back through the ABI.
+    if count == 0 || !scale.is_finite() || scale <= 0.0 {
+        return;
+    }
     #[cfg(target_arch = "wasm32")]
     {
         use core::arch::wasm32::*;
