@@ -190,6 +190,7 @@ export class RowGroupStore implements StorageBackend {
 
   append(id: SeriesId, timestamp: bigint, value: number): void {
     const state = this.ensureWriteSpace(id);
+    // Leader-only: only the segment at the lane's high-water mark writes shared timestamps
     if (state.segment.hot.count === state.lane.hotCount) {
       state.lane.hotTimestamps[state.lane.hotCount] = timestamp;
     }

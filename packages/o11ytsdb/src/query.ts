@@ -306,21 +306,6 @@ function makeGroupLabels(
   return groupLabels;
 }
 
-function updateBounds(bounds: { minT?: bigint; maxT?: bigint }, part: TimeRange): void {
-  if (part.timestamps.length > 0) {
-    const start = part.timestamps[0];
-    const end = part.timestamps[part.timestamps.length - 1];
-    if (start !== undefined && (bounds.minT === undefined || start < bounds.minT))
-      bounds.minT = start;
-    if (end !== undefined && (bounds.maxT === undefined || end > bounds.maxT)) bounds.maxT = end;
-    return;
-  }
-  if (part.stats && part.chunkMinT !== undefined && part.chunkMaxT !== undefined) {
-    if (bounds.minT === undefined || part.chunkMinT < bounds.minT) bounds.minT = part.chunkMinT;
-    if (bounds.maxT === undefined || part.chunkMaxT > bounds.maxT) bounds.maxT = part.chunkMaxT;
-  }
-}
-
 function streamStepAggregateByGroup(
   storage: StorageBackend,
   ids: SeriesId[],
@@ -333,15 +318,12 @@ function streamStepAggregateByGroup(
 
   const groups = new Map<
     string,
-    { labels: Labels; minT?: bigint; maxT?: bigint; state?: ReturnType<typeof createStepState> }
+    { labels: Labels; state: ReturnType<typeof createStepState> }
   >();
   let scannedSamples = 0;
 
-  // Two-pass scan: first pass computes per-group time bounds (so we can size
-  // step buckets exactly), second pass accumulates into the buckets. This
-  // doubles the scan cost per id but avoids pre-allocating oversized bucket
-  // arrays from opts.start/opts.end. A future optimization could track bounds
-  // while accumulating with on-the-fly resizing.
+  // Single-pass scan: use the query time range (opts.start/opts.end) to size
+  // step buckets up front, then accumulate in one pass over each series.
   for (const id of ids) {
     const labels = storage.labels(id) ?? new Map();
     const groupKey = opts.groupBy
@@ -349,38 +331,21 @@ function streamStepAggregateByGroup(
       : "__all__";
     let group = groups.get(groupKey);
     if (!group) {
-      group = { labels: makeGroupLabels(opts.metric, opts.groupBy, labels) };
+      group = {
+        labels: makeGroupLabels(opts.metric, opts.groupBy, labels),
+        state: createStepState(opts.agg, opts.step, opts.start, opts.end),
+      };
       groups.set(groupKey, group);
     }
     scanParts.call(storage, id, opts.start, opts.end, (part) => {
       scannedSamples += part.timestamps.length || part.stats?.count || 0;
-      updateBounds(group, part);
-    });
-  }
-
-  for (const [, group] of groups) {
-    if (group.minT !== undefined && group.maxT !== undefined) {
-      group.state = createStepState(opts.agg, opts.step, group.minT, group.maxT);
-    }
-  }
-
-  for (const id of ids) {
-    const labels = storage.labels(id) ?? new Map();
-    const groupKey = opts.groupBy
-      ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0")
-      : "__all__";
-    const state = groups.get(groupKey)?.state;
-    if (!state) continue;
-    scanParts.call(storage, id, opts.start, opts.end, (part) => {
-      state.addPart(part);
+      group.state.addPart(part);
     });
   }
 
   const series: SeriesResult[] = [];
   for (const [, group] of groups) {
-    const result = group.state
-      ? group.state.finish()
-      : { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+    const result = group.state.finish();
     series.push({
       labels: group.labels,
       timestamps: result.timestamps,

@@ -838,13 +838,38 @@ describe("ScanEngine", () => {
     return store;
   }
 
+  it("cross-segment: read spans frozen + rolled-over segments", () => {
+    // 2 series share a lane; fill to freeze, then overflow one series into a new lane
+    const store = new RowGroupStore(identityValuesCodec, 4, () => 0, 2);
+    const idA = store.getOrCreateSeries(makeLabels("x", { s: "a" }));
+    const idB = store.getOrCreateSeries(makeLabels("x", { s: "b" }));
+
+    // 4 samples each → triggers freeze (both hit chunkSize)
+    for (let i = 0; i < 4; i++) {
+      store.append(idA, BigInt(i) * 1_000n, i + 1);
+      store.append(idB, BigInt(i) * 1_000n, (i + 1) * 100);
+    }
+    // 5 more into A only → fills second hot window (4) + rolls to new lane (1)
+    for (let i = 4; i < 9; i++) {
+      store.append(idA, BigInt(i) * 1_000n, i + 1);
+    }
+
+    const result = engine.query(store, { metric: "x", start: 0n, end: 9_000n, matchers: [{ label: "s", op: "=" as const, value: "a" }] });
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const s = result.series[0]!;
+    expect(s.timestamps.length).toBe(9);
+    expect(s.values[0]).toBe(1);
+    expect(s.values[8]).toBe(9);
+  });
+
   it("stats-skip: sum with large step uses chunk stats", () => {
     const store = makeStatsStore();
     // step=4000 → 2 buckets, each chunk fits exactly in one bucket
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "sum",
       step: 4_000n,
     });
@@ -862,7 +887,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "min",
       step: 4_000n,
     });
@@ -877,7 +902,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "max",
       step: 4_000n,
     });
@@ -892,7 +917,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "avg",
       step: 4_000n,
     });
@@ -909,7 +934,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "count",
       step: 4_000n,
     });
@@ -924,7 +949,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "last",
       step: 4_000n,
     });
@@ -955,7 +980,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "sum",
       step: 4_000n,
     });
@@ -969,7 +994,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "sum",
       step: 2_000n,
     });
@@ -991,7 +1016,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "rate",
       step: 4_000n,
     });
