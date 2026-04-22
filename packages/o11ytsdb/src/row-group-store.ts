@@ -332,9 +332,6 @@ export class RowGroupStore implements StorageBackend {
           );
           if (result.timestamps.length > 0) {
             visit(result);
-            if (!tsChunk.timestamps) {
-              tsChunk.timestamps = this.tsCodec.decodeTimestamps(compressedTimestamps);
-            }
           }
         }
       } else {
