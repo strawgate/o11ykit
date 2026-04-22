@@ -439,7 +439,17 @@ export class RowGroupStore implements StorageBackend {
     const group = this.getGroup(groupId);
     let laneId = group.lanes.length - 1;
     let lane = requireDefined(group.lanes[laneId], `missing lane ${laneId} for group ${groupId}`);
-    if (lane.members.length >= this.maxSeriesPerLane || lane.hotCount > 0) {
+    // Only attach to the latest lane if it is still open for new members:
+    // not full, no in-flight hot writes, and no frozen row groups. A lane
+    // with frozen content but hotCount === 0 still has historical members
+    // pinned at count=0, which would peg maybeFreeze()'s minCount to 0 and
+    // prevent the new series from ever freezing — it would then waste two
+    // hot windows growing before rolling to a fresh lane.
+    if (
+      lane.members.length >= this.maxSeriesPerLane ||
+      lane.hotCount > 0 ||
+      lane.rowGroups.length > 0
+    ) {
       lane = createLane(this.chunkSize);
       group.lanes.push(lane);
       laneId = group.lanes.length - 1;
