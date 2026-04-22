@@ -337,6 +337,11 @@ function streamStepAggregateByGroup(
   >();
   let scannedSamples = 0;
 
+  // Two-pass scan: first pass computes per-group time bounds (so we can size
+  // step buckets exactly), second pass accumulates into the buckets. This
+  // doubles the scan cost per id but avoids pre-allocating oversized bucket
+  // arrays from opts.start/opts.end. A future optimization could track bounds
+  // while accumulating with on-the-fly resizing.
   for (const id of ids) {
     const labels = storage.labels(id) ?? new Map();
     const groupKey = opts.groupBy
@@ -386,7 +391,13 @@ function streamStepAggregateByGroup(
 }
 
 function createStepState(fn: SimpleStepAgg, step: bigint, minT: bigint, maxT: bigint) {
-  const bucketCount = Number((maxT - minT) / step) + 1;
+  const bucketCountBig = (maxT - minT) / step + 1n;
+  if (bucketCountBig > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new RangeError(
+      `bucket count ${bucketCountBig} exceeds Number.MAX_SAFE_INTEGER; step=${step} range=${maxT - minT}`
+    );
+  }
+  const bucketCount = Number(bucketCountBig);
   const timestamps = new BigInt64Array(bucketCount);
   const values = new Float64Array(bucketCount);
   const counts = new Float64Array(bucketCount);

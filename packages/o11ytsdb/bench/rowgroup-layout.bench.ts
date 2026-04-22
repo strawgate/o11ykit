@@ -71,7 +71,7 @@ interface ExperimentResult {
   totalSamples: number;
   ingestMs: number;
   ingestSamplesPerSec: number;
-   payloadBytes: number;
+  payloadBytes: number;
   rss: number;
   rawMs: number;
   selectMs: number;

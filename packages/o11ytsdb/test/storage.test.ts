@@ -191,6 +191,10 @@ describeStorageBackend(
   () => new RowGroupStore(tsValuesCodec, 64, () => 0, 2)
 );
 
+// These tests intentionally use Reflect.get to inspect private lane state
+// (groups, lanes, frozenTimestamps, hotCount). They are whitebox by design:
+// the lane-based invariants are what this suite is guarding, and there is no
+// equivalent public surface for them. Keep in sync with the layout refactor.
 describe("RowGroupStore freeze behavior", () => {
   it("freezes lanes independently within the same logical group", () => {
     const store = new RowGroupStore(tsValuesCodec, 64, () => 0, 2);

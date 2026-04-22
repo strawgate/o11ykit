@@ -168,7 +168,8 @@ export class O11yWorkerRuntime {
                 wc.tsCodec,
                 wc.rangeCodec,
                 undefined,
-                precision
+                precision,
+                wc.quantizeBatch
               );
           }
         }
