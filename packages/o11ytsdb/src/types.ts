@@ -130,6 +130,17 @@ export interface StorageBackend {
   /** Read decoded samples as individual chunk parts (avoids concatenation). */
   readParts?(id: SeriesId, start: bigint, end: bigint): TimeRange[];
 
+  /**
+   * Visit individual chunk parts without materializing a TimeRange[] array.
+   *
+   * Implementations must yield parts in ascending timestamp order, and
+   * repeated scans over the same `[start, end]` range must produce the same
+   * sequence of parts. ScanEngine's streaming step-aggregation path relies on
+   * this stability to drive a two-pass scan (bounds, then accumulate) over
+   * the same series.
+   */
+  scanParts?(id: SeriesId, start: bigint, end: bigint, visit: (part: TimeRange) => void): void;
+
   /** Retrieve the label set for a series. */
   labels(id: SeriesId): Labels | undefined;
 

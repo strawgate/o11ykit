@@ -9,7 +9,7 @@
  * and skips the quantize call entirely, saving WASM call overhead + memcpy.
  */
 import { describe, expect, it } from "vitest";
-import { ColumnStore } from "../src/column-store.js";
+import { RowGroupStore } from "../src/row-group-store.js";
 import type { ValuesCodec } from "../src/types.js";
 
 // ── Constants ─────────────────────────────────────────────────────────
@@ -99,10 +99,11 @@ function benchAppendBatch(
   const codec = createPlainCodec();
 
   // Warmup
-  const warmup = new ColumnStore(
+  const warmup = new RowGroupStore(
     codec,
     CHUNK_SIZE,
     () => 0,
+    32,
     label,
     undefined,
     undefined,
@@ -115,10 +116,11 @@ function benchAppendBatch(
   // Timed
   const start = performance.now();
   for (let iter = 0; iter < ITERS; iter++) {
-    const store = new ColumnStore(
+    const store = new RowGroupStore(
       codec,
       CHUNK_SIZE,
       () => 0,
+      32,
       label,
       undefined,
       undefined,
@@ -181,10 +183,11 @@ describe("precision auto-detect benchmark", () => {
     );
 
     // Verify quantization actually rounds values.
-    const store = new ColumnStore(
+    const store = new RowGroupStore(
       createPlainCodec(),
       CHUNK_SIZE,
       () => 0,
+      32,
       "verify",
       undefined,
       undefined,
@@ -206,10 +209,11 @@ describe("precision auto-detect benchmark", () => {
 
   it("auto-detect correctness: integer values pass through unchanged", () => {
     const codec = createPlainCodec();
-    const store = new ColumnStore(
+    const store = new RowGroupStore(
       codec,
       CHUNK_SIZE,
       () => 0,
+      32,
       "int-check",
       undefined,
       undefined,
@@ -228,10 +232,11 @@ describe("precision auto-detect benchmark", () => {
 
   it("auto-detect correctness: mixed batch quantizes non-integers", () => {
     const codec = createPlainCodec();
-    const store = new ColumnStore(
+    const store = new RowGroupStore(
       codec,
       CHUNK_SIZE,
       () => 0,
+      32,
       "mixed-check",
       undefined,
       undefined,
@@ -255,10 +260,11 @@ describe("precision auto-detect benchmark", () => {
 
   it("auto-detect correctness: append() skips quantize for integer values", () => {
     const codec = createPlainCodec();
-    const store = new ColumnStore(
+    const store = new RowGroupStore(
       codec,
       CHUNK_SIZE,
       () => 0,
+      32,
       "single-check",
       undefined,
       undefined,

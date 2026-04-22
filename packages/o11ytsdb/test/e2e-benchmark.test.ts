@@ -6,8 +6,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { ColumnStore } from "../src/column-store.js";
 import { ScanEngine } from "../src/query.js";
+import { RowGroupStore } from "../src/row-group-store.js";
 import type { RangeDecodeCodec, TimestampCodec, ValuesCodec } from "../src/types.js";
 import { initWasmCodecs } from "../src/wasm-codecs.js";
 
@@ -40,6 +40,13 @@ interface SeriesData {
   values: Float64Array;
 }
 
+function requireDefined<T>(value: T | undefined, message: string): T {
+  if (value === undefined) {
+    throw new Error(message);
+  }
+  return value;
+}
+
 function generateData(): SeriesData[] {
   const series: SeriesData[] = [];
   const baseT = 1_700_000_000_000_000_000n; // ~2023 in nanoseconds
@@ -70,7 +77,12 @@ function generateData(): SeriesData[] {
           break;
       }
     }
-    series.push({ name: `series_${s}`, kind: kinds[quarter]!, timestamps: ts, values: vals });
+    series.push({
+      name: `series_${s}`,
+      kind: requireDefined(kinds[quarter], `missing kind for quarter ${quarter}`),
+      timestamps: ts,
+      values: vals,
+    });
   }
   return series;
 }
@@ -108,18 +120,19 @@ interface CodecConfig {
 
 // ── Benchmark helpers ─────────────────────────────────────────────────
 
-function createStore(cfg: CodecConfig): ColumnStore {
-  return new ColumnStore(
+function createStore(cfg: CodecConfig): RowGroupStore {
+  return new RowGroupStore(
     cfg.valuesCodec,
     CHUNK_SIZE,
     () => 0,
+    32,
     cfg.label,
     cfg.tsCodec,
     cfg.rangeCodec
   );
 }
 
-function ingestAll(store: ColumnStore, data: SeriesData[]): void {
+function ingestAll(store: RowGroupStore, data: SeriesData[]): void {
   for (const s of data) {
     const labels = new Map([["__name__", s.name]]);
     const id = store.getOrCreateSeries(labels);
@@ -130,34 +143,41 @@ function ingestAll(store: ColumnStore, data: SeriesData[]): void {
 function benchIngest(
   cfg: CodecConfig,
   data: SeriesData[]
-): { elapsedMs: number; store: ColumnStore } {
+): { elapsedMs: number; store: RowGroupStore } {
   // Warmup
   const warmup = createStore(cfg);
   ingestAll(warmup, data);
 
   // Timed iterations — each iteration starts a fresh store
   const start = performance.now();
-  let store!: ColumnStore;
+  let store: RowGroupStore | undefined;
   for (let i = 0; i < INGEST_ITERS; i++) {
     store = createStore(cfg);
     ingestAll(store, data);
   }
   const elapsedMs = performance.now() - start;
-  return { elapsedMs, store };
+  return { elapsedMs, store: requireDefined(store, "missing benchmark store result") };
 }
 
-function measureCompression(store: ColumnStore): number {
+function measureCompression(store: RowGroupStore): number {
   return store.memoryBytes();
 }
 
 function benchQuery(
-  store: ColumnStore,
+  store: RowGroupStore,
   engine: ScanEngine,
   data: SeriesData[],
   fullRange: boolean
 ): { elapsedMs: number; totalSamples: number } {
-  const startT = data[0]!.timestamps[0]!;
-  const endT = data[0]!.timestamps[SAMPLES_PER_SERIES - 1]!;
+  const firstSeries = requireDefined(data[0], "benchmark data must include at least one series");
+  const startT = requireDefined(
+    firstSeries.timestamps[0],
+    "benchmark data must include a start time"
+  );
+  const endT = requireDefined(
+    firstSeries.timestamps[SAMPLES_PER_SERIES - 1],
+    "benchmark data must include an end time"
+  );
 
   const queryStart = fullRange ? startT : endT - (endT - startT) / 10n; // last 10%
   const queryEnd = endT;
@@ -324,9 +344,9 @@ describe("E2E Benchmark: codec comparison", { timeout: 120_000 }, () => {
     lines.push("");
 
     // Relative speedups
-    const jsResult = results[0]!;
+    const jsResult = requireDefined(results[0], "missing JS baseline result");
     for (let i = 1; i < results.length; i++) {
-      const r = results[i]!;
+      const r = requireDefined(results[i], `missing result ${i}`);
       lines.push(
         `  ${r.label} vs ${jsResult.label}:` +
           `  ingest ${(r.ingestSamplesPerSec / jsResult.ingestSamplesPerSec).toFixed(2)}x` +
@@ -347,7 +367,7 @@ describe("E2E Benchmark: codec comparison", { timeout: 120_000 }, () => {
     for (const cd of compressionDetails) {
       const cols = [cd.label];
       for (const k of kindNames) {
-        const d = cd.byKind.get(k)!;
+        const d = requireDefined(cd.byKind.get(k), `missing compression detail for ${k}`);
         cols.push((d.rawBytes / d.compressedBytes).toFixed(2) + "x");
       }
       cols.push((cd.totalRaw / cd.totalCompressed).toFixed(2) + "x");

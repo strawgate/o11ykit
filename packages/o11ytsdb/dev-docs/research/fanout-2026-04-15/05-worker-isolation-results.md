@@ -5,7 +5,8 @@
 This prototype implemented M8 worker isolation primitives for `o11ytsdb`:
 
 - Typed request/response protocol with correlation IDs.
-- Worker runtime that owns `ColumnStore` + query engine.
+- Worker runtime that owns the storage backend + query engine. At the time of the
+  experiment this was `ColumnStore`; the canonical backend is now `RowGroupStore`.
 - Main-thread client wrapper for async ingest/query/stats RPC.
 - Transfer strategy benchmark across 1K / 10K / 100K / 1M samples.
 

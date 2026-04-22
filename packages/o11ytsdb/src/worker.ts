@@ -1,5 +1,5 @@
-import { ColumnStore } from "./column-store.js";
 import { ScanEngine } from "./query.js";
+import { RowGroupStore } from "./row-group-store.js";
 import type { QueryEngine, StorageBackend, ValuesCodec } from "./types.js";
 import type { WasmCodecs } from "./wasm-codecs.js";
 import { initWasmCodecs } from "./wasm-codecs.js";
@@ -9,6 +9,13 @@ interface WorkerLikeEndpoint {
   postMessage(message: unknown, transfer?: ArrayBufferLike[]): void;
   addEventListener?: (type: "message", listener: (event: { data: unknown }) => void) => void;
   on?: (type: "message", listener: (data: unknown) => void) => void;
+}
+
+function requireDefined<T>(value: T | undefined, message: string): T {
+  if (value === undefined) {
+    throw new Error(message);
+  }
+  return value;
 }
 
 function createValuesCodec(): ValuesCodec {
@@ -129,10 +136,11 @@ export class O11yWorkerRuntime {
     this.createStore =
       config?.createStore ??
       ((cs: number, precision?: number) =>
-        new ColumnStore(
+        new RowGroupStore(
           codec,
           cs,
-          undefined,
+          () => 0,
+          32,
           undefined,
           undefined,
           undefined,
@@ -151,10 +159,11 @@ export class O11yWorkerRuntime {
           this.wasmCodecs = wc;
           if (!hasCustomFactory) {
             this.createStore = (cs: number, precision?: number) =>
-              new ColumnStore(
+              new RowGroupStore(
                 wc.valuesCodec,
                 cs,
-                undefined,
+                () => 0,
+                32,
                 undefined,
                 wc.tsCodec,
                 wc.rangeCodec,
@@ -236,8 +245,8 @@ export class O11yWorkerRuntime {
           let totalSamples = 0;
           let ingestedSeries = 0;
           for (let i = 0; i < count; i++) {
-            const off = offsets[i * 2]!;
-            const len = offsets[i * 2 + 1]!;
+            const off = requireDefined(offsets[i * 2], `missing batch offset for series ${i}`);
+            const len = requireDefined(offsets[i * 2 + 1], `missing batch length for series ${i}`);
             if (len === 0) continue;
 
             if (off + len > allTimestampsMs.length) {
@@ -247,7 +256,9 @@ export class O11yWorkerRuntime {
               return;
             }
 
-            const seriesLabels = new Map(labelsArr[i]!);
+            const seriesLabels = new Map(
+              requireDefined(labelsArr[i], `missing batch labels for series ${i}`)
+            );
             const seriesId = this.store.getOrCreateSeries(seriesLabels);
 
             const msSlice = allTimestampsMs.subarray(off, off + len);
@@ -256,7 +267,14 @@ export class O11yWorkerRuntime {
               tsArr = msToNs(msSlice);
             } else {
               tsArr = new BigInt64Array(len);
-              for (let j = 0; j < len; j++) tsArr[j] = BigInt(Math.round(msSlice[j]! * 1_000_000));
+              for (let j = 0; j < len; j++) {
+                tsArr[j] = BigInt(
+                  Math.round(
+                    requireDefined(msSlice[j], `missing batch timestamp ${j} for series ${i}`) *
+                      1_000_000
+                  )
+                );
+              }
             }
 
             const vals = allValues.subarray(off, off + len);

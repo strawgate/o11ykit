@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { ColumnStore } from "../src/column-store.js";
 import { FlatStore } from "../src/flat-store.js";
 import { ScanEngine } from "../src/query.js";
+import { RowGroupStore } from "../src/row-group-store.js";
 import type { Labels, StorageBackend, ValuesCodec } from "../src/types.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -805,11 +805,11 @@ describe("ScanEngine", () => {
     expect(result.scannedSamples).toBe(0);
   });
 
-  // ── ChunkStats-skip tests (ColumnStore with frozen chunks) ─────────
+  // ── ChunkStats-skip tests (RowGroupStore with frozen row groups) ───
 
   /**
    * Identity values codec — stores raw Float64Array bytes.
-   * ColumnStore computes ChunkStats via computeStats() when codec
+   * RowGroupStore computes ChunkStats via computeStats() when codec
    * doesn't provide encodeValuesWithStats.
    */
   const identityValuesCodec: ValuesCodec = {
@@ -823,14 +823,14 @@ describe("ScanEngine", () => {
   };
 
   /**
-   * Helper: creates a ColumnStore (chunk=4) with 1 series, 8 points at 1s intervals.
+   * Helper: creates a RowGroupStore (chunk=4) with 1 series, 8 points at 1s intervals.
    * Values: [10, 20, 30, 40, 50, 60, 70, 80]
-   * This produces 2 frozen chunks (4 samples each) so stats-skip can be exercised.
+   * This produces 2 frozen row groups (4 samples each) so stats-skip can be exercised.
    * Chunk 0: t=[0,1000,2000,3000], v=[10,20,30,40] → min=10, max=40, sum=100, count=4
    * Chunk 1: t=[4000,5000,6000,7000], v=[50,60,70,80] → min=50, max=80, sum=260, count=4
    */
-  function makeStatsStore(): ColumnStore {
-    const store = new ColumnStore(identityValuesCodec, 4);
+  function makeStatsStore(): RowGroupStore {
+    const store = new RowGroupStore(identityValuesCodec, 4, () => 0, 1);
     const id = store.getOrCreateSeries(makeLabels("m"));
     for (let i = 0; i < 8; i++) {
       store.append(id, BigInt(i) * 1_000n, (i + 1) * 10);
@@ -838,13 +838,43 @@ describe("ScanEngine", () => {
     return store;
   }
 
+  it("cross-segment: read spans frozen + rolled-over segments", () => {
+    // 2 series share a lane; fill to freeze, then overflow one series into a new lane
+    const store = new RowGroupStore(identityValuesCodec, 4, () => 0, 2);
+    const idA = store.getOrCreateSeries(makeLabels("x", { s: "a" }));
+    const idB = store.getOrCreateSeries(makeLabels("x", { s: "b" }));
+
+    // 4 samples each → triggers freeze (both hit chunkSize)
+    for (let i = 0; i < 4; i++) {
+      store.append(idA, BigInt(i) * 1_000n, i + 1);
+      store.append(idB, BigInt(i) * 1_000n, (i + 1) * 100);
+    }
+    // 5 more into A only → fills second hot window (4) + rolls to new lane (1)
+    for (let i = 4; i < 9; i++) {
+      store.append(idA, BigInt(i) * 1_000n, i + 1);
+    }
+
+    const result = engine.query(store, {
+      metric: "x",
+      start: 0n,
+      end: 9_000n,
+      matchers: [{ label: "s", op: "=" as const, value: "a" }],
+    });
+    expect(result.series.length).toBe(1);
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const s = result.series[0]!;
+    expect(s.timestamps.length).toBe(9);
+    expect(s.values[0]).toBe(1);
+    expect(s.values[8]).toBe(9);
+  });
+
   it("stats-skip: sum with large step uses chunk stats", () => {
     const store = makeStatsStore();
     // step=4000 → 2 buckets, each chunk fits exactly in one bucket
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "sum",
       step: 4_000n,
     });
@@ -862,7 +892,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "min",
       step: 4_000n,
     });
@@ -877,7 +907,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "max",
       step: 4_000n,
     });
@@ -892,7 +922,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "avg",
       step: 4_000n,
     });
@@ -909,7 +939,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "count",
       step: 4_000n,
     });
@@ -924,7 +954,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "last",
       step: 4_000n,
     });
@@ -955,7 +985,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "sum",
       step: 4_000n,
     });
@@ -969,7 +999,7 @@ describe("ScanEngine", () => {
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "sum",
       step: 2_000n,
     });
@@ -986,12 +1016,12 @@ describe("ScanEngine", () => {
     expect(s.values[3]).toBeCloseTo(150);
   });
 
-  it("stats-skip: rate with ColumnStore lazy-decodes correctly", () => {
+  it("stats-skip: rate with RowGroupStore lazy-decodes correctly", () => {
     const store = makeStatsStore();
     const result = engine.query(store, {
       metric: "m",
       start: 0n,
-      end: 8_000n,
+      end: 7_000n,
       agg: "rate",
       step: 4_000n,
     });
