@@ -3,8 +3,47 @@
 import { renderByteExplorer, renderByteExplorerTs } from "./byte-explorer.js";
 import { ALP_HEADER_SIZE } from "./byte-explorer-logic.js";
 import { decodeChunk } from "./codec.js";
-import { $, escapeHtml, formatBytes, formatTimeRange, setupCanvasDPR } from "./utils.js";
+import {
+  $,
+  escapeHtml,
+  formatBytes,
+  formatEpochNs,
+  formatNum,
+  formatTimeRange,
+  setupCanvasDPR,
+} from "./utils.js";
 import { wasmDecodeTimestamps, wasmDecodeValuesALP } from "./wasm.js";
+
+const sparklineState = new WeakMap();
+
+function _buildChunkEmptyState() {
+  return `
+    <div class="chunk-empty-state">
+      <div class="chunk-empty-icon">🧭</div>
+      <div class="chunk-empty-title">No chunk selected yet</div>
+      <p class="chunk-empty-copy">Click a green or orange chunk above to view details, decoded values, and the byte explorer.</p>
+      <button type="button" class="chunk-empty-action" id="chunkPickRandom">Pick a random chunk</button>
+    </div>`;
+}
+
+function _showChunkEmptyState(seriesInfos, store) {
+  const panel = $("#chunkDetailPanel");
+  const title = $("#chunkDetailTitle");
+  if (!panel) return;
+  panel.style.display = "";
+  if (title) title.style.display = "";
+  panel.innerHTML = _buildChunkEmptyState();
+  panel.querySelector("#chunkPickRandom")?.addEventListener("click", () => {
+    const picks = [];
+    for (const si of seriesInfos) {
+      for (let i = 0; i < si.info.frozen.length; i++) picks.push({ si, chunkIndex: i, type: "frozen" });
+      if (si.info.hot.count > 0) picks.push({ si, chunkIndex: -1, type: "hot" });
+    }
+    if (picks.length === 0) return;
+    const pick = picks[Math.floor(Math.random() * picks.length)];
+    showChunkDetail(pick.si, pick.chunkIndex, pick.type, store);
+  });
+}
 
 function renderByteMap(compressed, _sampleCount) {
   const container = $("#byteMap");
@@ -80,60 +119,192 @@ function _renderTsByteMap(tsBlob, _sharedCount) {
 function renderSparkline(canvasId, decoded) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
-  const container = canvas.parentElement;
-  const w = container.clientWidth || 300;
-  const h = container.clientHeight - 24 || 80;
-  const ctx = setupCanvasDPR(canvas, w, h);
-
   const values = decoded.values;
   const n = values.length;
   if (n === 0) return;
+  const timestamps = decoded.timestamps || [];
 
-  let minV = Infinity,
-    maxV = -Infinity;
-  for (let i = 0; i < n; i++) {
-    if (values[i] < minV) minV = values[i];
-    if (values[i] > maxV) maxV = values[i];
+  let state = sparklineState.get(canvas);
+  if (!state) {
+    state = {
+      hoverIndex: null,
+      redraw: null,
+      bound: false,
+    };
+    sparklineState.set(canvas, state);
   }
-  if (minV === maxV) {
-    minV -= 1;
-    maxV += 1;
-  }
-  const vRange = maxV - minV;
-  const pad = 4;
-  const plotW = w - pad * 2;
-  const plotH = h - pad * 2;
 
-  // Gradient fill
-  const grad = ctx.createLinearGradient(0, pad, 0, h - pad);
-  grad.addColorStop(0, "rgba(59, 130, 246, 0.15)");
-  grad.addColorStop(1, "rgba(59, 130, 246, 0.01)");
+  const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
+  const pickDimensions = () => {
+    const rect = canvas.getBoundingClientRect();
+    const attrW = Number(canvas.getAttribute("width")) || 600;
+    const attrH = Number(canvas.getAttribute("height")) || 140;
+    return {
+      w: Math.max(260, Math.round(rect.width || canvas.clientWidth || attrW)),
+      h: Math.max(120, Math.round(rect.height || canvas.clientHeight || attrH)),
+    };
+  };
 
-  ctx.beginPath();
-  for (let i = 0; i < n; i++) {
-    const x = pad + (i / (n - 1)) * plotW;
-    const y = pad + ((maxV - values[i]) / vRange) * plotH;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  const lastX = pad + plotW;
-  ctx.lineTo(lastX, h - pad);
-  ctx.lineTo(pad, h - pad);
-  ctx.closePath();
-  ctx.fillStyle = grad;
-  ctx.fill();
+  const draw = () => {
+    const { w, h } = pickDimensions();
+    const ctx = setupCanvasDPR(canvas, w, h);
+    ctx.clearRect(0, 0, w, h);
 
-  // Line
-  ctx.beginPath();
-  for (let i = 0; i < n; i++) {
-    const x = pad + (i / (n - 1)) * plotW;
-    const y = pad + ((maxV - values[i]) / vRange) * plotH;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+    let minV = Infinity;
+    let maxV = -Infinity;
+    for (let i = 0; i < n; i++) {
+      if (values[i] < minV) minV = values[i];
+      if (values[i] > maxV) maxV = values[i];
+    }
+    if (minV === maxV) {
+      minV -= 1;
+      maxV += 1;
+    }
+    const valuePadding = (maxV - minV) * 0.08 || 1;
+    minV -= valuePadding;
+    maxV += valuePadding;
+    const vRange = maxV - minV;
+
+    const left = 14;
+    const right = 12;
+    const top = 12;
+    const bottom = 18;
+    const plotLeft = left;
+    const plotTop = top;
+    const plotRight = w - right;
+    const plotBottom = h - bottom;
+    const plotW = Math.max(1, plotRight - plotLeft);
+    const plotH = Math.max(1, plotBottom - plotTop);
+
+    const xAt = (index) => {
+      if (n <= 1) return plotLeft + plotW / 2;
+      return plotLeft + (index / (n - 1)) * plotW;
+    };
+    const yAt = (value) =>
+      clamp(plotTop + ((maxV - value) / vRange) * plotH, plotTop, plotBottom);
+
+    ctx.fillStyle = "rgba(247, 251, 255, 0.96)";
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = "rgba(15, 58, 94, 0.08)";
+    ctx.lineWidth = 1;
+    const yTicks = 5;
+    for (let i = 0; i <= yTicks; i++) {
+      const y = plotTop + (i / yTicks) * plotH;
+      ctx.beginPath();
+      ctx.moveTo(plotLeft, y);
+      ctx.lineTo(plotRight, y);
+      ctx.stroke();
+    }
+    const xTicks = Math.min(6, Math.max(2, n - 1));
+    for (let i = 0; i <= xTicks; i++) {
+      const x = plotLeft + (i / xTicks) * plotW;
+      ctx.beginPath();
+      ctx.moveTo(x, plotTop);
+      ctx.lineTo(x, plotBottom);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = "rgba(15, 58, 94, 0.18)";
+    ctx.beginPath();
+    ctx.moveTo(plotLeft, plotTop);
+    ctx.lineTo(plotLeft, plotBottom);
+    ctx.lineTo(plotRight, plotBottom);
+    ctx.stroke();
+
+    const grad = ctx.createLinearGradient(0, plotTop, 0, plotBottom);
+    grad.addColorStop(0, "rgba(59, 130, 246, 0.18)");
+    grad.addColorStop(1, "rgba(59, 130, 246, 0.02)");
+
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = clamp(xAt(i), plotLeft, plotRight);
+      const y = yAt(values[i]);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.lineTo(clamp(xAt(n - 1), plotLeft, plotRight), plotBottom);
+    ctx.lineTo(clamp(xAt(0), plotLeft, plotRight), plotBottom);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = clamp(xAt(i), plotLeft, plotRight);
+      const y = yAt(values[i]);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "#2563eb";
+    ctx.lineWidth = 1.75;
+    ctx.stroke();
+
+    if (state.hoverIndex !== null && state.hoverIndex >= 0 && state.hoverIndex < n) {
+      const idx = state.hoverIndex;
+      const x = clamp(xAt(idx), plotLeft, plotRight);
+      const y = yAt(values[idx]);
+
+      ctx.strokeStyle = "rgba(15, 58, 94, 0.24)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x, plotTop);
+      ctx.lineTo(x, plotBottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "#2563eb";
+      ctx.beginPath();
+      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+      ctx.stroke();
+
+      const tooltipLines = [`Value: ${formatNum(values[idx])}`];
+      if (timestamps[idx] !== undefined) tooltipLines.push(formatEpochNs(timestamps[idx]));
+
+      ctx.font = '12px "IBM Plex Mono", monospace';
+      const tooltipW =
+        Math.max(...tooltipLines.map((line) => ctx.measureText(line).width)) + 18;
+      const tooltipH = tooltipLines.length * 16 + 12;
+      const tooltipX = clamp(x + 10, plotLeft + 6, plotRight - tooltipW - 4);
+      const tooltipY = y < plotTop + 34 ? y + 10 : y - tooltipH - 10;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
+      ctx.beginPath();
+      ctx.roundRect(tooltipX, tooltipY, tooltipW, tooltipH, 8);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
+      tooltipLines.forEach((line, lineIndex) => {
+        ctx.fillText(line, tooltipX + 9, tooltipY + 18 + lineIndex * 16);
+      });
+    }
+  };
+
+  state.redraw = draw;
+  draw();
+
+  if (!state.bound) {
+    state.bound = true;
+    canvas.addEventListener("mousemove", (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const usableWidth = Math.max(1, rect.width - 26);
+      const relative = clamp((x - 14) / usableWidth, 0, 1);
+      state.hoverIndex = Math.round(relative * (n - 1));
+      state.redraw?.();
+    });
+    canvas.addEventListener("mouseleave", () => {
+      state.hoverIndex = null;
+      state.redraw?.();
+    });
   }
-  ctx.strokeStyle = "#3b82f6";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
 }
 
 function _decodeChunkData(chunk, isColumn) {
@@ -367,7 +538,9 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
 export function buildStorageExplorer(store) {
   const seriesList = $("#storageSeriesList");
   const detailPanel = $("#chunkDetailPanel");
-  detailPanel.style.display = "none";
+  const detailTitle = $("#chunkDetailTitle");
+  detailPanel.style.display = "";
+  if (detailTitle) detailTitle.style.display = "";
 
   // Build series infos
   const seriesInfos = [];
@@ -392,6 +565,7 @@ export function buildStorageExplorer(store) {
   const INITIAL_SHOW = 3;
 
   seriesList.innerHTML = "";
+  _showChunkEmptyState(seriesInfos, store);
   for (const [metricName, members] of groups) {
     const groupEl = document.createElement("div");
     groupEl.className = "metric-group";

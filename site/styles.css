@@ -523,6 +523,43 @@ h4 {
   flex-shrink: 0;
 }
 
+/* ─── Learn strip ─────────────────────────────────────────────────── */
+.learn-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.learn-strip a {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.14), rgba(18, 89, 224, 0.14));
+  border: 1px solid rgba(92, 70, 190, 0.22);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.learn-strip a:hover {
+  transform: translateY(-1px);
+  border-color: rgba(92, 70, 190, 0.38);
+  box-shadow: 0 10px 24px rgba(57, 76, 124, 0.1);
+}
+
+.learn-strip .learn-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
 /* ─── Package cards ────────────────────────────────────────────────── */
 .pkg-card {
   background: white;
@@ -584,8 +621,14 @@ h4 {
 }
 
 /* ─── Regression table ─────────────────────────────────────────────── */
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
 .regression-table {
   width: 100%;
+  min-width: 520px;
   border-collapse: collapse;
   font-size: 13px;
   margin-top: 8px;
@@ -643,10 +686,17 @@ h4 {
 }
 
 /* ─── Code blocks ──────────────────────────────────────────────────── */
+.code-panel {
+  overflow-x: hidden;
+}
+
 .code-panel pre {
   margin: 12px 0 0;
   padding: 16px;
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  box-sizing: border-box;
   border-radius: 12px;
   border: 1px solid rgba(45, 74, 94, 0.2);
   background: #0c1f31;

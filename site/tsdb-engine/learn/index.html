@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Learn — How Metric Storage Works | o11ytsdb</title>
     <meta name="description" content="Interactive experiences that teach you how a time-series database stores, compresses, and queries metric data — from bit-level encoding to query optimization." />
+    <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
@@ -181,12 +182,38 @@ Answer in &lt;1ms</div>
       </div>
 
       <section>
-        <h2 style="color:#fff; margin-bottom: 4px;">Compression</h2>
-        <p style="color: var(--xp-text-muted); font-size: 14px; margin-bottom: 16px;">How raw numbers become tiny bit streams</p>
-        <p class="xp-start-here">
-          💡 New here? Start with <a href="string-interning/">String Interning</a> or 
-          <a href="chunk-stats/">Chunk Stats</a> — they explain the foundations everything else builds on.
-        </p>
+        <h2 style="color:#fff; margin-bottom: 4px;">Start Here</h2>
+        <p style="color: var(--xp-text-muted); font-size: 14px; margin-bottom: 16px;">Three beginner-friendly paths that establish the storage model before the deeper codec internals.</p>
+        <div class="hub-grid">
+          <a href="string-interning/" class="hub-card" style="--card-accent: #f59e0b; --card-glow: rgba(245, 158, 11, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(245, 158, 11, 0.1);">🏷️</div>
+            <span class="xp-difficulty beginner">Beginner</span>
+            <h3>String Interning</h3>
+            <p>See how labels collapse from repeated strings into compact integer IDs. This is the cleanest first step for understanding series identity.</p>
+            <span class="hub-tag" style="--card-accent: #f59e0b; --card-glow: rgba(245, 158, 11, 0.1);">Labels</span>
+          </a>
+
+          <a href="chunk-stats/" class="hub-card" style="--card-accent: #f87171; --card-glow: rgba(248, 113, 113, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(248, 113, 113, 0.1);">📊</div>
+            <span class="xp-difficulty beginner">Beginner</span>
+            <h3>Chunk Stats</h3>
+            <p>Learn why chunks carry min, max, sum, and count, and how those summaries let queries skip work before decompression.</p>
+            <span class="hub-tag" style="--card-accent: #f87171; --card-glow: rgba(248, 113, 113, 0.1);">Query</span>
+          </a>
+
+          <a href="delta-of-delta/" class="hub-card" style="--card-accent: #06b6d4; --card-glow: rgba(6, 182, 212, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(6, 182, 212, 0.1);">⏱️</div>
+            <span class="xp-difficulty beginner">Beginner</span>
+            <h3>Delta-of-Delta</h3>
+            <p>Watch regular timestamps collapse toward one bit per sample. It is the easiest compression path to build intuition around.</p>
+            <span class="hub-tag" style="--card-accent: #06b6d4; --card-glow: rgba(6, 182, 212, 0.1);">Timestamps</span>
+          </a>
+        </div>
+      </section>
+
+      <section style="margin-top: 40px;">
+        <h2 style="color:#fff; margin-bottom: 4px;">Compression Deep Dives</h2>
+        <p style="color: var(--xp-text-muted); font-size: 14px; margin-bottom: 16px;">How raw numbers become tiny bit streams once the basic storage model clicks.</p>
         <div class="hub-grid">
 
           <a href="alp/" class="hub-card" style="--card-accent: #10b981; --card-glow: rgba(16, 185, 129, 0.1);">
@@ -217,8 +244,8 @@ Answer in &lt;1ms</div>
       </section>
 
       <section style="margin-top: 40px;">
-        <h2 style="color:#fff; margin-bottom: 4px;">Storage &amp; Indexing</h2>
-        <p style="color: var(--xp-text-muted); font-size: 14px; margin-bottom: 16px;">How data is organized for fast writes and reads</p>
+        <h2 style="color:#fff; margin-bottom: 4px;">Storage &amp; Query Internals</h2>
+        <p style="color: var(--xp-text-muted); font-size: 14px; margin-bottom: 16px;">How data is organized, pruned, and scanned once you move beyond the first mental model.</p>
         <div class="hub-grid">
 
           <a href="string-interning/" class="hub-card" style="--card-accent: #f59e0b; --card-glow: rgba(245, 158, 11, 0.1);">

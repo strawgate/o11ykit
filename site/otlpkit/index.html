@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OtlpKit — Browser-side OTLP shaping for charts and dashboards</title>
+    <meta
+      name="description"
+      content="OtlpKit parses OTLP JSON, filters and buckets records, and builds chart-ready views for browser apps and static telemetry sites."
+    />
+    <meta name="theme-color" content="#f8fafb" />
+    <link rel="icon" href="../logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <div class="ambient" aria-hidden="true"></div>
+    <main id="main-content" class="page">
+      <header class="topbar panel">
+        <a class="brand" href="/o11ykit/"><img class="brand-mark" src="../logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
+        <nav class="topnav" aria-label="Primary">
+          <a href="/o11ykit/otlpkit/" aria-current="page">OtlpKit</a>
+          <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+          <a href="/o11ykit/octo11y/">Octo11y</a>
+          <a href="/o11ykit/benchkit/">Benchkit</a>
+          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </header>
+
+      <section class="hero panel">
+        <p class="eyebrow">shaping layer</p>
+        <h1>Turn OTLP into queryable<br/>browser views.</h1>
+        <p class="lede">
+          OtlpKit parses OTLP JSON, filters and groups records, and projects them into chart-ready
+          frames for browser apps, static dashboards, and telemetry experiments. Use it when you
+          want OTLP ergonomics without committing to storage internals first.
+        </p>
+        <div class="hero-actions">
+          <a class="cta cta-primary" href="/o11ykit/otlpkit-docs/">Open package docs</a>
+          <a class="cta" href="/o11ykit/#experiences">Browse interactive routes</a>
+          <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/packages" target="_blank" rel="noreferrer">Browse package sources</a>
+        </div>
+        <div class="pill-row" aria-label="Core capabilities">
+          <span class="pill">OTLP JSON parsing</span>
+          <span class="pill">group + bucket records</span>
+          <span class="pill">chart-ready frames</span>
+          <span class="pill">adapter-friendly output</span>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>What OtlpKit handles</h2>
+        <div class="grid grid-3">
+          <article class="card accent-otlp">
+            <h3>Parse</h3>
+            <p>
+              Normalize metrics, traces, and logs from OTLP JSON into iterable records with stable
+              timestamps and flattened attributes.
+            </p>
+          </article>
+          <article class="card accent-otlp">
+            <h3>Query</h3>
+            <p>
+              Filter, group, and bucket records into the time windows and label sets a dashboard or
+              report actually needs.
+            </p>
+          </article>
+          <article class="card accent-otlp">
+            <h3>Project</h3>
+            <p>
+              Build reusable frames, then hand them to Chart.js, ECharts, Recharts, uPlot, or your
+              own view layer.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Where to go next</h2>
+        <div class="try-strip">
+          <a href="/o11ykit/otlpkit-docs/">
+            <span class="try-icon">📦</span>
+            <span>Package docs</span>
+          </a>
+          <a href="/o11ykit/tsdb-engine/">
+            <span class="try-icon">💾</span>
+            <span>Pair with TSDB Engine</span>
+          </a>
+          <a href="/o11ykit/octo11y/">
+            <span class="try-icon">🧭</span>
+            <span>Publish in GitHub</span>
+          </a>
+          <a href="/o11ykit/benchkit/">
+            <span class="try-icon">🚀</span>
+            <span>Gate regressions</span>
+          </a>
+        </div>
+      </section>
+
+      <footer class="site-footer">
+        <p>
+          OtlpKit is the shaping layer of <a href="/o11ykit/">o11ykit</a>. Move down to
+          <a href="/o11ykit/tsdb-engine/">o11ytsdb</a> when you need compressed storage and scan
+          queries.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

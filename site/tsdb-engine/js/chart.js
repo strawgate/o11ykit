@@ -55,7 +55,7 @@ export function renderChart(canvas, seriesData, title) {
     maxV += 1;
   }
   const vPad = (maxV - minV) * 0.08;
-  minV -= vPad;
+  minV = minV >= 0 ? Math.max(0, minV - vPad) : minV - vPad;
   maxV += vPad;
 
   const tRange = maxT - minT || 1;
