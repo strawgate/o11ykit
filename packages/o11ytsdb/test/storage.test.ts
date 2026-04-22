@@ -1,17 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ChunkedStore } from "../src/chunked-store.js";
-import { decodeChunk, encodeChunk } from "../src/codec.js";
-import { ColumnStore } from "../src/column-store.js";
 import { FlatStore } from "../src/flat-store.js";
-import type { Codec, Labels, StorageBackend, ValuesCodec } from "../src/types.js";
+import { RowGroupStore } from "../src/row-group-store.js";
+import type { Labels, StorageBackend, ValuesCodec } from "../src/types.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
-
-const tsCodec: Codec = {
-  name: "ts-xor-delta",
-  encode: encodeChunk,
-  decode: decodeChunk,
-};
 
 const tsValuesCodec: ValuesCodec = {
   name: "identity",
@@ -62,6 +54,13 @@ function insertBatch(
   }
   store.appendBatch(id, ts, vals);
   return id;
+}
+
+function requireDefined<T>(value: T | undefined, message: string): T {
+  if (value === undefined) {
+    throw new Error(message);
+  }
+  return value;
 }
 
 // ── Generic storage backend contract tests ───────────────────────────
@@ -187,39 +186,110 @@ function describeStorageBackend(name: string, create: () => StorageBackend) {
 // ── Run contract tests against each backend ──────────────────────────
 
 describeStorageBackend("FlatStore", () => new FlatStore());
-describeStorageBackend("ChunkedStore (chunk=64)", () => new ChunkedStore(tsCodec, 64));
-describeStorageBackend("ChunkedStore (chunk=640)", () => new ChunkedStore(tsCodec, 640));
-describeStorageBackend("ColumnStore (chunk=64)", () => new ColumnStore(tsValuesCodec, 64));
+describeStorageBackend(
+  "RowGroupStore (chunk=64 lane=2)",
+  () => new RowGroupStore(tsValuesCodec, 64, () => 0, 2)
+);
 
-// ── ChunkedStore-specific tests ──────────────────────────────────────
+// These tests intentionally use Reflect.get to inspect private lane state
+// (groups, lanes, frozenTimestamps, hotCount). They are whitebox by design:
+// the lane-based invariants are what this suite is guarding, and there is no
+// equivalent public surface for them. Keep in sync with the layout refactor.
+describe("RowGroupStore freeze behavior", () => {
+  it("freezes lanes independently within the same logical group", () => {
+    const store = new RowGroupStore(tsValuesCodec, 64, () => 0, 2);
+    const labels = ["a", "b", "c", "d"].map((host) => makeLabels("lane_metric", { host }));
+    const ids = labels.map((label) => store.getOrCreateSeries(label));
 
-describe("ChunkedStore freeze behavior", () => {
-  it("freezes chunks when reaching chunk size", () => {
-    const store = new ChunkedStore(tsCodec, 16);
-    const id = insertSamples(store, makeLabels("freeze_test"), 48);
+    const laggardTs = new BigInt64Array(32);
+    const laggardVals = new Float64Array(32);
+    for (let i = 0; i < 32; i++) {
+      laggardTs[i] = 1_000_000n + BigInt(i) * 15_000n;
+      laggardVals[i] = i;
+    }
 
-    // 48 samples with chunk size 16 → 3 frozen chunks, hot chunk empty
-    const data = store.read(id, 0n, BigInt(Number.MAX_SAFE_INTEGER));
-    expect(data.timestamps.length).toBe(48);
+    const fullTs = new BigInt64Array(128);
+    const fullVals = new Float64Array(128);
+    for (let i = 0; i < 128; i++) {
+      fullTs[i] = 1_000_000n + BigInt(i) * 15_000n;
+      fullVals[i] = i;
+    }
 
-    // Compressed should use less memory than flat
-    const flat = new FlatStore();
-    // biome-ignore lint/correctness/noUnusedVariables: test code
-    const flatId = insertSamples(flat, makeLabels("freeze_test"), 48);
-    expect(store.memoryBytes()).toBeLessThan(flat.memoryBytes());
+    store.appendBatch(requireDefined(ids[0], "missing lane id 0"), laggardTs, laggardVals);
+    store.appendBatch(requireDefined(ids[1], "missing lane id 1"), laggardTs, laggardVals);
+    store.appendBatch(requireDefined(ids[2], "missing lane id 2"), fullTs, fullVals);
+    store.appendBatch(requireDefined(ids[3], "missing lane id 3"), fullTs, fullVals);
+
+    const groups = Reflect.get(store, "groups");
+    expect(Array.isArray(groups)).toBe(true);
+    const group = groups[0];
+    expect(group).toBeDefined();
+    const lanes = Reflect.get(group, "lanes");
+    expect(Array.isArray(lanes)).toBe(true);
+    expect(lanes.length).toBe(2);
+
+    const lane0 = lanes[0];
+    const lane1 = lanes[1];
+    const lane0Frozen = Reflect.get(lane0, "frozenTimestamps");
+    const lane1Frozen = Reflect.get(lane1, "frozenTimestamps");
+    const lane0HotCount = Reflect.get(lane0, "hotCount");
+    const lane1HotCount = Reflect.get(lane1, "hotCount");
+
+    expect(Array.isArray(lane0Frozen)).toBe(true);
+    expect(Array.isArray(lane1Frozen)).toBe(true);
+    expect(lane0Frozen.length).toBe(0);
+    expect(lane1Frozen.length).toBe(2);
+    expect(lane0HotCount).toBe(32);
+    expect(lane1HotCount).toBe(0);
   });
 
-  it("correctly reads across frozen and hot chunks", () => {
-    const store = new ChunkedStore(tsCodec, 10);
-    const id = insertSamples(store, makeLabels("mixed"), 25);
+  it("rolls a stalled fast series into a fresh lane instead of growing unbounded", () => {
+    const store = new RowGroupStore(tsValuesCodec, 64, () => 0, 2);
+    const fastId = store.getOrCreateSeries(makeLabels("lane_metric", { host: "fast" }));
+    const slowId = store.getOrCreateSeries(makeLabels("lane_metric", { host: "slow" }));
 
-    // 25 samples with chunk size 10 → 2 frozen chunks + 5 in hot
-    const data = store.read(id, 0n, BigInt(Number.MAX_SAFE_INTEGER));
-    expect(data.timestamps.length).toBe(25);
-
-    // Verify continuity
-    for (let i = 0; i < 25; i++) {
-      expect(data.values[i]).toBeCloseTo(i * 1.5);
+    const slowTs = new BigInt64Array(32);
+    const slowVals = new Float64Array(32);
+    for (let i = 0; i < 32; i++) {
+      slowTs[i] = 1_000_000n + BigInt(i) * 15_000n;
+      slowVals[i] = i;
     }
+
+    const fastTs = new BigInt64Array(256);
+    const fastVals = new Float64Array(256);
+    for (let i = 0; i < 256; i++) {
+      fastTs[i] = 1_000_000n + BigInt(i) * 15_000n;
+      fastVals[i] = i;
+    }
+
+    store.appendBatch(slowId, slowTs, slowVals);
+    store.appendBatch(fastId, fastTs, fastVals);
+
+    const groups = Reflect.get(store, "groups");
+    expect(Array.isArray(groups)).toBe(true);
+    const group = groups[0];
+    expect(group).toBeDefined();
+    const lanes = Reflect.get(group, "lanes");
+    expect(Array.isArray(lanes)).toBe(true);
+    expect(lanes.length).toBeGreaterThanOrEqual(2);
+
+    const stalledLane = lanes[0];
+    expect(Reflect.get(stalledLane, "hotCount")).toBe(128);
+
+    const fastSeries = Reflect.get(store, "allSeries")[fastId];
+    const segments = Reflect.get(fastSeries, "segments");
+    expect(Array.isArray(segments)).toBe(true);
+    expect(segments.length).toBeGreaterThanOrEqual(2);
+
+    const data = store.read(fastId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
+    expect(data.timestamps.length).toBe(256);
+    expect(data.timestamps[0]).toBe(1_000_000n);
+    expect(data.timestamps[255]).toBe(1_000_000n + 255n * 15_000n);
+    for (let i = 1; i < data.timestamps.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounded by data.timestamps.length
+      expect(data.timestamps[i]!).toBeGreaterThan(data.timestamps[i - 1]!);
+    }
+    expect(data.values[0]).toBe(0);
+    expect(data.values[255]).toBe(255);
   });
 });

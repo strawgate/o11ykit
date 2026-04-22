@@ -27,6 +27,13 @@ interface PendingRequest {
   reject: (error: unknown) => void;
 }
 
+function requireDefined<T>(value: T | undefined, message: string): T {
+  if (value === undefined) {
+    throw new Error(message);
+  }
+  return value;
+}
+
 export interface WorkerClientOptions {
   worker: WorkerLike;
   transferStrategy?: TransferStrategy;
@@ -144,8 +151,11 @@ export class WorkerClient {
 
       // Pack timestamps and values into flat arrays.
       for (let i = 0; i < len; i++) {
-        allTimestampsMs[pos + i] = batch.timestamps[i]!;
-        allValues[pos + i] = batch.values[i]!;
+        allTimestampsMs[pos + i] = requireDefined(
+          batch.timestamps[i],
+          `missing timestamp ${i} in batch ${idx}`
+        );
+        allValues[pos + i] = requireDefined(batch.values[i], `missing value ${i} in batch ${idx}`);
       }
       pos += len;
       idx++;

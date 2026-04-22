@@ -178,7 +178,7 @@ export function makeCodecImpl(wasm: WasmExports, runtime: string, name: string):
 }
 
 /**
- * Wrap WASM exports into a ValuesCodec for the ColumnStore.
+ * Wrap WASM exports into a ValuesCodec for RowGroupStore-oriented benches.
  * Includes encodeValuesWithStats for fused compression + stats.
  */
 export function makeValuesCodec(wasm: WasmExports): {
@@ -266,7 +266,7 @@ export function makeValuesCodec(wasm: WasmExports): {
 }
 
 /**
- * Wrap WASM exports into a TimestampCodec for the ColumnStore.
+ * Wrap WASM exports into a TimestampCodec for RowGroupStore-oriented benches.
  * Delta-of-delta encoding for shared timestamp columns.
  */
 export function makeTimestampCodec(wasm: WasmExports): {
@@ -339,7 +339,7 @@ function parseStats(wasm: WasmExports, statsPtr: number): BlockStats {
 }
 
 /**
- * Wrap WASM exports into an ALP ValuesCodec for the ColumnStore.
+ * Wrap WASM exports into an ALP ValuesCodec for RowGroupStore-oriented benches.
  * ALP (Adaptive Lossless floating-Point) — fixed-width bit-packing
  * that enables random access decode and range queries.
  */
@@ -520,7 +520,7 @@ export function makeALPValuesCodec(wasm: WasmExports): {
 // ── ALP range-decode codec ───────────────────────────────────────────
 
 /**
- * Wrap WASM rangeDecodeALP into a RangeDecodeCodec for the ColumnStore.
+ * Wrap WASM rangeDecodeALP into a RangeDecodeCodec for RowGroupStore-oriented benches.
  * Fused decode + binary search in WASM — decodes only the samples
  * within [startT, endT] without materializing the full chunk.
  */
