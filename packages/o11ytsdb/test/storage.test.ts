@@ -196,6 +196,21 @@ describeStorageBackend(
 // the lane-based invariants are what this suite is guarding, and there is no
 // equivalent public surface for them. Keep in sync with the layout refactor.
 describe("RowGroupStore freeze behavior", () => {
+  function makeBatch(
+    startIndex: number,
+    count: number,
+    t0 = 1_000_000n,
+    interval = 15_000n
+  ): { timestamps: BigInt64Array; values: Float64Array } {
+    const timestamps = new BigInt64Array(count);
+    const values = new Float64Array(count);
+    for (let i = 0; i < count; i++) {
+      timestamps[i] = t0 + BigInt(startIndex + i) * interval;
+      values[i] = startIndex + i;
+    }
+    return { timestamps, values };
+  }
+
   it("freezes lanes independently within the same logical group", () => {
     const store = new RowGroupStore(tsValuesCodec, 64, () => 0, 2);
     const labels = ["a", "b", "c", "d"].map((host) => makeLabels("lane_metric", { host }));
@@ -291,5 +306,35 @@ describe("RowGroupStore freeze behavior", () => {
     }
     expect(data.values[0]).toBe(0);
     expect(data.values[255]).toBe(255);
+  });
+
+  it("grows an exact-fit hot buffer after freeze before continuing appendBatch", () => {
+    const store = new RowGroupStore(tsValuesCodec, 64, () => 0, 2);
+    const fastId = store.getOrCreateSeries(makeLabels("lane_metric", { host: "fast" }));
+    const slowId = store.getOrCreateSeries(makeLabels("lane_metric", { host: "slow" }));
+
+    const slowFirst = makeBatch(0, 32);
+    const slowSecond = makeBatch(32, 32);
+    const fastFirst = makeBatch(0, 96);
+    const fastSecond = makeBatch(96, 32);
+
+    store.appendBatch(slowId, slowFirst.timestamps, slowFirst.values);
+    store.appendBatch(fastId, fastFirst.timestamps, fastFirst.values);
+    store.appendBatch(slowId, slowSecond.timestamps, slowSecond.values);
+
+    const fastSeries = Reflect.get(store, "allSeries")[fastId];
+    expect(fastSeries).toBeDefined();
+    const fastSegment = Reflect.get(fastSeries, "segments")[0];
+    expect(Reflect.get(fastSegment, "hot")).toBeDefined();
+    expect(Reflect.get(Reflect.get(fastSegment, "hot"), "count")).toBe(32);
+    expect(Reflect.get(Reflect.get(fastSegment, "hot"), "values").length).toBe(32);
+
+    store.appendBatch(fastId, fastSecond.timestamps, fastSecond.values);
+
+    const data = store.read(fastId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
+    expect(data.timestamps.length).toBe(128);
+    expect(data.values.length).toBe(128);
+    expect(data.values[0]).toBe(0);
+    expect(data.values[127]).toBe(127);
   });
 });
