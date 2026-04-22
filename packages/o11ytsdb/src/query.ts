@@ -316,10 +316,7 @@ function streamStepAggregateByGroup(
     throw new Error("streamStepAggregateByGroup requires scanParts()");
   }
 
-  const groups = new Map<
-    string,
-    { labels: Labels; state: ReturnType<typeof createStepState> }
-  >();
+  const groups = new Map<string, { labels: Labels; state: ReturnType<typeof createStepState> }>();
   let scannedSamples = 0;
 
   // Single-pass scan: use the query time range (opts.start/opts.end) to size

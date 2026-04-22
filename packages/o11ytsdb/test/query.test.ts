@@ -854,7 +854,12 @@ describe("ScanEngine", () => {
       store.append(idA, BigInt(i) * 1_000n, i + 1);
     }
 
-    const result = engine.query(store, { metric: "x", start: 0n, end: 9_000n, matchers: [{ label: "s", op: "=" as const, value: "a" }] });
+    const result = engine.query(store, {
+      metric: "x",
+      start: 0n,
+      end: 9_000n,
+      matchers: [{ label: "s", op: "=" as const, value: "a" }],
+    });
     expect(result.series.length).toBe(1);
     // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
