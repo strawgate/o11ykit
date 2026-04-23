@@ -36,7 +36,7 @@ jobs:
         run: npm run octo11y:install
 
       - name: Validate workspace
-        run: npm run check
+        run: make check
 
       - name: Validate publish artifacts
         if: matrix.node-version == 24

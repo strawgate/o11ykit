@@ -50,8 +50,8 @@
         <p class="eyebrow">o11ytsdb engine</p>
         <h1>A time-series database<br/>that runs in your browser.</h1>
         <p class="lede">
-          Gorilla-style XOR-delta compression. Three pluggable storage backends.
-          A scan query engine with aggregation, grouping, and rate computation.
+          Generate realistic telemetry datasets, inspect how they are stored,
+          and run live queries against them without leaving the browser.
           Generate millions of data points below and query them in&nbsp;real&nbsp;time.
         </p>
         <div class="hero-actions">
@@ -60,13 +60,6 @@
           <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ytsdb" target="_blank" rel="noreferrer">
             Browse Source
           </a>
-        </div>
-        <div class="pill-row" aria-label="Key stats">
-          <span class="pill">1.2M pts/sec OTLP ingest</span>
-          <span class="pill">57× compression on constant gauges</span>
-          <span class="pill">28–80× WASM encode speedup</span>
-          <span class="pill">Zero external dependencies</span>
-          <span class="pill">~4 KB WASM binary</span>
         </div>
       </section>
 
@@ -145,11 +138,17 @@
             <p>See how millions of data points are compressed and organized in memory. Inspect individual compressed chunks byte-by-byte.</p>
             <span class="fork-cta">Start Exploring →</span>
           </button>
+          <button type="button" class="fork-card" id="forkMetrics">
+            <div class="fork-icon">🧭</div>
+            <h3>Explore Metrics</h3>
+            <p>Follow a guided flow: pick a metric, choose a comparison, and see the most useful chart without building the query yourself.</p>
+            <span class="fork-cta">Open Guided Explorer →</span>
+          </button>
           <button type="button" class="fork-card" id="forkQuery">
             <div class="fork-icon">🔍</div>
-            <h3>Explore Queries</h3>
-            <p>Write queries against your live dataset. Filter by labels, aggregate across series, compute rates and percentiles, and see results charted in real time.</p>
-            <span class="fork-cta">Open Query Lab →</span>
+            <h3>Query Builder</h3>
+            <p>Build queries directly against your live dataset. Filter by labels, aggregate across series, compute rates and percentiles, and tune the exact chart you want.</p>
+            <span class="fork-cta">Open Query Builder →</span>
           </button>
         </div>
       </section>
@@ -158,7 +157,8 @@
       <section class="panel storage-panel" id="section-storage" hidden>
         <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
           <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-storage">💾 Storage</button>
-          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-query">🔍 Query Lab</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-metrics">🧭 Metrics</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-query">🔍 Query Builder</button>
         </nav>
         <h2>Storage Explorer</h2>
 
@@ -180,45 +180,96 @@
         <div class="chunk-detail-panel" id="chunkDetailPanel" style="display:none;"></div>
       </section>
 
-      <!-- ─── Section 4: Query Lab ──────────────────────────────── -->
+      <!-- ─── Section 4: Metrics Explorer ───────────────────────── -->
+      <section class="panel metrics-panel" id="section-metrics" hidden>
+        <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-storage">💾 Storage</button>
+          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-metrics">🧭 Metrics</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-query">🔍 Query Builder</button>
+        </nav>
+        <h2>Explore Metrics</h2>
+        <p class="section-intro">Start with a chart-per-metric overview, then drill into one metric at a time to compare its available dimensions.</p>
+
+        <div class="metrics-wizard">
+          <section class="metrics-stage" id="metricsOverviewStage">
+            <div class="metrics-stage-header">
+              <p class="metrics-stage-kicker">1. Scan the metrics</p>
+              <h3>See every metric as a chart first</h3>
+              <p>Each tile shows one summary chart for one metric so you can quickly spot which signals look interesting before drilling in.</p>
+            </div>
+            <div class="metrics-overview-grid" id="metricsOverviewGrid"></div>
+          </section>
+
+          <section class="metrics-stage" id="metricsGalleryStage" hidden>
+            <div class="metrics-stage-header">
+              <p class="metrics-stage-kicker">2. Explore one metric</p>
+              <h3>Compare one chart per dimension</h3>
+              <p id="metricsGalleryIntro">Click a metric above to render one chart per available dimension here.</p>
+            </div>
+            <div class="metrics-detail-toolbar">
+              <button type="button" class="metrics-back-btn" id="metricsBackButton" hidden>← Back To All Metrics</button>
+            </div>
+            <div class="metrics-query-stats" id="metricsGalleryStats"></div>
+            <div class="metrics-gallery-grid" id="metricsGalleryGrid"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ─── Section 5: Query Builder ──────────────────────────── -->
       <section class="panel query-panel" id="section-query" hidden>
         <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
           <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-storage">💾 Storage</button>
-          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-query">🔍 Query Lab</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-metrics">🧭 Metrics</button>
+          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-query">🔍 Query Builder</button>
         </nav>
-        <h2>Query Lab</h2>
+        <h2>Query Builder</h2>
 
         <!-- Query preview (PromQL-like) -->
         <div class="query-preview" id="queryPreview">
           <code class="query-preview-code">Select a metric to build a query…</code>
         </div>
+        <div class="query-recipes" aria-label="Query recipes">
+          <span class="query-recipes-label">Quick Query</span>
+          <button type="button" class="query-recipe" data-recipe="raw">Raw series</button>
+          <button type="button" class="query-recipe" data-recipe="rate-sum">Rate by top label</button>
+          <button type="button" class="query-recipe" data-recipe="p95">P95 by top label</button>
+          <button type="button" class="query-recipe" data-recipe="count">Count by top 2 labels</button>
+          <button type="button" class="query-recipe" data-recipe="last">Last by top label</button>
+        </div>
 
         <div class="query-lab-grid">
-          <!-- Metric + filters -->
-          <div class="query-lab-col">
+          <section class="query-stage query-stage-select">
+            <div class="query-stage-header">
+              <p class="query-stage-kicker">1. Select Series</p>
+              <h3>Pick what to read</h3>
+              <p>Choose a metric, then narrow the series set with exact-match label filters.</p>
+            </div>
             <div class="control-group">
               <label for="queryMetric">Metric</label>
               <select id="queryMetric"></select>
             </div>
 
-            <!-- Label matchers -->
             <div class="matcher-section">
               <label class="matcher-label">Label filters</label>
               <div class="matcher-chips" id="matcherChips"></div>
               <div class="matcher-add-row">
-                <select id="matcherLabel" class="matcher-select" aria-label="Label"><option value="">label…</option></select>
+                <select id="matcherLabel" class="matcher-select" aria-label="Label"><option value="">Filter label…</option></select>
                 <select id="matcherOp" class="matcher-op-select" aria-label="Operator">
                   <option value="=">=</option>
                   <option value="!=">!=</option>
                 </select>
-                <select id="matcherValue" class="matcher-select" aria-label="Value"><option value="">value…</option></select>
+                <select id="matcherValue" class="matcher-select" aria-label="Value"><option value="">Filter value…</option></select>
                 <button type="button" id="btnAddMatcher" class="btn-add-filter">+ Add</button>
               </div>
             </div>
-          </div>
+          </section>
 
-          <!-- Transform + Aggregation + GroupBy + Step -->
-          <div class="query-lab-col">
+          <section class="query-stage query-stage-transform">
+            <div class="query-stage-header">
+              <p class="query-stage-kicker">2. Per-Series Transform</p>
+              <h3>Change each series first</h3>
+              <p>Apply counter math like rate or delta before any result rollup happens.</p>
+            </div>
             <div class="control-group">
               <label for="queryTransform">Transform <span class="hint">(per series, before agg)</span></label>
               <select id="queryTransform">
@@ -229,8 +280,17 @@
                 <option value="increase">increase (counter delta)</option>
               </select>
             </div>
+            <div class="query-note">Use this when the raw metric is a counter or when you want per-series change instead of raw values.</div>
+          </section>
+
+          <section class="query-stage query-stage-rollup">
+            <div class="query-stage-header">
+              <p class="query-stage-kicker">3. Roll Up Results</p>
+              <h3>Aggregate, split, and bucket</h3>
+              <p>Combine series, optionally split by labels, and choose whether to bucket over time.</p>
+            </div>
             <div class="control-group">
-              <label for="queryAgg">Aggregation</label>
+              <label for="queryAgg">Result aggregation <span class="hint">(after transform)</span></label>
               <select id="queryAgg">
                 <option value="">None (raw series)</option>
                 <option value="avg" selected>avg</option>
@@ -238,19 +298,25 @@
                 <option value="min">min</option>
                 <option value="max">max</option>
                 <option value="count">count</option>
+                <option value="last">last</option>
                 <option value="p50">p50 (median)</option>
                 <option value="p95">p95</option>
                 <option value="p99">p99</option>
               </select>
             </div>
-            <div class="control-group">
-              <label for="queryGroupBy">Group by</label>
-              <select id="queryGroupBy">
-                <option value="">No grouping</option>
-              </select>
+            <div class="matcher-section">
+              <label class="matcher-label">Group by</label>
+              <div class="matcher-chips" id="groupByChips"></div>
+              <div class="matcher-add-row">
+                <select id="groupByLabel" class="matcher-select" aria-label="Group by label">
+                  <option value="">Group by label…</option>
+                </select>
+                <button type="button" id="btnAddGroupBy" class="btn-add-filter">+ Add label</button>
+              </div>
+              <div class="query-note">Split aggregated results into one output series per label combination.</div>
             </div>
             <div class="control-group">
-              <label for="queryStep">Step</label>
+              <label for="queryStep">Step bucketing</label>
               <select id="queryStep">
                 <option value="0">No step (raw)</option>
                 <option value="1000">1 s</option>
@@ -262,13 +328,19 @@
                 <option value="3600000">1 hr</option>
               </select>
             </div>
-          </div>
+          </section>
         </div>
 
         <button type="button" id="btnQuery" class="cta cta-primary demo-btn">▶ Execute Query</button>
 
-        <!-- Pipeline visualization (shown after query runs) -->
-        <div class="query-pipeline" id="queryPipeline" hidden>
+      </section>
+
+      <section class="panel query-plan-panel" id="section-query-plan" hidden>
+        <div class="query-plan-head">
+          <h2>Query Execution Stats</h2>
+          <p class="query-plan-summary" id="queryPlanSummary">Label matching, chunk scan, and decode work for the last query.</p>
+        </div>
+        <div class="query-pipeline" id="queryPipeline">
           <div class="pipeline-stage" id="pipelineMatch">
             <div class="pipeline-icon">🏷️</div>
             <div class="pipeline-info">
@@ -295,13 +367,14 @@
         </div>
       </section>
 
-      <!-- ─── Section 5: Results ────────────────────────────────── -->
+      <!-- ─── Section 6: Results ────────────────────────────────── -->
       <section class="panel results-panel" id="section-results" hidden>
         <h2>Results</h2>
         <div class="query-stats" id="queryStats">
           <span id="qStatScannedSeries">—</span>
           <span id="qStatScannedSamples">—</span>
           <span id="qStatResultSeries">—</span>
+          <span id="qStatEffectiveStep">—</span>
           <span id="qStatQueryTime">—</span>
         </div>
         <div class="chart-container">

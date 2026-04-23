@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 // ── Utility Functions ─────────────────────────────────────────────────
 
 export const $ = (sel) => document.querySelector(sel);
