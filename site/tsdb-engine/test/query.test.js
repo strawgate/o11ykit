@@ -299,6 +299,36 @@ describe("ScanEngine", () => {
       expect(result.series[0].values[0]).toBeCloseTo(15);
       expect(result.series[0].values[1]).toBeCloseTo(35);
     });
+
+    it("widens step automatically when maxPoints is lower than requested resolution", () => {
+      const timestamps = [];
+      const values = [];
+      for (let i = 0; i < 100; i++) {
+        timestamps.push(BigInt(i) * SEC);
+        values.push(i);
+      }
+      const store = buildStore([
+        {
+          labels: makeLabels("cpu", { host: "a" }),
+          timestamps,
+          values,
+        },
+      ]);
+
+      const result = engine.query(store, {
+        metric: "cpu",
+        start: 0n,
+        end: 99n * SEC,
+        agg: "sum",
+        step: 1n * SEC,
+        maxPoints: 10,
+        groupBy: [],
+      });
+
+      expect(result.requestedStep).toBe(1n * SEC);
+      expect(result.effectiveStep).toBeGreaterThan(1n * SEC);
+      expect(result.series[0].timestamps.length).toBeLessThanOrEqual(10);
+    });
   });
 
   describe("empty query result", () => {

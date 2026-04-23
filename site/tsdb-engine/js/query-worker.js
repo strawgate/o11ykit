@@ -74,6 +74,9 @@ function serializeResult(result) {
   return {
     scannedSeries: result.scannedSeries,
     scannedSamples: result.scannedSamples,
+    requestedStep: result.requestedStep ?? null,
+    effectiveStep: result.effectiveStep ?? null,
+    pointBudget: result.pointBudget ?? null,
     series: result.series.map(serializeSeries),
   };
 }

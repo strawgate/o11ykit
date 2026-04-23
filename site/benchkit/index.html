@@ -39,9 +39,8 @@
           All as composable GitHub Actions.
         </p>
         <div class="hero-actions">
-          <a class="cta cta-primary" href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">
-            End-to-End Playground
-          </a>
+          <a class="cta cta-primary" href="#regression-gate">See a Regression Gate</a>
+          <a class="cta" href="#quickstart">Start With Quickstart</a>
           <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/octo11y/actions" target="_blank" rel="noreferrer">
             Browse Actions
           </a>
@@ -49,50 +48,52 @@
       </section>
 
       <!-- Regression example -->
-      <section class="panel">
+      <section class="panel" id="regression-gate">
         <h2>What a Regression Gate Looks Like</h2>
         <p class="section-intro">The <code>compare</code> action flags regressions beyond your threshold and posts a summary to the PR:</p>
-        <table class="regression-table">
-          <thead>
-            <tr>
-              <th>Benchmark</th>
-              <th>Baseline (avg 10 runs)</th>
-              <th>Current</th>
-              <th>Change</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td class="name-col">BenchmarkParse</td>
-              <td>142 ns/op</td>
-              <td>148 ns/op</td>
-              <td>+4.2%</td>
-              <td class="pass">✅ pass</td>
-            </tr>
-            <tr>
-              <td class="name-col">BenchmarkEncode</td>
-              <td>89 ns/op</td>
-              <td>87 ns/op</td>
-              <td>−2.2%</td>
-              <td class="pass">✅ pass</td>
-            </tr>
-            <tr>
-              <td class="name-col">BenchmarkQuery</td>
-              <td>1,204 ns/op</td>
-              <td>2,451 ns/op</td>
-              <td>+103.6%</td>
-              <td class="fail">❌ regression</td>
-            </tr>
-            <tr>
-              <td class="name-col">BenchmarkAlloc</td>
-              <td>48 B/op</td>
-              <td>112 B/op</td>
-              <td>+133.3%</td>
-              <td class="fail">❌ regression</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="table-scroll">
+          <table class="regression-table">
+            <thead>
+              <tr>
+                <th>Benchmark</th>
+                <th>Baseline (avg 10 runs)</th>
+                <th>Current</th>
+                <th>Change</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="name-col">BenchmarkParse</td>
+                <td>142 ns/op</td>
+                <td>148 ns/op</td>
+                <td>+4.2%</td>
+                <td class="pass">✅ pass</td>
+              </tr>
+              <tr>
+                <td class="name-col">BenchmarkEncode</td>
+                <td>89 ns/op</td>
+                <td>87 ns/op</td>
+                <td>−2.2%</td>
+                <td class="pass">✅ pass</td>
+              </tr>
+              <tr>
+                <td class="name-col">BenchmarkQuery</td>
+                <td>1,204 ns/op</td>
+                <td>2,451 ns/op</td>
+                <td>+103.6%</td>
+                <td class="fail">❌ regression</td>
+              </tr>
+              <tr>
+                <td class="name-col">BenchmarkAlloc</td>
+                <td>48 B/op</td>
+                <td>112 B/op</td>
+                <td>+133.3%</td>
+                <td class="fail">❌ regression</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <!-- Pipeline -->
@@ -122,7 +123,7 @@
       </section>
 
       <!-- YAML quickstart -->
-      <section class="panel code-panel">
+      <section class="panel code-panel" id="quickstart">
         <h2>Quickstart</h2>
 <pre><code>name: benchkit-ci
 on: [pull_request]

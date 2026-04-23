@@ -1,45 +1,94 @@
 // ── App Entry Point ──────────────────────────────────────────────────
 
 import { CHART_COLORS, renderChart, setupChartTooltip } from "./chart.js";
+import { createDatasetController } from "./dataset-controller.js";
+import { createMetricsExplorerController } from "./metrics-explorer-view.js";
 import {
-  generateScenarioData,
-  generateValue,
-  INSTANCES,
-  METRICS,
-  REGIONS,
-  SCENARIOS,
-  scenarioSampleCount,
-  scenarioSeriesCount,
-} from "./data-gen.js";
+  buildMetricDimensionViews,
+  buildMetricOverviewConfig,
+  collectMetricMeta,
+  formatMetricName,
+  recommendedGroupByForMetric as recommendMetricGroupBy,
+} from "./metrics-model.js";
 import { ScanEngine } from "./query.js";
+import { createQueryBuilderController } from "./query-builder-controller.js";
+import {
+  formatEffectiveStepStat,
+  formatStepLabel,
+  summarizeStepResolution,
+} from "./query-builder-model.js";
 import { QueryWorkerPool, supportsParallelQuery } from "./query-pool.js";
 import { buildStorageExplorer } from "./storage-explorer.js";
 import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
-import {
-  autoSelectQueryStep,
-  escapeHtml,
-  formatBytes,
-  formatDuration,
-  formatNum,
-} from "./utils.js";
+import { autoSelectQueryStep, escapeHtml, formatNum } from "./utils.js";
 import { loadWasm, wasmReady } from "./wasm.js";
 
 const CHUNK_SIZE = 640;
 const NS_PER_MS = 1_000_000n;
+const MAX_I64 = BigInt("9223372036854775807");
 
 // ── State ─────────────────────────────────────────────────────────────
 
 let currentStore = null;
 const currentEngine = new ScanEngine();
 let generatedMetrics = [];
-let activeMatchers = []; // [{label, op, value}]
-const availableLabels = new Map(); // label -> Set of values
 let _lastIngestTime = 0;
 let _storagePopulated = false;
 let _queryPopulated = false;
-let currentDataRange = null;
 let queryWorkerPool = null;
 let _queryRunSeq = 0;
+
+const compactNumberFormatter = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+function formatCompactStat(value) {
+  const full = value.toLocaleString();
+  return full.length > 7 ? compactNumberFormatter.format(value) : full;
+}
+
+function formatStorageBytes(value) {
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${value} B`;
+}
+
+function setStatText(id, text, title = "") {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.title = title;
+  el.classList.toggle("compact", !!title);
+}
+
+function setCountStat(id, value) {
+  const full = value.toLocaleString();
+  const compact = formatCompactStat(value);
+  setStatText(id, compact, compact !== full ? full : "");
+}
+
+function renderLegend(container, series) {
+  if (!container) return;
+  container.innerHTML = "";
+  for (let i = 0; i < series.length; i++) {
+    const s = series[i];
+    const color = CHART_COLORS[i % CHART_COLORS.length];
+    const labelStr =
+      [...s.labels]
+        .filter(([k]) => k !== "__name__")
+        .map(([k, v]) => `${escapeHtml(k)}="${escapeHtml(v)}"`)
+        .join(", ") || "all";
+    const item = document.createElement("div");
+    item.className = "legend-item";
+    item.innerHTML = `<span class="legend-swatch" style="background:${color}"></span>${labelStr} (${s.timestamps.length.toLocaleString()} pts)`;
+    container.appendChild(item);
+  }
+}
+
+function resetMetricsExplorer() {
+  metricsExplorer.reset();
+}
 
 // ── Section visibility ────────────────────────────────────────────────
 
@@ -56,67 +105,53 @@ function hideSection(id) {
   if (el) el.hidden = true;
 }
 
-function _deriveSeriesDataRange(seriesData) {
-  if (!seriesData?.length) return null;
-
-  let minT = null;
-  let maxT = null;
-  for (const series of seriesData) {
-    if (!series.timestamps?.length) continue;
-    const first = series.timestamps[0];
-    const last = series.timestamps[series.timestamps.length - 1];
-    if (first === undefined || last === undefined) continue;
-    if (minT === null || first < minT) minT = first;
-    if (maxT === null || last > maxT) maxT = last;
-  }
-
-  return minT === null || maxT === null ? null : { minT, maxT };
-}
-
-function onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs, seriesData) {
+function onDataLoaded(store, metrics, _ingestTime, numPoints, intervalMs) {
   currentStore = store;
   generatedMetrics = metrics;
   _storagePopulated = false;
   _queryPopulated = false;
-  currentDataRange = _deriveSeriesDataRange(seriesData);
-
-  // Reset matchers from previous dataset
-  activeMatchers = [];
-  availableLabels.clear();
-
-  // Populate available labels for matcher UI
-  _buildAvailableLabels(store);
+  resetMetricsExplorer();
+  queryBuilder.resetForDataset(store, metrics);
 
   // Precompute stats for the fork section
-  const totalPts = store.sampleCount;
-  const memBytes = store.memoryBytes();
-  const rawBytes = totalPts * 16;
-  const ratio = rawBytes / memBytes;
-
   // Update active card with results
   const activeCard = document.querySelector(".scenario-card.loading, .scenario-card.active");
   if (activeCard) {
     activeCard.classList.remove("loading");
     activeCard.classList.add("active", "loaded");
-    const doneEl = activeCard.querySelector(".sc-done-stats");
-    if (doneEl) {
-      doneEl.textContent = `✓ ${totalPts.toLocaleString()} pts in ${ingestTime.toFixed(0)} ms · ${ratio.toFixed(0)}× compression · ${formatBytes(memBytes)}`;
-    }
+    activeCard.setAttribute("aria-pressed", "true");
   }
 
   // Hide storage/query/results — let user choose via fork
   hideSection("section-storage");
+  hideSection("section-metrics");
   hideSection("section-query");
+  hideSection("section-query-plan");
   hideSection("section-results");
 
   // Show fork in the road
   showSection("section-fork", true);
   autoSelectQueryStep(intervalMs, numPoints);
-  void _provisionQueryWorkers(seriesData);
+  void _provisionQueryWorkers(store);
 }
 
-async function _provisionQueryWorkers(seriesData) {
-  if (!seriesData?.length || typeof Worker === "undefined") {
+function _snapshotSeriesData(store) {
+  const seriesData = [];
+  for (let id = 0; id < store.seriesCount; id++) {
+    const labels = store.labels(id);
+    if (!labels) continue;
+    const data = store.read(id, -MAX_I64, MAX_I64);
+    seriesData.push({
+      labels: new Map(labels),
+      timestamps: data.timestamps.slice(0),
+      values: data.values.slice(0),
+    });
+  }
+  return seriesData;
+}
+
+async function _provisionQueryWorkers(store) {
+  if (typeof Worker === "undefined") {
     _renderQueryFabricMonitor({
       phase: "fallback",
       summary: "Worker pool unavailable in this browser.",
@@ -133,7 +168,7 @@ async function _provisionQueryWorkers(seriesData) {
   }
 
   try {
-    await queryWorkerPool.loadSeriesData(seriesData);
+    await queryWorkerPool.loadSeriesData(_snapshotSeriesData(store));
   } catch (error) {
     console.error("Failed to provision query workers", error);
     queryWorkerPool.markFallback("Worker pool failed to initialize");
@@ -141,7 +176,7 @@ async function _provisionQueryWorkers(seriesData) {
 }
 
 function _renderQueryFabricMonitor(state) {
-  const panelEl = document.getElementById("queryExecutionPanel");
+  const panelEl = document.getElementById("section-query-plan");
   const summaryEl = document.getElementById("queryExecutionSummary");
   const statusEl = document.getElementById("queryExecutionStatus");
   const detailsEl = document.getElementById("queryExecutionDetails");
@@ -233,7 +268,7 @@ function _workerMeterWidth(worker) {
 function _labelsKey(labels) {
   return [...labels.entries()]
     .sort((a, b) => (a[0] === b[0] ? a[1].localeCompare(b[1]) : a[0].localeCompare(b[0])))
-    .map(([k, v]) => `${k}=${v}`)
+    .map(([key, value]) => `${key}=${value}`)
     .join("\0");
 }
 
@@ -241,6 +276,9 @@ function _deserializeWorkerResult(result) {
   return {
     scannedSeries: result.scannedSeries,
     scannedSamples: result.scannedSamples,
+    requestedStep: result.requestedStep ?? null,
+    effectiveStep: result.effectiveStep ?? null,
+    pointBudget: result.pointBudget ?? null,
     series: result.series.map((series) => ({
       labels: new Map(series.labels),
       timestamps: series.timestamps,
@@ -259,7 +297,14 @@ function _mergeRawWorkerResults(results) {
     series.push(...result.series);
   }
   series.sort((a, b) => _labelsKey(a.labels).localeCompare(_labelsKey(b.labels)));
-  return { series, scannedSeries, scannedSamples };
+  return {
+    series,
+    scannedSeries,
+    scannedSamples,
+    requestedStep: results[0]?.requestedStep ?? null,
+    effectiveStep: results[0]?.effectiveStep ?? null,
+    pointBudget: results[0]?.pointBudget ?? null,
+  };
 }
 
 function _mergeReductionWorkerResults(results, agg) {
@@ -296,6 +341,9 @@ function _mergeReductionWorkerResults(results, agg) {
   return {
     scannedSeries,
     scannedSamples,
+    requestedStep: results[0]?.requestedStep ?? null,
+    effectiveStep: results[0]?.effectiveStep ?? null,
+    pointBudget: results[0]?.pointBudget ?? null,
     series: [...groups.values()].map((group) => {
       const points = [...group.points.values()].sort((a, b) =>
         a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0
@@ -357,6 +405,9 @@ function _mergeAvgWorkerResults(sumResults, countResults) {
   return {
     scannedSeries,
     scannedSamples,
+    requestedStep: sumResults[0]?.requestedStep ?? null,
+    effectiveStep: sumResults[0]?.effectiveStep ?? null,
+    pointBudget: sumResults[0]?.pointBudget ?? null,
     series: [...groups.values()].map((group) => {
       const points = [...group.points.values()].sort((a, b) =>
         a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0
@@ -376,113 +427,77 @@ function _canRunOnWorkers(opts) {
   return queryWorkerPool?.state?.phase === "ready" && supportsParallelQuery(opts);
 }
 
-function _buildAvailableLabels(store) {
-  availableLabels.clear();
-  for (let id = 0; id < store.seriesCount; id++) {
-    const labels = store.labels(id);
-    if (!labels) continue;
-    for (const [k, v] of labels) {
-      if (k === "__name__") continue;
-      if (!availableLabels.has(k)) availableLabels.set(k, new Set());
-      availableLabels.get(k).add(v);
+// ── Metrics Explorer ──────────────────────────────────────────────────
+
+function getMetricIds(metric) {
+  return currentStore ? currentStore.matchLabel("__name__", metric) : [];
+}
+
+function getMetricMeta(metric) {
+  return collectMetricMeta(currentStore, metric);
+}
+
+function executeStoreQuery(config, options = {}) {
+  if (!currentStore) return null;
+  const { maxPoints } = options;
+  const ids = getMetricIds(config.metric);
+  if (ids.length === 0) return null;
+
+  let minT = MAX_I64;
+  let maxT = -MAX_I64;
+  for (const id of ids) {
+    const data = currentStore.read(id, -MAX_I64, MAX_I64);
+    if (data.timestamps.length === 0) continue;
+    if (data.timestamps[0] < minT) minT = data.timestamps[0];
+    if (data.timestamps[data.timestamps.length - 1] > maxT) {
+      maxT = data.timestamps[data.timestamps.length - 1];
     }
   }
-  _refreshMatcherLabelSelect();
-  _refreshGroupByOptions();
-}
 
-function _populateQueryMetrics(metrics) {
-  const sel = document.getElementById("queryMetric");
-  if (!sel) return;
-  sel.innerHTML = "";
-  for (const m of metrics) {
-    const opt = document.createElement("option");
-    opt.value = m;
-    opt.textContent = m;
-    sel.appendChild(opt);
-  }
-}
+  if (minT === MAX_I64) return null;
 
-function _populateGroupByOptions(_store) {
-  const sel = document.getElementById("queryGroupBy");
-  if (!sel) return;
-  const existing = [...availableLabels.keys()];
-  sel.innerHTML = '<option value="">No grouping</option>';
-  for (const k of existing) {
-    if (k === "__name__") continue;
-    const opt = document.createElement("option");
-    opt.value = k;
-    opt.textContent = k;
-    sel.appendChild(opt);
-  }
-}
-
-function _refreshGroupByOptions() {
-  _populateGroupByOptions(currentStore);
-}
-
-// ── Matcher UI ────────────────────────────────────────────────────────
-
-function _refreshMatcherLabelSelect() {
-  const sel = document.getElementById("matcherLabel");
-  if (!sel) return;
-  sel.innerHTML = '<option value="">label…</option>';
-  for (const k of availableLabels.keys()) {
-    const opt = document.createElement("option");
-    opt.value = k;
-    opt.textContent = k;
-    sel.appendChild(opt);
-  }
-}
-
-document.getElementById("matcherLabel")?.addEventListener("change", () => {
-  const label = document.getElementById("matcherLabel").value;
-  const valSel = document.getElementById("matcherValue");
-  if (!valSel) return;
-  valSel.innerHTML = '<option value="">value…</option>';
-  const vals = availableLabels.get(label) || new Set();
-  for (const v of vals) {
-    const opt = document.createElement("option");
-    opt.value = v;
-    opt.textContent = v;
-    valSel.appendChild(opt);
-  }
-});
-
-document.getElementById("btnAddMatcher")?.addEventListener("click", () => {
-  const label = document.getElementById("matcherLabel")?.value;
-  const op = document.getElementById("matcherOp")?.value || "=";
-  const value = document.getElementById("matcherValue")?.value;
-  if (!label || !value) return;
-
-  activeMatchers.push({ label, op, value });
-  _renderMatcherChips();
-  if (currentStore) runQuery();
-});
-
-function _renderMatcherChips() {
-  const chips = document.getElementById("matcherChips");
-  if (!chips) return;
-  chips.innerHTML = activeMatchers
-    .map(
-      (m, i) =>
-        `<span class="matcher-chip">
-      <span class="mc-label">${escapeHtml(m.label)}</span>
-      <span class="mc-op">${escapeHtml(m.op)}</span>
-      <span class="mc-val">&quot;${escapeHtml(m.value)}&quot;</span>
-      <button type="button" class="mc-remove" data-idx="${i}" aria-label="Remove matcher">×</button>
-    </span>`
-    )
-    .join("");
-  chips.querySelectorAll(".mc-remove").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      activeMatchers.splice(parseInt(btn.dataset.idx, 10), 1);
-      _renderMatcherChips();
-      if (currentStore) runQuery();
-    });
+  const t0 = performance.now();
+  const result = currentEngine.query(currentStore, {
+    metric: config.metric,
+    start: minT,
+    end: maxT,
+    agg: config.agg,
+    groupBy: config.groupBy,
+    step: config.stepMs > 0 ? BigInt(config.stepMs) * NS_PER_MS : undefined,
+    maxPoints,
+    transform: config.transform,
   });
-  updateQueryPreview();
+  return {
+    result,
+    totalSeries: ids.length,
+    queryTime: performance.now() - t0,
+  };
 }
+
+function applyQueryConfig(config) {
+  queryBuilder.applyQueryConfig(config);
+}
+
+const metricsExplorer = createMetricsExplorerController({
+  getMetrics: () => generatedMetrics,
+  getMetricMeta,
+  buildOverviewConfig: buildMetricOverviewConfig,
+  buildDimensionViews: buildMetricDimensionViews,
+  executeQuery: executeStoreQuery,
+  formatMetricName,
+  openQueryConfig(config) {
+    _revealQuery(false);
+    applyQueryConfig(config);
+    runQuery({ scrollToResults: true });
+  },
+});
+
+const queryBuilder = createQueryBuilderController({
+  getStore: () => currentStore,
+  recommendGroupByForMetric: (metric, count = 1) =>
+    recommendMetricGroupBy(currentStore, metric, count),
+  onRunQuery: (options) => runQuery(options),
+});
 
 // ── Fork in the Road ──────────────────────────────────────────────────
 
@@ -496,12 +511,11 @@ function _revealStorage() {
     const ratio = rawBytes / memBytes;
     const ingestRate = totalPts / (_lastIngestTime / 1000);
 
-    document.getElementById("statStoragePts").textContent = totalPts.toLocaleString();
-    document.getElementById("statStorageSeries").textContent =
-      currentStore.seriesCount.toLocaleString();
-    document.getElementById("statStorageMem").textContent = formatBytes(memBytes);
-    document.getElementById("statStorageRatio").textContent = `${ratio.toFixed(1)}×`;
-    document.getElementById("statStorageIngestRate").textContent = `${formatNum(ingestRate)} pts/s`;
+    setCountStat("statStoragePts", totalPts);
+    setCountStat("statStorageSeries", currentStore.seriesCount);
+    setStatText("statStorageMem", formatStorageBytes(memBytes));
+    setStatText("statStorageRatio", `${ratio.toFixed(1)}×`);
+    setStatText("statStorageIngestRate", `${formatNum(ingestRate)} pts/s`);
 
     // Compute chunk stats for the merged stats row
     let totalChunks = 0,
@@ -511,27 +525,41 @@ function _revealStorage() {
       totalFrozen += info.frozen.length;
       totalChunks += info.frozen.length + (info.hot.count > 0 ? 1 : 0);
     }
-    document.getElementById("statStorageChunks").textContent = totalChunks.toLocaleString();
-    document.getElementById("statStorageFrozen").textContent = totalFrozen.toLocaleString();
+    setCountStat("statStorageChunks", totalChunks);
+    setCountStat("statStorageFrozen", totalFrozen);
 
     buildStorageExplorer(currentStore);
   }
+  hideSection("section-metrics");
   hideSection("section-query");
+  hideSection("section-query-plan");
   hideSection("section-results");
   showSection("section-storage", true);
   _updateExploreNav("section-storage");
 }
 
-function _revealQuery() {
+function _revealMetrics() {
+  if (!currentStore) return;
+  if (!metricsExplorer.isPopulated) metricsExplorer.render();
+  hideSection("section-storage");
+  hideSection("section-query");
+  hideSection("section-query-plan");
+  hideSection("section-results");
+  showSection("section-metrics", true);
+  _updateExploreNav("section-metrics");
+}
+
+function _revealQuery(scroll = true) {
   if (!currentStore) return;
   if (!_queryPopulated) {
     _queryPopulated = true;
-    _populateQueryMetrics(generatedMetrics);
-    _populateGroupByOptions(currentStore);
-    updateQueryPreview();
+    queryBuilder.updatePreview();
   }
   hideSection("section-storage");
-  showSection("section-query", true);
+  hideSection("section-metrics");
+  hideSection("section-query-plan");
+  hideSection("section-results");
+  showSection("section-query", scroll);
   _updateExploreNav("section-query");
 }
 
@@ -544,153 +572,15 @@ function _updateExploreNav(activeId) {
 }
 
 document.getElementById("forkStorage")?.addEventListener("click", _revealStorage);
+document.getElementById("forkMetrics")?.addEventListener("click", _revealMetrics);
 document.getElementById("forkQuery")?.addEventListener("click", _revealQuery);
 
 // Explore nav buttons (breadcrumb switching)
 document.querySelectorAll(".explore-nav-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     if (btn.dataset.target === "section-storage") _revealStorage();
+    else if (btn.dataset.target === "section-metrics") _revealMetrics();
     else if (btn.dataset.target === "section-query") _revealQuery();
-  });
-});
-
-// ── Scenario picker ───────────────────────────────────────────────────
-
-function _renderScenarioCards() {
-  const grid = document.getElementById("scenarioGrid");
-  if (!grid) return;
-  const scenarioCards = SCENARIOS.map((s) => {
-    const seriesCount = scenarioSeriesCount(s);
-    const sampleCount = scenarioSampleCount(s);
-    const interval =
-      s.intervalMs >= 60000 ? `${s.intervalMs / 60000}min` : `${s.intervalMs / 1000}s`;
-    return `
-    <button type="button" class="scenario-card" data-scenario-id="${escapeHtml(s.id)}">
-      <div class="sc-emoji">${s.emoji}</div>
-      <div class="sc-name">${escapeHtml(s.name)}</div>
-      <div class="sc-desc">${escapeHtml(s.description)}</div>
-      <div class="sc-meta">
-        ${s.metrics.map((m) => `<span class="sc-metric">${escapeHtml(m.name)}</span>`).join("")}
-      </div>
-      <div class="sc-stats">${seriesCount.toLocaleString()} series · ${sampleCount.toLocaleString()} pts · ${interval} interval</div>
-      <div class="sc-loading-indicator"><span class="sc-spinner"></span><span class="sc-loading-text">Generating data…</span></div>
-      <div class="sc-done-stats"></div>
-    </button>`;
-  }).join("");
-
-  const customCard = `
-    <button type="button" class="scenario-card scenario-card-custom" id="openCustomGenerator">
-      <div class="sc-emoji">⚙️</div>
-      <div class="sc-name">Custom Generator</div>
-      <div class="sc-desc">Choose your own series count, points, data pattern, and sample interval. Full control over the generated dataset.</div>
-      <span class="fork-cta" style="margin-top:auto">Open Generator →</span>
-    </button>`;
-
-  grid.innerHTML = scenarioCards + customCard;
-
-  grid.querySelectorAll(".scenario-card[data-scenario-id]").forEach((card) => {
-    card.addEventListener("click", () => {
-      const scenario = SCENARIOS.find((s) => s.id === card.dataset.scenarioId);
-      if (scenario) loadScenario(scenario, card);
-    });
-  });
-
-  // Custom generator card toggles inline controls
-  document.getElementById("openCustomGenerator")?.addEventListener("click", () => {
-    const inline = document.getElementById("customGeneratorInline");
-    if (inline) {
-      inline.hidden = !inline.hidden;
-      if (!inline.hidden) inline.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  });
-}
-
-function loadScenario(scenario, clickedCard) {
-  // Show loading state
-  document.querySelectorAll(".scenario-card").forEach((c) => {
-    c.classList.remove("active", "loading", "loaded");
-  });
-  if (clickedCard) clickedCard.classList.add("loading");
-
-  // Hide previous fork/storage/query while loading
-  hideSection("section-fork");
-  hideSection("section-storage");
-  hideSection("section-query");
-  hideSection("section-results");
-
-  // Defer heavy work to let the loading spinner render
-  requestAnimationFrame(() => {
-    setTimeout(() => {
-      try {
-        const backendType = "column";
-        const store = _createStore(backendType, CHUNK_SIZE);
-
-        const t0 = performance.now();
-        const seriesData = generateScenarioData(scenario);
-
-        if (store._backendType === "column") {
-          // Create all series first so groups are fully populated
-          const ids = seriesData.map((sd) => store.getOrCreateSeries(sd.labels));
-          // Ingest interleaved: one chunk at a time across all series in lock-step
-          const numPoints = seriesData[0]?.timestamps.length || 0;
-          for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
-            const end = Math.min(offset + CHUNK_SIZE, numPoints);
-            for (let i = 0; i < seriesData.length; i++) {
-              store.appendBatch(
-                ids[i],
-                seriesData[i].timestamps.subarray(offset, end),
-                seriesData[i].values.subarray(offset, end)
-              );
-            }
-          }
-        } else {
-          for (const sd of seriesData) {
-            const id = store.getOrCreateSeries(sd.labels);
-            store.appendBatch(id, sd.timestamps, sd.values);
-          }
-        }
-
-        _lastIngestTime = performance.now() - t0;
-        const metrics = [...new Set(scenario.metrics.map((m) => m.name))];
-
-        onDataLoaded(
-          store,
-          metrics,
-          _lastIngestTime,
-          scenario.numPoints,
-          scenario.intervalMs,
-          seriesData
-        );
-      } catch (err) {
-        console.error("Failed to load scenario:", err);
-        if (clickedCard) clickedCard.classList.remove("loading");
-      }
-    }, 30);
-  });
-}
-
-// ── Custom generator ──────────────────────────────────────────────────
-
-document.getElementById("btnCustomGenerate")?.addEventListener("click", () => {
-  const numSeries = parseInt(document.getElementById("numSeries").value, 10);
-  const numPoints = parseInt(document.getElementById("numPoints").value, 10);
-  const pattern = document.getElementById("dataPattern").value;
-  const backendType = "column";
-  const intervalMs = parseInt(document.getElementById("sampleInterval").value, 10);
-
-  const btn = document.getElementById("btnCustomGenerate");
-  btn.disabled = true;
-  btn.textContent = "Generating…";
-
-  requestAnimationFrame(() => {
-    setTimeout(() => {
-      try {
-        generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs);
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Generate Data";
-      }
-    }, 50);
   });
 });
 
@@ -713,136 +603,49 @@ function _createStore(backendType, chunkSize) {
   return store;
 }
 
-function generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs) {
-  const store = _createStore(backendType, CHUNK_SIZE);
-
-  const now = BigInt(Date.now()) * NS_PER_MS;
-  const intervalNs = BigInt(intervalMs) * NS_PER_MS;
-  const metricsUsed = new Set();
-  const seriesData = [];
-
-  for (let si = 0; si < numSeries; si++) {
-    const metricName = METRICS[si % METRICS.length];
-    const region = REGIONS[Math.floor(si / METRICS.length) % REGIONS.length];
-    const instance = INSTANCES[si % INSTANCES.length];
-    metricsUsed.add(metricName);
-
-    const labels = new Map([
-      ["__name__", metricName],
-      ["region", region],
-      ["instance", instance],
-      ["job", "demo"],
-    ]);
-
-    const timestamps = new BigInt64Array(numPoints);
-    const values = new Float64Array(numPoints);
-    const startT = now - BigInt(numPoints) * intervalNs;
-    for (let i = 0; i < numPoints; i++) {
-      timestamps[i] = startT + BigInt(i) * intervalNs;
-      values[i] = generateValue(pattern, i, si, numPoints);
-    }
-    seriesData.push({ labels, timestamps, values });
-  }
-
-  const t0 = performance.now();
-  if (backendType === "column") {
-    const ids = seriesData.map((sd) => store.getOrCreateSeries(sd.labels));
-    for (let offset = 0; offset < numPoints; offset += CHUNK_SIZE) {
-      const end = Math.min(offset + CHUNK_SIZE, numPoints);
-      for (let i = 0; i < seriesData.length; i++) {
-        store.appendBatch(
-          ids[i],
-          seriesData[i].timestamps.subarray(offset, end),
-          seriesData[i].values.subarray(offset, end)
-        );
-      }
-    }
-  } else {
-    for (const sd of seriesData) {
-      const id = store.getOrCreateSeries(sd.labels);
-      store.appendBatch(id, sd.timestamps, sd.values);
-    }
-  }
-  const ingestTime = performance.now() - t0;
-  _lastIngestTime = ingestTime;
-
-  document.querySelectorAll(".scenario-card").forEach((c) => {
-    c.classList.remove("active", "loading", "loaded");
-  });
-  onDataLoaded(store, [...metricsUsed], ingestTime, numPoints, intervalMs, seriesData);
-  autoSelectQueryStep(intervalMs, numPoints);
-}
-
-// ── Query Lab ─────────────────────────────────────────────────────────
-
-document.getElementById("btnQuery")?.addEventListener("click", runQuery);
-
-for (const id of ["queryMetric", "queryAgg", "queryGroupBy", "queryStep", "queryTransform"]) {
-  document.getElementById(id)?.addEventListener("change", () => {
-    updateQueryPreview();
-    if (currentStore) runQuery();
-  });
-}
-
-function updateQueryPreview() {
-  const el = document.getElementById("queryPreview")?.querySelector(".query-preview-code");
-  if (!el) return;
-
-  const metric = document.getElementById("queryMetric")?.value || "…";
-  const agg = document.getElementById("queryAgg")?.value;
-  const transform = document.getElementById("queryTransform")?.value;
-  const groupByVal = document.getElementById("queryGroupBy")?.value;
-  const stepMs = parseInt(document.getElementById("queryStep")?.value || "0", 10);
-
-  // Build matcher string
-  let matcherStr = "";
-  if (activeMatchers.length > 0) {
-    const parts = activeMatchers.map(
-      (m) =>
-        `<span class="qp-label">${escapeHtml(m.label)}</span><span class="qp-op">${escapeHtml(m.op)}</span><span class="qp-val">"${escapeHtml(m.value)}"</span>`
-    );
-    matcherStr = `{${parts.join(", ")}}`;
-  }
-
-  // Build PromQL-like expression
-  let expr = `<span class="qp-metric">${escapeHtml(metric)}</span>${matcherStr}`;
-
-  if (transform) {
-    expr = `<span class="qp-fn">${transform}</span>(${expr})`;
-  }
-
-  if (agg) {
-    expr = `<span class="qp-fn">${agg}</span>(${expr}`;
-    if (stepMs > 0) {
-      expr += ` <span class="qp-kw">[${formatDuration(stepMs)}]</span>`;
-    }
-    expr += ")";
-    if (groupByVal) {
-      expr += ` <span class="qp-kw">by</span> (<span class="qp-group">${groupByVal}</span>)`;
-    }
-  }
-
-  el.innerHTML = expr;
-}
-
-async function runQuery() {
+async function runQuery(options = {}) {
+  const { scrollToResults = false } = options;
   if (!currentStore) return;
   const runSeq = ++_queryRunSeq;
 
-  const metric = document.getElementById("queryMetric")?.value;
-  const agg = document.getElementById("queryAgg")?.value || undefined;
-  const groupByVal = document.getElementById("queryGroupBy")?.value;
-  const groupBy = groupByVal ? [groupByVal] : undefined;
-  const stepMs = parseInt(document.getElementById("queryStep")?.value || "0", 10);
+  const queryConfig = queryBuilder.readConfig();
+  const metric = queryConfig.metric;
+  const agg = queryConfig.agg;
+  const groupBy = queryConfig.groupBy;
+  const stepMs = queryConfig.stepMs;
   const step = stepMs > 0 ? BigInt(stepMs) * NS_PER_MS : undefined;
-  const transform = document.getElementById("queryTransform")?.value || undefined;
+  const transform = queryConfig.transform;
+  const chartWidth =
+    document.getElementById("chartCanvas")?.parentElement?.clientWidth || window.innerWidth || 1200;
+  const maxPoints = Math.max(240, Math.floor(chartWidth * 1.25));
 
   // Pipeline stage 1: Label matching
   const totalSeries = currentStore.seriesCount || 0;
-  const ids = currentStore.matchLabel("__name__", metric);
+  let ids = currentStore.matchLabel("__name__", metric);
+  const activeMatchers = queryBuilder.getActiveMatchers();
+  if (activeMatchers.length > 0) {
+    for (const matcher of activeMatchers) {
+      if (matcher.op === "!=" || matcher.op === "not=") {
+        const excluded = new Set(currentStore.matchLabel(matcher.label, matcher.value));
+        ids = ids.filter((id) => !excluded.has(id));
+      } else {
+        const matched = new Set(currentStore.matchLabel(matcher.label, matcher.value));
+        ids = ids.filter((id) => matched.has(id));
+      }
+    }
+  }
   if (ids.length === 0) return;
-  const minT = currentDataRange?.minT ?? 0n;
-  const maxT = currentDataRange?.maxT ?? minT;
+
+  let minT = BigInt("9223372036854775807");
+  let maxT = -minT;
+  for (const id of ids) {
+    const data = currentStore.read(id, -minT, minT);
+    if (data.timestamps.length > 0) {
+      if (data.timestamps[0] < minT) minT = data.timestamps[0];
+      if (data.timestamps[data.timestamps.length - 1] > maxT)
+        maxT = data.timestamps[data.timestamps.length - 1];
+    }
+  }
 
   const queryOpts = {
     metric,
@@ -851,19 +654,22 @@ async function runQuery() {
     agg,
     groupBy,
     step,
+    maxPoints,
     transform: transform || undefined,
-    matchers: activeMatchers.length > 0 ? activeMatchers : undefined,
+    matchers: activeMatchers,
   };
 
   const t0 = performance.now();
   let result;
   let workerQueryId = null;
+  let usedWorkers = false;
 
   if (_canRunOnWorkers(queryOpts)) {
     try {
       const workerResponses = await queryWorkerPool.query(queryOpts);
       if (runSeq !== _queryRunSeq) return;
       workerQueryId = workerResponses[0]?.queryId ?? null;
+      usedWorkers = true;
 
       if (agg === "avg") {
         const sumResults = workerResponses.map((response) =>
@@ -884,38 +690,36 @@ async function runQuery() {
         );
       }
     } catch (error) {
-      console.error("Worker query failed; falling back to coordinator", error);
+      console.error("Worker query failed", error);
       queryWorkerPool.markFallback("Worker query failed; running on coordinator");
-      result = currentEngine.query(currentStore, queryOpts);
     }
-  } else {
-    if (queryWorkerPool) {
-      queryWorkerPool.markFallback(
-        supportsParallelQuery(queryOpts)
-          ? "Worker pool provisioning; running on coordinator"
-          : `${agg || "raw"} queries stay on the coordinator`
-      );
-    }
+  } else if (queryWorkerPool) {
+    queryWorkerPool.markFallback(
+      supportsParallelQuery(queryOpts)
+        ? "Worker pool warming up; running on coordinator"
+        : "This aggregation runs on the coordinator"
+    );
+  }
+
+  if (!result) {
     result = currentEngine.query(currentStore, queryOpts);
   }
 
   const queryTime = performance.now() - t0;
-  if (runSeq !== _queryRunSeq) return;
-
-  if (queryWorkerPool && workerQueryId != null) {
-    queryWorkerPool.markMerged(
-      workerQueryId,
-      `Merged ${result.series.length.toLocaleString()} series from ${queryWorkerPool.workers.length} workers in ${queryTime.toFixed(1)} ms`
-    );
-  }
 
   showSection("section-results");
-  updateQueryPreview();
+  queryBuilder.updatePreview();
 
   // ── Pipeline visualization ──
+  const planSection = document.getElementById("section-query-plan");
+  const planSummary = document.getElementById("queryExecutionSummary");
   const pipelineEl = document.getElementById("queryPipeline");
+  if (planSection) showSection("section-query-plan");
+  if (planSummary) {
+    const stepSummary = summarizeStepResolution(result);
+    planSummary.textContent = `${result.scannedSeries.toLocaleString()} series matched, ${result.scannedSamples.toLocaleString()} samples scanned, ${result.series.length.toLocaleString()} outputs, ${stepSummary}`;
+  }
   if (pipelineEl) {
-    pipelineEl.hidden = false;
     // Stage 1: Label matching
     const matchEl = document.getElementById("pipelineMatchDetail");
     if (matchEl) {
@@ -929,12 +733,19 @@ async function runQuery() {
     // Stage 3: Decode & aggregate
     const decodeEl = document.getElementById("pipelineDecodeDetail");
     if (decodeEl) {
-      decodeEl.innerHTML = `<strong>${result.series.length.toLocaleString()}</strong> result series · <strong>${queryTime.toFixed(1)} ms</strong>`;
+      const stepDetail =
+        result.effectiveStep === null || result.effectiveStep === undefined
+          ? "raw resolution"
+          : `step <strong>${formatStepLabel(result.effectiveStep)}</strong>`;
+      decodeEl.innerHTML = `<strong>${result.series.length.toLocaleString()}</strong> result series · ${stepDetail} · <strong>${queryTime.toFixed(1)} ms</strong>`;
     }
-    // Animate stages in
-    for (const stage of pipelineEl.querySelectorAll(".pipeline-stage")) {
-      stage.classList.add("pipeline-active");
-    }
+  }
+
+  if (usedWorkers && workerQueryId !== null) {
+    queryWorkerPool.markMerged(
+      workerQueryId,
+      `${queryWorkerPool.workers.length} workers merged ${result.series.length.toLocaleString()} outputs in ${queryTime.toFixed(1)} ms`
+    );
   }
 
   document.getElementById("qStatScannedSeries").innerHTML =
@@ -943,28 +754,21 @@ async function runQuery() {
     `Samples: <strong>${result.scannedSamples.toLocaleString()}</strong>`;
   document.getElementById("qStatResultSeries").innerHTML =
     `Result: <strong>${result.series.length}</strong> series`;
+  document.getElementById("qStatEffectiveStep").innerHTML = formatEffectiveStepStat(result);
   document.getElementById("qStatQueryTime").innerHTML =
     `Time: <strong>${queryTime.toFixed(1)} ms</strong>`;
 
   renderChart(document.getElementById("chartCanvas"), result.series, "");
   setupChartTooltip();
+  renderLegend(document.getElementById("chartLegend"), result.series);
 
-  const legendEl = document.getElementById("chartLegend");
-  if (legendEl) {
-    legendEl.innerHTML = "";
-    for (let i = 0; i < result.series.length; i++) {
-      const s = result.series[i];
-      const color = CHART_COLORS[i % CHART_COLORS.length];
-      const labelStr =
-        [...s.labels]
-          .filter(([k]) => k !== "__name__")
-          .map(([k, v]) => `${escapeHtml(k)}="${escapeHtml(v)}"`)
-          .join(", ") || "all";
-      const item = document.createElement("div");
-      item.className = "legend-item";
-      item.innerHTML = `<span class="legend-swatch" style="background:${color}"></span>${labelStr} (${s.timestamps.length.toLocaleString()} pts)`;
-      legendEl.appendChild(item);
-    }
+  if (scrollToResults) {
+    requestAnimationFrame(() => {
+      const target = document.querySelector("#section-results .chart-container, #section-results");
+      if (!target) return;
+      const top = target.getBoundingClientRect().top + window.scrollY - 12;
+      window.scrollTo({ top: Math.max(0, top), behavior: "auto" });
+    });
   }
 }
 
@@ -974,16 +778,41 @@ let resizeController = null;
 function installResizeListener() {
   if (resizeController) resizeController.abort();
   resizeController = new AbortController();
+  let resizeTimer = null;
   window.addEventListener(
     "resize",
     () => {
-      const resultsSection = document.getElementById("section-results");
-      if (currentStore && resultsSection && !resultsSection.hidden) runQuery();
+      if (resizeTimer) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        const resultsSection = document.getElementById("section-results");
+        const metricsSection = document.getElementById("section-metrics");
+        if (currentStore && resultsSection && !resultsSection.hidden) runQuery();
+        if (currentStore && metricsSection && !metricsSection.hidden)
+          metricsExplorer.handleResize();
+      }, 120);
     },
     { signal: resizeController.signal }
   );
 }
 installResizeListener();
+
+const datasetController = createDatasetController({
+  createStore: _createStore,
+  chunkSize: CHUNK_SIZE,
+  nsPerMs: NS_PER_MS,
+  onBeforeLoad() {
+    hideSection("section-fork");
+    hideSection("section-storage");
+    hideSection("section-metrics");
+    hideSection("section-query");
+    hideSection("section-query-plan");
+    hideSection("section-results");
+  },
+  onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs) {
+    _lastIngestTime = ingestTime;
+    onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs);
+  },
+});
 
 // ── WASM init + auto-load ─────────────────────────────────────────────
 
@@ -993,5 +822,6 @@ loadWasm().then((ok) => {
   }
 
   // Render scenario cards (user clicks to load — no auto-load)
-  _renderScenarioCards();
+  datasetController.renderScenarioCards();
+  datasetController.bindCustomGenerator();
 });

@@ -383,7 +383,7 @@ describe("renderHexRowHTML", () => {
     expect(html).toContain("6C");
     expect(html).toContain("6C");
     expect(html).toContain("region-header");
-    expect(html).toContain("Hell"); // ASCII column
+    expect(html).not.toContain("Hell");
   });
 
   it("renders decimal mode with smaller font", () => {
@@ -423,7 +423,10 @@ describe("renderHexRowHTML", () => {
     const regions = [{ cls: "header" }];
 
     const html = renderHexRowHTML(0, 4, bytes, byteRegion, regions, "hex", null);
-    expect(html).toContain("\u00b7\u00b7\u00b7A"); // dots for non-printable + 'A'
+    expect(html).toContain("00");
+    expect(html).toContain("1F");
+    expect(html).toContain("7F");
+    expect(html).toContain("41");
   });
 
   it("pads rows correctly for offset > 0", () => {
@@ -435,37 +438,35 @@ describe("renderHexRowHTML", () => {
     expect(html).toContain("0x0020"); // row 1 * 32 = 32 = 0x20
   });
 
-  it("HTML-escapes <, >, & in ASCII column", () => {
-    // bytes 0x3C = '<', 0x3E = '>', 0x26 = '&'
+  it("renders special bytes without an ASCII sidecar column", () => {
     const bytes = new Uint8Array([0x41, 0x3c, 0x3e, 0x26]);
     const byteRegion = [0, 0, 0, 0];
     const regions = [{ name: "test", cls: "test" }];
     const html = renderHexRowHTML(0, 4, bytes, byteRegion, regions, "hex", null);
-    // ASCII column must use HTML entities, not raw characters
-    expect(html).toContain("&lt;");
-    expect(html).toContain("&gt;");
-    expect(html).toContain("&amp;");
-    // The ASCII div should contain escaped versions: A&lt;&gt;&amp;
-    expect(html).toContain("A&lt;&gt;&amp;");
+    expect(html).toContain("41");
+    expect(html).toContain("3C");
+    expect(html).toContain("3E");
+    expect(html).toContain("26");
+    expect(html).not.toContain("&lt;");
   });
 });
 
 describe("encodingDescription", () => {
-  it("describes raw encoding", () => {
-    expect(encodingDescription({ encoding: "raw" })).toContain("Raw");
+  it("describes raw encoding in plain english", () => {
+    expect(encodingDescription({ encoding: "raw" })).toContain("stored in full");
   });
 
-  it("describes dod-zero", () => {
+  it("describes dod-zero in plain english", () => {
     const desc = encodingDescription({ encoding: "dod-zero" });
-    expect(desc).toContain("Δ²");
-    expect(desc).toContain("1 bit");
+    expect(desc).toContain("same spacing");
+    expect(desc).toContain("repeat marker");
   });
 
-  it("describes all dod encodings", () => {
-    expect(encodingDescription({ encoding: "dod-7bit" })).toContain("7-bit");
-    expect(encodingDescription({ encoding: "dod-9bit" })).toContain("9-bit");
-    expect(encodingDescription({ encoding: "dod-12bit" })).toContain("12-bit");
-    expect(encodingDescription({ encoding: "dod-64bit" })).toContain("64-bit");
+  it("describes all dod encodings without exposing low-level jargon", () => {
+    expect(encodingDescription({ encoding: "dod-7bit" })).toContain("timing adjustment");
+    expect(encodingDescription({ encoding: "dod-9bit" })).toContain("timing adjustment");
+    expect(encodingDescription({ encoding: "dod-12bit" })).toContain("timing adjustment");
+    expect(encodingDescription({ encoding: "dod-64bit" })).toContain("full timing adjustment");
   });
 
   it("describes xor encodings", () => {
@@ -478,10 +479,8 @@ describe("encodingDescription", () => {
     );
   });
 
-  it("describes alp encodings", () => {
-    expect(encodingDescription({ encoding: "alp-bitpacked", offset: 42, bitWidth: 11 })).toContain(
-      "42"
-    );
+  it("leaves alp bitpacked sample descriptions to the higher-level presenter", () => {
+    expect(encodingDescription({ encoding: "alp-bitpacked", offset: 42, bitWidth: 11 })).toBe("");
     expect(encodingDescription({ encoding: "alp-exception" })).toContain("exception");
   });
 

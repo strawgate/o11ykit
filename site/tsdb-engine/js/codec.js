@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 // ── XOR-Delta Codec ──────────────────────────────────────────────────
 
 const f64Buf = new ArrayBuffer(8);
