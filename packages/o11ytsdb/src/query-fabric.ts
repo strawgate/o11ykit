@@ -64,10 +64,12 @@ export class QueryFabric {
     const plan = this.router.plan(opts);
     const reducer = plan.reducer ?? this.defaultReducer;
     const partials = await Promise.all(
-      plan.assignments.map(async (assignment): Promise<QueryWorkResult> => ({
-        ...assignment,
-        result: await assignment.worker.query(assignment.request),
-      }))
+      plan.assignments.map(
+        async (assignment): Promise<QueryWorkResult> => ({
+          ...assignment,
+          result: await assignment.worker.query(assignment.request),
+        })
+      )
     );
     return reducer.reduce(opts, partials);
   }
@@ -78,7 +80,11 @@ export class PassThroughReducer implements QueryResultReducer {
     if (partials.length !== 1) {
       throw new Error(`PassThroughReducer expects exactly 1 partial, got ${partials.length}`);
     }
-    return partials[0]!.result;
+    const partial = partials[0];
+    if (!partial) {
+      throw new Error("PassThroughReducer expected a partial result");
+    }
+    return partial.result;
   }
 }
 
@@ -236,7 +242,10 @@ function mergeSeriesSegments(
         continue;
       }
 
-      const lastTimestamp = timestamps[lastIndex]!;
+      const lastTimestamp = timestamps[lastIndex];
+      if (lastTimestamp === undefined) {
+        throw new RangeError(`missing merged timestamp at index ${lastIndex}`);
+      }
       if (timestamp > lastTimestamp) {
         timestamps.push(timestamp);
         values.push(value);
@@ -246,7 +255,11 @@ function mergeSeriesSegments(
 
       const existingIndex = lowerBoundBigInt(timestamps, timestamp);
       if (existingIndex < timestamps.length && timestamps[existingIndex] === timestamp) {
-        if (segment.priority >= pointPriorities[existingIndex]!) {
+        const existingPriority = pointPriorities[existingIndex];
+        if (existingPriority === undefined) {
+          throw new RangeError(`missing merged point priority at index ${existingIndex}`);
+        }
+        if (segment.priority >= existingPriority) {
           values[existingIndex] = value;
           pointPriorities[existingIndex] = segment.priority;
         }
@@ -259,8 +272,13 @@ function mergeSeriesSegments(
     }
   }
 
+  const first = ordered[0];
+  if (!first) {
+    throw new RangeError("cannot merge empty series segments");
+  }
+
   return {
-    labels: ordered[0]!.series.labels,
+    labels: first.series.labels,
     timestamps: BigInt64Array.from(timestamps),
     values: Float64Array.from(values),
   };
@@ -312,7 +330,11 @@ function lowerBoundBigInt(values: readonly bigint[], target: bigint): number {
   let right = values.length;
   while (left < right) {
     const mid = (left + right) >>> 1;
-    if (values[mid]! < target) {
+    const value = values[mid];
+    if (value === undefined) {
+      throw new RangeError(`missing sorted timestamp at index ${mid}`);
+    }
+    if (value < target) {
       left = mid + 1;
     } else {
       right = mid;

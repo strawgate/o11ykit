@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import type { QueryExecutor } from "../src/query-fabric.js";
 import {
   PassThroughReducer,
   QueryFabric,
   SingleExecutorRouter,
   TimePartitionRouter,
 } from "../src/query-fabric.js";
-import type { QueryExecutor } from "../src/query-fabric.js";
 import type { Labels, QueryOpts, QueryResult } from "../src/types.js";
 
 function makeLabels(name: string, extra?: Record<string, string>): Labels {
@@ -58,8 +58,10 @@ describe("QueryFabric", () => {
 
     expect(seen).toEqual([{ metric: "cpu", start: 10n, end: 20n }]);
     expect(result.series).toHaveLength(1);
-    expect(result.series[0]!.timestamps[0]).toBe(10n);
-    expect(result.series[0]!.values[0]).toBe(10);
+    const firstSeries = result.series[0];
+    expect(firstSeries).toBeDefined();
+    expect(firstSeries?.timestamps[0]).toBe(10n);
+    expect(firstSeries?.values[0]).toBe(10);
   });
 
   it("throws when pass-through reduction sees multiple partials", () => {
@@ -115,8 +117,10 @@ describe("QueryFabric", () => {
 
     expect(seenFrozen).toEqual([{ metric: "cpu", start: 20n, end: 49n }]);
     expect(seenHot).toEqual([{ metric: "cpu", start: 50n, end: 80n }]);
-    expect([...result.series[0]!.timestamps]).toEqual([20n, 49n, 50n, 80n]);
-    expect([...result.series[0]!.values]).toEqual([1, 2, 3, 4]);
+    const firstSeries = result.series[0];
+    expect(firstSeries).toBeDefined();
+    expect([...new BigInt64Array(firstSeries?.timestamps ?? [])]).toEqual([20n, 49n, 50n, 80n]);
+    expect([...new Float64Array(firstSeries?.values ?? [])]).toEqual([1, 2, 3, 4]);
     expect(result.scannedSeries).toBe(1);
     expect(result.scannedSamples).toBe(4);
   });
@@ -154,8 +158,10 @@ describe("QueryFabric", () => {
 
     const result = await fabric.execute({ metric: "cpu", start: 40n, end: 70n });
 
-    expect([...result.series[0]!.timestamps]).toEqual([40n, 50n, 60n, 70n]);
-    expect([...result.series[0]!.values]).toEqual([1, 9, 9, 9]);
+    const firstSeries = result.series[0];
+    expect(firstSeries).toBeDefined();
+    expect([...new BigInt64Array(firstSeries?.timestamps ?? [])]).toEqual([40n, 50n, 60n, 70n]);
+    expect([...new Float64Array(firstSeries?.values ?? [])]).toEqual([1, 9, 9, 9]);
     expect(result.scannedSeries).toBe(1);
     expect(result.scannedSamples).toBe(6);
   });
@@ -189,10 +195,14 @@ describe("QueryFabric", () => {
 
     expect(result.series).toHaveLength(2);
     const byHost = new Map(result.series.map((series) => [series.labels.get("host"), series]));
-    expect([...byHost.get("a")!.timestamps]).toEqual([10n, 20n]);
-    expect([...byHost.get("a")!.values]).toEqual([1, 3]);
-    expect([...byHost.get("b")!.timestamps]).toEqual([10n, 20n]);
-    expect([...byHost.get("b")!.values]).toEqual([2, 4]);
+    const hostA = byHost.get("a");
+    const hostB = byHost.get("b");
+    expect(hostA).toBeDefined();
+    expect(hostB).toBeDefined();
+    expect([...new BigInt64Array(hostA?.timestamps ?? [])]).toEqual([10n, 20n]);
+    expect([...new Float64Array(hostA?.values ?? [])]).toEqual([1, 3]);
+    expect([...new BigInt64Array(hostB?.timestamps ?? [])]).toEqual([10n, 20n]);
+    expect([...new Float64Array(hostB?.values ?? [])]).toEqual([2, 4]);
     expect(result.scannedSeries).toBe(2);
     expect(result.scannedSamples).toBe(4);
   });

@@ -57,18 +57,29 @@ function hideSection(id) {
   if (el) el.hidden = true;
 }
 
+function _deriveSeriesDataRange(seriesData) {
+  if (!seriesData?.length) return null;
+
+  let minT = null;
+  let maxT = null;
+  for (const series of seriesData) {
+    if (!series.timestamps?.length) continue;
+    const first = series.timestamps[0];
+    const last = series.timestamps[series.timestamps.length - 1];
+    if (first === undefined || last === undefined) continue;
+    if (minT === null || first < minT) minT = first;
+    if (maxT === null || last > maxT) maxT = last;
+  }
+
+  return minT === null || maxT === null ? null : { minT, maxT };
+}
+
 function onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs, seriesData) {
   currentStore = store;
   generatedMetrics = metrics;
   _storagePopulated = false;
   _queryPopulated = false;
-  currentDataRange =
-    seriesData && seriesData.length > 0
-      ? {
-          minT: seriesData[0].timestamps[0],
-          maxT: seriesData[0].timestamps[seriesData[0].timestamps.length - 1],
-        }
-      : null;
+  currentDataRange = _deriveSeriesDataRange(seriesData);
 
   // Reset matchers from previous dataset
   activeMatchers = [];
@@ -836,7 +847,7 @@ async function runQuery() {
 
   if (ids.length === 0) return;
   const minT = currentDataRange?.minT ?? 0n;
-  const maxT = currentDataRange?.maxT ?? 0n;
+  const maxT = currentDataRange?.maxT ?? minT;
 
   const queryOpts = {
     metric,
@@ -854,25 +865,31 @@ async function runQuery() {
   let workerQueryId = null;
 
   if (_canRunOnWorkers(queryOpts)) {
-    const workerResponses = await queryWorkerPool.query(queryOpts);
-    if (runSeq !== _queryRunSeq) return;
-    workerQueryId = workerResponses[0]?.queryId ?? null;
+    try {
+      const workerResponses = await queryWorkerPool.query(queryOpts);
+      if (runSeq !== _queryRunSeq) return;
+      workerQueryId = workerResponses[0]?.queryId ?? null;
 
-    if (agg === "avg") {
-      const sumResults = workerResponses.map((response) => _deserializeWorkerResult(response.sum));
-      const countResults = workerResponses.map((response) =>
-        _deserializeWorkerResult(response.count)
-      );
-      result = _mergeAvgWorkerResults(sumResults, countResults);
-    } else if (agg === "sum" || agg === "min" || agg === "max" || agg === "count") {
-      result = _mergeReductionWorkerResults(
-        workerResponses.map((response) => _deserializeWorkerResult(response.result)),
-        agg
-      );
-    } else {
-      result = _mergeRawWorkerResults(
-        workerResponses.map((response) => _deserializeWorkerResult(response.result))
-      );
+      if (agg === "avg") {
+        const sumResults = workerResponses.map((response) => _deserializeWorkerResult(response.sum));
+        const countResults = workerResponses.map((response) =>
+          _deserializeWorkerResult(response.count)
+        );
+        result = _mergeAvgWorkerResults(sumResults, countResults);
+      } else if (agg === "sum" || agg === "min" || agg === "max" || agg === "count") {
+        result = _mergeReductionWorkerResults(
+          workerResponses.map((response) => _deserializeWorkerResult(response.result)),
+          agg
+        );
+      } else {
+        result = _mergeRawWorkerResults(
+          workerResponses.map((response) => _deserializeWorkerResult(response.result))
+        );
+      }
+    } catch (error) {
+      console.error("Worker query failed; falling back to coordinator", error);
+      queryWorkerPool.markFallback("Worker query failed; running on coordinator");
+      result = currentEngine.query(currentStore, queryOpts);
     }
   } else {
     if (queryWorkerPool) {

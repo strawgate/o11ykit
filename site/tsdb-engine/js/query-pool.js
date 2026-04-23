@@ -34,12 +34,23 @@ export class QueryWorkerPool {
   }
 
   async dispose() {
+    const disposedError = new Error("Query worker pool disposed");
+    for (const [workerId, pending] of this.pendingLoads) {
+      pending.reject(disposedError);
+      this.pendingLoads.delete(workerId);
+    }
+    for (const [, pendingByWorker] of this.pendingQueries) {
+      for (const [workerId, pending] of pendingByWorker) {
+        pending.reject(disposedError);
+        pendingByWorker.delete(workerId);
+      }
+    }
+    this.pendingQueries.clear();
+
     for (const entry of this.workers) {
       entry.worker.terminate();
     }
     this.workers = [];
-    this.pendingLoads.clear();
-    this.pendingQueries.clear();
     this.state = {
       phase: "idle",
       summary: "No dataset loaded yet.",
@@ -93,6 +104,36 @@ export class QueryWorkerPool {
       worker.addEventListener("message", (event) => this._handleMessage(event.data));
       worker.addEventListener("error", (event) => {
         console.error("query worker error", event);
+        const workerError = new Error(`Query worker ${idx + 1} failed`);
+        const pendingLoad = this.pendingLoads.get(idx);
+        if (pendingLoad) {
+          this.pendingLoads.delete(idx);
+          pendingLoad.reject(workerError);
+        }
+        for (const [queryId, pendingByWorker] of this.pendingQueries) {
+          const pending = pendingByWorker.get(idx);
+          if (!pending) continue;
+          pendingByWorker.delete(idx);
+          pending.reject(workerError);
+          if (pendingByWorker.size === 0) this.pendingQueries.delete(queryId);
+        }
+        this.state.phase = "fallback";
+        this.state.summary = `Worker ${idx + 1} failed; coordinator fallback required`;
+        this.state.coordinator = {
+          phase: "fallback",
+          detail: workerError.message,
+        };
+        this.state.workers = this.state.workers.map((stateWorker) =>
+          stateWorker.id === idx
+            ? {
+                ...stateWorker,
+                phase: "fallback",
+                task: "Worker fault",
+                detail: workerError.message,
+              }
+            : stateWorker
+        );
+        this._emitState();
       });
 
       const payload = partition.map((series) => ({
