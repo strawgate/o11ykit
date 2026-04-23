@@ -1826,6 +1826,13 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .fabric-card.phase-running .fabric-meter span {
+    animation: none;
+    background-position: 0 0;
+  }
+}
+
 @media (max-width: 700px) {
   .query-execution-head {
     align-items: flex-start;

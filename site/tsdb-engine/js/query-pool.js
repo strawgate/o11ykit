@@ -247,7 +247,6 @@ export class QueryWorkerPool {
     };
     this.state.workers = this.state.workers.map((worker) => ({
       ...worker,
-      phase: "ready",
       task: "Idle",
       detail: `${worker.seriesCount.toLocaleString()} series resident`,
     }));

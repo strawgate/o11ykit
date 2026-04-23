@@ -424,7 +424,9 @@ function _mergeAvgWorkerResults(sumResults, countResults) {
 }
 
 function _canRunOnWorkers(opts) {
-  return queryWorkerPool?.state?.phase === "ready" && supportsParallelQuery(opts);
+  return (
+    !!queryWorkerPool && queryWorkerPool.state?.phase !== "running" && supportsParallelQuery(opts)
+  );
 }
 
 // ── Metrics Explorer ──────────────────────────────────────────────────

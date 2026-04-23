@@ -143,8 +143,8 @@ export class TimePartitionRouter implements QueryRouter {
       }
       const padStart = partition.padStart ?? 0n;
       const padEnd = partition.padEnd ?? 0n;
-      const requestStart = maxBigInt(opts.start, partition.start - padStart);
-      const requestEnd = minBigInt(opts.end, partition.end + padEnd);
+      const requestStart = partition.start - padStart;
+      const requestEnd = partition.end + padEnd;
       if (requestStart > requestEnd) {
         continue;
       }
@@ -315,14 +315,6 @@ function seriesKey(series: SeriesResult): string {
 
 function compareBigInt(a: bigint, b: bigint): number {
   return a < b ? -1 : a > b ? 1 : 0;
-}
-
-function minBigInt(a: bigint, b: bigint): bigint {
-  return a < b ? a : b;
-}
-
-function maxBigInt(a: bigint, b: bigint): bigint {
-  return a > b ? a : b;
 }
 
 function lowerBoundBigInt(values: readonly bigint[], target: bigint): number {
