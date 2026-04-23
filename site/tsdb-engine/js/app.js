@@ -12,17 +12,16 @@ import {
   scenarioSeriesCount,
 } from "./data-gen.js";
 import { ScanEngine } from "./query.js";
-import { buildStorageExplorer, showChunkDetail } from "./storage-explorer.js";
+import { QueryWorkerPool, supportsParallelQuery } from "./query-pool.js";
+import { buildStorageExplorer } from "./storage-explorer.js";
 import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
 import {
-  $,
   autoSelectQueryStep,
   escapeHtml,
   formatBytes,
   formatDuration,
   formatNum,
 } from "./utils.js";
-import { QueryWorkerPool, supportsParallelQuery } from "./query-pool.js";
 import { loadWasm, wasmReady } from "./wasm.js";
 
 const CHUNK_SIZE = 640;
@@ -93,7 +92,6 @@ function onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs, seriesD
   const memBytes = store.memoryBytes();
   const rawBytes = totalPts * 16;
   const ratio = rawBytes / memBytes;
-  const ingestRate = totalPts / (ingestTime / 1000);
 
   // Update active card with results
   const activeCard = document.querySelector(".scenario-card.loading, .scenario-card.active");
@@ -218,7 +216,8 @@ function _executionStatusText(state) {
 function _executionSummaryText(state) {
   if (state.phase === "loading") return state.summary || "Provisioning query workers…";
   if (state.phase === "running") return state.summary || "Coordinator is fanning out query work.";
-  if (state.phase === "complete") return state.summary || "Latest query finished across the worker pool.";
+  if (state.phase === "complete")
+    return state.summary || "Latest query finished across the worker pool.";
   if (state.phase === "fallback") return state.summary || "Query ran on the coordinator.";
   if (state.phase === "ready") return state.summary || "Worker pool is warm and ready.";
   return "Load a dataset to provision query workers.";
@@ -365,7 +364,9 @@ function _mergeAvgWorkerResults(sumResults, countResults) {
       return {
         labels: group.labels,
         timestamps: BigInt64Array.from(points.map((point) => point.timestamp)),
-        values: Float64Array.from(points.map((point) => (point.count > 0 ? point.sum / point.count : 0))),
+        values: Float64Array.from(
+          points.map((point) => (point.count > 0 ? point.sum / point.count : 0))
+        ),
       };
     }),
   };
@@ -402,7 +403,7 @@ function _populateQueryMetrics(metrics) {
   }
 }
 
-function _populateGroupByOptions(store) {
+function _populateGroupByOptions(_store) {
   const sel = document.getElementById("queryGroupBy");
   if (!sel) return;
   const existing = [...availableLabels.keys()];
@@ -839,12 +840,6 @@ async function runQuery() {
   // Pipeline stage 1: Label matching
   const totalSeries = currentStore.seriesCount || 0;
   const ids = currentStore.matchLabel("__name__", metric);
-  let matchedIds = ids;
-  if (activeMatchers.length > 0) {
-    matchedIds = [...ids]; // copy for intersection
-    // matchLabel is called inside ScanEngine, but we can count here
-  }
-
   if (ids.length === 0) return;
   const minT = currentDataRange?.minT ?? 0n;
   const maxT = currentDataRange?.maxT ?? minT;
@@ -871,7 +866,9 @@ async function runQuery() {
       workerQueryId = workerResponses[0]?.queryId ?? null;
 
       if (agg === "avg") {
-        const sumResults = workerResponses.map((response) => _deserializeWorkerResult(response.sum));
+        const sumResults = workerResponses.map((response) =>
+          _deserializeWorkerResult(response.sum)
+        );
         const countResults = workerResponses.map((response) =>
           _deserializeWorkerResult(response.count)
         );

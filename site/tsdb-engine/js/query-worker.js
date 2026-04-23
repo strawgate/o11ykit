@@ -118,7 +118,10 @@ self.addEventListener("message", (event) => {
           sum: serializeResult(sum),
           count: serializeResult(count),
         };
-        const transfer = [...resultTransferables(payload.sum), ...resultTransferables(payload.count)];
+        const transfer = [
+          ...resultTransferables(payload.sum),
+          ...resultTransferables(payload.count),
+        ];
         self.postMessage(payload, transfer);
         return;
       }

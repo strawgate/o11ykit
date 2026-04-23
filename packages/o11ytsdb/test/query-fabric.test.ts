@@ -67,21 +67,18 @@ describe("QueryFabric", () => {
   it("throws when pass-through reduction sees multiple partials", () => {
     const reducer = new PassThroughReducer();
     expect(() =>
-      reducer.reduce(
-        { metric: "cpu", start: 0n, end: 10n },
-        [
-          {
-            worker: makeExecutor(() => ({ series: [], scannedSeries: 0, scannedSamples: 0 })),
-            request: { metric: "cpu", start: 0n, end: 5n },
-            result: { series: [], scannedSeries: 0, scannedSamples: 0 },
-          },
-          {
-            worker: makeExecutor(() => ({ series: [], scannedSeries: 0, scannedSamples: 0 })),
-            request: { metric: "cpu", start: 6n, end: 10n },
-            result: { series: [], scannedSeries: 0, scannedSamples: 0 },
-          },
-        ]
-      )
+      reducer.reduce({ metric: "cpu", start: 0n, end: 10n }, [
+        {
+          worker: makeExecutor(() => ({ series: [], scannedSeries: 0, scannedSamples: 0 })),
+          request: { metric: "cpu", start: 0n, end: 5n },
+          result: { series: [], scannedSeries: 0, scannedSamples: 0 },
+        },
+        {
+          worker: makeExecutor(() => ({ series: [], scannedSeries: 0, scannedSamples: 0 })),
+          request: { metric: "cpu", start: 6n, end: 10n },
+          result: { series: [], scannedSeries: 0, scannedSamples: 0 },
+        },
+      ])
     ).toThrow("exactly 1 partial");
   });
 
@@ -92,7 +89,12 @@ describe("QueryFabric", () => {
     const frozen = makeExecutor((opts) => {
       seenFrozen.push(opts);
       return {
-        series: [makeSeries(makeLabels("cpu", { host: "a" }), [[20n, 1], [49n, 2]])],
+        series: [
+          makeSeries(makeLabels("cpu", { host: "a" }), [
+            [20n, 1],
+            [49n, 2],
+          ]),
+        ],
         scannedSeries: 1,
         scannedSamples: 2,
       };
@@ -100,7 +102,12 @@ describe("QueryFabric", () => {
     const hot = makeExecutor((opts) => {
       seenHot.push(opts);
       return {
-        series: [makeSeries(makeLabels("cpu", { host: "a" }), [[50n, 3], [80n, 4]])],
+        series: [
+          makeSeries(makeLabels("cpu", { host: "a" }), [
+            [50n, 3],
+            [80n, 4],
+          ]),
+        ],
         scannedSeries: 1,
         scannedSamples: 2,
       };
