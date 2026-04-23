@@ -3,6 +3,11 @@ import type { QueryOpts, QueryResult, SeriesResult } from "./types.js";
 type MaybePromise<T> = T | Promise<T>;
 
 /**
+ * Internal coordinator utilities for composing one or more query executors
+ * behind the stable `query(opts) -> result` library API.
+ *
+ * This module is intentionally not re-exported from `src/index.ts`.
+ *
  * Minimal query-capable worker/executor contract.
  *
  * WorkerClient already satisfies this structurally, and local executors can

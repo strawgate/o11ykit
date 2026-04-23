@@ -36,20 +36,6 @@ export { Interner } from "./interner.js";
 export { LabelIndex } from "./label-index.js";
 export { MemPostings } from "./postings.js";
 // Query engine
-export {
-  PassThroughReducer,
-  QueryFabric,
-  SingleExecutorRouter,
-  TimePartitionedReducer,
-  TimePartitionRouter,
-} from "./query-fabric.js";
-export type {
-  QueryExecutor,
-  QueryPlan,
-  QueryResultReducer,
-  QueryRouter,
-  TimePartition,
-} from "./query-fabric.js";
 export { ScanEngine } from "./query.js";
 export { RowGroupStore } from "./row-group-store.js";
 export { computeStats } from "./stats.js";
