@@ -12,11 +12,7 @@ import {
 } from "./metrics-model.js";
 import { ScanEngine } from "./query.js";
 import { createQueryBuilderController } from "./query-builder-controller.js";
-import {
-  formatEffectiveStepStat,
-  formatStepLabel,
-  summarizeStepResolution,
-} from "./query-builder-model.js";
+import { formatEffectiveStepStat, summarizeStepResolution } from "./query-builder-model.js";
 import { QueryWorkerPool, supportsParallelQuery } from "./query-pool.js";
 import { buildStorageExplorer } from "./storage-explorer.js";
 import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
@@ -189,44 +185,68 @@ function _renderQueryFabricMonitor(state) {
   if (state.phase === "running") detailsEl.open = true;
 
   const cards = [];
+  const workers = state.workers || [];
+  const phaseSummary = _workerPhaseSummary(workers);
+  const expandWorkers =
+    state.phase === "running" || state.phase === "loading" || state.phase === "fallback";
   cards.push(`
     <article class="fabric-card fabric-card-coordinator phase-${escapeHtml(state.coordinator?.phase || "idle")}">
-      <div class="fabric-card-top">
+      <div class="fabric-card-top fabric-card-top-compact">
         <span class="fabric-role">Coordinator</span>
-        <span class="fabric-status">${escapeHtml(state.coordinator?.phase || "idle")}</span>
+        <span class="fabric-coordinator-meta">${workers.length || 0} workers</span>
       </div>
-      <div class="fabric-name">coordinator/01</div>
-      <div class="fabric-detail">${escapeHtml(state.coordinator?.detail || "Waiting for dataset")}</div>
-      <div class="fabric-metrics">
-        <span>${escapeHtml(state.phase || "idle")}</span>
-        <span>${state.workers?.length || 0} workers</span>
-      </div>
+      <div class="fabric-detail fabric-detail-compact">${escapeHtml(_coordinatorNarrative(state))}</div>
+      ${
+        workers.length
+          ? `
+      <details class="fabric-worker-toggle" ${expandWorkers ? "open" : ""}>
+        <summary class="fabric-worker-toggle-summary">
+          <span>Show ${workers.length} query workers</span>
+          <span class="fabric-worker-toggle-meta">${escapeHtml(phaseSummary)}</span>
+        </summary>
+        <div class="fabric-worker-grid">
+          ${workers
+            .map((worker) => {
+              const phase = escapeHtml(worker.phase || "idle");
+              const role = escapeHtml(worker.role || "query-shard");
+              const isExpanded =
+                worker.phase === "running" ||
+                worker.phase === "loading" ||
+                worker.phase === "fallback";
+              return `
+                <details class="fabric-worker-mini phase-${phase} role-${role}" ${isExpanded ? "open" : ""}>
+                  <summary class="fabric-worker-mini-summary">
+                    <div class="fabric-worker-mini-top">
+                      <span class="fabric-worker-mini-name">${escapeHtml(worker.name)}</span>
+                      <span class="fabric-status">${phase}</span>
+                    </div>
+                    <div class="fabric-worker-mini-meta">
+                      <span>${role}</span>
+                      <span>${worker.seriesCount?.toLocaleString() || 0} series</span>
+                      <span>${worker.durationMs ? `${worker.durationMs.toFixed(1)} ms` : worker.task || "Idle"}</span>
+                    </div>
+                    <div class="fabric-meter fabric-meter-compact"><span style="width:${_workerMeterWidth(worker)}%"></span></div>
+                  </summary>
+                  <div class="fabric-worker-mini-body">
+                    <div class="fabric-detail">${escapeHtml(worker.detail || "Idle")}</div>
+                    <div class="fabric-task">${escapeHtml(worker.task || "Idle")}</div>
+                    <div class="fabric-metrics">
+                      <span>${worker.sampleCount?.toLocaleString() || 0} samples resident</span>
+                      <span>${worker.scannedSeries?.toLocaleString() || 0} scanned</span>
+                      <span>${worker.scannedSamples?.toLocaleString() || 0} pts</span>
+                      <span>${worker.durationMs ? `${worker.durationMs.toFixed(1)} ms` : "No query yet"}</span>
+                    </div>
+                  </div>
+                </details>
+              `;
+            })
+            .join("")}
+        </div>
+      </details>`
+          : ""
+      }
     </article>
   `);
-
-  for (const worker of state.workers || []) {
-    cards.push(`
-      <article class="fabric-card fabric-card-worker phase-${escapeHtml(worker.phase || "idle")} role-${escapeHtml(worker.role || "query-shard")}">
-        <div class="fabric-card-top">
-          <span class="fabric-role">${escapeHtml(worker.role || "query-shard")}</span>
-          <span class="fabric-status">${escapeHtml(worker.phase || "idle")}</span>
-        </div>
-        <div class="fabric-name">${escapeHtml(worker.name)}</div>
-        <div class="fabric-detail">${escapeHtml(worker.detail || "Idle")}</div>
-        <div class="fabric-metrics">
-          <span>${worker.seriesCount?.toLocaleString() || 0} series</span>
-          <span>${worker.sampleCount?.toLocaleString() || 0} samples</span>
-        </div>
-        <div class="fabric-task">${escapeHtml(worker.task || "Idle")}</div>
-        <div class="fabric-meter"><span style="width:${_workerMeterWidth(worker)}%"></span></div>
-        <div class="fabric-metrics">
-          <span>${worker.scannedSeries?.toLocaleString() || 0} scanned</span>
-          <span>${worker.scannedSamples?.toLocaleString() || 0} pts</span>
-          <span>${worker.durationMs ? `${worker.durationMs.toFixed(1)} ms` : "—"}</span>
-        </div>
-      </article>
-    `);
-  }
 
   gridEl.innerHTML = cards.join("");
 }
@@ -263,6 +283,52 @@ function _workerMeterWidth(worker) {
   if (worker.phase === "loading") return 48;
   if (worker.phase === "complete") return 100;
   return 18;
+}
+
+function _workerPhaseSummary(workers) {
+  if (!workers.length) return "No workers provisioned yet.";
+
+  const counts = new Map();
+  for (const worker of workers) {
+    const phase = worker.phase || "idle";
+    counts.set(phase, (counts.get(phase) || 0) + 1);
+  }
+
+  const order = ["running", "loading", "ready", "complete", "fallback", "idle"];
+  const parts = [];
+  for (const phase of order) {
+    const count = counts.get(phase);
+    if (!count) continue;
+    parts.push(`${count} ${phase}`);
+  }
+  return `${workers.length} workers · ${parts.join(" · ")}`;
+}
+
+function _coordinatorNarrative(state) {
+  const workers = state.workers || [];
+  const workerCount = workers.length;
+  if (!workerCount)
+    return "Handles label matching, dispatch, and result merge once workers are provisioned.";
+
+  const residentSeries = workers.reduce((sum, worker) => sum + (worker.seriesCount || 0), 0);
+  const matchedSeries = workers.reduce((sum, worker) => sum + (worker.scannedSeries || 0), 0);
+  const scannedSamples = workers.reduce((sum, worker) => sum + (worker.scannedSamples || 0), 0);
+  const partialSeries = workers.reduce((sum, worker) => sum + (worker.resultSeries || 0), 0);
+
+  switch (state.phase) {
+    case "loading":
+      return `Partitioning ${residentSeries.toLocaleString()} series across ${workerCount} workers.`;
+    case "ready":
+      return `Matches labels on the coordinator, then routes chunk scans and decode work across ${workerCount} workers.`;
+    case "running":
+      return `Matched ${matchedSeries.toLocaleString()} of ${residentSeries.toLocaleString()} resident series and is fanning ${scannedSamples.toLocaleString()} samples out to ${workerCount} workers.`;
+    case "complete":
+      return `Matched ${matchedSeries.toLocaleString()} series, pushed ${scannedSamples.toLocaleString()} samples through ${workerCount} workers, and merged ${partialSeries.toLocaleString()} partial outputs.`;
+    case "fallback":
+      return "Worker fan-out is unavailable, so the coordinator is matching labels, scanning chunks, and merging locally.";
+    default:
+      return "Waiting for a dataset before matching labels and dispatching chunk scans.";
+  }
 }
 
 function _labelsKey(labels) {
@@ -621,8 +687,6 @@ async function runQuery(options = {}) {
     document.getElementById("chartCanvas")?.parentElement?.clientWidth || window.innerWidth || 1200;
   const maxPoints = Math.max(240, Math.floor(chartWidth * 1.25));
 
-  // Pipeline stage 1: Label matching
-  const totalSeries = currentStore.seriesCount || 0;
   let ids = currentStore.matchLabel("__name__", metric);
   const activeMatchers = queryBuilder.getActiveMatchers();
   if (activeMatchers.length > 0) {
@@ -714,35 +778,12 @@ async function runQuery(options = {}) {
   showSection("section-results");
   queryBuilder.updatePreview();
 
-  // ── Pipeline visualization ──
   const planSection = document.getElementById("section-query-plan");
   const planSummary = document.getElementById("queryExecutionSummary");
-  const pipelineEl = document.getElementById("queryPipeline");
   if (planSection) showSection("section-query-plan");
   if (planSummary) {
     const stepSummary = summarizeStepResolution(result);
     planSummary.textContent = `${result.scannedSeries.toLocaleString()} series matched, ${result.scannedSamples.toLocaleString()} samples scanned, ${result.series.length.toLocaleString()} outputs, ${stepSummary}`;
-  }
-  if (pipelineEl) {
-    // Stage 1: Label matching
-    const matchEl = document.getElementById("pipelineMatchDetail");
-    if (matchEl) {
-      matchEl.innerHTML = `<strong>${result.scannedSeries.toLocaleString()}</strong> of ${totalSeries.toLocaleString()} series matched`;
-    }
-    // Stage 2: Chunk scan
-    const chunksEl = document.getElementById("pipelineChunksDetail");
-    if (chunksEl) {
-      chunksEl.innerHTML = `<strong>${result.scannedSamples.toLocaleString()}</strong> samples across ${result.scannedSeries.toLocaleString()} series`;
-    }
-    // Stage 3: Decode & aggregate
-    const decodeEl = document.getElementById("pipelineDecodeDetail");
-    if (decodeEl) {
-      const stepDetail =
-        result.effectiveStep === null || result.effectiveStep === undefined
-          ? "raw resolution"
-          : `step <strong>${formatStepLabel(result.effectiveStep)}</strong>`;
-      decodeEl.innerHTML = `<strong>${result.series.length.toLocaleString()}</strong> result series · ${stepDetail} · <strong>${queryTime.toFixed(1)} ms</strong>`;
-    }
   }
 
   if (usedWorkers && workerQueryId !== null) {
