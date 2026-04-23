@@ -1,30 +1,21 @@
 // ── Storage Explorer ─────────────────────────────────────────────────
 
 import { renderByteExplorer, renderByteExplorerTs } from "./byte-explorer.js";
-import { ALP_HEADER_SIZE } from "./byte-explorer-logic.js";
 import { decodeChunk } from "./codec.js";
 import {
-  $,
-  escapeHtml,
-  formatBytes,
-  formatEpochNs,
-  formatNum,
-  formatTimeRange,
-  setupCanvasDPR,
-} from "./utils.js";
+  buildAlpByteSegments,
+  buildTimestampByteSegments,
+  buildXorByteSegments,
+  pickRandomChunk,
+} from "./storage-explorer-model.js";
+import {
+  buildChunkEmptyState,
+  buildFrozenChunkDetailHTML,
+  buildHotChunkDetailHTML,
+} from "./storage-explorer-presenter.js";
+import { renderSparkline } from "./storage-sparkline.js";
+import { $, escapeHtml, formatBytes } from "./utils.js";
 import { wasmDecodeTimestamps, wasmDecodeValuesALP } from "./wasm.js";
-
-const sparklineState = new WeakMap();
-
-function _buildChunkEmptyState() {
-  return `
-    <div class="chunk-empty-state">
-      <div class="chunk-empty-icon">🧭</div>
-      <div class="chunk-empty-title">No chunk selected yet</div>
-      <p class="chunk-empty-copy">Click a green or orange chunk above to view details, decoded values, and the byte explorer.</p>
-      <button type="button" class="chunk-empty-action" id="chunkPickRandom">Pick a random chunk</button>
-    </div>`;
-}
 
 function _showChunkEmptyState(seriesInfos, store) {
   const panel = $("#chunkDetailPanel");
@@ -32,15 +23,10 @@ function _showChunkEmptyState(seriesInfos, store) {
   if (!panel) return;
   panel.style.display = "";
   if (title) title.style.display = "";
-  panel.innerHTML = _buildChunkEmptyState();
+  panel.innerHTML = buildChunkEmptyState();
   panel.querySelector("#chunkPickRandom")?.addEventListener("click", () => {
-    const picks = [];
-    for (const si of seriesInfos) {
-      for (let i = 0; i < si.info.frozen.length; i++) picks.push({ si, chunkIndex: i, type: "frozen" });
-      if (si.info.hot.count > 0) picks.push({ si, chunkIndex: -1, type: "hot" });
-    }
-    if (picks.length === 0) return;
-    const pick = picks[Math.floor(Math.random() * picks.length)];
+    const pick = pickRandomChunk(seriesInfos);
+    if (!pick) return;
     showChunkDetail(pick.si, pick.chunkIndex, pick.type, store);
   });
 }
@@ -48,18 +34,7 @@ function _showChunkEmptyState(seriesInfos, store) {
 function renderByteMap(compressed, _sampleCount) {
   const container = $("#byteMap");
   if (!container) return;
-
-  const totalBytes = compressed.byteLength;
-  const headerBytes = Math.min(16, totalBytes);
-  const remainingBytes = totalBytes - headerBytes;
-  const tsDeltaBytes = Math.round(remainingBytes * 0.25);
-  const valXorBytes = remainingBytes - tsDeltaBytes;
-
-  const segments = [
-    { label: "Header", bytes: headerBytes, cls: "header" },
-    { label: "Timestamps", bytes: tsDeltaBytes, cls: "timestamps" },
-    { label: "XOR Values", bytes: valXorBytes, cls: "values" },
-  ];
+  const { totalBytes, segments } = buildXorByteSegments(compressed);
 
   container.innerHTML = segments
     .map((seg) => {
@@ -72,23 +47,7 @@ function renderByteMap(compressed, _sampleCount) {
 function renderByteMapALP(compressedValues, _compressedTs, _sharedCount) {
   const container = $("#byteMap");
   if (!container) return;
-
-  const valBytes = compressedValues.byteLength;
-
-  const alpBW = valBytes >= 4 ? compressedValues[3] : 0;
-  const alpCount = valBytes >= 2 ? (compressedValues[0] << 8) | compressedValues[1] : 0;
-  const alpExc =
-    valBytes >= ALP_HEADER_SIZE ? (compressedValues[12] << 8) | compressedValues[13] : 0;
-  const headerBytes = Math.min(ALP_HEADER_SIZE, valBytes);
-  const bpBytes = Math.ceil((alpCount * alpBW) / 8);
-  const excBytes = alpExc * 10;
-
-  const totalBytes = headerBytes + bpBytes + excBytes;
-  const segments = [
-    { label: "Header", bytes: headerBytes, cls: "header" },
-    { label: "Offsets", bytes: bpBytes, cls: "values" },
-  ];
-  if (excBytes > 0) segments.push({ label: "Exceptions", bytes: excBytes, cls: "exceptions" });
+  const { totalBytes, segments } = buildAlpByteSegments(compressedValues);
 
   container.innerHTML = segments
     .map((seg) => {
@@ -101,210 +60,13 @@ function renderByteMapALP(compressedValues, _compressedTs, _sharedCount) {
 function _renderTsByteMap(tsBlob, _sharedCount) {
   const container = document.getElementById("byteMapTs");
   if (!container || !tsBlob) return;
-  const tsLen = tsBlob.byteLength;
-  const hdrBytes = Math.min(10, tsLen);
-  const bodyBytes = tsLen - hdrBytes;
-  const segments = [
-    { label: "Header", bytes: hdrBytes, cls: "timestamps" },
-    { label: "Δ² Body", bytes: bodyBytes, cls: "timestamps" },
-  ];
+  const { totalBytes, segments } = buildTimestampByteSegments(tsBlob);
   container.innerHTML = segments
     .map((seg) => {
-      const pct = Math.max(1, (seg.bytes / tsLen) * 100);
+      const pct = Math.max(1, (seg.bytes / totalBytes) * 100);
       return `<div class="byte-segment ${seg.cls}" style="width:${pct}%" title="${seg.label}: ${formatBytes(seg.bytes)}">${seg.bytes > 20 ? formatBytes(seg.bytes) : ""}</div>`;
     })
     .join("");
-}
-
-function renderSparkline(canvasId, decoded) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const values = decoded.values;
-  const n = values.length;
-  if (n === 0) return;
-  const timestamps = decoded.timestamps || [];
-
-  let state = sparklineState.get(canvas);
-  if (!state) {
-    state = {
-      hoverIndex: null,
-      redraw: null,
-      bound: false,
-    };
-    sparklineState.set(canvas, state);
-  }
-
-  const clamp = (value, lo, hi) => Math.min(hi, Math.max(lo, value));
-  const pickDimensions = () => {
-    const rect = canvas.getBoundingClientRect();
-    const attrW = Number(canvas.getAttribute("width")) || 600;
-    const attrH = Number(canvas.getAttribute("height")) || 140;
-    return {
-      w: Math.max(260, Math.round(rect.width || canvas.clientWidth || attrW)),
-      h: Math.max(120, Math.round(rect.height || canvas.clientHeight || attrH)),
-    };
-  };
-
-  const draw = () => {
-    const { w, h } = pickDimensions();
-    const ctx = setupCanvasDPR(canvas, w, h);
-    ctx.clearRect(0, 0, w, h);
-
-    let minV = Infinity;
-    let maxV = -Infinity;
-    for (let i = 0; i < n; i++) {
-      if (values[i] < minV) minV = values[i];
-      if (values[i] > maxV) maxV = values[i];
-    }
-    if (minV === maxV) {
-      minV -= 1;
-      maxV += 1;
-    }
-    const valuePadding = (maxV - minV) * 0.08 || 1;
-    minV -= valuePadding;
-    maxV += valuePadding;
-    const vRange = maxV - minV;
-
-    const left = 14;
-    const right = 12;
-    const top = 12;
-    const bottom = 18;
-    const plotLeft = left;
-    const plotTop = top;
-    const plotRight = w - right;
-    const plotBottom = h - bottom;
-    const plotW = Math.max(1, plotRight - plotLeft);
-    const plotH = Math.max(1, plotBottom - plotTop);
-
-    const xAt = (index) => {
-      if (n <= 1) return plotLeft + plotW / 2;
-      return plotLeft + (index / (n - 1)) * plotW;
-    };
-    const yAt = (value) =>
-      clamp(plotTop + ((maxV - value) / vRange) * plotH, plotTop, plotBottom);
-
-    ctx.fillStyle = "rgba(247, 251, 255, 0.96)";
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.strokeStyle = "rgba(15, 58, 94, 0.08)";
-    ctx.lineWidth = 1;
-    const yTicks = 5;
-    for (let i = 0; i <= yTicks; i++) {
-      const y = plotTop + (i / yTicks) * plotH;
-      ctx.beginPath();
-      ctx.moveTo(plotLeft, y);
-      ctx.lineTo(plotRight, y);
-      ctx.stroke();
-    }
-    const xTicks = Math.min(6, Math.max(2, n - 1));
-    for (let i = 0; i <= xTicks; i++) {
-      const x = plotLeft + (i / xTicks) * plotW;
-      ctx.beginPath();
-      ctx.moveTo(x, plotTop);
-      ctx.lineTo(x, plotBottom);
-      ctx.stroke();
-    }
-
-    ctx.strokeStyle = "rgba(15, 58, 94, 0.18)";
-    ctx.beginPath();
-    ctx.moveTo(plotLeft, plotTop);
-    ctx.lineTo(plotLeft, plotBottom);
-    ctx.lineTo(plotRight, plotBottom);
-    ctx.stroke();
-
-    const grad = ctx.createLinearGradient(0, plotTop, 0, plotBottom);
-    grad.addColorStop(0, "rgba(59, 130, 246, 0.18)");
-    grad.addColorStop(1, "rgba(59, 130, 246, 0.02)");
-
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const x = clamp(xAt(i), plotLeft, plotRight);
-      const y = yAt(values[i]);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.lineTo(clamp(xAt(n - 1), plotLeft, plotRight), plotBottom);
-    ctx.lineTo(clamp(xAt(0), plotLeft, plotRight), plotBottom);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const x = clamp(xAt(i), plotLeft, plotRight);
-      const y = yAt(values[i]);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    ctx.strokeStyle = "#2563eb";
-    ctx.lineWidth = 1.75;
-    ctx.stroke();
-
-    if (state.hoverIndex !== null && state.hoverIndex >= 0 && state.hoverIndex < n) {
-      const idx = state.hoverIndex;
-      const x = clamp(xAt(idx), plotLeft, plotRight);
-      const y = yAt(values[idx]);
-
-      ctx.strokeStyle = "rgba(15, 58, 94, 0.24)";
-      ctx.lineWidth = 1;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(x, plotTop);
-      ctx.lineTo(x, plotBottom);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      ctx.fillStyle = "#2563eb";
-      ctx.beginPath();
-      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-      ctx.stroke();
-
-      const tooltipLines = [`Value: ${formatNum(values[idx])}`];
-      if (timestamps[idx] !== undefined) tooltipLines.push(formatEpochNs(timestamps[idx]));
-
-      ctx.font = '12px "IBM Plex Mono", monospace';
-      const tooltipW =
-        Math.max(...tooltipLines.map((line) => ctx.measureText(line).width)) + 18;
-      const tooltipH = tooltipLines.length * 16 + 12;
-      const tooltipX = clamp(x + 10, plotLeft + 6, plotRight - tooltipW - 4);
-      const tooltipY = y < plotTop + 34 ? y + 10 : y - tooltipH - 10;
-
-      ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
-      ctx.beginPath();
-      ctx.roundRect(tooltipX, tooltipY, tooltipW, tooltipH, 8);
-      ctx.fill();
-
-      ctx.fillStyle = "rgba(255, 255, 255, 0.96)";
-      tooltipLines.forEach((line, lineIndex) => {
-        ctx.fillText(line, tooltipX + 9, tooltipY + 18 + lineIndex * 16);
-      });
-    }
-  };
-
-  state.redraw = draw;
-  draw();
-
-  if (!state.bound) {
-    state.bound = true;
-    canvas.addEventListener("mousemove", (event) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const usableWidth = Math.max(1, rect.width - 26);
-      const relative = clamp((x - 14) / usableWidth, 0, 1);
-      state.hoverIndex = Math.round(relative * (n - 1));
-      state.redraw?.();
-    });
-    canvas.addEventListener("mouseleave", () => {
-      state.hoverIndex = null;
-      state.redraw?.();
-    });
-  }
 }
 
 function _decodeChunkData(chunk, isColumn) {
@@ -314,116 +76,6 @@ function _decodeChunkData(chunk, isColumn) {
     return { timestamps, values };
   }
   return decodeChunk(chunk.compressed);
-}
-
-function _buildChunkDetailHTML(
-  chunk,
-  _decoded,
-  isColumn,
-  labelStr,
-  metricName,
-  chunkIndex,
-  totalFrozen
-) {
-  const sparkId = `sparkline-${Date.now()}`;
-  const codecName = isColumn ? "ALP" : "XOR-Delta";
-  const hasPrev = chunkIndex > 0;
-  const hasNext = chunkIndex < totalFrozen - 1;
-
-  const byteLayoutLegend = isColumn
-    ? `
-          <span class="byte-legend-item"><span class="byte-swatch header"></span>ALP header (14 B)</span>
-          <span class="byte-legend-item"><span class="byte-swatch values"></span>Bit-packed offsets</span>
-          <span class="byte-legend-item"><span class="byte-swatch exceptions"></span>Exceptions</span>
-        `
-    : `
-          <span class="byte-legend-item"><span class="byte-swatch header"></span>Header (18 B: count + ts₀ + v₀)</span>
-          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Interleaved Δ²ts + XOR values</span>
-        `;
-
-  const tsSection = isColumn
-    ? `
-      <div class="chunk-ts-section">
-        <h4>Timestamps <span class="store-badge ts">Gorilla Δ² · shared ÷ ${chunk.sharedTsSeries}</span></h4>
-        <div class="byte-map" id="byteMapTs"></div>
-        <div class="byte-legend">
-          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Timestamp header (10 B)</span>
-          <span class="byte-legend-item"><span class="byte-swatch timestamps"></span>Δ² body</span>
-        </div>
-        <div class="byte-explorer" id="byteExplorerTs"></div>
-      </div>`
-    : "";
-
-  // Memory breakdown for ColumnStore
-  const memStats = isColumn
-    ? `
-        <div class="detail-stat">
-          <div class="detail-stat-label">Values</div>
-          <div class="detail-stat-value">${formatBytes(chunk.valuesBytes)}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Timestamps</div>
-          <div class="detail-stat-value">${formatBytes(chunk.timestampBytes)}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">TS amortized</div>
-          <div class="detail-stat-value">${formatBytes(chunk.amortizedTsBytes)} (÷${chunk.sharedTsSeries})</div>
-        </div>`
-    : "";
-
-  const html = `
-      <div class="chunk-detail-header">
-        <div class="chunk-nav">
-          <button type="button" class="chunk-nav-btn" id="chunkPrev" ${hasPrev ? "" : "disabled"} title="Previous chunk">‹</button>
-          <span class="chunk-nav-label">Chunk ${chunkIndex} of ${totalFrozen}</span>
-          <button type="button" class="chunk-nav-btn" id="chunkNext" ${hasNext ? "" : "disabled"} title="Next chunk">›</button>
-        </div>
-        <div class="chunk-detail-title">
-          <span class="tag-frozen">Frozen</span> ${metricName}
-          <span class="chunk-detail-labels">{${labelStr}}</span>
-          <span class="tag-codec">${codecName}</span>
-        </div>
-        <div class="chunk-time-range">${formatTimeRange(chunk.minT, chunk.maxT)}</div>
-        <button type="button" class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
-      </div>
-      <div class="chunk-detail-body">
-        <div class="chunk-detail-sparkline">
-          <h4>Decoded Values</h4>
-          <canvas id="${sparkId}" width="600" height="150"></canvas>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Samples</div>
-          <div class="detail-stat-value">${chunk.count.toLocaleString()}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Raw size</div>
-          <div class="detail-stat-value">${formatBytes(chunk.rawBytes)}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Compressed</div>
-          <div class="detail-stat-value">${formatBytes(chunk.compressedBytes)}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Ratio</div>
-          <div class="detail-stat-value ratio-highlight">${chunk.ratio.toFixed(1)}×</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Bits/sample</div>
-          <div class="detail-stat-value">${((chunk.compressedBytes * 8) / chunk.count).toFixed(1)}</div>
-        </div>
-        ${memStats}
-      </div>
-      <div class="chunk-byte-layout">
-        <h4>${isColumn ? "Values" : "Byte Layout"} <span class="store-badge val">${isColumn ? `ALP · ${formatBytes(chunk.valuesBytes)}` : ""}</span></h4>
-        <div class="byte-map" id="byteMap"></div>
-        <div class="byte-legend">
-          ${byteLayoutLegend}
-        </div>
-      </div>
-      <div class="byte-explorer" id="byteExplorer"></div>
-      ${tsSection}`;
-
-  return { html, sparkId };
 }
 
 export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
@@ -444,15 +96,14 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
     const isColumn = !!chunk.compressedValues;
     const decoded = _decodeChunkData(chunk, isColumn);
     const totalFrozen = seriesInfo.info.frozen.length;
-    const { html, sparkId } = _buildChunkDetailHTML(
+    const { html, sparkId } = buildFrozenChunkDetailHTML({
       chunk,
-      decoded,
       isColumn,
       labelStr,
       metricName,
       chunkIndex,
-      totalFrozen
-    );
+      totalFrozen,
+    });
     panel.innerHTML = html;
 
     // Prev/Next navigation
@@ -483,48 +134,8 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
     requestAnimationFrame(() => renderSparkline(sparkId, decoded));
   } else {
     const hot = seriesInfo.info.hot;
-    const sparkId = `sparkline-${Date.now()}`;
-    const minT = hot.count > 0 ? hot.timestamps[0] : 0n;
-    const maxT = hot.count > 0 ? hot.timestamps[hot.count - 1] : 0n;
-
-    panel.innerHTML = `
-      <div class="chunk-detail-header">
-        <div class="chunk-detail-title">
-          <span class="tag-hot">Hot Buffer</span> — ${metricName}
-          <span class="chunk-detail-labels">{${labelStr}}</span>
-        </div>
-        <button type="button" class="chunk-close" onclick="this.closest('.chunk-detail-panel').style.display='none'">✕</button>
-      </div>
-      <div class="chunk-detail-grid">
-        <div class="detail-stat">
-          <div class="detail-stat-label">Samples</div>
-          <div class="detail-stat-value">${hot.count.toLocaleString()}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Time range</div>
-          <div class="detail-stat-value detail-stat-small">${hot.count > 0 ? formatTimeRange(minT, maxT) : "—"}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Raw size</div>
-          <div class="detail-stat-value">${formatBytes(hot.rawBytes)}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Allocated</div>
-          <div class="detail-stat-value">${formatBytes(hot.allocatedBytes)}</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Compression</div>
-          <div class="detail-stat-value">None (raw)</div>
-        </div>
-        <div class="detail-stat">
-          <div class="detail-stat-label">Status</div>
-          <div class="detail-stat-value">🔥 Active write</div>
-        </div>
-      </div>
-      <div class="chunk-sparkline-container">
-        <h4>Raw Values</h4>
-        <canvas id="${sparkId}" width="600" height="120"></canvas>
-      </div>`;
+    const { html, sparkId } = buildHotChunkDetailHTML({ hot, labelStr, metricName });
+    panel.innerHTML = html;
 
     requestAnimationFrame(() => {
       renderSparkline(sparkId, {
@@ -613,7 +224,7 @@ export function buildStorageExplorer(store) {
 
 const MAX_VISIBLE_CHUNKS = 50;
 
-function _buildSeriesRow(si, maxSamples, store) {
+function _buildSeriesRow(si, _maxSamples, store) {
   const row = document.createElement("div");
   row.className = "storage-series-row";
 

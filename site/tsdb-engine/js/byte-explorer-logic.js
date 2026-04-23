@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 // ── Pure logic for byte-level chunk exploration ──────────────────────
 // No DOM dependencies. Testable in isolation via vitest.
 
@@ -183,6 +185,7 @@ export function parseXORHeader(blob) {
 
 export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
   const bitMap = [];
+  const valueEntries = [];
   const valBlobLen = primaryBlob.byteLength;
 
   const hdr = parseALPHeader(primaryBlob);
@@ -221,6 +224,9 @@ export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
   // Build value entries from bit-packed offsets
   const factor = 10 ** alpExp;
   let excIdx = 0;
+  let rangeMinDecoded = Number.POSITIVE_INFINITY;
+  let rangeMaxDecoded = Number.NEGATIVE_INFINITY;
+  let rangeMaxOffset = 0;
   for (let i = 0; i < alpCount; i++) {
     const startBit = headerBits + i * alpBW;
     const endBit = headerBits + (i + 1) * alpBW;
@@ -240,12 +246,18 @@ export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
     }
 
     const isException = excPositions.has(i);
-    const decodedValue = isException
-      ? (excValues[excIdx] ?? NaN)
-      : Number(offset + alpMin) / factor;
+    const scaledInt = offset + alpMin;
+    const decodedValue = isException ? (excValues[excIdx] ?? NaN) : Number(scaledInt) / factor;
     if (isException) excIdx++;
+    if (Number.isFinite(decodedValue)) {
+      rangeMinDecoded = Math.min(rangeMinDecoded, decodedValue);
+      rangeMaxDecoded = Math.max(rangeMaxDecoded, decodedValue);
+    }
+    if (!isException) {
+      rangeMaxOffset = Math.max(rangeMaxOffset, Number(offset));
+    }
 
-    bitMap.push({
+    valueEntries.push({
       sampleIndex: i,
       type: "value",
       startBit,
@@ -253,10 +265,23 @@ export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
       encoding: isException ? "alp-exception" : "alp-bitpacked",
       decoded: decodedValue,
       offset: Number(offset),
+      scaledInt,
+      minInt: alpMin,
+      exponent: alpExp,
       bitWidth: alpBW,
       isException,
     });
   }
+
+  if (!Number.isFinite(rangeMinDecoded)) rangeMinDecoded = Number(alpMin) / factor;
+  if (!Number.isFinite(rangeMaxDecoded)) rangeMaxDecoded = rangeMinDecoded;
+
+  for (const entry of valueEntries) {
+    entry.rangeMinDecoded = rangeMinDecoded;
+    entry.rangeMaxDecoded = rangeMaxDecoded;
+    entry.rangeMaxOffset = rangeMaxOffset;
+  }
+  bitMap.push(...valueEntries);
 
   // Add byte-level entries for exception positions and raw values
   // so they are clickable in hex/decimal views
@@ -309,6 +334,7 @@ export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
       encoding: "raw",
       decoded: firstTs,
       blobOffset: valBlobLen,
+      isBaseTimestamp: true,
     });
 
     let prevTs = firstTs,
@@ -339,6 +365,8 @@ export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
         dod = BigInt.asIntN(64, tsR.readBits(64));
         enc = "dod-64bit";
       }
+      const priorTs = prevTs;
+      const priorDelta = prevDelta;
       const delta = prevDelta + dod;
       const ts = prevTs + delta;
       prevDelta = delta;
@@ -353,6 +381,8 @@ export function buildALPBitMap(primaryBlob, tsBlob, sampleCount) {
         decoded: ts,
         dod,
         delta,
+        prevTs: priorTs,
+        prevDelta: priorDelta,
         blobOffset: valBlobLen,
       });
     }
@@ -435,7 +465,6 @@ export function renderHexRowHTML(row, cols, bytes, byteRegion, regions, mode, by
       "</div>"
   );
 
-  let asciiStr = "";
   for (let col = 0; col < cols; col++) {
     const byteIdx = startOffset + col;
     let cls = "hex-cell";
@@ -472,21 +501,10 @@ export function renderHexRowHTML(row, cols, bytes, byteRegion, regions, mode, by
         style = ' style="font-size:8px"';
       }
       parts.push(`<div class="${cls}"${dataAttrs}${style}>${content}</div>`);
-      if (val >= 32 && val <= 126) {
-        if (val === 38) asciiStr += "&amp;";
-        else if (val === 60) asciiStr += "&lt;";
-        else if (val === 62) asciiStr += "&gt;";
-        else asciiStr += String.fromCharCode(val);
-      } else {
-        asciiStr += "\u00b7";
-      }
     } else {
       parts.push(`<div class="${cls} region-padding">  </div>`);
-      asciiStr += " ";
     }
   }
-
-  parts.push(`<div class="hex-ascii">${asciiStr}</div>`);
   return parts.join("");
 }
 
@@ -494,16 +512,17 @@ export function renderHexRowHTML(row, cols, bytes, byteRegion, regions, mode, by
 // Pure function: returns a human-readable description for a bitMap entry's encoding.
 
 export function encodingDescription(entry) {
-  if (entry.encoding === "raw") return "Raw (uncompressed first sample)";
-  if (entry.encoding === "dod-zero") return "\u0394\u00b2 = 0 \u2192 prefix <code>0</code> (1 bit)";
+  if (entry.encoding === "raw") return "This sample is stored in full because it starts the chunk.";
+  if (entry.encoding === "dod-zero")
+    return "This timestamp keeps the same spacing as the previous one, so it only stores a tiny repeat marker.";
   if (entry.encoding === "dod-7bit")
-    return "\u0394\u00b2 \u2264 \u00b164 \u2192 prefix <code>10</code> + 7-bit zigzag";
+    return "This timestamp stores a small timing adjustment because the spacing changed a little.";
   if (entry.encoding === "dod-9bit")
-    return "\u0394\u00b2 \u2264 \u00b1256 \u2192 prefix <code>110</code> + 9-bit zigzag";
+    return "This timestamp stores a medium timing adjustment because the spacing changed more.";
   if (entry.encoding === "dod-12bit")
-    return "\u0394\u00b2 \u2264 \u00b12048 \u2192 prefix <code>1110</code> + 12-bit zigzag";
+    return "This timestamp stores a larger timing adjustment because the spacing changed more noticeably.";
   if (entry.encoding === "dod-64bit")
-    return "Large \u0394\u00b2 \u2192 prefix <code>1111</code> + 64-bit raw";
+    return "This timestamp stores the full timing adjustment because the spacing changed a lot.";
   if (entry.encoding === "xor-zero")
     return "XOR = 0 \u2192 prefix <code>0</code> (identical value)";
   if (entry.encoding === "xor-reuse")
@@ -518,8 +537,7 @@ export function encodingDescription(entry) {
       entry.meaningful +
       " bits"
     );
-  if (entry.encoding === "alp-bitpacked")
-    return `ALP bit-packed offset = ${entry.offset} (${entry.bitWidth} bits)`;
+  if (entry.encoding === "alp-bitpacked") return "";
   if (entry.encoding === "alp-exception")
     return "\u26a0\ufe0f ALP exception \u2014 stored as raw f64";
   if (entry.encoding === "alp-exc-position")

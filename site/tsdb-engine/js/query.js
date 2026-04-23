@@ -39,6 +39,16 @@ function percentileFraction(fn) {
   return null;
 }
 
+function resolveStep(step, start, end, maxPoints) {
+  if (!maxPoints || maxPoints < 2) return step;
+  const rangeNs = end - start;
+  if (rangeNs <= 0) return step;
+
+  const derivedStep = BigInt(Math.max(1, Math.ceil(Number(rangeNs) / Math.max(1, maxPoints - 1))));
+  if (!step) return derivedStep;
+  return step < derivedStep ? derivedStep : step;
+}
+
 /** Apply a per-series transform (rate/irate/delta/increase) to a raw data range. */
 function applyTransform(data, transform) {
   const { timestamps, values } = data;
@@ -96,6 +106,10 @@ export class ScanEngine {
     }
 
     let scannedSamples = 0;
+    const effectiveStep =
+      opts.start !== undefined && opts.end !== undefined
+        ? resolveStep(opts.step, opts.start, opts.end, opts.maxPoints)
+        : opts.step;
 
     // No aggregation: just return raw series (with optional transform)
     if (!opts.agg) {
@@ -110,7 +124,14 @@ export class ScanEngine {
           values: data.values,
         });
       }
-      return { series, scannedSeries: ids.length, scannedSamples };
+      return {
+        series,
+        scannedSeries: ids.length,
+        scannedSamples,
+        requestedStep: opts.step ?? null,
+        effectiveStep,
+        pointBudget: opts.maxPoints ?? null,
+      };
     }
 
     // Aggregation path
@@ -141,10 +162,17 @@ export class ScanEngine {
 
     const series = [];
     for (const [, group] of groups) {
-      const result = this._aggregate(group.ranges, opts.agg, opts.step);
+      const result = this._aggregate(group.ranges, opts.agg, effectiveStep);
       series.push({ labels: group.labels, timestamps: result.timestamps, values: result.values });
     }
-    return { series, scannedSeries: ids.length, scannedSamples };
+    return {
+      series,
+      scannedSeries: ids.length,
+      scannedSamples,
+      requestedStep: opts.step ?? null,
+      effectiveStep,
+      pointBudget: opts.maxPoints ?? null,
+    };
   }
 
   _aggregate(ranges, fn, step) {

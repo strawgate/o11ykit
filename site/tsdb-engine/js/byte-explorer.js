@@ -1,662 +1,53 @@
 // ── Interactive Byte Explorer ──────────────────────────────────────
 
 import {
+  renderHexContent,
+  setupHexInteraction,
+  setupViewModeButtons,
+} from "./byte-explorer-hex-view.js";
+import {
   ALP_HEADER_SIZE,
   buildALPBitMap,
   buildALPInsightHtml,
   buildByteLookup,
   buildByteRegionMap,
   buildXORInsightHtml,
-  encodingDescription,
-  entryByteRange,
   parseALPHeader,
   parseXORHeader,
-  renderHexRowHTML,
   TS_HEADER_SIZE,
 } from "./byte-explorer-logic.js";
+import { buildRegionDecodeHTML } from "./byte-explorer-presenter.js";
+import { getRegionSwatchColor, mountExplorerShell, renderMinimap } from "./byte-explorer-view.js";
 import { BitReader, decodeChunkAnnotated } from "./codec.js";
-import { $, formatBytes, formatEpochNs, formatHexByte, readI64BE, superNum } from "./utils.js";
-
-const HEX_COLS = 32;
-const MAX_BITS = 2048;
-const BITS_PER_ROW = 64;
-const MAX_INITIAL_ROWS = 100;
-const SCROLL_THRESHOLD = 200;
-
-// ── Shared highlight helpers ─────────────────────────────────────────
-
-function _buildDecodeHTML(entry, spanDesc) {
-  var _bits = entry.endBit - entry.startBit;
-  var decodedStr;
-  if (entry.type === "timestamp") {
-    decodedStr = formatEpochNs(entry.decoded);
-  } else {
-    decodedStr =
-      typeof entry.decoded === "number" ? entry.decoded.toPrecision(8) : String(entry.decoded);
-  }
-  var enc = encodingDescription(entry);
-  var typeIcon = entry.type === "timestamp" ? "\u23f1" : "\uD83D\uDCCA";
-  var typeLabel = entry.type === "timestamp" ? "Timestamp" : "Value";
-
-  return (
-    '<div class="bdp-header">' +
-    '<span class="bdp-type ' +
-    entry.type +
-    '">' +
-    typeIcon +
-    " " +
-    typeLabel +
-    "</span>" +
-    '<span class="bdp-sample">Sample #' +
-    entry.sampleIndex +
-    "</span>" +
-    '<span class="bdp-bits">' +
-    spanDesc +
-    "</span>" +
-    "</div>" +
-    '<div class="bdp-value">' +
-    decodedStr +
-    "</div>" +
-    '<div class="bdp-encoding">' +
-    enc +
-    "</div>" +
-    (entry.dod !== undefined
-      ? '<div class="bdp-detail">\u0394\u00b2 = ' +
-        entry.dod.toString() +
-        ", \u0394 = " +
-        entry.delta.toString() +
-        "</div>"
-      : "") +
-    (entry.xor !== undefined && entry.xor !== 0n
-      ? `<div class="bdp-detail">XOR = 0x${entry.xor.toString(16).padStart(16, "0")}</div>`
-      : "")
-  );
-}
-
-function _highlightEntry(entry, decodePanel, clearFn, applyFn, setActiveFn) {
-  clearFn();
-  if (!entry) {
-    decodePanel.style.display = "none";
-    setActiveFn(null);
-    return;
-  }
-  setActiveFn(entry);
-  var spanDesc = applyFn(entry);
-  decodePanel.style.display = "";
-  decodePanel.innerHTML = _buildDecodeHTML(entry, spanDesc);
-}
-
-// ── Bit View helpers ─────────────────────────────────────────────────
-
-function _buildBitLookup(bitMap) {
-  var bitLookup = {};
-  if (bitMap) {
-    for (var mi = 0; mi < bitMap.length; mi++) {
-      var entry = bitMap[mi];
-      var baseOffset = (entry.blobOffset || 0) * 8;
-      for (var b = entry.startBit; b < entry.endBit; b++) {
-        bitLookup[baseOffset + b] = entry;
-      }
-    }
-  }
-  return bitLookup;
-}
-
-function _renderBitGrid(container, bytes, regions, maxBits, bitLookup) {
-  regions.forEach((region) => {
-    var regionHeader = document.createElement("div");
-    regionHeader.style.cssText = "margin:6px 0 4px;font-weight:700;font-size:11px;color:#f59e0b;";
-    regionHeader.textContent =
-      "\u2500\u2500 " +
-      region.name +
-      " (bytes " +
-      region.start +
-      "\u2013" +
-      (region.end - 1) +
-      ") \u2500\u2500";
-    container.appendChild(regionHeader);
-
-    var regionBytes = bytes.slice(region.start, Math.min(region.end, Math.ceil(maxBits / 8)));
-    var bitsPerRow = BITS_PER_ROW;
-    var prevEntry = null;
-
-    for (var rowStart = 0; rowStart < regionBytes.length * 8; rowStart += bitsPerRow) {
-      var rowEl = document.createElement("div");
-      rowEl.className = "bit-row";
-
-      var label = document.createElement("span");
-      label.className = "bit-sample-label";
-      label.textContent = `b${region.start * 8 + rowStart}`;
-      rowEl.appendChild(label);
-
-      var rowEnd = Math.min(rowStart + bitsPerRow, regionBytes.length * 8);
-      for (var b = rowStart; b < rowEnd; b++) {
-        var byteOff = Math.floor(b / 8);
-        var bitOff = 7 - (b % 8);
-        var bitVal = (regionBytes[byteOff] >> bitOff) & 1;
-
-        var globalBitIdx = region.start * 8 + b;
-        var bitEl = document.createElement("span");
-        bitEl.className = `bit ${bitVal ? "b1" : "b0"}`;
-        bitEl.textContent = bitVal;
-        bitEl.dataset.bit = globalBitIdx;
-
-        // Check if this bit belongs to a mapped sample
-        var mapEntry = bitLookup[globalBitIdx];
-        if (mapEntry) {
-          bitEl.classList.add("bit-mapped");
-          bitEl.classList.add(mapEntry.type === "timestamp" ? "bit-ts" : "bit-val");
-          // Alternating sample shade
-          bitEl.classList.add(
-            mapEntry.sampleIndex % 2 === 0 ? "bit-sample-even" : "bit-sample-odd"
-          );
-          // Boundary: first bit of a new encoding entry
-          if (mapEntry !== prevEntry && prevEntry !== null) {
-            bitEl.classList.add("bit-boundary");
-          }
-          // First mapped bit of the region also gets a boundary
-          if (prevEntry === null) {
-            bitEl.classList.add("bit-boundary");
-          }
-          bitEl.title =
-            (mapEntry.type === "timestamp" ? "\u23f1 " : "\uD83D\uDCCA ") +
-            "Sample #" +
-            mapEntry.sampleIndex;
-          prevEntry = mapEntry;
-        }
-
-        rowEl.appendChild(bitEl);
-
-        if ((b + 1) % 8 === 0 && b + 1 < rowEnd) {
-          var sep = document.createElement("span");
-          sep.style.cssText = "width:4px;";
-          rowEl.appendChild(sep);
-        }
-      }
-
-      container.appendChild(rowEl);
-    }
-
-    if (region.end * 8 > maxBits) return;
-  });
-
-  if (bytes.length * 8 > maxBits) {
-    var note = document.createElement("div");
-    note.style.cssText = "margin-top:8px;color:#94a3b8;font-size:10px;";
-    note.textContent = `Showing first ${maxBits} of ${bytes.length * 8} bits...`;
-    container.appendChild(note);
-  }
-}
-
-function _setupBitInteraction(container, bitLookup, explorer) {
-  var decodePanel = document.createElement("div");
-  decodePanel.className = "bit-decode-panel";
-  decodePanel.style.display = "none";
-
-  var _activeEntry = null;
-
-  function highlightBitRange(entry) {
-    _highlightEntry(
-      entry,
-      decodePanel,
-      () => {
-        container.querySelectorAll(".bit.bit-highlight").forEach((el) => {
-          el.classList.remove("bit-highlight", "bit-highlight-ts", "bit-highlight-val");
-        });
-      },
-      (e) => {
-        var baseOffset = (e.blobOffset || 0) * 8;
-        for (var b = e.startBit; b < e.endBit; b++) {
-          var globalBit = baseOffset + b;
-          var el = container.querySelector(`.bit[data-bit="${globalBit}"]`);
-          if (el) {
-            el.classList.add("bit-highlight");
-            el.classList.add(e.type === "timestamp" ? "bit-highlight-ts" : "bit-highlight-val");
-          }
-        }
-        var bits = e.endBit - e.startBit;
-        return `${bits} bits (bit ${e.startBit}\u2013${e.endBit - 1})`;
-      },
-      (v) => {
-        _activeEntry = v;
-      }
-    );
-  }
-
-  // Click handler for bits
-  container.addEventListener("click", (e) => {
-    var bitEl = e.target.closest(".bit-mapped");
-    if (!bitEl) {
-      highlightBitRange(null);
-      return;
-    }
-    var globalBit = parseInt(bitEl.dataset.bit, 10);
-    var entry = bitLookup[globalBit];
-    if (entry) {
-      highlightBitRange(entry);
-    }
-  });
-
-  // Hover handler
-  container.addEventListener("mouseover", (e) => {
-    var bitEl = e.target.closest(".bit-mapped");
-    if (bitEl) {
-      bitEl.classList.add("bit-hover");
-    }
-  });
-  container.addEventListener("mouseout", (e) => {
-    var bitEl = e.target.closest(".bit-mapped");
-    if (bitEl) {
-      bitEl.classList.remove("bit-hover");
-    }
-  });
-
-  // Escape to clear — use AbortController so the listener is removed when the bit-view is destroyed
-  var keyAbort = new AbortController();
-  document.addEventListener(
-    "keydown",
-    (e) => {
-      if (e.key === "Escape") highlightBitRange(null);
-    },
-    { signal: keyAbort.signal }
-  );
-  container.addEventListener("remove", () => keyAbort.abort());
-  // MutationObserver watches for the bit-view being removed from the DOM
-  var keyCleanupObserver = new MutationObserver(() => {
-    if (!container.isConnected) {
-      keyAbort.abort();
-      keyCleanupObserver.disconnect();
-    }
-  });
-  keyCleanupObserver.observe(document.body, { childList: true, subtree: true });
-
-  explorer.querySelector("#regionDetail").before(decodePanel);
-  explorer.querySelector("#regionDetail").before(container);
-}
-
-// ── Interactive Bit View ─────────────────────────────────────────────
-
-function renderBitView(explorer, bytes, _byteRegion, regions, _sampleCount, _codec, bitMap) {
-  var scrollContainer = explorer.querySelector(".hex-grid-scroll");
-  scrollContainer.style.display = "none";
-
-  var existing = explorer.querySelector(".bit-view");
-  if (existing) existing.remove();
-
-  var container = document.createElement("div");
-  container.className = "bit-view";
-
-  var maxBits = Math.min(bytes.length * 8, MAX_BITS);
-  var bitLookup = _buildBitLookup(bitMap);
-
-  _renderBitGrid(container, bytes, regions, maxBits, bitLookup);
-  _setupBitInteraction(container, bitLookup, explorer);
-}
+import { $, formatBytes, formatEpochNs, readI64BE, superNum } from "./utils.js";
 
 // ── Explorer shell helpers ───────────────────────────────────────────
 
-function _buildExplorerShell(explorer, bytes, insightHtml) {
-  var viewId = `hexView-${Date.now()}`;
-  explorer.innerHTML =
-    '<div class="byte-explorer-header">' +
-    '<h4>\uD83D\uDD2C Byte Explorer <span style="font-weight:400;color:#6b8a9e;font-size:11px">' +
-    formatBytes(bytes.length) +
-    " \u00b7 " +
-    bytes.length.toLocaleString() +
-    " bytes</span></h4>" +
-    '<div class="byte-explorer-controls">' +
-    '<button type="button" class="active" data-view="hex">Hex</button>' +
-    '<button type="button" data-view="decimal">Dec</button>' +
-    '<button type="button" data-view="bits">Bits</button>' +
-    "</div>" +
-    "</div>" +
-    '<div class="byte-minimap" id="byteMinimap"></div>' +
-    '<div class="hex-grid-scroll" id="' +
-    viewId +
-    '">' +
-    '<div class="hex-grid" id="hexGrid" style="grid-template-columns: 56px repeat(' +
-    HEX_COLS +
-    ', minmax(0, 1fr)) minmax(0, 220px);"></div>' +
-    "</div>" +
-    '<div class="hex-decode-panel" id="hexDecodePanel" style="display:none"></div>' +
-    '<div id="regionDetail"></div>';
+function _buildExplorerShell(explorer, bytes, _insightHtml) {
+  mountExplorerShell(explorer, {
+    title: "Byte Explorer",
+    bytesLength: bytes.length,
+    minimapId: "byteMinimap",
+    gridId: "hexGrid",
+    decodePanelId: "hexDecodePanel",
+    emptyKind: "byte",
+  });
 }
 
 function _buildMinimap(explorer, bytes, regions, showRegionDetail) {
   var minimap = explorer.querySelector("#byteMinimap");
-  var totalLen = bytes.length;
-  regions.forEach((r) => {
-    var seg = document.createElement("div");
-    seg.className = "mm-seg";
-    seg.style.width = `${Math.max(1, ((r.end - r.start) / totalLen) * 100)}%`;
-    seg.style.background =
-      r.cls === "header"
-        ? "#8b5cf6"
-        : r.cls === "timestamps"
-          ? "#06b6d4"
-          : r.cls === "exceptions"
-            ? "#f59e0b"
-            : "#10b981";
-    seg.title = `${r.name}: ${formatBytes(r.end - r.start)}`;
-    seg.addEventListener("click", () => {
+  return renderMinimap(minimap, {
+    totalBytes: bytes.length,
+    regions,
+    getColor: getRegionSwatchColor,
+    onRegionClick: (r) => {
       var targetRow = Math.floor(r.start / HEX_COLS);
       var gridEl = explorer.querySelector(".hex-grid-scroll");
       var rowEls = gridEl.querySelectorAll(".hex-offset");
       if (rowEls[targetRow])
         rowEls[targetRow].scrollIntoView({ behavior: "smooth", block: "start" });
       showRegionDetail(r);
-    });
-    minimap.appendChild(seg);
-  });
-
-  // Viewport indicator
-  var viewport = document.createElement("div");
-  viewport.className = "mm-viewport";
-  minimap.appendChild(viewport);
-  return viewport;
-}
-
-function _renderHexContent(
-  gridEl,
-  scrollContainer,
-  bytes,
-  byteRegion,
-  regions,
-  byteLookup,
-  totalRows,
-  viewport
-) {
-  var state = {
-    cellsByOffset: {},
-    renderedRows: 0,
-    currentMode: "hex",
-    sentinel: null,
-  };
-
-  function renderBatch(startRow, count, mode) {
-    var htmlParts = [];
-    for (var r = startRow; r < startRow + count; r++) {
-      htmlParts.push(renderHexRowHTML(r, HEX_COLS, bytes, byteRegion, regions, mode, byteLookup));
-    }
-    return htmlParts.join("");
-  }
-
-  function indexCells() {
-    state.cellsByOffset = {};
-    var cells = gridEl.querySelectorAll(".hex-cell[data-offset]");
-    for (var i = 0; i < cells.length; i++) {
-      state.cellsByOffset[cells[i].dataset.offset] = cells[i];
-    }
-  }
-
-  var initialRows = Math.min(totalRows, MAX_INITIAL_ROWS);
-  gridEl.innerHTML = renderBatch(0, initialRows, "hex");
-  indexCells();
-  state.renderedRows = initialRows;
-
-  // Lazy render remaining rows
-  if (totalRows > initialRows) {
-    state.sentinel = document.createElement("div");
-    state.sentinel.style.height = "1px";
-    state.sentinel.style.gridColumn = "1 / -1";
-    gridEl.appendChild(state.sentinel);
-  }
-
-  // Throttled scroll handler (combines lazy-load + viewport indicator)
-  var scrollRAF = 0;
-  scrollContainer.addEventListener("scroll", () => {
-    if (scrollRAF) return;
-    scrollRAF = requestAnimationFrame(() => {
-      scrollRAF = 0;
-
-      // Viewport indicator
-      var scrollFraction =
-        scrollContainer.scrollTop /
-        Math.max(1, scrollContainer.scrollHeight - scrollContainer.clientHeight);
-      var vf = scrollContainer.clientHeight / Math.max(1, scrollContainer.scrollHeight);
-      viewport.style.left = `${scrollFraction * (1 - vf) * 100}%`;
-      viewport.style.width = `${Math.max(3, vf * 100)}%`;
-
-      // Lazy load
-      if (state.renderedRows < totalRows && state.sentinel && state.sentinel.parentNode) {
-        var sRect = state.sentinel.getBoundingClientRect();
-        var cRect = scrollContainer.getBoundingClientRect();
-        if (sRect.top < cRect.bottom + SCROLL_THRESHOLD) {
-          var batch = Math.min(50, totalRows - state.renderedRows);
-          gridEl.removeChild(state.sentinel);
-          gridEl.insertAdjacentHTML(
-            "beforeend",
-            renderBatch(state.renderedRows, batch, state.currentMode)
-          );
-          // Index new cells
-          var newCells = gridEl.querySelectorAll(".hex-cell[data-offset]");
-          for (var i = 0; i < newCells.length; i++) {
-            var off = newCells[i].dataset.offset;
-            if (!state.cellsByOffset[off]) state.cellsByOffset[off] = newCells[i];
-          }
-          state.renderedRows += batch;
-          if (state.renderedRows < totalRows) gridEl.appendChild(state.sentinel);
-        }
-      }
-    });
-  });
-
-  var initVF = scrollContainer.clientHeight / Math.max(1, scrollContainer.scrollHeight);
-  viewport.style.left = "0%";
-  viewport.style.width = `${Math.max(3, initVF * 100)}%`;
-
-  function rerender(mode) {
-    state.currentMode = mode;
-    state.renderedRows = Math.min(totalRows, MAX_INITIAL_ROWS);
-    gridEl.innerHTML = renderBatch(0, state.renderedRows, mode);
-    indexCells();
-    if (state.renderedRows < totalRows) {
-      if (!state.sentinel) {
-        state.sentinel = document.createElement("div");
-        state.sentinel.style.height = "1px";
-        state.sentinel.style.gridColumn = "1 / -1";
-      }
-      gridEl.appendChild(state.sentinel);
-    }
-  }
-
-  return { state: state, grid: gridEl, scrollContainer: scrollContainer, rerender: rerender };
-}
-
-function _setupHexInteraction(
-  explorer,
-  bytes,
-  byteRegion,
-  regions,
-  byteLookup,
-  hexContent,
-  showRegionDetail
-) {
-  var grid = hexContent.grid;
-  var hexDecodePanel = explorer.querySelector(".hex-decode-panel");
-  var _activeHexEntry = null;
-
-  function highlightHexSample(entry) {
-    _highlightEntry(
-      entry,
-      hexDecodePanel,
-      () => {
-        if (highlightHexSample._prev) {
-          highlightHexSample._prev.forEach((c) => {
-            c.classList.remove("hex-highlight", "hex-highlight-ts", "hex-highlight-val");
-          });
-          highlightHexSample._prev = null;
-        }
-      },
-      (e) => {
-        var range = entryByteRange(e, bytes.length);
-        var highlighted = [];
-        for (var bi = range.startByte; bi < range.endByte; bi++) {
-          var cell = hexContent.state.cellsByOffset[bi];
-          if (cell) {
-            cell.classList.add("hex-highlight");
-            cell.classList.add(e.type === "timestamp" ? "hex-highlight-ts" : "hex-highlight-val");
-            highlighted.push(cell);
-          }
-        }
-        highlightHexSample._prev = highlighted;
-        var bits = e.endBit - e.startBit;
-        var spanBytes = range.endByte - range.startByte;
-        return (
-          bits +
-          " bits across " +
-          spanBytes +
-          " byte" +
-          (spanBytes !== 1 ? "s" : "") +
-          " (byte " +
-          range.startByte +
-          "\u2013" +
-          (range.endByte - 1) +
-          ")"
-        );
-      },
-      (v) => {
-        _activeHexEntry = v;
-      }
-    );
-  }
-
-  // Tooltip — pre-build structure, update via textContent where possible
-  var tooltip = document.querySelector(".byte-tooltip");
-  if (!tooltip) {
-    tooltip = document.createElement("div");
-    tooltip.className = "byte-tooltip";
-    document.body.appendChild(tooltip);
-  }
-  var lastTooltipOffset = -1;
-
-  grid.addEventListener("mouseover", (e) => {
-    var cell = e.target;
-    if (!cell.classList?.contains("hex-cell")) {
-      tooltip.classList.remove("visible");
-      lastTooltipOffset = -1;
-      return;
-    }
-    var offset = cell.dataset.offset | 0;
-    if (offset === lastTooltipOffset) return;
-    lastTooltipOffset = offset;
-    var val = bytes[offset];
-    var rIdx = byteRegion[offset];
-    var region = regions[rIdx];
-    var sampleInfo = "";
-    if (byteLookup?.[offset]) {
-      var blE = byteLookup[offset];
-      sampleInfo =
-        '<span class="bt-sample ' +
-        blE.type +
-        '">' +
-        (blE.type === "timestamp" ? "\u23f1" : "\uD83D\uDCCA") +
-        " #" +
-        blE.sampleIndex +
-        "</span>";
-    }
-    tooltip.innerHTML =
-      '<span class="bt-offset">offset ' +
-      offset +
-      "</span> &nbsp;" +
-      '<span class="bt-hex">0x' +
-      formatHexByte(val) +
-      "</span>" +
-      '<span style="color:#94a3b8"> = ' +
-      val +
-      "</span>" +
-      '<span class="bt-region ' +
-      region.cls +
-      '">' +
-      region.name +
-      "</span>" +
-      sampleInfo;
-    tooltip.classList.add("visible");
-  });
-
-  // Throttle mousemove for tooltip positioning
-  var moveRAF = 0;
-  grid.addEventListener("mousemove", (e) => {
-    if (moveRAF) return;
-    moveRAF = requestAnimationFrame(() => {
-      moveRAF = 0;
-      tooltip.style.left = `${e.clientX + 12}px`;
-      tooltip.style.top = `${e.clientY - 40}px`;
-    });
-  });
-
-  grid.addEventListener("mouseleave", () => {
-    tooltip.classList.remove("visible");
-    lastTooltipOffset = -1;
-  });
-
-  // Click handler: sample-aware for mapped bytes, region fallback otherwise
-  grid.addEventListener("click", (e) => {
-    var cell = e.target;
-    if (!cell.classList?.contains("hex-cell")) {
-      highlightHexSample(null);
-      return;
-    }
-    var offset = cell.dataset.offset | 0;
-
-    // Try sample-level highlight first
-    if (byteLookup?.[offset]) {
-      highlightHexSample(byteLookup[offset]);
-      return;
-    }
-
-    // Fallback: region highlight
-    highlightHexSample(null);
-    var rIdx = byteRegion[offset];
-    showRegionDetail(regions[rIdx]);
-  });
-
-  // Escape to clear hex highlights (tracked for cleanup on re-render)
-  renderByteExplorer._escHandler = (e) => {
-    if (e.key === "Escape") highlightHexSample(null);
-  };
-  document.addEventListener("keydown", renderByteExplorer._escHandler);
-
-  return highlightHexSample;
-}
-
-function _setupViewModeButtons(
-  explorer,
-  bytes,
-  byteRegion,
-  regions,
-  sampleCount,
-  codec,
-  bitMap,
-  _byteLookup,
-  _totalRows,
-  hexContent,
-  highlightHexSample
-) {
-  var hexDecodePanel = explorer.querySelector(".hex-decode-panel");
-  var buttons = explorer.querySelectorAll(".byte-explorer-controls button");
-
-  buttons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      buttons.forEach((b) => {
-        b.classList.remove("active");
-      });
-      btn.classList.add("active");
-      var mode = btn.dataset.view;
-
-      if (mode === "bits") {
-        hexDecodePanel.style.display = "none";
-        renderBitView(explorer, bytes, byteRegion, regions, sampleCount, codec, bitMap);
-      } else {
-        var bitView = explorer.querySelector(".bit-view");
-        if (bitView) bitView.remove();
-        var dp = explorer.querySelector(".bit-decode-panel");
-        if (dp) dp.remove();
-        highlightHexSample(null);
-        hexContent.scrollContainer.style.display = "";
-        hexContent.rerender(mode);
-      }
-    });
+    },
   });
 }
 
@@ -674,7 +65,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
 
   var regions = [];
   var bytes;
-  var insightHtml = "";
+  var _insightHtml = "";
   var bitMap = null;
 
   if (codec === "alp-values" || codec === "alp") {
@@ -721,20 +112,17 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
       start: 0,
       end: ALP_HDR,
       decode: () =>
-        "bytes 0\u20111: sample count = " +
+        "This header tells ALP how to decode every value in the chunk." +
+        "\n\nSample count: " +
         alpCount +
-        "\nbyte 2: exponent = " +
-        alpExp +
-        "  (\u00d7" +
+        "\nDecimal scale: \u00d7" +
         factor10 +
-        " to convert float\u2192int)" +
-        "\nbyte 3: bit width = " +
+        " before packing" +
+        "\nBits per stored offset: " +
         alpBW +
-        "  (bits per FoR offset)" +
-        "\nbytes 4\u201311: min int = " +
+        "\nFloor value (stored as an integer): " +
         alpMin.toString() +
-        "  (frame-of-reference base)" +
-        "\nbytes 12\u201313: exceptions = " +
+        "\nExceptions stored separately: " +
         alpExc,
     });
 
@@ -746,18 +134,18 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
         start: ALP_HDR,
         end: bpEnd,
         decode: () =>
+          "This section holds the packed offsets for each value in the chunk." +
+          "\n\n" +
           alpCount +
-          " offsets \u00d7 " +
+          " values \u00d7 " +
           alpBW +
           " bits = " +
           bpBytes +
           " bytes" +
-          "\nEach offset = (scaled_integer \u2212 " +
-          alpMin.toString() +
-          ")" +
-          "\nReconstruct: (offset + min) \u00f7 " +
+          "\nEach stored number says how far above the chunk floor a sample sits." +
+          "\nTo reconstruct a value: add the offset back to the floor, then scale by " +
           factor10 +
-          " \u2192 original float64",
+          ".",
       });
     }
 
@@ -771,12 +159,10 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
         start: epStart,
         end: epEnd,
         decode: () =>
+          "These bytes point to the rare values that could not be packed as normal ALP offsets." +
+          "\n\nThere are " +
           alpExc +
-          " \u00d7 u16 BE indices of non-roundtrippable values" +
-          "\nThese values couldn\u2019t survive \u00d7" +
-          factor10 +
-          " \u2192 int \u2192 \u00f7" +
-          factor10,
+          " exception positions stored here.",
       });
       regions.push({
         name: "Exception Raw Values",
@@ -784,9 +170,8 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
         start: epEnd,
         end: evEnd,
         decode: () =>
-          alpExc +
-          " \u00d7 f64 BE (raw IEEE-754, 8 bytes each)" +
-          "\nStored verbatim for lossless reconstruction",
+          "These are the raw floating-point values for those exceptions." +
+          "\n\nThey are kept verbatim so the chunk can still decode losslessly.",
       });
     }
 
@@ -798,13 +183,11 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
         start: valBlobLen,
         end: valBlobLen + tsHdrEnd,
         decode: () =>
-          "bytes 0\u20111: count = " +
+          "This header sets up the shared timestamp stream for the chunk." +
+          "\n\nTimestamp count: " +
           tsCount +
-          "\nbytes 2\u20119: first timestamp" +
-          "\n  " +
-          formatEpochNs(firstTs) +
-          "\n  epoch ns: " +
-          firstTs.toString(),
+          "\nFirst timestamp: " +
+          formatEpochNs(firstTs),
       });
       if (amortizedTsLen > TS_HEADER_SIZE) {
         regions.push({
@@ -815,10 +198,11 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
           decode: () => {
             var body = amortizedTsLen - TS_HEADER_SIZE;
             return (
+              "These bytes store the rest of the timestamps as changes from the previous spacing." +
+              "\n\nBody size: " +
               body +
-              " bytes of delta-of-delta encoded timestamps" +
-              "\nGorilla: 0=same\u0394 | 10+7b | 110+9b | 1110+12b | 1111+64b" +
-              "\nFull blob: " +
+              " bytes" +
+              "\nFull shared blob: " +
               formatBytes(tsLen) +
               " shared \u00f7 " +
               sharedCount +
@@ -831,7 +215,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
       }
     }
 
-    insightHtml = buildALPInsightHtml({
+    _insightHtml = buildALPInsightHtml({
       count: alpCount,
       exponent: alpExp,
       bitWidth: alpBW,
@@ -864,13 +248,12 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
       start: 0,
       end: hdrLen,
       decode: () =>
-        "bytes 0\u20111: sample count = " +
+        "This header stores the first full timestamp and first full value for the chunk." +
+        "\n\nSample count: " +
         xorCount +
-        "\nbytes 2\u20119: first timestamp (i64 BE)" +
-        "\n  " +
+        "\nFirst timestamp: " +
         formatEpochNs(xorFirstTs) +
-        "\nbytes 10\u201317: first value (f64 BE)" +
-        "\n  " +
+        "\nFirst value: " +
         xorFirstVal.toPrecision(8),
     });
     regions.push({
@@ -881,23 +264,20 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
       decode: () => {
         var bps = xorCount > 1 ? ((streamBytes * 8) / (xorCount - 1)).toFixed(1) : "-";
         return (
+          "This body interleaves timestamp changes and value changes for the remaining samples." +
+          "\n\nBody size: " +
           streamBytes +
-          " bytes (" +
-          streamBytes * 8 +
-          " bits) for " +
+          " bytes for " +
           (xorCount - 1) +
           " samples" +
-          "\n\nPer sample, interleaved:" +
-          "\n  \u23f1 Timestamp \u0394\u0394: 0=same | 10+7b | 110+9b | 1110+12b | 1111+64b" +
-          "\n  \u2295 Value XOR: 0=same | 10=reuse window | 11+6b+6b=new window" +
-          "\n\n~" +
+          "\nAverage cost: ~" +
           bps +
-          " bits/sample total"
+          " bits per sample"
         );
       },
     });
 
-    insightHtml = buildXORInsightHtml({
+    _insightHtml = buildXORInsightHtml({
       count: xorCount,
       firstTs: xorFirstTs,
       firstVal: xorFirstVal,
@@ -919,74 +299,40 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
   // Build byte-to-sample lookup for hex/decimal interactive views
   var byteLookup = buildByteLookup(bitMap, bytes.length);
 
-  var totalRows = Math.ceil(bytes.length / HEX_COLS);
+  var totalRows = Math.ceil(bytes.length / 32);
 
   function showRegionDetail(region) {
-    var detail = explorer.querySelector("#regionDetail");
-    detail.innerHTML =
-      '<div class="region-detail-card">' +
-      '<h5><span class="region-badge ' +
-      region.cls +
-      '">' +
-      region.name +
-      "</span> " +
-      formatBytes(region.end - region.start) +
-      " \u00b7 bytes " +
-      region.start +
-      "\u2013" +
-      (region.end - 1) +
-      "</h5>" +
-      '<div class="region-detail-grid">' +
-      '<div class="rd-item"><div class="rd-label">Offset</div><div class="rd-value">' +
-      region.start +
-      "</div></div>" +
-      '<div class="rd-item"><div class="rd-label">Length</div><div class="rd-value">' +
-      (region.end - region.start) +
-      "</div></div>" +
-      '<div class="rd-item"><div class="rd-label">% of total</div><div class="rd-value">' +
-      (((region.end - region.start) / bytes.length) * 100).toFixed(1) +
-      "%</div></div>" +
-      "</div>" +
-      "<div style=\"margin-top:8px;font-size:11px;color:#6b8a9e;white-space:pre-line;line-height:1.5;font-family:'IBM Plex Mono',monospace\">" +
-      region.decode() +
-      "</div>" +
-      "</div>";
+    var decodePanel = explorer.querySelector("#hexDecodePanel");
+    if (!decodePanel) return;
+    decodePanel.innerHTML = buildRegionDecodeHTML(region);
   }
 
   _buildExplorerShell(explorer, bytes, "");
   var viewport = _buildMinimap(explorer, bytes, regions, showRegionDetail);
-  var hexContent = _renderHexContent(
-    explorer.querySelector(".hex-grid"),
-    explorer.querySelector(".hex-grid-scroll"),
+  var hexContent = renderHexContent({
+    gridEl: explorer.querySelector(".hex-grid"),
+    scrollContainer: explorer.querySelector(".hex-grid-scroll"),
     bytes,
     byteRegion,
     regions,
     byteLookup,
     totalRows,
-    viewport
-  );
-  var highlightHexSample = _setupHexInteraction(
+    viewport,
+  });
+  var highlightHexSample = setupHexInteraction({
     explorer,
     bytes,
     byteRegion,
     regions,
     byteLookup,
     hexContent,
-    showRegionDetail
-  );
-  _setupViewModeButtons(
-    explorer,
-    bytes,
-    byteRegion,
-    regions,
-    sampleCount,
-    codec,
-    bitMap,
-    byteLookup,
-    totalRows,
-    hexContent,
-    highlightHexSample
-  );
+    showRegionDetail,
+    setEscapeHandler(handler) {
+      renderByteExplorer._escHandler = handler;
+      document.addEventListener("keydown", renderByteExplorer._escHandler);
+    },
+  });
+  setupViewModeButtons({ explorer, bytes, regions, bitMap, hexContent, highlightHexSample });
 }
 
 // ── Separate Timestamp Byte Explorer (for ALP column store) ──────────
@@ -1014,13 +360,11 @@ export function renderByteExplorerTs(tsBlob, sampleCount) {
     start: 0,
     end: hdrEnd,
     decode: () =>
-      "bytes 0\u20111: count = " +
+      "This header stores the first full timestamp for the shared timestamp stream." +
+      "\n\nTimestamp count: " +
       tsCount +
-      "\nbytes 2\u20119: first timestamp" +
-      "\n  " +
-      formatEpochNs(firstTs) +
-      "\n  epoch ns: " +
-      firstTs.toString(),
+      "\nFirst timestamp: " +
+      formatEpochNs(firstTs),
   });
   if (totalBytes > TS_HEADER_SIZE) {
     regions.push({
@@ -1031,9 +375,10 @@ export function renderByteExplorerTs(tsBlob, sampleCount) {
       decode: () => {
         var body = totalBytes - TS_HEADER_SIZE;
         return (
+          "These bytes store the remaining timestamps as changes from the previous spacing." +
+          "\n\nBody size: " +
           body +
-          " bytes of delta-of-delta encoded timestamps" +
-          "\nGorilla: 0=same\u0394 | 10+7b | 110+9b | 1110+12b | 1111+64b"
+          " bytes"
         );
       },
     });
@@ -1052,6 +397,7 @@ export function renderByteExplorerTs(tsBlob, sampleCount) {
       endBit: 80,
       encoding: "raw",
       decoded: firstTsVal,
+      isBaseTimestamp: true,
     });
     var prevTs = firstTsVal,
       prevDelta = 0n;
@@ -1080,6 +426,8 @@ export function renderByteExplorerTs(tsBlob, sampleCount) {
         dod = BigInt.asIntN(64, tsR.readBits(64));
         enc = "dod-64bit";
       }
+      var priorTs = prevTs;
+      var priorDelta = prevDelta;
       var delta = prevDelta + dod;
       var ts = prevTs + delta;
       prevDelta = delta;
@@ -1093,6 +441,8 @@ export function renderByteExplorerTs(tsBlob, sampleCount) {
         decoded: ts,
         dod: dod,
         delta: delta,
+        prevTs: priorTs,
+        prevDelta: priorDelta,
       });
     }
     bitMap = tsBitMap;
@@ -1102,103 +452,51 @@ export function renderByteExplorerTs(tsBlob, sampleCount) {
 
   var byteRegion = buildByteRegionMap(regions, totalBytes);
   var byteLookup = buildByteLookup(bitMap, totalBytes);
-  var totalRows = Math.ceil(totalBytes / HEX_COLS);
+  var totalRows = Math.ceil(totalBytes / 32);
 
   function showRegionDetail(region) {
-    var detail = explorer.querySelector("#regionDetailTs");
-    if (!detail) return;
-    detail.innerHTML =
-      '<div class="region-detail-card">' +
-      '<h5><span class="region-badge ' +
-      region.cls +
-      '">' +
-      region.name +
-      "</span> " +
-      formatBytes(region.end - region.start) +
-      " \u00b7 bytes " +
-      region.start +
-      "\u2013" +
-      (region.end - 1) +
-      "</h5>" +
-      "<div style=\"margin-top:8px;font-size:11px;color:#6b8a9e;white-space:pre-line;line-height:1.5;font-family:'IBM Plex Mono',monospace\">" +
-      region.decode() +
-      "</div>" +
-      "</div>";
+    var decodePanel = explorer.querySelector("#hexDecodePanelTs");
+    if (!decodePanel) return;
+    decodePanel.innerHTML = buildRegionDecodeHTML(region);
   }
 
-  // Build shell
-  var viewId = `hexViewTs-${Date.now()}`;
-  explorer.innerHTML =
-    '<div class="byte-explorer-header">' +
-    '<h4>\uD83D\uDD2C Timestamp Explorer <span style="font-weight:400;color:#6b8a9e;font-size:11px">' +
-    formatBytes(totalBytes) +
-    " \u00b7 " +
-    totalBytes.toLocaleString() +
-    " bytes</span></h4>" +
-    '<div class="byte-explorer-controls">' +
-    '<button type="button" class="active" data-view="hex">Hex</button>' +
-    '<button type="button" data-view="decimal">Dec</button>' +
-    '<button type="button" data-view="bits">Bits</button>' +
-    "</div>" +
-    "</div>" +
-    '<div class="byte-minimap" id="byteMinimapTs"></div>' +
-    '<div class="hex-grid-scroll" id="' +
-    viewId +
-    '">' +
-    '<div class="hex-grid" id="hexGridTs" style="grid-template-columns: 56px repeat(' +
-    HEX_COLS +
-    ', minmax(0, 1fr)) minmax(0, 220px);"></div>' +
-    "</div>" +
-    '<div class="hex-decode-panel" id="hexDecodePanelTs" style="display:none"></div>' +
-    '<div id="regionDetailTs"></div>';
-
-  // Build minimap
-  var minimap = explorer.querySelector(".byte-minimap");
-  regions.forEach((r) => {
-    var seg = document.createElement("div");
-    seg.className = "mm-seg";
-    seg.style.width = `${Math.max(1, ((r.end - r.start) / totalBytes) * 100)}%`;
-    seg.style.background = "#06b6d4";
-    seg.title = `${r.name}: ${formatBytes(r.end - r.start)}`;
-    seg.addEventListener("click", () => {
-      showRegionDetail(r);
-    });
-    minimap.appendChild(seg);
+  mountExplorerShell(explorer, {
+    title: "Timestamp Explorer",
+    bytesLength: totalBytes,
+    minimapId: "byteMinimapTs",
+    gridId: "hexGridTs",
+    decodePanelId: "hexDecodePanelTs",
+    emptyKind: "timestamp",
   });
-  var viewport = document.createElement("div");
-  viewport.className = "mm-viewport";
-  minimap.appendChild(viewport);
+  var viewport = renderMinimap(explorer.querySelector(".byte-minimap"), {
+    totalBytes,
+    regions,
+    getColor: () => "#06b6d4",
+    onRegionClick: showRegionDetail,
+  });
 
-  var hexContent = _renderHexContent(
-    explorer.querySelector(".hex-grid"),
-    explorer.querySelector(".hex-grid-scroll"),
+  var hexContent = renderHexContent({
+    gridEl: explorer.querySelector(".hex-grid"),
+    scrollContainer: explorer.querySelector(".hex-grid-scroll"),
     bytes,
     byteRegion,
     regions,
     byteLookup,
     totalRows,
-    viewport
-  );
-  var highlightHexSample = _setupHexInteraction(
+    viewport,
+  });
+  var highlightHexSample = setupHexInteraction({
     explorer,
     bytes,
     byteRegion,
     regions,
     byteLookup,
     hexContent,
-    showRegionDetail
-  );
-  _setupViewModeButtons(
-    explorer,
-    bytes,
-    byteRegion,
-    regions,
-    sampleCount,
-    "xor",
-    bitMap,
-    byteLookup,
-    totalRows,
-    hexContent,
-    highlightHexSample
-  );
+    showRegionDetail,
+    setEscapeHandler(handler) {
+      renderByteExplorer._escHandler = handler;
+      document.addEventListener("keydown", renderByteExplorer._escHandler);
+    },
+  });
+  setupViewModeButtons({ explorer, bytes, regions, bitMap, hexContent, highlightHexSample });
 }

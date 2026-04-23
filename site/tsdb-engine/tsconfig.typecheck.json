@@ -1,0 +1,23 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "isolatedDeclarations": false,
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": [
+    "./site-types.d.ts",
+    "./js/metrics-model.js",
+    "./js/query-builder-model.js",
+    "./js/storage-explorer-model.js",
+    "./js/byte-explorer-view.js"
+  ]
+}

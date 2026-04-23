@@ -146,9 +146,9 @@
           </button>
           <button type="button" class="fork-card" id="forkQuery">
             <div class="fork-icon">🔍</div>
-            <h3>Explore Queries</h3>
-            <p>Write queries against your live dataset. Filter by labels, aggregate across series, compute rates and percentiles, and see results charted in real time.</p>
-            <span class="fork-cta">Open Query Lab →</span>
+            <h3>Query Builder</h3>
+            <p>Build queries directly against your live dataset. Filter by labels, aggregate across series, compute rates and percentiles, and tune the exact chart you want.</p>
+            <span class="fork-cta">Open Query Builder →</span>
           </button>
         </div>
       </section>
@@ -158,7 +158,7 @@
         <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
           <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-storage">💾 Storage</button>
           <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-metrics">🧭 Metrics</button>
-          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-query">🔍 Query Lab</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-query">🔍 Query Builder</button>
         </nav>
         <h2>Storage Explorer</h2>
 
@@ -185,57 +185,44 @@
         <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
           <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-storage">💾 Storage</button>
           <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-metrics">🧭 Metrics</button>
-          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-query">🔍 Query Lab</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-query">🔍 Query Builder</button>
         </nav>
         <h2>Explore Metrics</h2>
-        <p class="section-intro">Browse the loaded metrics like a guided explorer. Pick a metric, choose the most useful way to compare it, and we’ll build the chart for you.</p>
+        <p class="section-intro">Start with a chart-per-metric overview, then drill into one metric at a time to compare its available dimensions.</p>
 
         <div class="metrics-wizard">
-          <section class="metrics-stage">
+          <section class="metrics-stage" id="metricsOverviewStage">
             <div class="metrics-stage-header">
-              <p class="metrics-stage-kicker">1. Pick a metric</p>
-              <h3>Start with the signal you care about</h3>
-              <p>Choose one metric from the dataset to see its overall trend or compare it across labels like service, region, or instance.</p>
+              <p class="metrics-stage-kicker">1. Scan the metrics</p>
+              <h3>See every metric as a chart first</h3>
+              <p>Each tile shows one summary chart for one metric so you can quickly spot which signals look interesting before drilling in.</p>
             </div>
-            <div class="metrics-card-grid" id="metricsMetricGrid"></div>
+            <div class="metrics-overview-grid" id="metricsOverviewGrid"></div>
           </section>
 
-          <section class="metrics-stage" id="metricsViewStage">
+          <section class="metrics-stage" id="metricsGalleryStage" hidden>
             <div class="metrics-stage-header">
-              <p class="metrics-stage-kicker">2. Choose a view</p>
-              <h3>Decide what question to answer</h3>
-              <p id="metricsViewIntro">Select a metric first, then choose whether to see the overall trend or split it by a useful label.</p>
+              <p class="metrics-stage-kicker">2. Explore one metric</p>
+              <h3>Compare one chart per dimension</h3>
+              <p id="metricsGalleryIntro">Click a metric above to render one chart per available dimension here.</p>
             </div>
-            <div class="metrics-choice-grid" id="metricsViewGrid"></div>
-          </section>
-
-          <section class="metrics-stage" id="metricsResultStage">
-            <div class="metrics-stage-header">
-              <p class="metrics-stage-kicker">3. See the chart</p>
-              <h3>Follow the metric story</h3>
-              <p id="metricsResultIntro">Pick a metric and a view to generate a chart here.</p>
+            <div class="metrics-detail-toolbar">
+              <button type="button" class="metrics-back-btn" id="metricsBackButton" hidden>← Back To All Metrics</button>
             </div>
-            <div class="metrics-query-stats" id="metricsQueryStats"></div>
-            <div class="chart-container metrics-chart-shell">
-              <div class="metrics-empty metrics-chart-empty" id="metricsChartEmpty">Pick a metric and a view to generate a chart here.</div>
-              <canvas id="metricsChartCanvas" width="1100" height="400"></canvas>
-            </div>
-            <div class="chart-legend" id="metricsChartLegend"></div>
-            <div class="metrics-actions">
-              <button type="button" class="cta" id="metricsOpenQuery" disabled>Open This In Query Lab</button>
-            </div>
+            <div class="metrics-query-stats" id="metricsGalleryStats"></div>
+            <div class="metrics-gallery-grid" id="metricsGalleryGrid"></div>
           </section>
         </div>
       </section>
 
-      <!-- ─── Section 5: Query Lab ──────────────────────────────── -->
+      <!-- ─── Section 5: Query Builder ──────────────────────────── -->
       <section class="panel query-panel" id="section-query" hidden>
         <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
           <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-storage">💾 Storage</button>
           <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-metrics">🧭 Metrics</button>
-          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-query">🔍 Query Lab</button>
+          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-query">🔍 Query Builder</button>
         </nav>
-        <h2>Query Lab</h2>
+        <h2>Query Builder</h2>
 
         <!-- Query preview (PromQL-like) -->
         <div class="query-preview" id="queryPreview">
@@ -244,10 +231,10 @@
         <div class="query-recipes" aria-label="Query recipes">
           <span class="query-recipes-label">Quick Query</span>
           <button type="button" class="query-recipe" data-recipe="raw">Raw series</button>
-          <button type="button" class="query-recipe" data-recipe="rate-sum">Rate by region</button>
-          <button type="button" class="query-recipe" data-recipe="p95">P95 by service</button>
-          <button type="button" class="query-recipe" data-recipe="count">Count by region + instance</button>
-          <button type="button" class="query-recipe" data-recipe="last">Last by instance</button>
+          <button type="button" class="query-recipe" data-recipe="rate-sum">Rate by top label</button>
+          <button type="button" class="query-recipe" data-recipe="p95">P95 by top label</button>
+          <button type="button" class="query-recipe" data-recipe="count">Count by top 2 labels</button>
+          <button type="button" class="query-recipe" data-recipe="last">Last by top label</button>
         </div>
 
         <div class="query-lab-grid">
@@ -387,6 +374,7 @@
           <span id="qStatScannedSeries">—</span>
           <span id="qStatScannedSamples">—</span>
           <span id="qStatResultSeries">—</span>
+          <span id="qStatEffectiveStep">—</span>
           <span id="qStatQueryTime">—</span>
         </div>
         <div class="chart-container">

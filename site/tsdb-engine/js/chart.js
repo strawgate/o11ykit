@@ -25,15 +25,66 @@ let tooltipEl = null;
 let crosshairEl = null;
 let tooltipController = null;
 
-export function renderChart(canvas, seriesData, title) {
+function sampleSeriesForCanvas(series, maxSamples) {
+  const count = series?.timestamps?.length || 0;
+  if (count <= maxSamples || maxSamples < 8) return series;
+
+  const targetBuckets = Math.max(4, Math.floor(maxSamples / 2));
+  const bucketSize = Math.max(1, Math.ceil(count / targetBuckets));
+  const timestamps = [];
+  const values = [];
+
+  for (let start = 0; start < count; start += bucketSize) {
+    const end = Math.min(count, start + bucketSize);
+    let minIdx = start;
+    let maxIdx = start;
+    for (let i = start + 1; i < end; i++) {
+      if (series.values[i] < series.values[minIdx]) minIdx = i;
+      if (series.values[i] > series.values[maxIdx]) maxIdx = i;
+    }
+
+    const chosen = [...new Set([start, minIdx, maxIdx, end - 1])].sort((a, b) => a - b);
+    for (const idx of chosen) {
+      timestamps.push(Number(series.timestamps[idx]));
+      values.push(series.values[idx]);
+    }
+  }
+
+  return {
+    ...series,
+    timestamps,
+    values,
+  };
+}
+
+export function renderChart(canvas, seriesData, title, options = {}) {
+  if (!canvas || !seriesData?.length) return;
+  const {
+    compact = false,
+    showTitle = true,
+    showPointCount = true,
+    showXAxisLabels = true,
+    showYAxisLabels = true,
+    trackState = canvas?.id === "chartCanvas",
+  } = options;
   const rect = canvas.parentElement.getBoundingClientRect();
-  const w = Math.min(rect.width - 32, 1100);
-  const h = 380;
+  const availableWidth = Math.max(canvas.parentElement.clientWidth || 0, rect.width);
+  const horizontalInset = compact ? 8 : 32;
+  const w = Math.max(180, Math.min(availableWidth - horizontalInset, 1100));
+  const h = Number(canvas.dataset.chartHeight) || (compact ? 220 : 380);
   const ctx = setupCanvasDPR(canvas, w, h);
 
-  const pad = { top: 40, right: 20, bottom: 50, left: 70 };
+  const pad = compact
+    ? { top: 16, right: 10, bottom: 14, left: 14 }
+    : { top: 40, right: 20, bottom: 50, left: 70 };
   const plotW = w - pad.left - pad.right;
   const plotH = h - pad.top - pad.bottom;
+  const maxSamplesPerSeries = compact
+    ? Math.max(48, Math.floor(plotW))
+    : Math.max(160, Math.floor(plotW * 1.5));
+  const drawSeriesData = seriesData.map((series) =>
+    sampleSeriesForCanvas(series, maxSamplesPerSeries)
+  );
 
   let minT = Infinity,
     maxT = -Infinity,
@@ -68,7 +119,7 @@ export function renderChart(canvas, seriesData, title) {
   // Grid
   ctx.strokeStyle = "rgba(0,0,0,0.06)";
   ctx.lineWidth = 1;
-  const yTicks = 6;
+  const yTicks = compact ? 4 : 6;
   for (let i = 0; i <= yTicks; i++) {
     const y = pad.top + (plotH * i) / yTicks;
     ctx.beginPath();
@@ -77,7 +128,9 @@ export function renderChart(canvas, seriesData, title) {
     ctx.stroke();
   }
 
-  const xTicks = Math.min(8, seriesData[0]?.timestamps.length || 8);
+  const xTicks = compact
+    ? Math.min(4, seriesData[0]?.timestamps.length || 4)
+    : Math.min(8, seriesData[0]?.timestamps.length || 8);
   for (let i = 0; i <= xTicks; i++) {
     const x = pad.left + (plotW * i) / xTicks;
     ctx.beginPath();
@@ -86,49 +139,59 @@ export function renderChart(canvas, seriesData, title) {
     ctx.stroke();
   }
 
-  // Y-axis labels
-  ctx.fillStyle = "#6b8a9e";
-  ctx.font = '11px "IBM Plex Mono", monospace';
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-  for (let i = 0; i <= yTicks; i++) {
-    const y = pad.top + (plotH * i) / yTicks;
-    const val = maxV - (i / yTicks) * vRange;
-    ctx.fillText(formatNum(val), pad.left - 8, y);
+  if (showYAxisLabels) {
+    ctx.fillStyle = "#6b8a9e";
+    ctx.font = '11px "IBM Plex Mono", monospace';
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    for (let i = 0; i <= yTicks; i++) {
+      const y = pad.top + (plotH * i) / yTicks;
+      const val = maxV - (i / yTicks) * vRange;
+      ctx.fillText(formatNum(val), pad.left - 8, y);
+    }
   }
 
-  // X-axis labels
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  for (let i = 0; i <= xTicks; i++) {
-    const x = pad.left + (plotW * i) / xTicks;
-    const tNs = minT + (i / xTicks) * tRange;
-    const tMs = tNs / 1_000_000;
-    const d = new Date(tMs);
-    ctx.fillText(
-      d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-      x,
-      h - pad.bottom + 8
-    );
+  if (showXAxisLabels) {
+    ctx.fillStyle = "#6b8a9e";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    for (let i = 0; i <= xTicks; i++) {
+      const x = pad.left + (plotW * i) / xTicks;
+      const tNs = minT + (i / xTicks) * tRange;
+      const tMs = tNs / 1_000_000;
+      const d = new Date(tMs);
+      ctx.fillText(
+        d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        x,
+        h - pad.bottom + 8
+      );
+    }
   }
 
-  // Title
-  ctx.fillStyle = "#0f3a5e";
-  ctx.font = '600 14px "Space Grotesk", sans-serif';
-  ctx.textAlign = "left";
-  ctx.textBaseline = "top";
-  ctx.fillText(title || "Query Results", pad.left, 10);
+  if (showTitle) {
+    ctx.fillStyle = "#0f3a5e";
+    ctx.font = '600 14px "Space Grotesk", sans-serif';
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(title || "Query Results", pad.left, 10);
+  }
 
-  // Point count
-  const totalPoints = seriesData.reduce((s, d) => s + d.timestamps.length, 0);
-  ctx.fillStyle = "#6b8a9e";
-  ctx.font = '11px "IBM Plex Mono", monospace';
-  ctx.textAlign = "right";
-  ctx.fillText(`${totalPoints.toLocaleString()} points rendered`, w - pad.right, 12);
+  if (showPointCount) {
+    const totalPoints = seriesData.reduce((s, d) => s + d.timestamps.length, 0);
+    const drawnPoints = drawSeriesData.reduce((s, d) => s + d.timestamps.length, 0);
+    ctx.fillStyle = "#6b8a9e";
+    ctx.font = '11px "IBM Plex Mono", monospace';
+    ctx.textAlign = "right";
+    const label =
+      drawnPoints < totalPoints
+        ? `${drawnPoints.toLocaleString()} of ${totalPoints.toLocaleString()} pts shown`
+        : `${totalPoints.toLocaleString()} points rendered`;
+    ctx.fillText(label, w - pad.right, 12);
+  }
 
   // Draw series
-  for (let si = 0; si < seriesData.length; si++) {
-    const s = seriesData[si];
+  for (let si = 0; si < drawSeriesData.length; si++) {
+    const s = drawSeriesData[si];
     const color = CHART_COLORS[si % CHART_COLORS.length];
 
     // Area fill
@@ -162,7 +225,7 @@ export function renderChart(canvas, seriesData, title) {
       else ctx.lineTo(x, y);
     }
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = compact ? 1.6 : 2;
     ctx.lineJoin = "round";
     ctx.stroke();
   }
@@ -176,7 +239,22 @@ export function renderChart(canvas, seriesData, title) {
   ctx.lineTo(w - pad.right, h - pad.bottom);
   ctx.stroke();
 
-  lastChartState = { seriesData, minT, maxT, minV, maxV, pad, w, h, plotW, plotH, tRange, vRange };
+  if (trackState) {
+    lastChartState = {
+      seriesData,
+      minT,
+      maxT,
+      minV,
+      maxV,
+      pad,
+      w,
+      h,
+      plotW,
+      plotH,
+      tRange,
+      vRange,
+    };
+  }
 }
 
 export function setupChartTooltip() {

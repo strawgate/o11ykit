@@ -262,7 +262,6 @@
   background: linear-gradient(135deg, var(--region-exceptions), #d97706);
 }
 
-/* biome-ignore lint/style/noDescendingSpecificity: intentional modifier class */
 .chunk-label {
   font-size: 10px;
   font-weight: 600;
@@ -381,11 +380,26 @@
 }
 
 .chunk-detail-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  display: grid;
   margin-bottom: 16px;
+  gap: 8px;
+}
+
+.chunk-detail-topline {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
   gap: 12px;
+}
+
+.chunk-detail-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-left: auto;
 }
 
 .chunk-nav {
@@ -428,14 +442,18 @@
 }
 
 .chunk-detail-title {
-  font-size: 16px;
-  font-weight: 600;
   color: #0f3a5e;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   flex: 1;
+}
+
+.chunk-detail-metric {
+  font-size: 16px;
+  font-weight: 600;
   min-width: 0;
 }
 
@@ -444,8 +462,13 @@
   font-size: 12px;
   font-weight: 400;
   color: #6b8a9e;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.5;
+}
+
+.chunk-detail-label-row {
+  border-top: 1px solid rgba(43, 80, 106, 0.08);
+  padding-top: 6px;
+  min-width: 0;
 }
 
 .store-badge {
@@ -484,6 +507,47 @@
 }
 
 /* Tile grid: sparkline spans 2 cols, stat cards fill remaining spots */
+.detail-stat {
+  background: #f8fcff;
+  border: 1px solid rgba(43, 80, 106, 0.1);
+  border-radius: 10px;
+  padding: 8px 10px;
+  text-align: center;
+  min-width: 0;
+}
+
+.detail-stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b8a9e;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f3a5e;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-stat-small {
+  font-size: 11px;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.ratio-highlight {
+  color: #059669;
+}
+
 .chunk-detail-body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -551,6 +615,18 @@
   flex-shrink: 0;
 }
 
+@media (max-width: 700px) {
+  .chunk-detail-topline {
+    align-items: flex-start;
+  }
+
+  .chunk-detail-meta {
+    justify-content: flex-end;
+    margin-left: auto;
+    width: auto;
+  }
+}
+
 /* Timestamp section spacing */
 .chunk-ts-section {
   margin-top: 20px;
@@ -569,47 +645,6 @@
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 8px;
   margin-bottom: 16px;
-}
-
-.detail-stat {
-  background: #f8fcff;
-  border: 1px solid rgba(43, 80, 106, 0.1);
-  border-radius: 10px;
-  padding: 8px 10px;
-  text-align: center;
-  min-width: 0;
-}
-
-.detail-stat-label {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #6b8a9e;
-  margin-bottom: 3px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.detail-stat-value {
-  font-size: 16px;
-  font-weight: 700;
-  color: #0f3a5e;
-  letter-spacing: -0.02em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.detail-stat-small {
-  font-size: 11px;
-  font-family: "IBM Plex Mono", monospace;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.ratio-highlight {
-  color: #059669;
 }
 
 .chunk-byte-layout {

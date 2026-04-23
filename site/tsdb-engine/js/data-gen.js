@@ -15,6 +15,171 @@ export const INSTANCES = [
 ];
 export const METRICS = ["http_requests_total", "cpu_usage_percent", "memory_usage_bytes"];
 
+function hashString(input) {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function seedFromMetric(metric, labels, seriesIdx) {
+  const labelKey = [...labels.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("|");
+  return hashString(`${metric.name}|${seriesIdx}|${labelKey}`);
+}
+
+function seededWave(seed, i, speed, amplitude = 1) {
+  const phase = (seed % 997) / 31;
+  return Math.sin(i * speed + phase) * amplitude;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function buildKubernetesLabelGroups() {
+  const cluster = "prod-us-central-1";
+  const namespaces = {
+    checkout: ["checkout", "cart", "frontend"],
+    payments: ["payments", "ledger"],
+    observability: ["otel-collector", "prometheus"],
+    "kube-system": ["coredns", "metrics-server"],
+  };
+  const nodes = [
+    "ip-10-0-1-12.ec2.internal",
+    "ip-10-0-1-23.ec2.internal",
+    "ip-10-0-2-18.ec2.internal",
+    "ip-10-0-2-31.ec2.internal",
+    "ip-10-0-3-07.ec2.internal",
+    "ip-10-0-3-22.ec2.internal",
+  ];
+  const groups = [];
+  let podCounter = 0;
+  for (const [namespace, workloads] of Object.entries(namespaces)) {
+    for (const workload of workloads) {
+      const replicas = namespace === "kube-system" ? 2 : workload === "frontend" ? 4 : 3;
+      for (let replica = 0; replica < replicas; replica++) {
+        const suffix = (10000 + podCounter * 97 + replica * 17).toString(36).slice(-5);
+        const podName = `${workload}-${suffix}`;
+        const containerName = workload;
+        const node = nodes[podCounter % nodes.length];
+        groups.push({
+          "k8s.cluster.name": cluster,
+          "k8s.namespace.name": namespace,
+          "k8s.node.name": node,
+          "k8s.pod.name": podName,
+          "k8s.container.name": containerName,
+        });
+        podCounter++;
+      }
+    }
+  }
+  return groups;
+}
+
+function expandMetricLabelGroups(baseGroups, extraDims = {}) {
+  const extraKeys = Object.keys(extraDims);
+  if (extraKeys.length === 0) return baseGroups;
+  const extraGroups = _expandLabelDimensions(extraDims);
+  const merged = [];
+  for (const base of baseGroups) {
+    for (const extra of extraGroups) {
+      merged.push({ ...base, ...extra });
+    }
+  }
+  return merged;
+}
+
+function generateSeriesValues(metric, labels, seriesIdx, numPoints, intervalMs) {
+  const seed = seedFromMetric(metric, labels, seriesIdx);
+  const values = new Float64Array(numPoints);
+  const intervalSec = intervalMs / 1000;
+  const namespace = labels.get("k8s.namespace.name") || labels.get("namespace") || "default";
+  const direction = labels.get("network.io.direction");
+
+  switch (metric.profile) {
+    case "k8s-pod-cpu-usage": {
+      const namespaceBase =
+        namespace === "checkout" ? 0.45 : namespace === "payments" ? 0.35 : 0.12;
+      const workloadBias = (seed % 17) / 100;
+      for (let i = 0; i < numPoints; i++) {
+        const value =
+          namespaceBase +
+          workloadBias +
+          seededWave(seed, i, 1 / 45, 0.16) +
+          seededWave(seed * 3, i, 1 / 160, 0.07) +
+          seededWave(seed * 5, i, 1 / 11, 0.015);
+        values[i] = clamp(value, 0.02, 2.4);
+      }
+      return values;
+    }
+    case "k8s-pod-memory-working-set": {
+      const namespaceBaseMiB =
+        namespace === "checkout" ? 420 : namespace === "payments" ? 620 : 180;
+      const podBiasMiB = seed % 220;
+      for (let i = 0; i < numPoints; i++) {
+        const mib =
+          namespaceBaseMiB +
+          podBiasMiB +
+          seededWave(seed, i, 1 / 90, 38) +
+          seededWave(seed * 7, i, 1 / 260, 20) +
+          seededWave(seed * 11, i, 1 / 23, 4);
+        values[i] = Math.max(64, mib) * 1024 * 1024;
+      }
+      return values;
+    }
+    case "k8s-pod-network-io": {
+      let counter = (seed % 5000) * 1024;
+      const baseRate =
+        (direction === "receive" ? 320_000 : 180_000) +
+        (seed % 90_000) +
+        (namespace === "checkout" ? 80_000 : 0);
+      for (let i = 0; i < numPoints; i++) {
+        const rate =
+          baseRate *
+          (1 + seededWave(seed, i, 1 / 60, 0.28) + seededWave(seed * 13, i, 1 / 11, 0.05));
+        counter += Math.max(0, rate) * intervalSec;
+        values[i] = Math.round(counter);
+      }
+      return values;
+    }
+    case "k8s-container-restart-count": {
+      let counter = seed % 3;
+      for (let i = 0; i < numPoints; i++) {
+        const eventWave =
+          seededWave(seed * 17, i, 1 / 700, 1) + seededWave(seed * 19, i, 1 / 170, 0.35);
+        if (eventWave > 1.05) counter += 1;
+        values[i] = counter;
+      }
+      return values;
+    }
+    case "k8s-container-cpu-limit-utilization": {
+      const namespaceBase =
+        namespace === "checkout" ? 0.58 : namespace === "payments" ? 0.63 : 0.32;
+      const podBias = (seed % 21) / 100;
+      for (let i = 0; i < numPoints; i++) {
+        const value =
+          namespaceBase +
+          podBias +
+          seededWave(seed, i, 1 / 55, 0.18) +
+          seededWave(seed * 23, i, 1 / 250, 0.08);
+        values[i] = clamp(value, 0.05, 1.15);
+      }
+      return values;
+    }
+    default: {
+      for (let i = 0; i < numPoints; i++) {
+        values[i] = generateValue(metric.pattern, i, seriesIdx, numPoints, metric.decimals);
+      }
+      return values;
+    }
+  }
+}
+
 /**
  * Generate a single value for a pattern.
  * @param {string} pattern - one of sine, sawtooth, random-walk, spiky, constant
@@ -108,32 +273,28 @@ export const SCENARIOS = [
     id: "kubernetes",
     name: "Kubernetes Cluster",
     emoji: "☸️",
-    description: "CPU, memory, pod restarts, and network I/O across namespaces, nodes, and pods.",
+    description:
+      "OpenTelemetry-style Kubernetes metrics across namespaces, nodes, pods, and containers.",
     metrics: [
-      { name: "cpu_usage_cores", pattern: "random-walk", decimals: 3 },
-      { name: "memory_usage_bytes", pattern: "sawtooth", decimals: 0 },
-      { name: "pod_restart_total", pattern: "spiky", decimals: 0 },
-      { name: "network_rx_bytes", pattern: "random-walk", decimals: 0 },
-      { name: "network_tx_bytes", pattern: "random-walk", decimals: 0 },
+      { name: "k8s.pod.cpu.usage", profile: "k8s-pod-cpu-usage", decimals: 3 },
+      { name: "k8s.pod.memory.working_set", profile: "k8s-pod-memory-working-set", decimals: 0 },
+      {
+        name: "k8s.pod.network.io",
+        profile: "k8s-pod-network-io",
+        decimals: 0,
+        labelDimensions: {
+          "network.io.direction": ["receive", "transmit"],
+          "network.interface.name": ["eth0"],
+        },
+      },
+      { name: "k8s.container.restart.count", profile: "k8s-container-restart-count", decimals: 0 },
+      {
+        name: "k8s.container.cpu.limit_utilization",
+        profile: "k8s-container-cpu-limit-utilization",
+        decimals: 3,
+      },
     ],
-    labelDimensions: {
-      namespace: ["prod", "staging", "monitoring", "kube-system"],
-      node: [
-        "node-01",
-        "node-02",
-        "node-03",
-        "node-04",
-        "node-05",
-        "node-06",
-        "node-07",
-        "node-08",
-        "node-09",
-        "node-10",
-        "node-11",
-        "node-12",
-      ],
-      pod: ["web", "api", "worker", "cache", "queue", "cron"],
-    },
+    buildLabelGroups: buildKubernetesLabelGroups,
     numPoints: 6000,
     intervalMs: 15000,
   },
@@ -166,11 +327,13 @@ function _expandLabelDimensions(dims) {
 
 /** Compute series count for a scenario without generating data. */
 export function scenarioSeriesCount(scenario) {
-  const dims = scenario.labelDimensions || {};
-  const keys = Object.keys(dims);
-  const labelCombinations =
-    keys.length === 0 ? 1 : keys.reduce((acc, k) => acc * dims[k].length, 1);
-  return scenario.metrics.length * labelCombinations;
+  const baseGroups = scenario.buildLabelGroups
+    ? scenario.buildLabelGroups()
+    : _expandLabelDimensions(scenario.labelDimensions || {});
+  return scenario.metrics.reduce((count, metric) => {
+    const groups = expandMetricLabelGroups(baseGroups, metric.labelDimensions || {});
+    return count + groups.length;
+  }, 0);
 }
 
 /** Compute total sample count for a scenario. */
@@ -182,21 +345,25 @@ export function generateScenarioData(scenario, onProgress) {
   const now = BigInt(Date.now()) * 1_000_000n;
   const intervalNs = BigInt(scenario.intervalMs) * 1_000_000n;
   const { numPoints, metrics } = scenario;
-  const labelGroups = _expandLabelDimensions(scenario.labelDimensions || {});
+  const baseLabelGroups = scenario.buildLabelGroups
+    ? scenario.buildLabelGroups()
+    : _expandLabelDimensions(scenario.labelDimensions || {});
   const startT = now - BigInt(numPoints) * intervalNs;
 
-  const totalSeries = metrics.length * labelGroups.length;
+  const totalSeries = metrics.reduce((count, metric) => {
+    return count + expandMetricLabelGroups(baseLabelGroups, metric.labelDimensions || {}).length;
+  }, 0);
   const series = [];
   let seriesIdx = 0;
   for (const m of metrics) {
+    const labelGroups = expandMetricLabelGroups(baseLabelGroups, m.labelDimensions || {});
     for (const lg of labelGroups) {
       const labels = new Map([["__name__", m.name], ...Object.entries(lg)]);
       const timestamps = new BigInt64Array(numPoints);
-      const values = new Float64Array(numPoints);
       for (let i = 0; i < numPoints; i++) {
         timestamps[i] = startT + BigInt(i) * intervalNs;
-        values[i] = generateValue(m.pattern, i, seriesIdx, numPoints, m.decimals);
       }
+      const values = generateSeriesValues(m, labels, seriesIdx, numPoints, scenario.intervalMs);
       series.push({ labels, timestamps, values });
       seriesIdx++;
       if (onProgress && seriesIdx % 200 === 0) {
