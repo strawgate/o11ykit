@@ -44,7 +44,8 @@ function resolveStep(step, start, end, maxPoints) {
   const rangeNs = end - start;
   if (rangeNs <= 0) return step;
 
-  const derivedStep = BigInt(Math.max(1, Math.ceil(Number(rangeNs) / Math.max(1, maxPoints - 1))));
+  const bucketCount = BigInt(Math.max(1, maxPoints - 1));
+  const derivedStep = (rangeNs + bucketCount - 1n) / bucketCount;
   if (!step) return derivedStep;
   return step < derivedStep ? derivedStep : step;
 }

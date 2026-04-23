@@ -324,7 +324,19 @@ function runQuery(options = {}) {
 
   // Pipeline stage 1: Label matching
   const totalSeries = currentStore.seriesCount || 0;
-  const ids = currentStore.matchLabel("__name__", metric);
+  let ids = currentStore.matchLabel("__name__", metric);
+  const activeMatchers = queryBuilder.getActiveMatchers();
+  if (activeMatchers.length > 0) {
+    for (const matcher of activeMatchers) {
+      if (matcher.op === "!=" || matcher.op === "not=") {
+        const excluded = new Set(currentStore.matchLabel(matcher.label, matcher.value));
+        ids = ids.filter((id) => !excluded.has(id));
+      } else {
+        const matched = new Set(currentStore.matchLabel(matcher.label, matcher.value));
+        ids = ids.filter((id) => matched.has(id));
+      }
+    }
+  }
   if (ids.length === 0) return;
 
   let minT = BigInt("9223372036854775807");
@@ -348,7 +360,7 @@ function runQuery(options = {}) {
     step,
     maxPoints,
     transform: transform || undefined,
-    matchers: queryBuilder.getActiveMatchers(),
+    matchers: activeMatchers,
   });
   const queryTime = performance.now() - t0;
 

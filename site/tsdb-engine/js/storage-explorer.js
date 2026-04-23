@@ -85,7 +85,7 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
   if (title) title.style.display = "";
   panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
-  const metricName = seriesInfo.labels.get("__name__") || "unknown";
+  const metricName = escapeHtml(seriesInfo.labels.get("__name__") || "unknown");
   const labelStr = [...seriesInfo.labels]
     .filter(([k]) => k !== "__name__")
     .map(([k, v]) => `${escapeHtml(k)}="${escapeHtml(v)}"`)
@@ -178,6 +178,7 @@ export function buildStorageExplorer(store) {
   seriesList.innerHTML = "";
   _showChunkEmptyState(seriesInfos, store);
   for (const [metricName, members] of groups) {
+    const safeMetricName = escapeHtml(metricName);
     const groupEl = document.createElement("div");
     groupEl.className = "metric-group";
 
@@ -189,7 +190,7 @@ export function buildStorageExplorer(store) {
 
     groupEl.innerHTML = `
       <div class="metric-group-header">
-        <span class="metric-group-name">${metricName}</span>
+        <span class="metric-group-name">${safeMetricName}</span>
         <span class="metric-group-stats">${members.length} series · ${totalPts.toLocaleString()} pts · ${formatBytes(totalBytes)}</span>
       </div>`;
 

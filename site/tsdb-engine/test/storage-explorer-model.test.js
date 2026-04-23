@@ -59,8 +59,9 @@ describe("storage-explorer-model", () => {
     bytes[13] = 2; // two exceptions
 
     const { totalBytes, segments } = buildAlpByteSegments(bytes);
-    expect(totalBytes).toBe(41);
+    expect(totalBytes).toBe(40);
     expect(segments.map((segment) => segment.label)).toEqual(["Header", "Offsets", "Exceptions"]);
+    expect(segments.reduce((sum, segment) => sum + segment.bytes, 0)).toBe(40);
   });
 
   it("builds timestamp byte segments with fixed header and body", () => {

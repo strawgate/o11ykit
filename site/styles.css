@@ -839,7 +839,8 @@ code {
   .actions a,
   .card-links a,
   .topnav a,
-  .try-strip a {
+  .try-strip a,
+  .learn-strip a {
     animation: none;
     transition: none;
   }

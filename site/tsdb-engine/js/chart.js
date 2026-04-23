@@ -50,10 +50,32 @@ function sampleSeriesForCanvas(series, maxSamples) {
     }
   }
 
+  if (timestamps.length <= maxSamples) {
+    return {
+      ...series,
+      timestamps,
+      values,
+    };
+  }
+
+  const cappedTimestamps = [];
+  const cappedValues = [];
+  const lastIndex = timestamps.length - 1;
+  let lastSourceIndex = -1;
+  for (let i = 0; i < maxSamples; i++) {
+    const sourceIndex = Math.round((i * lastIndex) / Math.max(1, maxSamples - 1));
+    if (sourceIndex > 0 && sourceIndex < lastIndex && sourceIndex === lastSourceIndex) {
+      continue;
+    }
+    cappedTimestamps.push(timestamps[sourceIndex]);
+    cappedValues.push(values[sourceIndex]);
+    lastSourceIndex = sourceIndex;
+  }
+
   return {
     ...series,
-    timestamps,
-    values,
+    timestamps: cappedTimestamps,
+    values: cappedValues,
   };
 }
 

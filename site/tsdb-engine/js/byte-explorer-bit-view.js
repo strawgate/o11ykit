@@ -18,7 +18,7 @@ function buildBitLookup(bitMap) {
 }
 
 function renderBitGrid(container, bytes, regions, maxBits, bitLookup) {
-  regions.forEach((region) => {
+  for (const region of regions) {
     const regionHeader = document.createElement("div");
     regionHeader.style.cssText = "margin:6px 0 4px;font-weight:700;font-size:11px;color:#f59e0b;";
     regionHeader.textContent =
@@ -87,8 +87,8 @@ function renderBitGrid(container, bytes, regions, maxBits, bitLookup) {
       container.appendChild(rowEl);
     }
 
-    if (region.end * 8 > maxBits) return;
-  });
+    if (region.end * 8 > maxBits) break;
+  }
 
   if (bytes.length * 8 > maxBits) {
     const note = document.createElement("div");
@@ -102,12 +102,14 @@ function setupBitInteraction(container, bitLookup, explorer) {
   const decodePanel = document.createElement("div");
   decodePanel.className = "bit-decode-panel";
   decodePanel.style.display = "none";
+  const summaryPanel = explorer.querySelector(".hex-decode-panel");
+  const emptyKind = summaryPanel?.id === "hexDecodePanelTs" ? "timestamp" : "byte";
 
   function highlightBitRange(entry) {
     highlightExplorerEntry({
       entry,
       decodePanel,
-      emptyKind: decodePanel.id === "hexDecodePanelTs" ? "timestamp" : "byte",
+      emptyKind,
       clearHighlights() {
         container.querySelectorAll(".bit.bit-highlight").forEach((el) => {
           el.classList.remove("bit-highlight", "bit-highlight-ts", "bit-highlight-val");
@@ -158,7 +160,6 @@ function setupBitInteraction(container, bitLookup, explorer) {
     },
     { signal: keyAbort.signal }
   );
-  container.addEventListener("remove", () => keyAbort.abort());
   const keyCleanupObserver = new MutationObserver(() => {
     if (!container.isConnected) {
       keyAbort.abort();
@@ -167,8 +168,8 @@ function setupBitInteraction(container, bitLookup, explorer) {
   });
   keyCleanupObserver.observe(document.body, { childList: true, subtree: true });
 
-  explorer.querySelector(".hex-decode-panel").after(decodePanel);
-  explorer.querySelector(".hex-decode-panel").after(container);
+  summaryPanel.after(decodePanel);
+  summaryPanel.after(container);
 }
 
 export function renderBitView(explorer, bytes, regions, bitMap) {

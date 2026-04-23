@@ -1,5 +1,12 @@
 import { formatBytes, formatTimeRange } from "./utils.js";
 
+let nextSparklineId = 0;
+
+function allocSparkId() {
+  nextSparklineId += 1;
+  return `sparkline-${nextSparklineId}`;
+}
+
 export function buildChunkEmptyState() {
   return `
     <div class="chunk-empty-state">
@@ -18,9 +25,11 @@ export function buildFrozenChunkDetailHTML({
   chunkIndex,
   totalFrozen,
 }) {
-  const sparkId = `sparkline-${Date.now()}`;
+  const sparkId = allocSparkId();
   const hasPrev = chunkIndex > 0;
   const hasNext = chunkIndex < totalFrozen - 1;
+  const bitsPerSample =
+    chunk.count > 0 ? ((chunk.compressedBytes * 8) / chunk.count).toFixed(1) : "0.0";
   const byteLayoutLegend = isColumn
     ? `
           <span class="byte-legend-item"><span class="byte-swatch header"></span>ALP header (14 B)</span>
@@ -107,7 +116,7 @@ export function buildFrozenChunkDetailHTML({
         </div>
         <div class="detail-stat">
           <div class="detail-stat-label">Bits/sample</div>
-          <div class="detail-stat-value">${((chunk.compressedBytes * 8) / chunk.count).toFixed(1)}</div>
+          <div class="detail-stat-value">${bitsPerSample}</div>
         </div>
         ${memStats}
       </div>
@@ -124,7 +133,7 @@ export function buildFrozenChunkDetailHTML({
 }
 
 export function buildHotChunkDetailHTML({ hot, labelStr, metricName }) {
-  const sparkId = `sparkline-${Date.now()}`;
+  const sparkId = allocSparkId();
   const minT = hot.count > 0 ? hot.timestamps[0] : 0n;
   const maxT = hot.count > 0 ? hot.timestamps[hot.count - 1] : 0n;
   return {

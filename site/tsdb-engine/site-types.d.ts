@@ -101,4 +101,5 @@ export interface ExplorerShellOptions {
   gridId: string;
   decodePanelId: string;
   emptyKind: "byte" | "timestamp";
+  insightHtml?: string | null | undefined;
 }

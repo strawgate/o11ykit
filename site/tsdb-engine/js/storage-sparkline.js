@@ -5,17 +5,13 @@ const sparklineState = new WeakMap();
 export function renderSparkline(canvasId, decoded) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
-  const values = decoded.values;
-  const n = values.length;
-  if (n === 0) return;
-  const timestamps = decoded.timestamps || [];
-
   let state = sparklineState.get(canvas);
   if (!state) {
     state = {
       hoverIndex: null,
       redraw: null,
       bound: false,
+      pointCount: 0,
     };
     sparklineState.set(canvas, state);
   }
@@ -30,6 +26,18 @@ export function renderSparkline(canvasId, decoded) {
       h: Math.max(120, Math.round(rect.height || canvas.clientHeight || attrH)),
     };
   };
+
+  const values = decoded.values;
+  const n = values.length;
+  const timestamps = decoded.timestamps || [];
+  state.pointCount = n;
+  if (n === 0) {
+    const { w, h } = pickDimensions();
+    const ctx = setupCanvasDPR(canvas, w, h);
+    ctx.clearRect(0, 0, w, h);
+    state.hoverIndex = null;
+    return;
+  }
 
   const draw = () => {
     const { w, h } = pickDimensions();
@@ -181,7 +189,7 @@ export function renderSparkline(canvasId, decoded) {
       const x = event.clientX - rect.left;
       const usableWidth = Math.max(1, rect.width - 26);
       const relative = clamp((x - 14) / usableWidth, 0, 1);
-      state.hoverIndex = Math.round(relative * (n - 1));
+      state.hoverIndex = Math.round(relative * Math.max(0, state.pointCount - 1));
       state.redraw?.();
     });
     canvas.addEventListener("mouseleave", () => {

@@ -62,8 +62,9 @@ export function buildAlpByteSegments(compressedValues) {
       ? ((compressedValues[12] ?? 0) << 8) | (compressedValues[13] ?? 0)
       : 0;
   const headerBytes = Math.min(ALP_HEADER_SIZE, valBytes);
-  const bpBytes = Math.ceil((alpCount * alpBW) / 8);
-  const excBytes = alpExc * 10;
+  const remainingBytes = Math.max(0, valBytes - headerBytes);
+  const bpBytes = Math.min(remainingBytes, Math.ceil((alpCount * alpBW) / 8));
+  const excBytes = Math.min(Math.max(0, remainingBytes - bpBytes), alpExc * 10);
 
   /** @type {ByteSegment[]} */
   const segments = [
@@ -73,7 +74,7 @@ export function buildAlpByteSegments(compressedValues) {
   if (excBytes > 0) segments.push({ label: "Exceptions", bytes: excBytes, cls: "exceptions" });
 
   return {
-    totalBytes: headerBytes + bpBytes + excBytes,
+    totalBytes: valBytes,
     segments,
   };
 }

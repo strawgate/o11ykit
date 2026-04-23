@@ -23,7 +23,17 @@ import { $, formatBytes, formatEpochNs, readI64BE, superNum } from "./utils.js";
 
 // ── Explorer shell helpers ───────────────────────────────────────────
 
-function _buildExplorerShell(explorer, bytes, _insightHtml) {
+const HEX_COLS = 32;
+
+function _setEscapeHandler(owner, handler) {
+  if (owner._escHandler) {
+    document.removeEventListener("keydown", owner._escHandler);
+  }
+  owner._escHandler = handler;
+  if (handler) document.addEventListener("keydown", handler);
+}
+
+function _buildExplorerShell(explorer, bytes, insightHtml) {
   mountExplorerShell(explorer, {
     title: "Byte Explorer",
     bytesLength: bytes.length,
@@ -31,6 +41,7 @@ function _buildExplorerShell(explorer, bytes, _insightHtml) {
     gridId: "hexGrid",
     decodePanelId: "hexDecodePanel",
     emptyKind: "byte",
+    insightHtml,
   });
 }
 
@@ -299,7 +310,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
   // Build byte-to-sample lookup for hex/decimal interactive views
   var byteLookup = buildByteLookup(bitMap, bytes.length);
 
-  var totalRows = Math.ceil(bytes.length / 32);
+  var totalRows = Math.ceil(bytes.length / HEX_COLS);
 
   function showRegionDetail(region) {
     var decodePanel = explorer.querySelector("#hexDecodePanel");
@@ -307,7 +318,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     decodePanel.innerHTML = buildRegionDecodeHTML(region);
   }
 
-  _buildExplorerShell(explorer, bytes, "");
+  _buildExplorerShell(explorer, bytes, _insightHtml);
   var viewport = _buildMinimap(explorer, bytes, regions, showRegionDetail);
   var hexContent = renderHexContent({
     gridEl: explorer.querySelector(".hex-grid"),
@@ -328,8 +339,7 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
     hexContent,
     showRegionDetail,
     setEscapeHandler(handler) {
-      renderByteExplorer._escHandler = handler;
-      document.addEventListener("keydown", renderByteExplorer._escHandler);
+      _setEscapeHandler(renderByteExplorer, handler);
     },
   });
   setupViewModeButtons({ explorer, bytes, regions, bitMap, hexContent, highlightHexSample });
@@ -340,6 +350,11 @@ export function renderByteExplorer(primaryBlob, tsBlob, sharedCount, sampleCount
 export function renderByteExplorerTs(tsBlob, sampleCount) {
   var explorer = document.getElementById("byteExplorerTs");
   if (!explorer || !tsBlob || tsBlob.byteLength === 0) return;
+
+  if (renderByteExplorerTs._escHandler) {
+    document.removeEventListener("keydown", renderByteExplorerTs._escHandler);
+    renderByteExplorerTs._escHandler = null;
+  }
 
   var bytes = new Uint8Array(tsBlob);
   var totalBytes = bytes.byteLength;
@@ -452,7 +467,7 @@ export function renderByteExplorerTs(tsBlob, sampleCount) {
 
   var byteRegion = buildByteRegionMap(regions, totalBytes);
   var byteLookup = buildByteLookup(bitMap, totalBytes);
-  var totalRows = Math.ceil(totalBytes / 32);
+  var totalRows = Math.ceil(totalBytes / HEX_COLS);
 
   function showRegionDetail(region) {
     var decodePanel = explorer.querySelector("#hexDecodePanelTs");
@@ -467,6 +482,7 @@ export function renderByteExplorerTs(tsBlob, sampleCount) {
     gridId: "hexGridTs",
     decodePanelId: "hexDecodePanelTs",
     emptyKind: "timestamp",
+    insightHtml: null,
   });
   var viewport = renderMinimap(explorer.querySelector(".byte-minimap"), {
     totalBytes,
@@ -494,8 +510,7 @@ export function renderByteExplorerTs(tsBlob, sampleCount) {
     hexContent,
     showRegionDetail,
     setEscapeHandler(handler) {
-      renderByteExplorer._escHandler = handler;
-      document.addEventListener("keydown", renderByteExplorer._escHandler);
+      _setEscapeHandler(renderByteExplorerTs, handler);
     },
   });
   setupViewModeButtons({ explorer, bytes, regions, bitMap, hexContent, highlightHexSample });

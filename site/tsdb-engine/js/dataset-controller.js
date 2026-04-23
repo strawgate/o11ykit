@@ -99,7 +99,7 @@ export function createDatasetController({
           const t0 = performance.now();
           const seriesData = generateScenarioData(scenario);
 
-          if (store._backendType === "column") {
+          if (backendType === "column") {
             const ids = seriesData.map((sd) => store.getOrCreateSeries(sd.labels));
             const numPoints = seriesData[0]?.timestamps.length || 0;
             for (let offset = 0; offset < numPoints; offset += chunkSize) {
@@ -192,13 +192,22 @@ export function createDatasetController({
 
   function bindCustomGenerator() {
     document.getElementById("btnCustomGenerate")?.addEventListener("click", () => {
-      const numSeries = parseInt(document.getElementById("numSeries").value, 10);
-      const numPoints = parseInt(document.getElementById("numPoints").value, 10);
-      const pattern = document.getElementById("dataPattern").value;
+      const numSeriesEl = document.getElementById("numSeries");
+      const numPointsEl = document.getElementById("numPoints");
+      const patternEl = document.getElementById("dataPattern");
       const backendType = "column";
-      const intervalMs = parseInt(document.getElementById("sampleInterval").value, 10);
-
+      const intervalEl = document.getElementById("sampleInterval");
       const btn = document.getElementById("btnCustomGenerate");
+      if (
+        !(numSeriesEl && numPointsEl && patternEl && intervalEl && btn instanceof HTMLButtonElement)
+      ) {
+        return;
+      }
+      const numSeries = parseInt(numSeriesEl.value, 10);
+      const numPoints = parseInt(numPointsEl.value, 10);
+      const pattern = patternEl.value;
+      const intervalMs = parseInt(intervalEl.value, 10);
+
       btn.disabled = true;
       btn.textContent = "Generating…";
 

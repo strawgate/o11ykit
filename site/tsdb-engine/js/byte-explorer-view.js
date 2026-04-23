@@ -31,6 +31,7 @@ export function buildExplorerShellHTML({
   gridId,
   decodePanelId,
   emptyKind,
+  insightHtml,
 }) {
   return (
     '<div class="byte-explorer-header">' +
@@ -44,6 +45,7 @@ export function buildExplorerShellHTML({
     '<button type="button" data-view="bits">Bits</button>' +
     "</div>" +
     "</div>" +
+    (insightHtml ? `<div class="byte-explorer-insight">${insightHtml}</div>` : "") +
     '<div class="byte-grid-layout">' +
     `<div class="byte-minimap" id="${minimapId}"></div>` +
     '<div class="hex-grid-scroll">' +
