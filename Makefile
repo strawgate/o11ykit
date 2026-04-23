@@ -2,7 +2,7 @@ SHELL := /bin/bash
 NPM ?= npm
 BASE_PATH ?= /o11ykit/otlpkit/
 
-.PHONY: install lint format typecheck test test-e2e build check check-release check-all clean clean-all
+.PHONY: install lint format typecheck site-typecheck test test-e2e build check check-release check-all clean clean-all
 .PHONY: dev-demo dev-chartjs dev-echarts dev-recharts dev-uplot pages-build
 .PHONY: octo11y-install octo11y-lint octo11y-test octo11y-build octo11y-check
 
@@ -17,6 +17,9 @@ format:
 
 typecheck:
 	$(NPM) run typecheck
+
+site-typecheck:
+	$(NPM) run typecheck:site
 
 test:
 	$(NPM) run test

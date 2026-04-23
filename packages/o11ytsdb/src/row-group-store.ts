@@ -224,6 +224,12 @@ export class RowGroupStore implements StorageBackend {
     while (offset < len) {
       const state = this.ensureWriteSpace(id);
       const space = state.segment.hot.values.length - state.segment.hot.count;
+      if (space <= 0) {
+        throw new RangeError(
+          `appendBatch invariant violated: no write space for series ${id} ` +
+            `(count=${state.segment.hot.count}, capacity=${state.segment.hot.values.length})`
+        );
+      }
       const batch = Math.min(space, len - offset);
       const tsSlice = timestamps.subarray(offset, offset + batch);
 

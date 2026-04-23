@@ -5,7 +5,7 @@
   border: 1px solid rgba(43, 80, 106, 0.12);
   border-radius: 12px;
   background: #fafcff;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .byte-explorer-header {
@@ -144,16 +144,27 @@
 }
 
 /* Overview minimap strip */
+.byte-grid-layout {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px 8px 0;
+  position: relative;
+}
+
 .byte-minimap {
   display: flex;
-  height: 12px;
+  flex-direction: column;
+  width: 12px;
+  min-height: 72px;
   margin: 0;
   cursor: pointer;
   position: relative;
 }
 
 .byte-minimap .mm-seg {
-  height: 100%;
+  width: 100%;
   transition: opacity 120ms ease;
 }
 
@@ -163,14 +174,14 @@
 
 .byte-minimap .mm-viewport {
   position: absolute;
-  top: 0;
-  height: 100%;
+  left: 0;
+  width: 100%;
   border: 2px solid rgba(15, 58, 94, 0.4);
   border-radius: 2px;
   pointer-events: none;
   transition:
-    left 150ms ease,
-    width 150ms ease;
+    top 150ms ease,
+    height 150ms ease;
   background: rgba(15, 58, 94, 0.06);
 }
 
@@ -178,15 +189,63 @@
 .hex-grid-scroll {
   max-height: 320px;
   overflow-y: auto;
-  overflow-x: hidden;
-  padding: 8px 10px;
+  overflow-x: auto;
+  padding: 0 0 0 2px;
   will-change: scroll-position;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  position: relative;
+}
+
+.hex-grid-scroll.is-scrollable::after {
+  content: "";
+  position: sticky;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: block;
+  height: 18px;
+  margin-top: -18px;
+  background: linear-gradient(180deg, rgba(250, 252, 255, 0) 0%, rgba(238, 246, 255, 0.92) 100%);
+  pointer-events: none;
+}
+
+.hex-grid-scroll.is-scrollable.is-at-end::after {
+  opacity: 0;
+}
+
+.hex-scroll-hint {
+  position: absolute;
+  right: 16px;
+  bottom: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6f8aa3;
+  background: rgba(249, 252, 255, 0.94);
+  border: 1px solid rgba(43, 80, 106, 0.14);
+  border-radius: 999px;
+  padding: 4px 8px;
+  box-shadow: 0 6px 16px rgba(15, 58, 94, 0.08);
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+  pointer-events: none;
+}
+
+.hex-scroll-hint.visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .hex-grid {
   display: grid;
   gap: 1px;
   grid-auto-rows: minmax(18px, auto);
+  min-width: 692px;
   font-family: "IBM Plex Mono", monospace;
   font-size: 10px;
   line-height: 1;
@@ -202,7 +261,7 @@
   font-weight: 600;
   color: var(--dark-text-muted);
   text-align: right;
-  padding: 3px 6px 3px 0;
+  padding: 2px 4px 2px 0;
   user-select: none;
   display: flex;
   align-items: center;
@@ -211,7 +270,6 @@
 }
 
 .hex-cell {
-  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -221,7 +279,11 @@
   color: white;
   user-select: none;
   min-height: 18px;
-  padding: 2px 0;
+  height: 18px;
+  padding: 0;
+  touch-action: manipulation;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .hex-cell:hover {
@@ -286,14 +348,32 @@
 /* Hex decode panel — reuses bit decode panel styles */
 .hex-decode-panel {
   margin: 8px 10px;
-  background: linear-gradient(135deg, var(--dark-bg), var(--dark-bg-alt));
-  border: 1px solid #1a3a5c;
+  background: linear-gradient(180deg, #f9fcff 0%, #eef6ff 100%);
+  border: 1px solid rgba(43, 80, 106, 0.14);
   border-radius: 10px;
-  padding: 12px 16px;
+  padding: 10px 14px;
+  min-height: 92px;
   font-family: "IBM Plex Mono", monospace;
   font-size: 12px;
-  color: var(--dark-text);
+  color: #173b5d;
   animation: rise-in 200ms ease both;
+}
+
+.hex-decode-panel .bdp-placeholder {
+  display: grid;
+  gap: 6px;
+}
+
+.hex-decode-panel .bdp-placeholder-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #173b5d;
+}
+
+.hex-decode-panel .bdp-placeholder-copy {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #69849b;
 }
 
 .hex-decode-panel .bdp-header {
@@ -301,6 +381,27 @@
   gap: 12px;
   align-items: baseline;
   flex-wrap: wrap;
+}
+
+.hex-decode-panel .bdp-header-compact {
+  align-items: center;
+}
+
+.hex-decode-panel .bdp-sample-primary {
+  font-size: 13px;
+  font-weight: 700;
+  color: #173b5d;
+}
+
+.hex-decode-panel .bdp-inline-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0a8e65;
+}
+
+.hex-decode-panel .bdp-inline-label {
+  font-size: 12px;
+  color: #69849b;
 }
 .hex-decode-panel .bdp-type {
   font-weight: 700;
@@ -315,34 +416,153 @@
 .hex-decode-panel .bdp-value {
   font-size: 16px;
   font-weight: 700;
-  color: #f1f5f9;
+  color: #173b5d;
   margin: 6px 0 4px;
 }
 .hex-decode-panel .bdp-encoding {
   font-size: 11px;
-  color: #a5b4c8;
+  color: #69849b;
   line-height: 1.6;
 }
 .hex-decode-panel .bdp-detail {
   font-size: 10px;
-  color: var(--dark-text-dim);
+  color: #69849b;
   margin-top: 2px;
+}
+
+.hex-decode-panel .bdp-math {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.hex-decode-panel .bdp-row {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.hex-decode-panel .bdp-row-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6f8aa3;
+}
+
+.hex-decode-panel .bdp-row-formula {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #173b5d;
+}
+
+.hex-decode-panel .bdp-note {
+  margin-top: 4px;
+  color: #5c7891;
+}
+
+.hex-decode-panel .bdp-note-strong {
+  color: #dbe7f3;
+}
+
+.hex-decode-panel .bdp-split {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.hex-decode-panel .bdp-col {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.hex-decode-panel .bdp-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6f8aa3;
+}
+
+.hex-decode-panel .bdp-facts {
+  display: grid;
+  gap: 6px;
+}
+
+.hex-decode-panel .bdp-fact {
+  display: grid;
+  gap: 2px;
+}
+
+.hex-decode-panel .bdp-fact-label {
+  font-size: 10px;
+  color: #6f8aa3;
+}
+
+.hex-decode-panel .bdp-fact-value {
+  color: #173b5d;
+}
+
+.hex-decode-panel .bdp-stack {
+  display: grid;
+  gap: 2px;
+}
+
+.hex-decode-panel .bdp-eq-line {
+  display: grid;
+  grid-template-columns: minmax(0, 132px) 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.hex-decode-panel .bdp-eq-key {
+  color: #93a9bf;
+}
+
+.hex-decode-panel .bdp-eq-value {
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .byte-grid-layout {
+    grid-template-columns: 8px minmax(0, 1fr);
+    gap: 6px;
+    padding: 6px 6px 0;
+  }
+
+  .hex-decode-panel .bdp-split {
+    grid-template-columns: 1fr;
+  }
+
+  .hex-decode-panel .bdp-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .hex-decode-panel .bdp-eq-line {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
 }
 
 /* Byte detail tooltip */
 .byte-tooltip {
   position: fixed;
   z-index: var(--z-tooltip);
-  background: #0f1a2e;
-  color: var(--dark-text);
-  border-radius: 8px;
-  padding: 8px 12px;
+  background: linear-gradient(180deg, #fdfefe 0%, #eef6ff 100%);
+  color: #173b5d;
+  border: 1px solid rgba(43, 80, 106, 0.14);
+  border-radius: 10px;
+  padding: 9px 10px;
   font-family: "IBM Plex Mono", monospace;
-  font-size: 11px;
+  font-size: 10px;
   line-height: 1.5;
   pointer-events: none;
-  white-space: nowrap;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  min-width: 160px;
+  box-shadow: 0 10px 24px rgba(15, 58, 94, 0.12);
   opacity: 0;
   transition: opacity 120ms ease;
 }
@@ -352,13 +572,43 @@
 }
 
 .byte-tooltip .bt-offset {
-  color: var(--dark-text-muted);
+  color: #69849b;
+}
+
+.byte-tooltip .bt-topline,
+.byte-tooltip .bt-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.byte-tooltip .bt-meta.has-headline {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(43, 80, 106, 0.1);
 }
 
 .byte-tooltip .bt-hex {
-  color: var(--region-exceptions);
+  color: #0f3a5e;
   font-weight: 700;
   font-size: 13px;
+}
+
+.byte-tooltip .bt-dec {
+  color: #69849b;
+}
+
+.byte-tooltip .bt-rendered {
+  margin-top: 4px;
+  color: #5c7891;
+}
+
+.byte-tooltip .bt-headline {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #173b5d;
 }
 
 .byte-tooltip .bt-region {
@@ -396,96 +646,6 @@
 .byte-tooltip .bt-sample.value {
   background: var(--region-values);
 }
-
-.byte-tooltip .bt-decoded {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  color: #a5b4c8;
-  font-size: 10px;
-}
-
-/* Region detail card */
-.region-detail-card {
-  margin: 8px 10px 10px;
-  background: white;
-  border: 1px solid rgba(43, 80, 106, 0.15);
-  border-radius: 10px;
-  padding: 12px 14px;
-  animation: rise-in 200ms ease both;
-}
-
-.region-detail-card h5 {
-  margin: 0 0 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #0f3a5e;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.region-detail-card .region-badge {
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: white;
-}
-
-.region-badge.header {
-  background: var(--region-header);
-}
-.region-badge.timestamps {
-  background: var(--region-timestamps);
-}
-.region-badge.values {
-  background: var(--region-values);
-}
-.region-badge.exceptions {
-  background: var(--region-exceptions);
-}
-
-.region-detail-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  gap: 8px;
-}
-
-.region-detail-grid .rd-item {
-  text-align: center;
-}
-
-.region-detail-grid .rd-label {
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #6b8a9e;
-}
-
-.region-detail-grid .rd-value {
-  font-size: 14px;
-  font-weight: 700;
-  color: #0f3a5e;
-  font-family: "IBM Plex Mono", monospace;
-}
-
-/* ASCII column */
-.hex-ascii {
-  font-size: 9px;
-  color: var(--dark-text-dim);
-  padding: 3px 4px;
-  letter-spacing: 0.5px;
-  border-left: 1px solid rgba(43, 80, 106, 0.08);
-  display: flex;
-  align-items: center;
-  white-space: pre;
-  overflow: hidden;
-}
-
 /* ─── Bit-level view ──────────────────────────────────────────────── */
 
 .bit-view {
