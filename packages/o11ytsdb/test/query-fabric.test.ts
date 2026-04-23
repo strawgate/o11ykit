@@ -82,7 +82,7 @@ describe("QueryFabric", () => {
     ).toThrow("exactly 1 partial");
   });
 
-  it("clips time-partitioned requests before dispatch", async () => {
+  it("dispatches overlapping partition windows and clips merged output", async () => {
     const seenFrozen: QueryOpts[] = [];
     const seenHot: QueryOpts[] = [];
 
@@ -122,8 +122,8 @@ describe("QueryFabric", () => {
 
     const result = await fabric.execute({ metric: "cpu", start: 20n, end: 80n });
 
-    expect(seenFrozen).toEqual([{ metric: "cpu", start: 20n, end: 49n }]);
-    expect(seenHot).toEqual([{ metric: "cpu", start: 50n, end: 80n }]);
+    expect(seenFrozen).toEqual([{ metric: "cpu", start: 0n, end: 49n }]);
+    expect(seenHot).toEqual([{ metric: "cpu", start: 50n, end: 99n }]);
     const firstSeries = result.series[0];
     expect(firstSeries).toBeDefined();
     expect([...new BigInt64Array(firstSeries?.timestamps ?? [])]).toEqual([20n, 49n, 50n, 80n]);

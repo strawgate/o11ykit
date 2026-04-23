@@ -692,10 +692,12 @@ async function runQuery(options = {}) {
         );
       }
     } catch (error) {
+      if (runSeq !== _queryRunSeq) return;
       console.error("Worker query failed", error);
       queryWorkerPool.markFallback("Worker query failed; running on coordinator");
     }
   } else if (queryWorkerPool) {
+    if (runSeq !== _queryRunSeq) return;
     queryWorkerPool.markFallback(
       supportsParallelQuery(queryOpts)
         ? "Worker pool warming up; running on coordinator"
