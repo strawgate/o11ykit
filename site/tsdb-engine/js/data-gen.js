@@ -43,6 +43,7 @@ function clamp(value, min, max) {
 
 function buildKubernetesLabelGroups() {
   const cluster = "prod-us-central-1";
+  const replicaMultiplier = 3;
   const namespaces = {
     checkout: ["checkout", "cart", "frontend"],
     payments: ["payments", "ledger"],
@@ -61,7 +62,8 @@ function buildKubernetesLabelGroups() {
   let podCounter = 0;
   for (const [namespace, workloads] of Object.entries(namespaces)) {
     for (const workload of workloads) {
-      const replicas = namespace === "kube-system" ? 2 : workload === "frontend" ? 4 : 3;
+      const replicas =
+        (namespace === "kube-system" ? 2 : workload === "frontend" ? 4 : 3) * replicaMultiplier;
       for (let replica = 0; replica < replicas; replica++) {
         const suffix = (10000 + podCounter * 97 + replica * 17).toString(36).slice(-5);
         const podName = `${workload}-${suffix}`;
@@ -295,7 +297,7 @@ export const SCENARIOS = [
       },
     ],
     buildLabelGroups: buildKubernetesLabelGroups,
-    numPoints: 6000,
+    numPoints: 20000,
     intervalMs: 15000,
   },
 ];

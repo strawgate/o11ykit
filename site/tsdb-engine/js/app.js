@@ -82,6 +82,48 @@ function renderLegend(container, series) {
   }
 }
 
+function clearResultsVisuals() {
+  const canvas = document.getElementById("chartCanvas");
+  if (canvas instanceof HTMLCanvasElement) {
+    const ctx = canvas.getContext("2d");
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  const legend = document.getElementById("chartLegend");
+  if (legend) legend.innerHTML = "";
+}
+
+function renderNoMatchResults(reason, queryTime, requestedStep = null) {
+  showSection("section-results");
+  queryBuilder.updatePreview();
+
+  const planSection = document.getElementById("section-query-plan");
+  const planSummary = document.getElementById("queryExecutionSummary");
+  if (planSection) showSection("section-query-plan");
+  if (planSummary) planSummary.textContent = reason;
+
+  if (queryWorkerPool) {
+    queryWorkerPool.markComplete(reason, {
+      scannedSeries: 0,
+      scannedSamples: 0,
+      resultSeries: 0,
+      queryTimeMs: queryTime,
+    });
+  }
+
+  document.getElementById("qStatScannedSeries").innerHTML = "Scanned: <strong>no matches</strong>";
+  document.getElementById("qStatScannedSamples").innerHTML = "Samples: <strong>none</strong>";
+  document.getElementById("qStatResultSeries").innerHTML = "Result: <strong>empty</strong>";
+  document.getElementById("qStatEffectiveStep").innerHTML = formatEffectiveStepStat({
+    effectiveStep: requestedStep,
+    requestedStep,
+    pointBudget: null,
+  });
+  document.getElementById("qStatQueryTime").innerHTML =
+    `Time: <strong>${queryTime.toFixed(1)} ms</strong>`;
+
+  clearResultsVisuals();
+}
+
 function resetMetricsExplorer() {
   metricsExplorer.reset();
 }
@@ -131,21 +173,6 @@ function onDataLoaded(store, metrics, _ingestTime, numPoints, intervalMs) {
   void _provisionQueryWorkers(store);
 }
 
-function _snapshotSeriesData(store) {
-  const seriesData = [];
-  for (let id = 0; id < store.seriesCount; id++) {
-    const labels = store.labels(id);
-    if (!labels) continue;
-    const data = store.read(id, -MAX_I64, MAX_I64);
-    seriesData.push({
-      labels: new Map(labels),
-      timestamps: data.timestamps.slice(0),
-      values: data.values.slice(0),
-    });
-  }
-  return seriesData;
-}
-
 async function _provisionQueryWorkers(store) {
   if (typeof Worker === "undefined") {
     _renderQueryFabricMonitor({
@@ -164,7 +191,7 @@ async function _provisionQueryWorkers(store) {
   }
 
   try {
-    await queryWorkerPool.loadSeriesData(_snapshotSeriesData(store));
+    await queryWorkerPool.loadStore(store);
   } catch (error) {
     console.error("Failed to provision query workers", error);
     queryWorkerPool.markFallback("Worker pool failed to initialize");
@@ -186,6 +213,7 @@ function _renderQueryFabricMonitor(state) {
 
   const cards = [];
   const workers = state.workers || [];
+  const plan = state.plan || null;
   const phaseSummary = _workerPhaseSummary(workers);
   const expandWorkers =
     state.phase === "running" || state.phase === "loading" || state.phase === "fallback";
@@ -193,7 +221,7 @@ function _renderQueryFabricMonitor(state) {
     <article class="fabric-card fabric-card-coordinator phase-${escapeHtml(state.coordinator?.phase || "idle")}">
       <div class="fabric-card-top fabric-card-top-compact">
         <span class="fabric-role">Coordinator</span>
-        <span class="fabric-coordinator-meta">${workers.length || 0} workers</span>
+        <span class="fabric-coordinator-meta">${escapeHtml(_planMeta(plan, workers.length || 0))}</span>
       </div>
       <div class="fabric-detail fabric-detail-compact">${escapeHtml(_coordinatorNarrative(state))}</div>
       ${
@@ -208,7 +236,7 @@ function _renderQueryFabricMonitor(state) {
           ${workers
             .map((worker) => {
               const phase = escapeHtml(worker.phase || "idle");
-              const role = escapeHtml(worker.role || "query-shard");
+              const role = escapeHtml(_workerRoleLabel(worker.role));
               const isExpanded =
                 worker.phase === "running" ||
                 worker.phase === "loading" ||
@@ -252,17 +280,18 @@ function _renderQueryFabricMonitor(state) {
 }
 
 function _executionStatusText(state) {
+  const plan = state.plan || null;
   switch (state.phase) {
     case "loading":
-      return "Provisioning workers";
+      return plan ? `Provisioning ${_planTitle(plan)}` : "Provisioning workers";
     case "running":
       return "Running now";
     case "complete":
       return "Latest query complete";
     case "fallback":
-      return "Coordinator fallback";
+      return plan?.topology === "inline" ? "Inline engine" : "Coordinator fallback";
     case "ready":
-      return "Workers ready";
+      return plan ? `${_planTitle(plan)} ready` : "Workers ready";
     default:
       return "Waiting for dataset";
   }
@@ -283,6 +312,39 @@ function _workerMeterWidth(worker) {
   if (worker.phase === "loading") return 48;
   if (worker.phase === "complete") return 100;
   return 18;
+}
+
+function _planTitle(plan) {
+  if (!plan) return "worker pool";
+  const topology =
+    plan.topology === "single-worker"
+      ? "single-worker"
+      : plan.topology === "split"
+        ? "split"
+        : plan.topology === "pooled"
+          ? "pooled"
+          : "inline";
+  const transport = plan.transport === "shared-frozen" ? "shared" : plan.transport;
+  return `${topology} ${transport}`;
+}
+
+function _planMeta(plan, workerCount) {
+  if (!plan) return `${workerCount} workers`;
+  const transport = plan.transport === "shared-frozen" ? "SAB" : plan.transport;
+  return `${plan.actualWorkers} workers · ${plan.topology} · ${transport}`;
+}
+
+function _workerRoleLabel(role) {
+  switch (role) {
+    case "combined-engine":
+      return "coordinator + hot + frozen";
+    case "primary-engine":
+      return "coordinator + hot";
+    case "query-shard":
+      return "frozen";
+    default:
+      return role || "worker";
+  }
 }
 
 function _workerPhaseSummary(workers) {
@@ -307,8 +369,22 @@ function _workerPhaseSummary(workers) {
 function _coordinatorNarrative(state) {
   const workers = state.workers || [];
   const workerCount = workers.length;
+  const plan = state.plan || null;
   if (!workerCount)
-    return "Handles label matching, dispatch, and result merge once workers are provisioned.";
+    return (
+      plan?.reason ||
+      "Handles label matching, dispatch, and result merge once workers are provisioned."
+    );
+
+  const mergedStats = state.coordinator?.stats || null;
+  if (
+    mergedStats &&
+    mergedStats.scannedSeries === 0 &&
+    mergedStats.scannedSamples === 0 &&
+    mergedStats.resultSeries === 0
+  ) {
+    return "No series matched the current metric and label filters across the worker pool.";
+  }
 
   const residentSeries = workers.reduce((sum, worker) => sum + (worker.seriesCount || 0), 0);
   const matchedSeries = workers.reduce((sum, worker) => sum + (worker.scannedSeries || 0), 0);
@@ -317,12 +393,15 @@ function _coordinatorNarrative(state) {
 
   switch (state.phase) {
     case "loading":
-      return `Partitioning ${residentSeries.toLocaleString()} series across ${workerCount} workers.`;
+      return `Planning ${plan?.topology || "worker"} execution and partitioning ${residentSeries.toLocaleString()} series across ${workerCount} workers.`;
     case "ready":
-      return `Matches labels on the coordinator, then routes chunk scans and decode work across ${workerCount} workers.`;
+      return `${plan?.reason || "Matches labels on the coordinator, then routes chunk scans and decode work across workers."} Using ${workerCount} workers in ${plan?.topology || "worker"} mode.`;
     case "running":
       return `Matched ${matchedSeries.toLocaleString()} of ${residentSeries.toLocaleString()} resident series and is fanning ${scannedSamples.toLocaleString()} samples out to ${workerCount} workers.`;
     case "complete":
+      if (mergedStats) {
+        return `Matched ${mergedStats.scannedSeries.toLocaleString()} series, pushed ${mergedStats.scannedSamples.toLocaleString()} samples through ${workerCount} workers, and merged ${mergedStats.resultSeries.toLocaleString()} outputs in ${mergedStats.queryTimeMs.toFixed(1)} ms.`;
+      }
       return `Matched ${matchedSeries.toLocaleString()} series, pushed ${scannedSamples.toLocaleString()} samples through ${workerCount} workers, and merged ${partialSeries.toLocaleString()} partial outputs.`;
     case "fallback":
       return "Worker fan-out is unavailable, so the coordinator is matching labels, scanning chunks, and merging locally.";
@@ -490,9 +569,9 @@ function _mergeAvgWorkerResults(sumResults, countResults) {
 }
 
 function _canRunOnWorkers(opts) {
-  return (
-    !!queryWorkerPool && queryWorkerPool.state?.phase !== "running" && supportsParallelQuery(opts)
-  );
+  if (!queryWorkerPool || !supportsParallelQuery(opts)) return false;
+  const phase = queryWorkerPool.state?.phase;
+  return phase === "loading" || phase === "ready" || phase === "complete";
 }
 
 // ── Metrics Explorer ──────────────────────────────────────────────────
@@ -675,9 +754,10 @@ async function runQuery(options = {}) {
   const { scrollToResults = false } = options;
   if (!currentStore) return;
   const runSeq = ++_queryRunSeq;
+  const t0 = performance.now();
 
   const queryConfig = queryBuilder.readConfig();
-  const metric = queryConfig.metric;
+  const metric = queryConfig.metric || generatedMetrics[0] || "";
   const agg = queryConfig.agg;
   const groupBy = queryConfig.groupBy;
   const stepMs = queryConfig.stepMs;
@@ -686,6 +766,11 @@ async function runQuery(options = {}) {
   const chartWidth =
     document.getElementById("chartCanvas")?.parentElement?.clientWidth || window.innerWidth || 1200;
   const maxPoints = Math.max(240, Math.floor(chartWidth * 1.25));
+
+  if (!metric) {
+    renderNoMatchResults("Load a dataset to query metrics.", performance.now() - t0, step ?? null);
+    return;
+  }
 
   let ids = currentStore.matchLabel("__name__", metric);
   const activeMatchers = queryBuilder.getActiveMatchers();
@@ -700,7 +785,15 @@ async function runQuery(options = {}) {
       }
     }
   }
-  if (ids.length === 0) return;
+  if (ids.length === 0) {
+    if (runSeq !== _queryRunSeq) return;
+    renderNoMatchResults(
+      "No series matched the current metric and label filters.",
+      performance.now() - t0,
+      step ?? null
+    );
+    return;
+  }
 
   let minT = BigInt("9223372036854775807");
   let maxT = -minT;
@@ -711,6 +804,15 @@ async function runQuery(options = {}) {
       if (data.timestamps[data.timestamps.length - 1] > maxT)
         maxT = data.timestamps[data.timestamps.length - 1];
     }
+  }
+  if (minT === BigInt("9223372036854775807")) {
+    if (runSeq !== _queryRunSeq) return;
+    renderNoMatchResults(
+      "The selected series do not contain samples in the current range.",
+      performance.now() - t0,
+      step ?? null
+    );
+    return;
   }
 
   const queryOpts = {
@@ -724,8 +826,6 @@ async function runQuery(options = {}) {
     transform: transform || undefined,
     matchers: activeMatchers,
   };
-
-  const t0 = performance.now();
   let result;
   let workerQueryId = null;
   let usedWorkers = false;
@@ -783,29 +883,48 @@ async function runQuery(options = {}) {
   if (planSection) showSection("section-query-plan");
   if (planSummary) {
     const stepSummary = summarizeStepResolution(result);
-    planSummary.textContent = `${result.scannedSeries.toLocaleString()} series matched, ${result.scannedSamples.toLocaleString()} samples scanned, ${result.series.length.toLocaleString()} outputs, ${stepSummary}`;
+    if (result.scannedSeries === 0 && result.scannedSamples === 0 && result.series.length === 0) {
+      planSummary.textContent = "No series matched the current metric and label filters.";
+    } else {
+      planSummary.textContent = `${result.scannedSeries.toLocaleString()} series matched, ${result.scannedSamples.toLocaleString()} samples scanned, ${result.series.length.toLocaleString()} outputs, ${stepSummary}`;
+    }
   }
 
   if (usedWorkers && workerQueryId !== null) {
     queryWorkerPool.markMerged(
       workerQueryId,
-      `${queryWorkerPool.workers.length} workers merged ${result.series.length.toLocaleString()} outputs in ${queryTime.toFixed(1)} ms`
+      `${queryWorkerPool.workers.length} workers merged ${result.series.length.toLocaleString()} outputs in ${queryTime.toFixed(1)} ms`,
+      {
+        scannedSeries: result.scannedSeries,
+        scannedSamples: result.scannedSamples,
+        resultSeries: result.series.length,
+        queryTimeMs: queryTime,
+      }
     );
   }
 
-  document.getElementById("qStatScannedSeries").innerHTML =
-    `Scanned: <strong>${result.scannedSeries}</strong> series`;
-  document.getElementById("qStatScannedSamples").innerHTML =
-    `Samples: <strong>${result.scannedSamples.toLocaleString()}</strong>`;
-  document.getElementById("qStatResultSeries").innerHTML =
-    `Result: <strong>${result.series.length}</strong> series`;
+  const noMatches =
+    result.scannedSeries === 0 && result.scannedSamples === 0 && result.series.length === 0;
+  document.getElementById("qStatScannedSeries").innerHTML = noMatches
+    ? "Scanned: <strong>no matches</strong>"
+    : `Scanned: <strong>${result.scannedSeries}</strong> series`;
+  document.getElementById("qStatScannedSamples").innerHTML = noMatches
+    ? "Samples: <strong>none</strong>"
+    : `Samples: <strong>${result.scannedSamples.toLocaleString()}</strong>`;
+  document.getElementById("qStatResultSeries").innerHTML = noMatches
+    ? "Result: <strong>empty</strong>"
+    : `Result: <strong>${result.series.length}</strong> series`;
   document.getElementById("qStatEffectiveStep").innerHTML = formatEffectiveStepStat(result);
   document.getElementById("qStatQueryTime").innerHTML =
     `Time: <strong>${queryTime.toFixed(1)} ms</strong>`;
 
-  renderChart(document.getElementById("chartCanvas"), result.series, "");
-  setupChartTooltip();
-  renderLegend(document.getElementById("chartLegend"), result.series);
+  if (noMatches) {
+    clearResultsVisuals();
+  } else {
+    renderChart(document.getElementById("chartCanvas"), result.series, "");
+    setupChartTooltip();
+    renderLegend(document.getElementById("chartLegend"), result.series);
+  }
 
   if (scrollToResults) {
     requestAnimationFrame(() => {

@@ -100,6 +100,36 @@ describe("ScanEngine", () => {
       expect(result.series[0].values[0]).toBeCloseTo(20); // (10+30)/2
       expect(result.series[0].values[1]).toBeCloseTo(30); // (20+40)/2
     });
+
+    it("emits avg partials from a single scan", () => {
+      const store = buildStore([
+        {
+          labels: makeLabels("cpu", { host: "a" }),
+          timestamps: [1n * SEC, 2n * SEC],
+          values: [10, 20],
+        },
+        {
+          labels: makeLabels("cpu", { host: "b" }),
+          timestamps: [1n * SEC, 2n * SEC],
+          values: [30, 40],
+        },
+      ]);
+      const partials = engine.queryAveragePartials(store, {
+        metric: "cpu",
+        start: 0n,
+        end: 10n * SEC,
+        agg: "avg",
+        groupBy: [],
+      });
+      expect(partials.sum.series).toHaveLength(1);
+      expect(partials.count.series).toHaveLength(1);
+      expect(partials.sum.series[0].values[0]).toBeCloseTo(40);
+      expect(partials.sum.series[0].values[1]).toBeCloseTo(60);
+      expect(partials.count.series[0].values[0]).toBeCloseTo(2);
+      expect(partials.count.series[0].values[1]).toBeCloseTo(2);
+      expect(partials.sum.scannedSamples).toBe(4);
+      expect(partials.count.scannedSamples).toBe(4);
+    });
   });
 
   describe("min aggregation", () => {

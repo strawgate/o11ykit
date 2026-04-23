@@ -1,24 +1,100 @@
+import { buildWorkerPartitionPayload } from "./query-worker-store.js";
+
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
 
-function chooseWorkerCount(seriesCount) {
-  const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
-  const desired = Math.max(1, hw - 1);
-  if (seriesCount < 16) return 1;
-  return clamp(desired, 2, 4);
+function safeHardwareConcurrency() {
+  return typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
+}
+
+export function detectExecutionCapabilities() {
+  return {
+    workers: typeof Worker !== "undefined",
+    sharedArrayBuffer: typeof SharedArrayBuffer !== "undefined",
+    crossOriginIsolated:
+      typeof globalThis.crossOriginIsolated === "boolean" ? globalThis.crossOriginIsolated : false,
+    hardwareConcurrency: safeHardwareConcurrency(),
+  };
+}
+
+function normalizeRequestedWorkers(requestedWorkers, hardwareConcurrency) {
+  if (requestedWorkers === "auto" || requestedWorkers == null) {
+    return clamp(Math.max(1, Math.floor(hardwareConcurrency / 2)), 1, 4);
+  }
+  return clamp(Math.floor(requestedWorkers), 0, Math.max(1, hardwareConcurrency));
+}
+
+function topologyFromWorkerCount(workerCount) {
+  if (workerCount <= 0) return "inline";
+  if (workerCount === 1) return "single-worker";
+  if (workerCount === 2) return "split";
+  return "pooled";
+}
+
+function transportFromCapabilities(capabilities) {
+  if (!capabilities.workers) return "inline";
+  return capabilities.sharedArrayBuffer && capabilities.crossOriginIsolated
+    ? "shared-frozen"
+    : "transfer";
+}
+
+function planReason(capabilities, actualWorkers, transport) {
+  if (!capabilities.workers) return "Workers unavailable in this runtime.";
+  if (actualWorkers === 0) return "Worker count resolved to 0, using inline execution.";
+  if (transport === "shared-frozen") {
+    return "Cross-origin isolation is active, so frozen chunks can use SharedArrayBuffer.";
+  }
+  if (capabilities.sharedArrayBuffer && !capabilities.crossOriginIsolated) {
+    return "SharedArrayBuffer exists, but this runtime is not cross-origin isolated, so transferables are used.";
+  }
+  return "SharedArrayBuffer is unavailable here, so workers use transferable chunk snapshots.";
+}
+
+export function deriveTopologyPlan({
+  seriesCount = 0,
+  requestedWorkers = "auto",
+  capabilities = detectExecutionCapabilities(),
+} = {}) {
+  const normalizedWorkers = normalizeRequestedWorkers(
+    requestedWorkers,
+    capabilities.hardwareConcurrency
+  );
+  const actualWorkers = capabilities.workers
+    ? seriesCount > 0 && seriesCount < 16
+      ? Math.min(normalizedWorkers, 1)
+      : normalizedWorkers
+    : 0;
+  const topology = topologyFromWorkerCount(actualWorkers);
+  const transport = transportFromCapabilities(capabilities);
+  return {
+    requestedWorkers,
+    actualWorkers,
+    topology,
+    transport,
+    capabilities,
+    reason: planReason(capabilities, actualWorkers, transport),
+  };
 }
 
 export function supportsParallelQuery(opts) {
   return !["last", "p50", "p95", "p99"].includes(opts.agg || "");
 }
 
+function workerRoleForPlan(plan, index) {
+  if (plan.topology === "single-worker") return "combined-engine";
+  if (index === 0) return "primary-engine";
+  return "query-shard";
+}
+
 export class QueryWorkerPool {
-  constructor({ onStateChange } = {}) {
+  constructor({ onStateChange, workers = "auto" } = {}) {
     this.onStateChange = onStateChange;
+    this.requestedWorkers = workers;
     this.workers = [];
     this.pendingLoads = new Map();
     this.pendingQueries = new Map();
+    this.loadPromise = null;
     this.nextQueryId = 0;
     this.activeQueryId = 0;
     this.state = {
@@ -27,14 +103,17 @@ export class QueryWorkerPool {
       coordinator: {
         phase: "idle",
         detail: "Waiting for dataset",
+        stats: null,
       },
+      plan: null,
       workers: [],
     };
     this._emitState();
   }
 
-  async dispose() {
+  async dispose(preserveLoadPromise = false) {
     const disposedError = new Error("Query worker pool disposed");
+    if (!preserveLoadPromise) this.loadPromise = null;
     for (const [workerId, pending] of this.pendingLoads) {
       pending.reject(disposedError);
       this.pendingLoads.delete(workerId);
@@ -57,127 +136,161 @@ export class QueryWorkerPool {
       coordinator: {
         phase: "idle",
         detail: "Waiting for dataset",
+        stats: null,
       },
+      plan: null,
       workers: [],
     };
     this._emitState();
   }
 
-  async loadSeriesData(seriesData) {
-    await this.dispose();
+  async loadStore(store) {
+    const loadPromise = (async () => {
+      await this.dispose(true);
 
-    const workerCount = chooseWorkerCount(seriesData.length);
-    const partitions = Array.from({ length: workerCount }, () => []);
-    for (let i = 0; i < seriesData.length; i++) {
-      partitions[i % workerCount].push(seriesData[i]);
-    }
-
-    this.state = {
-      phase: "loading",
-      summary: `Provisioning ${workerCount} query workers…`,
-      coordinator: {
-        phase: "loading",
-        detail: `Sharding ${seriesData.length.toLocaleString()} series`,
-      },
-      workers: partitions.map((partition, idx) => ({
-        id: idx,
-        name: `query-${String(idx + 1).padStart(2, "0")}`,
-        role: idx === 0 ? "hot-owner" : "history-shard",
-        phase: "loading",
-        detail: `Receiving ${partition.length.toLocaleString()} series`,
-        seriesCount: 0,
-        sampleCount: 0,
-        task: "Booting worker",
-        durationMs: 0,
-        scannedSeries: 0,
-        scannedSamples: 0,
-        resultSeries: 0,
-      })),
-    };
-    this._emitState();
-
-    const loadPromises = partitions.map((partition, idx) => {
-      const worker = new Worker(new URL("./query-worker.js", import.meta.url), { type: "module" });
-      const entry = { id: idx, worker };
-      this.workers.push(entry);
-
-      worker.addEventListener("message", (event) => this._handleMessage(event.data));
-      worker.addEventListener("error", (event) => {
-        console.error("query worker error", event);
-        const workerError = new Error(`Query worker ${idx + 1} failed`);
-        const pendingLoad = this.pendingLoads.get(idx);
-        if (pendingLoad) {
-          this.pendingLoads.delete(idx);
-          pendingLoad.reject(workerError);
-        }
-        for (const [queryId, pendingByWorker] of this.pendingQueries) {
-          const pending = pendingByWorker.get(idx);
-          if (!pending) continue;
-          pendingByWorker.delete(idx);
-          pending.reject(workerError);
-          if (pendingByWorker.size === 0) this.pendingQueries.delete(queryId);
-        }
-        this.state.phase = "fallback";
-        this.state.summary = `Worker ${idx + 1} failed; coordinator fallback required`;
-        this.state.coordinator = {
-          phase: "fallback",
-          detail: workerError.message,
-        };
-        this.state.workers = this.state.workers.map((stateWorker) =>
-          stateWorker.id === idx
-            ? {
-                ...stateWorker,
-                phase: "fallback",
-                task: "Worker fault",
-                detail: workerError.message,
-              }
-            : stateWorker
-        );
-        this._emitState();
+      const seriesCount = store.seriesCount || 0;
+      const plan = deriveTopologyPlan({
+        seriesCount,
+        requestedWorkers: this.requestedWorkers,
       });
+      const workerCount = plan.actualWorkers;
 
-      const payload = partition.map((series) => ({
-        labels: [...series.labels.entries()],
-        timestamps: series.timestamps,
-        values: series.values,
-      }));
-      const transfer = [];
-      for (const series of payload) {
-        transfer.push(series.timestamps.buffer, series.values.buffer);
+      if (workerCount <= 0) {
+        this.state = {
+          phase: "fallback",
+          summary: "Inline engine selected for this runtime.",
+          coordinator: {
+            phase: "fallback",
+            detail: plan.reason,
+            stats: null,
+          },
+          plan,
+          workers: [],
+        };
+        this._emitState();
+        return;
       }
 
-      return new Promise((resolve, reject) => {
-        this.pendingLoads.set(idx, { resolve, reject });
-        worker.postMessage(
-          {
-            type: "load-partition",
-            workerId: idx,
-            series: payload,
-          },
-          transfer
-        );
+      const partitionIds = Array.from({ length: workerCount }, () => []);
+      for (let i = 0; i < seriesCount; i++) {
+        partitionIds[i % workerCount].push(i);
+      }
+
+      this.state = {
+        phase: "loading",
+        summary: `Provisioning ${workerCount} query workers in ${plan.topology} mode…`,
+        coordinator: {
+          phase: "loading",
+          detail: `Sharding ${seriesCount.toLocaleString()} series. ${plan.reason}`,
+          stats: null,
+        },
+        plan,
+        workers: partitionIds.map((ids, idx) => ({
+          id: idx,
+          name: `query-${String(idx + 1).padStart(2, "0")}`,
+          role: workerRoleForPlan(plan, idx),
+          phase: "loading",
+          detail: `Receiving ${ids.length.toLocaleString()} series`,
+          seriesCount: 0,
+          sampleCount: 0,
+          task: "Booting worker",
+          durationMs: 0,
+          scannedSeries: 0,
+          scannedSamples: 0,
+          resultSeries: 0,
+        })),
+      };
+      this._emitState();
+
+      const loadPromises = partitionIds.map((ids, idx) => {
+        const worker = new Worker(new URL("./query-worker.js", import.meta.url), {
+          type: "module",
+        });
+        const entry = { id: idx, worker };
+        this.workers.push(entry);
+
+        worker.addEventListener("message", (event) => this._handleMessage(event.data));
+        worker.addEventListener("error", (event) => {
+          console.error("query worker error", event);
+          const workerError = new Error(`Query worker ${idx + 1} failed`);
+          const pendingLoad = this.pendingLoads.get(idx);
+          if (pendingLoad) {
+            this.pendingLoads.delete(idx);
+            pendingLoad.reject(workerError);
+          }
+          for (const [queryId, pendingByWorker] of this.pendingQueries) {
+            const pending = pendingByWorker.get(idx);
+            if (!pending) continue;
+            pendingByWorker.delete(idx);
+            pending.reject(workerError);
+            if (pendingByWorker.size === 0) this.pendingQueries.delete(queryId);
+          }
+          this.state.phase = "fallback";
+          this.state.summary = `Worker ${idx + 1} failed; coordinator fallback required`;
+          this.state.coordinator = {
+            phase: "fallback",
+            detail: workerError.message,
+            stats: null,
+          };
+          this.state.workers = this.state.workers.map((stateWorker) =>
+            stateWorker.id === idx
+              ? {
+                  ...stateWorker,
+                  phase: "fallback",
+                  task: "Worker fault",
+                  detail: workerError.message,
+                }
+              : stateWorker
+          );
+          this._emitState();
+        });
+
+        const payload = buildWorkerPartitionPayload(store, ids);
+
+        return new Promise((resolve, reject) => {
+          this.pendingLoads.set(idx, { resolve, reject });
+          worker.postMessage(
+            {
+              type: "load-partition",
+              workerId: idx,
+              kind: payload.kind,
+              series: payload.series,
+            },
+            payload.transfer
+          );
+        });
       });
-    });
 
-    await Promise.all(loadPromises);
-
-    const totalSamples = this.state.workers.reduce((sum, worker) => sum + worker.sampleCount, 0);
-    this.state.phase = "ready";
-    this.state.summary = `${workerCount} query workers ready across ${totalSamples.toLocaleString()} raw samples`;
-    this.state.coordinator = {
-      phase: "ready",
-      detail: "Coordinator standing by",
-    };
-    this.state.workers = this.state.workers.map((worker) => ({
-      ...worker,
-      phase: "ready",
-      detail: `${worker.seriesCount.toLocaleString()} series resident`,
-      task: "Idle",
-    }));
-    this._emitState();
+      await Promise.all(loadPromises);
+      const totalSamples = this.state.workers.reduce((sum, worker) => sum + worker.sampleCount, 0);
+      this.state.phase = "ready";
+      this.state.summary = `${workerCount} query workers ready in ${plan.topology} mode across ${totalSamples.toLocaleString()} raw samples`;
+      this.state.coordinator = {
+        phase: "ready",
+        detail: plan.reason,
+        stats: null,
+      };
+      this.state.workers = this.state.workers.map((worker) => ({
+        ...worker,
+        phase: "ready",
+        detail: `${worker.seriesCount.toLocaleString()} series resident`,
+        task: "Idle",
+      }));
+      this._emitState();
+    })();
+    this.loadPromise = loadPromise;
+    await loadPromise;
   }
 
   async query(opts) {
+    if ((this.state.phase === "idle" || this.state.phase === "loading") && this.loadPromise) {
+      await this.loadPromise;
+    }
+
+    if (this.state.phase !== "ready" && this.state.phase !== "complete") {
+      throw new Error("Query worker pool is not ready");
+    }
+
     const queryId = ++this.nextQueryId;
     this.activeQueryId = queryId;
 
@@ -186,6 +299,7 @@ export class QueryWorkerPool {
     this.state.coordinator = {
       phase: "running",
       detail: `Fan-out started for query #${queryId}`,
+      stats: null,
     };
     this.state.workers = this.state.workers.map((worker) => ({
       ...worker,
@@ -220,6 +334,7 @@ export class QueryWorkerPool {
       this.state.coordinator = {
         phase: "complete",
         detail: `Ready to merge ${responses.length} partials`,
+        stats: null,
       };
       this._emitState();
     }
@@ -227,13 +342,25 @@ export class QueryWorkerPool {
     return responses;
   }
 
-  markMerged(queryId, detail) {
+  markMerged(queryId, detail, stats = null) {
     if (queryId !== this.activeQueryId) return;
     this.state.phase = "complete";
     this.state.summary = detail;
     this.state.coordinator = {
       phase: "complete",
       detail,
+      stats,
+    };
+    this._emitState();
+  }
+
+  markComplete(detail, stats = null) {
+    this.state.phase = "complete";
+    this.state.summary = detail;
+    this.state.coordinator = {
+      phase: "complete",
+      detail,
+      stats,
     };
     this._emitState();
   }
@@ -244,6 +371,7 @@ export class QueryWorkerPool {
     this.state.coordinator = {
       phase: "fallback",
       detail,
+      stats: null,
     };
     this.state.workers = this.state.workers.map((worker) => ({
       ...worker,

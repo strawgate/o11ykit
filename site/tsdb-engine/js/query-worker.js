@@ -1,65 +1,7 @@
 import { ScanEngine } from "./query.js";
-import { lowerBound, upperBound } from "./utils.js";
+import { createWorkerSnapshotStore } from "./query-worker-store.js";
 
-class PartitionStore {
-  constructor() {
-    this._series = [];
-    this._labels = [];
-    this._postings = new Map();
-    this._sampleCount = 0;
-  }
-
-  loadSeries(entries) {
-    this._series = [];
-    this._labels = [];
-    this._postings = new Map();
-    this._sampleCount = 0;
-
-    for (const entry of entries) {
-      const id = this._series.length;
-      const labels = new Map(entry.labels);
-      this._series.push({
-        timestamps: entry.timestamps,
-        values: entry.values,
-      });
-      this._labels.push(labels);
-      this._sampleCount += entry.timestamps.length;
-      for (const [key, value] of labels) {
-        const postingKey = `${key}\0${value}`;
-        if (!this._postings.has(postingKey)) this._postings.set(postingKey, []);
-        this._postings.get(postingKey).push(id);
-      }
-    }
-  }
-
-  get seriesCount() {
-    return this._series.length;
-  }
-
-  get sampleCount() {
-    return this._sampleCount;
-  }
-
-  matchLabel(label, value) {
-    return this._postings.get(`${label}\0${value}`) ?? [];
-  }
-
-  read(id, start, end) {
-    const series = this._series[id];
-    const lo = lowerBound(series.timestamps, start, 0, series.timestamps.length);
-    const hi = upperBound(series.timestamps, end, lo, series.timestamps.length);
-    return {
-      timestamps: series.timestamps.slice(lo, hi),
-      values: series.values.slice(lo, hi),
-    };
-  }
-
-  labels(id) {
-    return this._labels[id];
-  }
-}
-
-const store = new PartitionStore();
+let store = await createWorkerSnapshotStore("raw");
 const engine = new ScanEngine();
 
 function serializeSeries(series) {
@@ -83,18 +25,39 @@ function serializeResult(result) {
 
 function resultTransferables(result) {
   const transfer = [];
+  const seen = new Set();
   for (const series of result.series) {
-    transfer.push(series.timestamps.buffer, series.values.buffer);
+    if (!seen.has(series.timestamps.buffer)) {
+      seen.add(series.timestamps.buffer);
+      transfer.push(series.timestamps.buffer);
+    }
+    if (!seen.has(series.values.buffer)) {
+      seen.add(series.values.buffer);
+      transfer.push(series.values.buffer);
+    }
   }
   return transfer;
 }
 
-self.addEventListener("message", (event) => {
-  const message = event.data;
+function combineTransferables(...groups) {
+  const transfer = [];
+  const seen = new Set();
+  for (const group of groups) {
+    for (const buffer of group) {
+      if (seen.has(buffer)) continue;
+      seen.add(buffer);
+      transfer.push(buffer);
+    }
+  }
+  return transfer;
+}
+
+async function handleMessage(message) {
   if (!message || typeof message !== "object") return;
 
   switch (message.type) {
     case "load-partition": {
+      store = await createWorkerSnapshotStore(message.kind || "raw");
       store.loadSeries(message.series);
       self.postMessage({
         type: "load-ack",
@@ -110,21 +73,20 @@ self.addEventListener("message", (event) => {
       const opts = message.opts;
 
       if (opts.agg === "avg") {
-        const sum = engine.query(store, { ...opts, agg: "sum" });
-        const count = engine.query(store, { ...opts, agg: "count" });
+        const partials = engine.queryAveragePartials(store, opts);
         const payload = {
           type: "query-result",
           queryId: message.queryId,
           workerId: message.workerId,
           durationMs: performance.now() - startedAt,
           kind: "avg",
-          sum: serializeResult(sum),
-          count: serializeResult(count),
+          sum: serializeResult(partials.sum),
+          count: serializeResult(partials.count),
         };
-        const transfer = [
-          ...resultTransferables(payload.sum),
-          ...resultTransferables(payload.count),
-        ];
+        const transfer = combineTransferables(
+          resultTransferables(payload.sum),
+          resultTransferables(payload.count)
+        );
         self.postMessage(payload, transfer);
         return;
       }
@@ -142,4 +104,13 @@ self.addEventListener("message", (event) => {
       return;
     }
   }
+}
+
+self.addEventListener("message", (event) => {
+  const message = event.data;
+  void handleMessage(message).catch((error) => {
+    setTimeout(() => {
+      throw error;
+    });
+  });
 });
