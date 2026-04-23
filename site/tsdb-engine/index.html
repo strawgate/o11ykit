@@ -267,32 +267,50 @@
 
         <button type="button" id="btnQuery" class="cta cta-primary demo-btn">▶ Execute Query</button>
 
-        <!-- Pipeline visualization (shown after query runs) -->
-        <div class="query-pipeline" id="queryPipeline" hidden>
-          <div class="pipeline-stage" id="pipelineMatch">
-            <div class="pipeline-icon">🏷️</div>
-            <div class="pipeline-info">
-              <div class="pipeline-title">Label Matching</div>
-              <div class="pipeline-detail" id="pipelineMatchDetail">—</div>
+        <section class="query-execution-panel" id="queryExecutionPanel" hidden>
+          <div class="query-execution-head">
+            <div>
+              <p class="query-execution-kicker">Query Execution</p>
+              <h3>Coordinator + multi-worker plan</h3>
             </div>
-            <div class="pipeline-arrow">→</div>
+            <div class="query-execution-status" id="queryExecutionStatus">Waiting for dataset</div>
           </div>
-          <div class="pipeline-stage" id="pipelineChunks">
-            <div class="pipeline-icon">📦</div>
-            <div class="pipeline-info">
-              <div class="pipeline-title">Chunk Scan</div>
-              <div class="pipeline-detail" id="pipelineChunksDetail">—</div>
+          <details class="query-execution-details" id="queryExecutionDetails">
+            <summary class="query-execution-summary" id="queryExecutionSummary">
+              Load a dataset to provision query workers.
+            </summary>
+
+            <div class="query-execution-body">
+              <div class="query-pipeline" id="queryPipeline">
+                <div class="pipeline-stage" id="pipelineMatch">
+                  <div class="pipeline-icon">🏷️</div>
+                  <div class="pipeline-info">
+                    <div class="pipeline-title">Label Matching</div>
+                    <div class="pipeline-detail" id="pipelineMatchDetail">—</div>
+                  </div>
+                  <div class="pipeline-arrow">→</div>
+                </div>
+                <div class="pipeline-stage" id="pipelineChunks">
+                  <div class="pipeline-icon">📦</div>
+                  <div class="pipeline-info">
+                    <div class="pipeline-title">Chunk Scan</div>
+                    <div class="pipeline-detail" id="pipelineChunksDetail">—</div>
+                  </div>
+                  <div class="pipeline-arrow">→</div>
+                </div>
+                <div class="pipeline-stage" id="pipelineDecode">
+                  <div class="pipeline-icon">🔓</div>
+                  <div class="pipeline-info">
+                    <div class="pipeline-title">Decode &amp; Aggregate</div>
+                    <div class="pipeline-detail" id="pipelineDecodeDetail">—</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="fabric-grid" id="fabricGrid"></div>
             </div>
-            <div class="pipeline-arrow">→</div>
-          </div>
-          <div class="pipeline-stage" id="pipelineDecode">
-            <div class="pipeline-icon">🔓</div>
-            <div class="pipeline-info">
-              <div class="pipeline-title">Decode &amp; Aggregate</div>
-              <div class="pipeline-detail" id="pipelineDecodeDetail">—</div>
-            </div>
-          </div>
-        </div>
+          </details>
+        </section>
       </section>
 
       <!-- ─── Section 5: Results ────────────────────────────────── -->

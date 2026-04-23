@@ -22,6 +22,7 @@ import {
   formatDuration,
   formatNum,
 } from "./utils.js";
+import { QueryWorkerPool, supportsParallelQuery } from "./query-pool.js";
 import { loadWasm, wasmReady } from "./wasm.js";
 
 const CHUNK_SIZE = 640;
@@ -37,6 +38,9 @@ const availableLabels = new Map(); // label -> Set of values
 let _lastIngestTime = 0;
 let _storagePopulated = false;
 let _queryPopulated = false;
+let currentDataRange = null;
+let queryWorkerPool = null;
+let _queryRunSeq = 0;
 
 // ── Section visibility ────────────────────────────────────────────────
 
@@ -53,11 +57,18 @@ function hideSection(id) {
   if (el) el.hidden = true;
 }
 
-function onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs) {
+function onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs, seriesData) {
   currentStore = store;
   generatedMetrics = metrics;
   _storagePopulated = false;
   _queryPopulated = false;
+  currentDataRange =
+    seriesData && seriesData.length > 0
+      ? {
+          minT: seriesData[0].timestamps[0],
+          maxT: seriesData[0].timestamps[seriesData[0].timestamps.length - 1],
+        }
+      : null;
 
   // Reset matchers from previous dataset
   activeMatchers = [];
@@ -92,6 +103,265 @@ function onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs) {
   // Show fork in the road
   showSection("section-fork", true);
   autoSelectQueryStep(intervalMs, numPoints);
+  void _provisionQueryWorkers(seriesData);
+}
+
+async function _provisionQueryWorkers(seriesData) {
+  if (!seriesData?.length || typeof Worker === "undefined") {
+    _renderQueryFabricMonitor({
+      phase: "fallback",
+      summary: "Worker pool unavailable in this browser.",
+      coordinator: { phase: "fallback", detail: "Falling back to main-thread query engine" },
+      workers: [],
+    });
+    return;
+  }
+
+  if (!queryWorkerPool) {
+    queryWorkerPool = new QueryWorkerPool({
+      onStateChange: _renderQueryFabricMonitor,
+    });
+  }
+
+  try {
+    await queryWorkerPool.loadSeriesData(seriesData);
+  } catch (error) {
+    console.error("Failed to provision query workers", error);
+    queryWorkerPool.markFallback("Worker pool failed to initialize");
+  }
+}
+
+function _renderQueryFabricMonitor(state) {
+  const panelEl = document.getElementById("queryExecutionPanel");
+  const summaryEl = document.getElementById("queryExecutionSummary");
+  const statusEl = document.getElementById("queryExecutionStatus");
+  const detailsEl = document.getElementById("queryExecutionDetails");
+  const gridEl = document.getElementById("fabricGrid");
+  if (!panelEl || !summaryEl || !statusEl || !detailsEl || !gridEl) return;
+
+  panelEl.hidden = false;
+  summaryEl.textContent = _executionSummaryText(state);
+  statusEl.textContent = _executionStatusText(state);
+  if (state.phase === "running") detailsEl.open = true;
+
+  const cards = [];
+  cards.push(`
+    <article class="fabric-card fabric-card-coordinator phase-${escapeHtml(state.coordinator?.phase || "idle")}">
+      <div class="fabric-card-top">
+        <span class="fabric-role">Coordinator</span>
+        <span class="fabric-status">${escapeHtml(state.coordinator?.phase || "idle")}</span>
+      </div>
+      <div class="fabric-name">coordinator/01</div>
+      <div class="fabric-detail">${escapeHtml(state.coordinator?.detail || "Waiting for dataset")}</div>
+      <div class="fabric-metrics">
+        <span>${escapeHtml(state.phase || "idle")}</span>
+        <span>${state.workers?.length || 0} workers</span>
+      </div>
+    </article>
+  `);
+
+  for (const worker of state.workers || []) {
+    cards.push(`
+      <article class="fabric-card fabric-card-worker phase-${escapeHtml(worker.phase || "idle")} role-${escapeHtml(worker.role || "query-shard")}">
+        <div class="fabric-card-top">
+          <span class="fabric-role">${escapeHtml(worker.role || "query-shard")}</span>
+          <span class="fabric-status">${escapeHtml(worker.phase || "idle")}</span>
+        </div>
+        <div class="fabric-name">${escapeHtml(worker.name)}</div>
+        <div class="fabric-detail">${escapeHtml(worker.detail || "Idle")}</div>
+        <div class="fabric-metrics">
+          <span>${worker.seriesCount?.toLocaleString() || 0} series</span>
+          <span>${worker.sampleCount?.toLocaleString() || 0} samples</span>
+        </div>
+        <div class="fabric-task">${escapeHtml(worker.task || "Idle")}</div>
+        <div class="fabric-meter"><span style="width:${_workerMeterWidth(worker)}%"></span></div>
+        <div class="fabric-metrics">
+          <span>${worker.scannedSeries?.toLocaleString() || 0} scanned</span>
+          <span>${worker.scannedSamples?.toLocaleString() || 0} pts</span>
+          <span>${worker.durationMs ? `${worker.durationMs.toFixed(1)} ms` : "—"}</span>
+        </div>
+      </article>
+    `);
+  }
+
+  gridEl.innerHTML = cards.join("");
+}
+
+function _executionStatusText(state) {
+  switch (state.phase) {
+    case "loading":
+      return "Provisioning workers";
+    case "running":
+      return "Running now";
+    case "complete":
+      return "Latest query complete";
+    case "fallback":
+      return "Coordinator fallback";
+    case "ready":
+      return "Workers ready";
+    default:
+      return "Waiting for dataset";
+  }
+}
+
+function _executionSummaryText(state) {
+  if (state.phase === "loading") return state.summary || "Provisioning query workers…";
+  if (state.phase === "running") return state.summary || "Coordinator is fanning out query work.";
+  if (state.phase === "complete") return state.summary || "Latest query finished across the worker pool.";
+  if (state.phase === "fallback") return state.summary || "Query ran on the coordinator.";
+  if (state.phase === "ready") return state.summary || "Worker pool is warm and ready.";
+  return "Load a dataset to provision query workers.";
+}
+
+function _workerMeterWidth(worker) {
+  if (worker.phase === "running") return 72;
+  if (worker.phase === "loading") return 48;
+  if (worker.phase === "complete") return 100;
+  return 18;
+}
+
+function _labelsKey(labels) {
+  return [...labels.entries()]
+    .sort((a, b) => (a[0] === b[0] ? a[1].localeCompare(b[1]) : a[0].localeCompare(b[0])))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\0");
+}
+
+function _deserializeWorkerResult(result) {
+  return {
+    scannedSeries: result.scannedSeries,
+    scannedSamples: result.scannedSamples,
+    series: result.series.map((series) => ({
+      labels: new Map(series.labels),
+      timestamps: series.timestamps,
+      values: series.values,
+    })),
+  };
+}
+
+function _mergeRawWorkerResults(results) {
+  const series = [];
+  let scannedSeries = 0;
+  let scannedSamples = 0;
+  for (const result of results) {
+    scannedSeries += result.scannedSeries;
+    scannedSamples += result.scannedSamples;
+    series.push(...result.series);
+  }
+  series.sort((a, b) => _labelsKey(a.labels).localeCompare(_labelsKey(b.labels)));
+  return { series, scannedSeries, scannedSamples };
+}
+
+function _mergeReductionWorkerResults(results, agg) {
+  const groups = new Map();
+  let scannedSeries = 0;
+  let scannedSamples = 0;
+
+  for (const result of results) {
+    scannedSeries += result.scannedSeries;
+    scannedSamples += result.scannedSamples;
+    for (const series of result.series) {
+      const key = _labelsKey(series.labels);
+      let group = groups.get(key);
+      if (!group) {
+        group = { labels: series.labels, points: new Map() };
+        groups.set(key, group);
+      }
+      for (let i = 0; i < series.timestamps.length; i++) {
+        const timestamp = series.timestamps[i];
+        const value = series.values[i];
+        const pointKey = timestamp.toString();
+        if (!group.points.has(pointKey)) {
+          group.points.set(pointKey, { timestamp, value });
+          continue;
+        }
+        const existing = group.points.get(pointKey);
+        if (agg === "sum" || agg === "count") existing.value += value;
+        else if (agg === "min") existing.value = Math.min(existing.value, value);
+        else if (agg === "max") existing.value = Math.max(existing.value, value);
+      }
+    }
+  }
+
+  return {
+    scannedSeries,
+    scannedSamples,
+    series: [...groups.values()].map((group) => {
+      const points = [...group.points.values()].sort((a, b) =>
+        a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0
+      );
+      return {
+        labels: group.labels,
+        timestamps: BigInt64Array.from(points.map((point) => point.timestamp)),
+        values: Float64Array.from(points.map((point) => point.value)),
+      };
+    }),
+  };
+}
+
+function _mergeAvgWorkerResults(sumResults, countResults) {
+  const groups = new Map();
+  let scannedSeries = 0;
+  let scannedSamples = 0;
+
+  for (const result of sumResults) {
+    scannedSeries += result.scannedSeries;
+    scannedSamples += result.scannedSamples;
+    for (const series of result.series) {
+      const key = _labelsKey(series.labels);
+      let group = groups.get(key);
+      if (!group) {
+        group = { labels: series.labels, points: new Map() };
+        groups.set(key, group);
+      }
+      for (let i = 0; i < series.timestamps.length; i++) {
+        const timestamp = series.timestamps[i];
+        const pointKey = timestamp.toString();
+        if (!group.points.has(pointKey)) {
+          group.points.set(pointKey, { timestamp, sum: 0, count: 0 });
+        }
+        group.points.get(pointKey).sum += series.values[i];
+      }
+    }
+  }
+
+  for (const result of countResults) {
+    for (const series of result.series) {
+      const key = _labelsKey(series.labels);
+      let group = groups.get(key);
+      if (!group) {
+        group = { labels: series.labels, points: new Map() };
+        groups.set(key, group);
+      }
+      for (let i = 0; i < series.timestamps.length; i++) {
+        const timestamp = series.timestamps[i];
+        const pointKey = timestamp.toString();
+        if (!group.points.has(pointKey)) {
+          group.points.set(pointKey, { timestamp, sum: 0, count: 0 });
+        }
+        group.points.get(pointKey).count += series.values[i];
+      }
+    }
+  }
+
+  return {
+    scannedSeries,
+    scannedSamples,
+    series: [...groups.values()].map((group) => {
+      const points = [...group.points.values()].sort((a, b) =>
+        a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0
+      );
+      return {
+        labels: group.labels,
+        timestamps: BigInt64Array.from(points.map((point) => point.timestamp)),
+        values: Float64Array.from(points.map((point) => (point.count > 0 ? point.sum / point.count : 0))),
+      };
+    }),
+  };
+}
+
+function _canRunOnWorkers(opts) {
+  return queryWorkerPool?.state?.phase === "ready" && supportsParallelQuery(opts);
 }
 
 function _buildAvailableLabels(store) {
@@ -371,7 +641,14 @@ function loadScenario(scenario, clickedCard) {
         _lastIngestTime = performance.now() - t0;
         const metrics = [...new Set(scenario.metrics.map((m) => m.name))];
 
-        onDataLoaded(store, metrics, _lastIngestTime, scenario.numPoints, scenario.intervalMs);
+        onDataLoaded(
+          store,
+          metrics,
+          _lastIngestTime,
+          scenario.numPoints,
+          scenario.intervalMs,
+          seriesData
+        );
       } catch (err) {
         console.error("Failed to load scenario:", err);
         if (clickedCard) clickedCard.classList.remove("loading");
@@ -480,7 +757,7 @@ function generateCustomData(numSeries, numPoints, pattern, backendType, interval
   document.querySelectorAll(".scenario-card").forEach((c) => {
     c.classList.remove("active", "loading", "loaded");
   });
-  onDataLoaded(store, [...metricsUsed], ingestTime, numPoints, intervalMs);
+  onDataLoaded(store, [...metricsUsed], ingestTime, numPoints, intervalMs, seriesData);
   autoSelectQueryStep(intervalMs, numPoints);
 }
 
@@ -536,8 +813,9 @@ function updateQueryPreview() {
   el.innerHTML = expr;
 }
 
-function runQuery() {
+async function runQuery() {
   if (!currentStore) return;
+  const runSeq = ++_queryRunSeq;
 
   const metric = document.getElementById("queryMetric")?.value;
   const agg = document.getElementById("queryAgg")?.value || undefined;
@@ -557,20 +835,10 @@ function runQuery() {
   }
 
   if (ids.length === 0) return;
+  const minT = currentDataRange?.minT ?? 0n;
+  const maxT = currentDataRange?.maxT ?? 0n;
 
-  let minT = BigInt("9223372036854775807");
-  let maxT = -minT;
-  for (const id of ids) {
-    const data = currentStore.read(id, -minT, minT);
-    if (data.timestamps.length > 0) {
-      if (data.timestamps[0] < minT) minT = data.timestamps[0];
-      if (data.timestamps[data.timestamps.length - 1] > maxT)
-        maxT = data.timestamps[data.timestamps.length - 1];
-    }
-  }
-
-  const t0 = performance.now();
-  const result = currentEngine.query(currentStore, {
+  const queryOpts = {
     metric,
     start: minT,
     end: maxT,
@@ -579,8 +847,53 @@ function runQuery() {
     step,
     transform: transform || undefined,
     matchers: activeMatchers.length > 0 ? activeMatchers : undefined,
-  });
+  };
+
+  const t0 = performance.now();
+  let result;
+  let workerQueryId = null;
+
+  if (_canRunOnWorkers(queryOpts)) {
+    const workerResponses = await queryWorkerPool.query(queryOpts);
+    if (runSeq !== _queryRunSeq) return;
+    workerQueryId = workerResponses[0]?.queryId ?? null;
+
+    if (agg === "avg") {
+      const sumResults = workerResponses.map((response) => _deserializeWorkerResult(response.sum));
+      const countResults = workerResponses.map((response) =>
+        _deserializeWorkerResult(response.count)
+      );
+      result = _mergeAvgWorkerResults(sumResults, countResults);
+    } else if (agg === "sum" || agg === "min" || agg === "max" || agg === "count") {
+      result = _mergeReductionWorkerResults(
+        workerResponses.map((response) => _deserializeWorkerResult(response.result)),
+        agg
+      );
+    } else {
+      result = _mergeRawWorkerResults(
+        workerResponses.map((response) => _deserializeWorkerResult(response.result))
+      );
+    }
+  } else {
+    if (queryWorkerPool) {
+      queryWorkerPool.markFallback(
+        supportsParallelQuery(queryOpts)
+          ? "Worker pool provisioning; running on coordinator"
+          : `${agg || "raw"} queries stay on the coordinator`
+      );
+    }
+    result = currentEngine.query(currentStore, queryOpts);
+  }
+
   const queryTime = performance.now() - t0;
+  if (runSeq !== _queryRunSeq) return;
+
+  if (queryWorkerPool && workerQueryId != null) {
+    queryWorkerPool.markMerged(
+      workerQueryId,
+      `Merged ${result.series.length.toLocaleString()} series from ${queryWorkerPool.workers.length} workers in ${queryTime.toFixed(1)} ms`
+    );
+  }
 
   showSection("section-results");
   updateQueryPreview();
