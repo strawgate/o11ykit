@@ -1,7 +1,7 @@
 import { concatRanges } from "./binary-search.js";
 import { LabelIndex } from "./label-index.js";
-import { RowGroupStore } from "./row-group-store.js";
 import type { RowGroupStoreLaneWindow } from "./row-group-store.js";
+import { RowGroupStore } from "./row-group-store.js";
 import type {
   Labels,
   RangeDecodeCodec,
