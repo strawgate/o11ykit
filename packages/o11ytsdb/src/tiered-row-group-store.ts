@@ -138,9 +138,7 @@ export class TieredRowGroupStore implements StorageBackend {
 
     const groupId = this.groupResolver(labels);
     const hotId = this.hotStore.getOrCreateSeries(labels);
-    const coldId = this.coldStore.getOrCreateSeries(labels);
     this.hotIds[id] = hotId;
-    this.coldIds[id] = coldId;
     this.hotToGlobal[hotId] = id;
     this.groupIds[id] = groupId;
     return id;
@@ -179,11 +177,14 @@ export class TieredRowGroupStore implements StorageBackend {
   }
 
   scanParts(id: SeriesId, start: bigint, end: bigint, visit: (part: TimeRange) => void): void {
-    const coldId = this.requireColdId(id);
+    const coldId = this.coldIds[id];
     const hotId = this.requireHotId(id);
-    const coldParts = this.coldStore.readParts
-      ? this.coldStore.readParts(coldId, start, end)
-      : [this.coldStore.read(coldId, start, end)];
+    const coldParts =
+      coldId === undefined
+        ? []
+        : this.coldStore.readParts
+          ? this.coldStore.readParts(coldId, start, end)
+          : [this.coldStore.read(coldId, start, end)];
     const hotParts = this.hotStore.readParts
       ? this.hotStore.readParts(hotId, start, end)
       : [this.hotStore.read(hotId, start, end)];
@@ -237,8 +238,13 @@ export class TieredRowGroupStore implements StorageBackend {
     return requireDefined(this.hotIds[id], `unknown series id ${id}`);
   }
 
-  private requireColdId(id: SeriesId): SeriesId {
-    return requireDefined(this.coldIds[id], `unknown series id ${id}`);
+  private ensureColdId(id: SeriesId): SeriesId {
+    const existing = this.coldIds[id];
+    if (existing !== undefined) return existing;
+    const labels = requireDefined(this.labelIndex.labels(id), `missing labels for series id ${id}`);
+    const coldId = this.coldStore.getOrCreateSeries(labels);
+    this.coldIds[id] = coldId;
+    return coldId;
   }
 
   private requireGroupId(id: SeriesId): number {
@@ -275,7 +281,7 @@ export class TieredRowGroupStore implements StorageBackend {
         this.hotToGlobal[hotSeriesId],
         `missing global series mapping for hot series ${hotSeriesId}`
       );
-      const coldSeriesId = this.requireColdId(globalId);
+      const coldSeriesId = this.ensureColdId(globalId);
       const coldValues = new Float64Array(this.coldChunkSize);
       let valueOffset = 0;
 

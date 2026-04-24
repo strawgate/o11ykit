@@ -438,6 +438,29 @@ describe("RowGroupStore freeze behavior", () => {
 });
 
 describe("TieredRowGroupStore compaction", () => {
+  it("creates cold tier series lazily on first compaction", () => {
+    const store = new TieredRowGroupStore(tsValuesCodec, 4, 8, () => 0, 2);
+    const slowId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "slow" }));
+    const fastId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "fast" }));
+
+    const coldStore = Reflect.get(store, "coldStore");
+    expect(coldStore.seriesCount).toBe(0);
+
+    const timestamps = new BigInt64Array(8);
+    const slowValues = new Float64Array(8);
+    const fastValues = new Float64Array(8);
+    for (let i = 0; i < 8; i++) {
+      timestamps[i] = 1_000_000n + BigInt(i) * 15_000n;
+      slowValues[i] = i;
+      fastValues[i] = i * 10;
+    }
+
+    store.appendBatch(slowId, timestamps, slowValues);
+    store.appendBatch(fastId, timestamps, fastValues);
+
+    expect(coldStore.seriesCount).toBe(2);
+  });
+
   it("moves sealed hot row groups into the cold tier and preserves read order", () => {
     const store = new TieredRowGroupStore(tsValuesCodec, 4, 8, () => 0, 2);
     const slowId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "slow" }));

@@ -92,9 +92,11 @@ const EMPTY_TIMESTAMPS = new BigInt64Array(0);
 const EMPTY_VALUES = new Float64Array(0);
 const PACKED_STATS_STRIDE = 5;
 
-function createLane(chunkSize: number): GroupLane {
+function createLane(_chunkSize: number): GroupLane {
   return {
-    hotTimestamps: new BigInt64Array(chunkSize),
+    // Grow hot timestamp storage on first write. Many lanes, especially
+    // compaction-only cold lanes, never receive direct hot appends.
+    hotTimestamps: EMPTY_TIMESTAMPS,
     hotCount: 0,
     frozenTimestamps: [],
     members: [],
@@ -892,7 +894,9 @@ export class RowGroupStore implements StorageBackend {
     const segment: LaneSegment = {
       laneId,
       laneMemberIndex: lane.members.length,
-      hot: { values: new Float64Array(this.chunkSize), count: 0 },
+      // Allocate hot write space lazily. Many segments, especially cold-tier
+      // compaction targets, may never receive any direct hot appends.
+      hot: { values: new Float64Array(0), count: 0 },
     };
     const segmentIndex = series.segments.length;
     series.segments.push(segment);
@@ -975,7 +979,7 @@ export class RowGroupStore implements StorageBackend {
 
     const maxHotSamples = this.chunkSize * this.maxHotWindowsPerLane;
     if (state.segment.hot.values.length >= maxHotSamples) {
-      return this.rollSeriesToFreshLane(seriesId);
+      state = this.rollSeriesToFreshLane(seriesId);
     }
 
     const newSize = state.segment.hot.values.length + this.chunkSize;

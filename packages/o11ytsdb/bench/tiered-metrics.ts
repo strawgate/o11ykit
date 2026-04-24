@@ -175,6 +175,8 @@ export function measureTieredIngestCompare(codecs: WasmCodecs) {
   const ingestTieredMs = timeMs(() => {
     ingestDataset(tiered, tieredIds, dataset);
   });
+  const currentPostIngestMemoryBytes = current.memoryBytes();
+  const tieredPostIngestMemoryBytes = tiered.memoryBytes();
 
   const engine = new ScanEngine();
   const query = {
@@ -195,21 +197,37 @@ export function measureTieredIngestCompare(codecs: WasmCodecs) {
   const tieredQueryMs = timeMs(() => {
     engine.query(tiered, query);
   });
+  const currentPostQueryMemoryBytes = current.memoryBytes();
+  const tieredPostQueryMemoryBytes = tiered.memoryBytes();
 
   return {
     current640: {
       sampleCount: current.sampleCount,
-      memoryBytes: current.memoryBytes(),
+      memoryBytes: currentPostIngestMemoryBytes,
       bytesPerSample:
-        current.sampleCount > 0 ? Number((current.memoryBytes() / current.sampleCount).toFixed(4)) : 0,
+        current.sampleCount > 0
+          ? Number((currentPostIngestMemoryBytes / current.sampleCount).toFixed(4))
+          : 0,
+      postQueryMemoryBytes: currentPostQueryMemoryBytes,
+      postQueryBytesPerSample:
+        current.sampleCount > 0
+          ? Number((currentPostQueryMemoryBytes / current.sampleCount).toFixed(4))
+          : 0,
       ingestMs: Number(ingestCurrentMs.toFixed(3)),
       queryMs: Number(currentQueryMs.toFixed(3)),
     },
     tiered80to640: {
       sampleCount: tiered.sampleCount,
-      memoryBytes: tiered.memoryBytes(),
+      memoryBytes: tieredPostIngestMemoryBytes,
       bytesPerSample:
-        tiered.sampleCount > 0 ? Number((tiered.memoryBytes() / tiered.sampleCount).toFixed(4)) : 0,
+        tiered.sampleCount > 0
+          ? Number((tieredPostIngestMemoryBytes / tiered.sampleCount).toFixed(4))
+          : 0,
+      postQueryMemoryBytes: tieredPostQueryMemoryBytes,
+      postQueryBytesPerSample:
+        tiered.sampleCount > 0
+          ? Number((tieredPostQueryMemoryBytes / tiered.sampleCount).toFixed(4))
+          : 0,
       ingestMs: Number(ingestTieredMs.toFixed(3)),
       queryMs: Number(tieredQueryMs.toFixed(3)),
     },
