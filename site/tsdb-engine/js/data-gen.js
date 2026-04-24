@@ -14,6 +14,11 @@ export const INSTANCES = [
   "db-02",
 ];
 export const METRICS = ["http_requests_total", "cpu_usage_percent", "memory_usage_bytes"];
+const K8S_REPLICA_MULTIPLIER = 3;
+const K8S_REPLICAS_DEFAULT = 3;
+const K8S_REPLICAS_FRONTEND = 4;
+const K8S_REPLICAS_KUBE_SYSTEM = 2;
+const APPROX_BYTES_PER_SAMPLE = 16;
 
 function hashString(input) {
   let hash = 2166136261;
@@ -61,7 +66,12 @@ function buildKubernetesLabelGroups() {
   let podCounter = 0;
   for (const [namespace, workloads] of Object.entries(namespaces)) {
     for (const workload of workloads) {
-      const replicas = namespace === "kube-system" ? 2 : workload === "frontend" ? 4 : 3;
+      const replicas =
+        (namespace === "kube-system"
+          ? K8S_REPLICAS_KUBE_SYSTEM
+          : workload === "frontend"
+            ? K8S_REPLICAS_FRONTEND
+            : K8S_REPLICAS_DEFAULT) * K8S_REPLICA_MULTIPLIER;
       for (let replica = 0; replica < replicas; replica++) {
         const suffix = (10000 + podCounter * 97 + replica * 17).toString(36).slice(-5);
         const podName = `${workload}-${suffix}`;
@@ -295,7 +305,7 @@ export const SCENARIOS = [
       },
     ],
     buildLabelGroups: buildKubernetesLabelGroups,
-    numPoints: 6000,
+    numPoints: 20000,
     intervalMs: 15000,
   },
 ];
@@ -339,6 +349,10 @@ export function scenarioSeriesCount(scenario) {
 /** Compute total sample count for a scenario. */
 export function scenarioSampleCount(scenario) {
   return scenarioSeriesCount(scenario) * scenario.numPoints;
+}
+
+export function estimateScenarioArrayBytes(scenario) {
+  return scenarioSampleCount(scenario) * APPROX_BYTES_PER_SAMPLE;
 }
 
 export function generateScenarioData(scenario, onProgress) {

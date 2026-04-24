@@ -27,6 +27,14 @@ function _registerLabels(id, labels, labelsList, postings) {
   }
 }
 
+function shareBytes(bytes) {
+  if (typeof SharedArrayBuffer === "undefined") return bytes.slice(0);
+  const shared = new SharedArrayBuffer(bytes.byteLength);
+  const view = new Uint8Array(shared);
+  view.set(bytes);
+  return view;
+}
+
 // ── FlatStore ────────────────────────────────────────────────────────
 
 export class FlatStore {
@@ -177,7 +185,7 @@ export class ChunkedStore {
   _freeze(s) {
     const ts = s.hot.timestamps.slice(0, s.hot.count);
     const vals = s.hot.values.slice(0, s.hot.count);
-    const compressed = encodeChunk(ts, vals);
+    const compressed = shareBytes(encodeChunk(ts, vals));
     s.frozen.push({
       compressed,
       minT: ts[0],
@@ -391,7 +399,7 @@ export class ColumnStore {
         // Create shared timestamp chunk on demand (first series to need it wins)
         if (tsChunkIndex >= group.frozenTimestamps.length) {
           const ts = group.hotTimestamps.slice(chunkStart, chunkStart + this.chunkSize);
-          const compressedTs = wasmEncodeTimestamps(ts);
+          const compressedTs = shareBytes(wasmEncodeTimestamps(ts));
           group.frozenTimestamps.push({
             compressed: compressedTs,
             timestamps: null,
@@ -402,7 +410,7 @@ export class ColumnStore {
         }
 
         const vals = s.hot.values.subarray(chunkStart, chunkStart + this.chunkSize);
-        const compressedValues = wasmEncodeValuesALP(vals);
+        const compressedValues = shareBytes(wasmEncodeValuesALP(vals));
         s.frozen.push({ compressedValues, tsChunkIndex, count: this.chunkSize });
       }
       s._frozenInHot = availableChunks;

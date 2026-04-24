@@ -1,4 +1,5 @@
 import {
+  estimateScenarioArrayBytes,
   generateScenarioData,
   generateValue,
   INSTANCES,
@@ -9,6 +10,49 @@ import {
   scenarioSeriesCount,
 } from "./data-gen.js";
 import { escapeHtml } from "./utils.js";
+
+function formatApproxBytes(bytes) {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+const LARGE_SCENARIO_WARN_BYTES = 128 * 1024 * 1024;
+const LARGE_SCENARIO_CONFIRM_BYTES = 256 * 1024 * 1024;
+const LOW_MEMORY_DEVICE_GIB = 4;
+const LOW_MEMORY_CONFIRM_BYTES = 64 * 1024 * 1024;
+
+function shouldConfirmLargeScenarioLoad(approxBytes) {
+  const deviceMemoryGiB =
+    typeof navigator !== "undefined" && typeof navigator.deviceMemory === "number"
+      ? navigator.deviceMemory
+      : null;
+  if (approxBytes >= LARGE_SCENARIO_CONFIRM_BYTES) return true;
+  return (
+    deviceMemoryGiB != null &&
+    deviceMemoryGiB <= LOW_MEMORY_DEVICE_GIB &&
+    approxBytes >= LOW_MEMORY_CONFIRM_BYTES
+  );
+}
+
+function confirmLargeScenarioLoad(scenario, approxBytes) {
+  const confirmFn =
+    typeof window !== "undefined" && typeof window.confirm === "function" ? window.confirm : null;
+  if (!shouldConfirmLargeScenarioLoad(approxBytes) || !confirmFn) {
+    return true;
+  }
+  return confirmFn(
+    [
+      `Load ${scenario.name}?`,
+      "",
+      `This scenario will allocate roughly ${formatApproxBytes(approxBytes)} of raw typed-array data before storage overhead.`,
+      "On lower-memory browsers this can stall the page for a few seconds.",
+      "",
+      "Press OK to continue or Cancel to keep the current dataset.",
+    ].join("\n")
+  );
+}
 
 export function createDatasetController({
   createStore,
@@ -30,6 +74,7 @@ export function createDatasetController({
     const scenarioCards = SCENARIOS.map((s) => {
       const seriesCount = scenarioSeriesCount(s);
       const sampleCount = scenarioSampleCount(s);
+      const approxBytes = estimateScenarioArrayBytes(s);
       const interval =
         s.intervalMs >= 60000 ? `${s.intervalMs / 60000}min` : `${s.intervalMs / 1000}s`;
       return `
@@ -42,7 +87,7 @@ export function createDatasetController({
       <div class="sc-meta">
         ${s.metrics.map((m) => `<span class="sc-metric">${escapeHtml(m.name)}</span>`).join("")}
       </div>
-      <div class="sc-stats">${seriesCount.toLocaleString()} series · ${sampleCount.toLocaleString()} pts · ${interval} interval</div>
+      <div class="sc-stats">${seriesCount.toLocaleString()} series · ${sampleCount.toLocaleString()} pts · ${interval} interval · ~${formatApproxBytes(approxBytes)} raw arrays</div>
       <div class="sc-loading-indicator"><span class="sc-spinner"></span><span class="sc-loading-text">Generating data…</span></div>
     </button>`;
     }).join("");
@@ -81,6 +126,14 @@ export function createDatasetController({
   }
 
   function loadScenario(scenario, clickedCard) {
+    const approxBytes = estimateScenarioArrayBytes(scenario);
+    if (!confirmLargeScenarioLoad(scenario, approxBytes)) {
+      clearScenarioSelection();
+      const inline = document.getElementById("customGeneratorInline");
+      if (inline) inline.hidden = true;
+      return;
+    }
+
     clearScenarioSelection();
     const inline = document.getElementById("customGeneratorInline");
     if (inline) inline.hidden = true;
@@ -95,6 +148,11 @@ export function createDatasetController({
       setTimeout(() => {
         try {
           const backendType = "column";
+          if (approxBytes >= LARGE_SCENARIO_WARN_BYTES) {
+            console.warn(
+              `Generating scenario ${scenario.id} with roughly ${formatApproxBytes(approxBytes)} of typed-array payload before storage overhead.`
+            );
+          }
           const store = createStore(backendType, chunkSize);
           const t0 = performance.now();
           const seriesData = generateScenarioData(scenario);
