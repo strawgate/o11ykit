@@ -391,7 +391,7 @@ export class ColumnStore implements StorageBackend {
         if (tsChunk.minT >= start && tsChunk.maxT <= end) {
           const rangeCodec = this.rangeCodec;
           const compressedTimestamps = tsChunk.compressed;
-          if (!rangeCodec || !compressedTimestamps) {
+          if (!compressedTimestamps) {
             throw new RangeError("missing range codec data for full chunk decode");
           }
           visit({

@@ -1,7 +1,5 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
 import { initWasmCodecs, RowGroupStore } from "../dist/index.js";
+import { loadBenchWasmCodecs } from "./common.js";
 
 const NUM_SERIES = 32;
 const POINTS_PER_SERIES = 262_144;
@@ -78,8 +76,7 @@ function makeSeriesData(seriesIndex: number): {
 
 async function main() {
   const chunkSize = Number.parseInt(process.argv[2] ?? "256", 10);
-  const wasm = new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")));
-  const codecs = await initWasmCodecs(wasm);
+  const codecs = await loadBenchWasmCodecs();
   const store = new RowGroupStore(
     codecs.valuesCodec,
     chunkSize,

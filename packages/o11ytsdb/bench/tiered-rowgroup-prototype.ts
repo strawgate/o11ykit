@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
 import type {
   ChunkStats,
   Labels,
@@ -8,6 +5,7 @@ import type {
   ValuesCodec,
 } from "../dist/index.js";
 import { computeStats, initWasmCodecs, RowGroupStore } from "../dist/index.js";
+import { loadBenchWasmModule } from "./common.js";
 
 const HOT_SIZE = 80;
 const COLD_SIZE = 640;
@@ -216,8 +214,14 @@ class TieredRowGroupPrototype {
       if (!ts) {
         throw new RangeError("missing hot block timestamps");
       }
+      if (ts.length !== HOT_SIZE) {
+        throw new RangeError(`expected ${HOT_SIZE} hot timestamps, got ${ts.length}`);
+      }
       coldTimestamps.set(ts, tsOffset);
       tsOffset += ts.length;
+    }
+    if (tsOffset !== COLD_SIZE) {
+      throw new RangeError(`expected ${COLD_SIZE} compacted timestamps, got ${tsOffset}`);
     }
 
     for (let s = 0; s < this.seriesIds.length; s++) {
@@ -228,8 +232,14 @@ class TieredRowGroupPrototype {
         const size = requireDefined(block.sizes[s], `missing hot size for series ${s}`);
         const blob = block.valueBuffer.subarray(start, start + size);
         const decoded = this.valuesCodec.decodeValues(blob);
+        if (decoded.length !== HOT_SIZE) {
+          throw new RangeError(`expected ${HOT_SIZE} hot values, got ${decoded.length}`);
+        }
         coldValues.set(decoded, valueOffset);
         valueOffset += decoded.length;
+      }
+      if (valueOffset !== COLD_SIZE) {
+        throw new RangeError(`expected ${COLD_SIZE} cold values, got ${valueOffset}`);
       }
       this.coldStore.appendBatch(
         requireDefined(this.seriesIds[s], `missing cold series id ${s}`),
@@ -241,8 +251,7 @@ class TieredRowGroupPrototype {
 }
 
 async function main() {
-  const wasm = new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")));
-  const codecs = await initWasmCodecs(wasm);
+  const codecs = await initWasmCodecs(loadBenchWasmModule());
   const labels = Array.from({ length: NUM_SERIES }, (_, s) => makeLabels(s));
   const data = Array.from({ length: NUM_SERIES }, (_, s) => makeSeriesData(s));
   const store = new TieredRowGroupPrototype(codecs.valuesCodec, codecs.tsCodec, labels);

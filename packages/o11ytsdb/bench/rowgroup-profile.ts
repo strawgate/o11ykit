@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { Session } from "node:inspector";
 import path from "node:path";
@@ -12,6 +11,7 @@ import {
   type QueryOpts,
   type ValuesCodec,
 } from "../dist/index.js";
+import { loadBenchWasmModule, summarizeTimings } from "./common.js";
 
 const NUM_SERIES = 32;
 const CHUNK_SIZE = 256;
@@ -111,17 +111,6 @@ function fingerprintResult(result: {
   return out;
 }
 
-function summarize(samples: number[]) {
-  const sorted = [...samples].sort((a, b) => a - b);
-  return {
-    minMs: sorted[0] ?? 0,
-    medianMs: sorted[Math.floor(sorted.length / 2)] ?? 0,
-    avgMs: samples.reduce((sum, value) => sum + value, 0) / samples.length,
-    maxMs: sorted[sorted.length - 1] ?? 0,
-    samples,
-  };
-}
-
 function memorySnapshot() {
   const usage = process.memoryUsage();
   return {
@@ -156,9 +145,7 @@ async function main() {
   await mkdir(outDir, { recursive: true });
 
   const codecs = USE_WASM_ALP
-      ? await initWasmCodecs(
-        new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")))
-      )
+      ? await initWasmCodecs(loadBenchWasmModule())
     : null;
   const baseValuesCodec = codecs?.valuesCodec ?? identityValuesCodec;
   const valuesCodec: ValuesCodec = {
@@ -243,7 +230,7 @@ async function main() {
       start: queryOpts.start.toString(),
       end: queryOpts.end.toString(),
     },
-    timing: summarize(samples),
+    timing: summarizeTimings(samples),
     memory: {
       before: beforeMemory,
       after: afterMemory,

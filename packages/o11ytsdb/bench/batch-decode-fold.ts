@@ -1,9 +1,7 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import type { WasmCodecs } from "../dist/index.js";
-import { initWasmCodecs } from "../dist/index.js";
+import { loadBenchWasmCodecs, summarizeTimings } from "./common.js";
 
 const NUM_SERIES = 32;
 const CHUNK_SIZE = 256;
@@ -113,10 +111,23 @@ function runBatchFold(
                 ? codecs.valuesCodec.decodeValuesView(blobs[0] ?? new Uint8Array(0))
                 : codecs.valuesCodec.decodeValues(blobs[0] ?? new Uint8Array(0)),
             ]
-          : mode === "view" && codecs.valuesCodec.decodeBatchValuesView
-            ? codecs.valuesCodec.decodeBatchValuesView(blobs, CHUNK_SIZE)
-            : (codecs.valuesCodec.decodeBatchValues?.(blobs, CHUNK_SIZE) ??
-              blobs.map((b) => codecs.valuesCodec.decodeValues(b)));
+          : mode === "view"
+            ? (() => {
+                if (!codecs.valuesCodec.decodeBatchValuesView) {
+                  throw new Error(
+                    `decodeBatchValuesView is required for batchSize=${batchSize} mode=${mode}`
+                  );
+                }
+                return codecs.valuesCodec.decodeBatchValuesView(blobs, CHUNK_SIZE);
+              })()
+            : (() => {
+                if (!codecs.valuesCodec.decodeBatchValues) {
+                  throw new Error(
+                    `decodeBatchValues is required for batchSize=${batchSize} mode=${mode}`
+                  );
+                }
+                return codecs.valuesCodec.decodeBatchValues(blobs, CHUNK_SIZE);
+              })();
       for (let i = 0; i < decoded.length; i++) {
         const vs = decoded[i] ?? new Float64Array(0);
         const idx = chunkIndex + i;
@@ -146,23 +157,10 @@ function runBatchFold(
   return { checksum, bucketCount };
 }
 
-function summarize(samples: number[]) {
-  const sorted = [...samples].sort((a, b) => a - b);
-  return {
-    minMs: sorted[0] ?? 0,
-    medianMs: sorted[Math.floor(sorted.length / 2)] ?? 0,
-    avgMs: samples.reduce((sum, value) => sum + value, 0) / samples.length,
-    maxMs: sorted[sorted.length - 1] ?? 0,
-    samples,
-  };
-}
-
 async function main() {
   const batchSizes = [1, 4, 8, 16, 32, 64, 128];
   const modes: Array<"copy" | "view"> = ["copy", "view"];
-  const codecs = await initWasmCodecs(
-    new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")))
-  );
+  const codecs = await loadBenchWasmCodecs();
   const dataset = encodeDataset(codecs);
   const baseline = runBatchFold(dataset, codecs, 1, "copy");
   const results: BenchResult[] = [];
@@ -183,7 +181,7 @@ async function main() {
           throw new Error(`checksum mismatch for mode=${mode} batchSize=${batchSize}`);
         }
       }
-      const timing = summarize(samples);
+      const timing = summarizeTimings(samples);
       results.push({
         mode,
         batchSize,

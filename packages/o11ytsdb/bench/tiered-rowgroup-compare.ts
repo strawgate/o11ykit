@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
 import {
   initWasmCodecs,
   RowGroupStore,
@@ -8,6 +5,7 @@ import {
   TieredRowGroupStore,
   type Labels,
 } from "../dist/index.js";
+import { loadBenchWasmCodecs } from "./common.js";
 
 const NUM_SERIES = 32;
 const POINTS_PER_SERIES = 31_250; // 1,000,000 total
@@ -56,8 +54,7 @@ function ingestDataset(
 }
 
 async function main() {
-  const wasm = new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")));
-  const codecs = await initWasmCodecs(wasm);
+  const codecs = await loadBenchWasmCodecs();
   const dataset = buildDataset();
   const labels = Array.from({ length: NUM_SERIES }, (_, s) => makeLabels(s));
   const makeCurrent = () =>

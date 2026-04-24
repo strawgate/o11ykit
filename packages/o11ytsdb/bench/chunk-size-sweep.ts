@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import { initWasmCodecs, RowGroupStore, ScanEngine } from "../dist/index.js";
+import { loadBenchWasmCodecs, medianMs } from "./common.js";
 
 const NUM_SERIES = 32;
 const POINTS_PER_SERIES = 262_144;
@@ -31,18 +30,8 @@ function makeSeriesData(seriesIndex: number): {
   return { timestamps, values };
 }
 
-function median(samples: number[]): number {
-  const sorted = [...samples].sort((a, b) => a - b);
-  if (sorted.length === 0) return 0;
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
-    : (sorted[mid] ?? 0);
-}
-
 async function main() {
-  const wasm = new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")));
-  const codecs = await initWasmCodecs(wasm);
+  const codecs = await loadBenchWasmCodecs();
   const engine = new ScanEngine();
   const iterations = Number.parseInt(process.argv[2] ?? "6", 10);
   if (!Number.isInteger(iterations) || iterations <= 0) {
@@ -95,7 +84,7 @@ async function main() {
         engine.query(store, opts);
         timings.push(performance.now() - t0);
       }
-      row[`step${stepSamples}`] = Number(median(timings).toFixed(3));
+      row[`step${stepSamples}`] = Number(medianMs(timings).toFixed(3));
     }
 
     console.log(JSON.stringify(row));
