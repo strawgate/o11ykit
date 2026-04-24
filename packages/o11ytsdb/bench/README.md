@@ -18,6 +18,8 @@ These are the maintained scripts we expect to keep healthy through package scrip
   Reports row-group memory composition for one chunk size.
 - `npm run bench:rowgroup-profile -- <queryName> [outDir] [iterations]`
   Captures CPU/heap profiles for one row-group query shape.
+- `npm run bench:tiered-store-matrix -- [queryIterations] [compactionIterations] [memoryBatchSize]`
+  Runs the maintained one-shot comparison of current single-tier `640` versus tiered `80 -> 640` across ingest, memory curve, query matrix, and compaction cost.
 - `npm run bench:tiered-rowgroup`
   Compares the current single-tier row-group store against the tiered hot/cold store.
 - `npm run bench:tiered-query-matrix -- [iterations]`
@@ -42,7 +44,7 @@ The maintained surface is intentionally split into a few classes:
 - `Component`
   Store-level costs such as `bench:compaction` and `bench:memory-curve`.
 - `Scenario`
-  Design-steering comparisons such as `bench:chunk-size-sweep`, `bench:tiered-rowgroup`, and `bench:tiered-query-matrix`.
+  Design-steering comparisons such as `bench:chunk-size-sweep`, `bench:tiered-store-matrix`, `bench:tiered-rowgroup`, and `bench:tiered-query-matrix`.
 - `Profiling`
   Deep CPU/heap capture via `bench:rowgroup-profile`.
 

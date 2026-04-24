@@ -258,6 +258,49 @@ Any implementation must ship numbers for:
 
 3. final bytes/sample at steady state
 
+## Current Measured Status
+
+The maintained one-shot comparison now lives in:
+
+- `npm run bench:tiered-store-matrix -- [queryIterations] [compactionIterations] [memoryBatchSize]`
+
+On the current implementation (`80 -> 640`) this benchmark is not yet showing
+the win we want against single-tier `640`.
+
+Representative run (`queryIterations=2`, `compactionIterations=2`,
+`memoryBatchSize=64`):
+
+| metric | current `640` | tiered `80 -> 640` |
+|---|---:|---:|
+| steady-state bytes/sample | `1.4234` | `1.4841` |
+| ingest time | `48.154 ms` | `1084.215 ms` |
+| full-range step-sum query | `16.063 ms` | `16.882 ms` |
+| cold-only step-sum | `13.209 ms` | `6.351 ms` |
+| boundary/mixed step-sum | `0.098 ms` | `0.325 ms` |
+| hot-only step-sum | `0.456 ms` | `0.252 ms` |
+
+Memory-over-time is also currently worse for tiered storage at every measured
+checkpoint in the maintained memory curve.
+
+## Current Recommendation
+
+Keep `TieredRowGroupStore` experimental for now.
+
+The design is still interesting, but the current synchronous hot-to-cold
+compaction path is too expensive on ingest, and the extra hot+cold metadata is
+not yet buying a net memory win. We should not make `80 -> 640` the default
+storage path until the maintained benchmark matrix shows:
+
+- ingest close enough to single-tier `640`
+- equal or better bytes/sample over ingest progression
+- a clear mixed-query benefit, not just a cold-only win
+
+That means the next engineering work should focus on:
+
+1. reducing compaction cost on the ingest path
+2. reducing hot+cold read/merge overhead for mixed queries
+3. only then reconsidering whether `80 -> 640` should become configurable or default
+
 4. query latency
    - recent-window
    - mixed hot+cold window

@@ -56,6 +56,7 @@
     "bench:memory-curve": "npm run bench:prepare && node dist-bench/memory-curve.js",
     "bench:rowgroup-memory-audit": "npm run bench:prepare && node dist-bench/rowgroup-memory-audit.js",
     "bench:rowgroup-profile": "npm run bench:prepare && node --expose-gc dist-bench/rowgroup-profile.js",
+    "bench:tiered-store-matrix": "npm run bench:prepare && node dist-bench/tiered-store-matrix.js",
     "bench:tiered-rowgroup": "npm run bench:prepare && node dist-bench/tiered-rowgroup-compare.js",
     "bench:tiered-query-matrix": "npm run bench:prepare && node dist-bench/tiered-query-matrix.js",
     "bench:compare": "npm run bench -- --compare",
