@@ -48,7 +48,17 @@ export type SeriesData = {
 
 type TieredInternals = {
   hotStore: RowGroupStore;
-  coldStore: RowGroupStore;
+  promotedStore: {
+    sampleCount: number;
+    memoryBytesExcludingLabels(): number;
+    layoutSummary?(): {
+      windowCount: number;
+      partCount: number;
+      timestampChunkCount: number;
+      avgMembersPerWindow: number;
+    };
+  };
+  compactedStore: RowGroupStore;
 };
 
 type RowGroupLayoutSummary = {
@@ -56,6 +66,13 @@ type RowGroupLayoutSummary = {
   rowGroupCount: number;
   timestampChunkCount: number;
   avgMembersPerRowGroup: number;
+};
+
+type PromotedPartLayoutSummary = {
+  windowCount: number;
+  partCount: number;
+  timestampChunkCount: number;
+  avgMembersPerWindow: number;
 };
 
 export function makeLabels(seriesIndex: number): Labels {
@@ -170,11 +187,14 @@ export function appendHotRound<T extends RowGroupStore | TieredRowGroupStore>(
 
 export function tieredStores(store: TieredRowGroupStore): TieredInternals {
   const hotStore = Reflect.get(store, "hotStore") as RowGroupStore | undefined;
-  const coldStore = Reflect.get(store, "coldStore") as RowGroupStore | undefined;
-  if (!hotStore || !coldStore) {
+  const promotedStore = Reflect.get(store, "promotedStore") as
+    | TieredInternals["promotedStore"]
+    | undefined;
+  const compactedStore = Reflect.get(store, "compactedStore") as RowGroupStore | undefined;
+  if (!hotStore || !promotedStore || !compactedStore) {
     throw new Error("failed to access tiered store internals");
   }
-  return { hotStore, coldStore };
+  return { hotStore, promotedStore, compactedStore };
 }
 
 export function summarizeRowGroupLayout(store: RowGroupStore): RowGroupLayoutSummary {
@@ -203,5 +223,21 @@ export function summarizeRowGroupLayout(store: RowGroupStore): RowGroupLayoutSum
     timestampChunkCount,
     avgMembersPerRowGroup:
       rowGroupCount > 0 ? Number((memberTotal / rowGroupCount).toFixed(2)) : 0,
+  };
+}
+
+export function summarizeColdLayout(
+  tiered: Pick<TieredInternals, "promotedStore" | "compactedStore">
+): {
+  promoted: PromotedPartLayoutSummary;
+  compacted: RowGroupLayoutSummary;
+} {
+  const promoted =
+    typeof tiered.promotedStore.layoutSummary === "function"
+      ? tiered.promotedStore.layoutSummary()
+      : { windowCount: 0, partCount: 0, timestampChunkCount: 0, avgMembersPerWindow: 0 };
+  return {
+    promoted,
+    compacted: summarizeRowGroupLayout(tiered.compactedStore),
   };
 }

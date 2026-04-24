@@ -134,6 +134,7 @@ export function measureTieredQueryMatrix(codecs: WasmCodecs, iterations = DEFAUL
   const tieredIds = createSeriesIds(tiered, labels);
   ingestDataset(current, currentIds, dataset);
   ingestDataset(tiered, tieredIds, dataset);
+  tiered.drainCompaction();
 
   const engine = new ScanEngine();
   const workloads = tieredQueryWorkloads();
@@ -174,6 +175,10 @@ export function measureTieredIngestCompare(codecs: WasmCodecs) {
   });
   const ingestTieredMs = timeMs(() => {
     ingestDataset(tiered, tieredIds, dataset);
+  });
+  const tieredPostAppendMemoryBytes = tiered.memoryBytes();
+  const tieredBackgroundCompactionMs = timeMs(() => {
+    tiered.drainCompaction();
   });
   const currentPostIngestMemoryBytes = current.memoryBytes();
   const tieredPostIngestMemoryBytes = tiered.memoryBytes();
@@ -229,6 +234,13 @@ export function measureTieredIngestCompare(codecs: WasmCodecs) {
           ? Number((tieredPostQueryMemoryBytes / tiered.sampleCount).toFixed(4))
           : 0,
       ingestMs: Number(ingestTieredMs.toFixed(3)),
+      postAppendMemoryBytes: tieredPostAppendMemoryBytes,
+      postAppendBytesPerSample:
+        tiered.sampleCount > 0
+          ? Number((tieredPostAppendMemoryBytes / tiered.sampleCount).toFixed(4))
+          : 0,
+      backgroundCompactionMs: Number(tieredBackgroundCompactionMs.toFixed(3)),
+      endToEndIngestMs: Number((ingestTieredMs + tieredBackgroundCompactionMs).toFixed(3)),
       queryMs: Number(tieredQueryMs.toFixed(3)),
     },
   };
@@ -259,6 +271,7 @@ export function measureTieredCompaction(codecs: WasmCodecs, iterations = DEFAULT
       appendHotRound(tiered, ids, blockIndex);
     }
     appendHotRound(tiered, ids, PRIME_BLOCKS);
+    tiered.drainCompaction();
   });
 
   const tiered = createTieredStore(codecs);
@@ -268,9 +281,12 @@ export function measureTieredCompaction(codecs: WasmCodecs, iterations = DEFAULT
   }
   const before = tieredStores(tiered);
   const beforeHotSamples = before.hotStore.sampleCount;
-  const beforeColdSamples = before.coldStore.sampleCount;
+  const beforeColdSamples = before.promotedStore.sampleCount + before.compactedStore.sampleCount;
   const beforeMemoryBytes = tiered.memoryBytes();
   appendHotRound(tiered, ids, PRIME_BLOCKS);
+  const drainMs = timeMs(() => {
+    tiered.drainCompaction();
+  });
   const after = tieredStores(tiered);
 
   return {
@@ -280,7 +296,7 @@ export function measureTieredCompaction(codecs: WasmCodecs, iterations = DEFAULT
       hotChunkSize: HOT_SIZE,
       coldChunkSize: COLD_SIZE,
       primeBlocks: PRIME_BLOCKS,
-      compactedSamplesPerSeries: COLD_SIZE,
+      compactedSamplesPerSeries: HOT_SIZE,
     },
     timings: {
       tieredSteadyRound: summarizeTimings(tieredSteadySamples),
@@ -295,8 +311,9 @@ export function measureTieredCompaction(codecs: WasmCodecs, iterations = DEFAULT
       },
       after: {
         hotSamples: after.hotStore.sampleCount,
-        coldSamples: after.coldStore.sampleCount,
+        coldSamples: after.promotedStore.sampleCount + after.compactedStore.sampleCount,
         memoryBytes: tiered.memoryBytes(),
+        drainMs: Number(drainMs.toFixed(3)),
       },
     },
   };
@@ -331,6 +348,7 @@ export function measureTieredMemoryCurve(codecs: WasmCodecs, batchSize = BATCH) 
 
     const samples = end * NUM_SERIES;
     while (nextCheckpoint < checkpoints.length && samples >= checkpoints[nextCheckpoint]!) {
+      tiered.drainCompaction();
       const tieredInternals = tieredStores(tiered);
       rows.push({
         samples,
@@ -342,7 +360,9 @@ export function measureTieredMemoryCurve(codecs: WasmCodecs, batchSize = BATCH) 
           memoryBytes: tiered.memoryBytes(),
           bytesPerSample: Number((tiered.memoryBytes() / samples).toFixed(4)),
           hotBytes: tieredInternals.hotStore.memoryBytesExcludingLabels(),
-          coldBytes: tieredInternals.coldStore.memoryBytesExcludingLabels(),
+          coldBytes:
+            tieredInternals.promotedStore.memoryBytesExcludingLabels() +
+            tieredInternals.compactedStore.memoryBytesExcludingLabels(),
         },
       });
       nextCheckpoint++;

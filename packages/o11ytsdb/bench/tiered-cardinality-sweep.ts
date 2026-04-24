@@ -12,6 +12,7 @@ import {
   createSeriesIds,
   createTieredStore,
   ingestDataset,
+  summarizeColdLayout,
   summarizeRowGroupLayout,
   tieredStores,
 } from "./tiered-fixture.js";
@@ -50,8 +51,12 @@ type SweepRow =
         memoryBytes: number;
         bytesPerSample: number;
         hotBytes: number;
+        promotedBytes: number;
+        compactedBytes: number;
         coldBytes: number;
         ingestMs: number;
+        backgroundCompactionMs: number;
+        endToEndIngestMs: number;
         queryMs: number;
         hotReadMs: number;
         hotLayout: {
@@ -61,10 +66,18 @@ type SweepRow =
           avgMembersPerRowGroup: number;
         };
         coldLayout: {
-          laneCount: number;
-          rowGroupCount: number;
-          timestampChunkCount: number;
-          avgMembersPerRowGroup: number;
+          promoted: {
+            windowCount: number;
+            partCount: number;
+            timestampChunkCount: number;
+            avgMembersPerWindow: number;
+          };
+          compacted: {
+            laneCount: number;
+            rowGroupCount: number;
+            timestampChunkCount: number;
+            avgMembersPerRowGroup: number;
+          };
         };
       };
     }
@@ -153,6 +166,9 @@ function measureScenario(codecs: WasmCodecs, config: TieredBenchConfig): SweepRo
   const ingestTieredMs = timeMs(() => {
     ingestDataset(tiered, tieredIds, dataset, config.batchSize);
   });
+  const tieredBackgroundCompactionMs = timeMs(() => {
+    tiered.drainCompaction();
+  });
 
   const { currentQueryMs, tieredQueryMs, currentHotReadMs, tieredHotReadMs } = runFullRangeQueryMs(
     config,
@@ -163,7 +179,9 @@ function measureScenario(codecs: WasmCodecs, config: TieredBenchConfig): SweepRo
   const tieredInternals = tieredStores(tiered);
   const currentLayout = summarizeRowGroupLayout(current);
   const tieredHotLayout = summarizeRowGroupLayout(tieredInternals.hotStore);
-  const tieredColdLayout = summarizeRowGroupLayout(tieredInternals.coldStore);
+  const tieredColdLayout = summarizeColdLayout(tieredInternals);
+  const promotedBytes = tieredInternals.promotedStore.memoryBytesExcludingLabels();
+  const compactedBytes = tieredInternals.compactedStore.memoryBytesExcludingLabels();
 
   return {
     name,
@@ -183,8 +201,12 @@ function measureScenario(codecs: WasmCodecs, config: TieredBenchConfig): SweepRo
       memoryBytes: tiered.memoryBytes(),
       bytesPerSample: Number((tiered.memoryBytes() / totalSamples).toFixed(4)),
       hotBytes: tieredInternals.hotStore.memoryBytesExcludingLabels(),
-      coldBytes: tieredInternals.coldStore.memoryBytesExcludingLabels(),
+      promotedBytes,
+      compactedBytes,
+      coldBytes: promotedBytes + compactedBytes,
       ingestMs: Number(ingestTieredMs.toFixed(3)),
+      backgroundCompactionMs: Number(tieredBackgroundCompactionMs.toFixed(3)),
+      endToEndIngestMs: Number((ingestTieredMs + tieredBackgroundCompactionMs).toFixed(3)),
       queryMs: Number(tieredQueryMs.toFixed(3)),
       hotReadMs: Number(tieredHotReadMs.toFixed(3)),
       hotLayout: tieredHotLayout,
