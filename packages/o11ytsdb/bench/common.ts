@@ -43,3 +43,17 @@ export function summarizeTimings(samples: number[]): TimingSummary {
     samples,
   };
 }
+
+export function timeMs(fn: () => void): number {
+  const start = performance.now();
+  fn();
+  return performance.now() - start;
+}
+
+export function collectTimingSamples(iterations: number, fn: () => void): number[] {
+  const samples: number[] = [];
+  for (let i = 0; i < iterations; i++) {
+    samples.push(timeMs(fn));
+  }
+  return samples;
+}

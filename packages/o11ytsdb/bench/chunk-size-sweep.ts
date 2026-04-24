@@ -1,6 +1,6 @@
 import { performance } from "node:perf_hooks";
 
-import { initWasmCodecs, RowGroupStore, ScanEngine } from "../dist/index.js";
+import { RowGroupStore, ScanEngine } from "../dist/index.js";
 import { loadBenchWasmCodecs, medianMs } from "./common.js";
 
 const NUM_SERIES = 32;

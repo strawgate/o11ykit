@@ -1,11 +1,10 @@
 import {
-  initWasmCodecs,
   RowGroupStore,
   ScanEngine,
   TieredRowGroupStore,
   type Labels,
 } from "../dist/index.js";
-import { loadBenchWasmCodecs } from "./common.js";
+import { loadBenchWasmCodecs, timeMs } from "./common.js";
 
 const NUM_SERIES = 32;
 const POINTS_PER_SERIES = 31_250; // 1,000,000 total
@@ -31,12 +30,6 @@ function buildDataset(): Array<{ timestamps: BigInt64Array; values: Float64Array
     }
     return { timestamps, values };
   });
-}
-
-function timeMs(fn: () => void): number {
-  const start = performance.now();
-  fn();
-  return performance.now() - start;
 }
 
 function ingestDataset(

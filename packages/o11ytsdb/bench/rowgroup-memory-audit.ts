@@ -1,4 +1,4 @@
-import { initWasmCodecs, RowGroupStore } from "../dist/index.js";
+import { RowGroupStore } from "../dist/index.js";
 import { loadBenchWasmCodecs } from "./common.js";
 
 const NUM_SERIES = 32;

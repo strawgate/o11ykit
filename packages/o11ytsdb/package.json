@@ -52,9 +52,12 @@
     "bench:query": "npm run bench -- query",
     "bench:rowgroup-layout": "npm run bench:prepare && node --expose-gc dist-bench/rowgroup-layout.bench.js",
     "bench:chunk-size-sweep": "npm run bench:prepare && node dist-bench/chunk-size-sweep.js",
+    "bench:compaction": "npm run bench:prepare && node dist-bench/compaction.js",
+    "bench:memory-curve": "npm run bench:prepare && node dist-bench/memory-curve.js",
     "bench:rowgroup-memory-audit": "npm run bench:prepare && node dist-bench/rowgroup-memory-audit.js",
     "bench:rowgroup-profile": "npm run bench:prepare && node --expose-gc dist-bench/rowgroup-profile.js",
     "bench:tiered-rowgroup": "npm run bench:prepare && node dist-bench/tiered-rowgroup-compare.js",
+    "bench:tiered-query-matrix": "npm run bench:prepare && node dist-bench/tiered-query-matrix.js",
     "bench:compare": "npm run bench -- --compare",
     "smoke": "npm run build && node bench/smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
