@@ -11,6 +11,20 @@ interface WorkerLikeEndpoint {
   on?: (type: "message", listener: (data: unknown) => void) => void;
 }
 
+interface NodeFsModule {
+  existsSync(path: string): boolean;
+  readFileSync(path: string): Uint8Array;
+}
+
+interface NodePathModule {
+  dirname(path: string): string;
+  join(...parts: string[]): string;
+}
+
+interface NodeUrlModule {
+  fileURLToPath(url: string | URL): string;
+}
+
 function requireDefined<T>(value: T | undefined, message: string): T {
   if (value === undefined) {
     throw new Error(message);
@@ -40,6 +54,22 @@ function createValuesCodec(): ValuesCodec {
       );
       return values.slice();
     },
+    decodeValuesRange(buf: Uint8Array, startIndex: number, endIndex: number): Float64Array {
+      if (buf.byteLength < 4 || endIndex <= startIndex) return new Float64Array(0);
+      const n = new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint32(0, true);
+      const raw = buf.subarray(4);
+      const clampedStart = Math.max(0, Math.min(startIndex, n));
+      const clampedEnd = Math.max(clampedStart, Math.min(endIndex, n));
+      const byteStart = clampedStart * 8;
+      const byteEnd = clampedEnd * 8;
+      const bytes = Math.max(
+        0,
+        Math.min(raw.byteLength, byteEnd) - Math.min(raw.byteLength, byteStart)
+      );
+      if (bytes === 0) return new Float64Array(0);
+      const copy = raw.slice(byteStart, byteStart + bytes);
+      return new Float64Array(copy.buffer, copy.byteOffset, Math.floor(bytes / 8)).slice();
+    },
   };
 }
 
@@ -51,16 +81,16 @@ async function tryLoadWasm(): Promise<WasmCodecs | null> {
   try {
     const dynamicImport = new Function("s", "return import(s)") as (
       specifier: string
-    ) => Promise<any>;
-    const nodeFs = await dynamicImport("node:fs").catch(() => null);
-    const nodePath = await dynamicImport("node:path").catch(() => null);
-    const nodeUrl = await dynamicImport("node:url").catch(() => null);
+    ) => Promise<unknown>;
+    const nodeFs = (await dynamicImport("node:fs").catch(() => null)) as NodeFsModule | null;
+    const nodePath = (await dynamicImport("node:path").catch(() => null)) as NodePathModule | null;
+    const nodeUrl = (await dynamicImport("node:url").catch(() => null)) as NodeUrlModule | null;
 
     if (nodeFs && nodePath && nodeUrl) {
       const thisDir = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url));
       const wasmPath = nodePath.join(thisDir, "..", "wasm", "o11ytsdb-rust.wasm");
       if (nodeFs.existsSync(wasmPath)) {
-        const bytes = nodeFs.readFileSync(wasmPath);
+        const bytes = Uint8Array.from(nodeFs.readFileSync(wasmPath));
         const module = new WebAssembly.Module(bytes);
         return initWasmCodecs(module);
       }

@@ -101,15 +101,15 @@ fn delta_alp_decode_inner(input: &[u8], val_out: &mut [f64]) -> usize {
     delta_count + 1
 }
 
-/// Decode only values[lo..hi] from a delta-ALP blob. Returns true on success.
+/// Decode only values[lo..hi] from a delta-ALP blob.
 pub(crate) fn delta_alp_decode_range(
     input: &[u8],
     lo: usize,
     hi: usize,
     out: &mut [f64],
-) -> bool {
+) -> usize {
     if input.len() < 23 || input[0] != DELTA_ALP_TAG {
-        return false;
+        return 0;
     }
 
     let mut base_bytes = [0u8; 8];
@@ -119,16 +119,16 @@ pub(crate) fn delta_alp_decode_range(
     let deltas = unsafe { &mut DELTA_VALS[..ALP_MAX_CHUNK] };
     let delta_count = alp_decode_regular(&input[9..], deltas);
     if delta_count == 0 {
-        return false;
+        return 0;
     }
     let total_n = delta_count + 1;
     let effective_hi = hi.min(total_n);
     if lo >= effective_hi {
-        return false;
+        return 0;
     }
     let span = effective_hi - lo;
     if span > out.len() {
-        return false;
+        return 0;
     }
 
     let mut acc = base;
@@ -151,7 +151,7 @@ pub(crate) fn delta_alp_decode_range(
             out[i] = acc;
         }
     }
-    true
+    span
 }
 
 // ── Top-level ALP dispatch: handles both regular ALP and delta-ALP ──
@@ -170,23 +170,23 @@ pub(crate) fn decode_values_alp_inner(input: &[u8], val_out: &mut [f64]) -> usiz
 
 /// Decode only values[lo..hi] from an ALP-compressed blob.
 /// Handles both regular ALP and delta-ALP transparently.
-/// Returns true on success, false if the blob is malformed or the requested
-/// range cannot be fulfilled.
+/// Returns the number of decoded samples. Returns 0 if the blob is malformed or
+/// the requested range cannot be fulfilled.
 pub(crate) fn decode_values_alp_range(
     input: &[u8],
     lo: usize,
     hi: usize,
     out: &mut [f64],
-) -> bool {
+) -> usize {
     if input.is_empty() {
-        return false;
+        return 0;
     }
     if input[0] == DELTA_ALP_TAG {
         return delta_alp_decode_range(input, lo, hi, out);
     }
 
     if input.len() < ALP_HEADER_SIZE {
-        return false;
+        return 0;
     }
 
     let mut pos: usize = 0;
@@ -195,26 +195,26 @@ pub(crate) fn decode_values_alp_range(
     // Validate n/lo/hi before any arithmetic using them; silent no-op made
     // it impossible for callers to detect truncated input.
     if n == 0 || n > ALP_MAX_CHUNK {
-        return false;
+        return 0;
     }
     let effective_hi = hi.min(n);
     if lo >= effective_hi {
-        return false;
+        return 0;
     }
     let span = effective_hi - lo;
     if span > out.len() {
-        return false;
+        return 0;
     }
 
     let e = input[pos] as usize;
     pos += 1;
     if e > crate::alp::ALP_MAX_EXP {
-        return false;
+        return 0;
     }
     let bw = input[pos];
     pos += 1;
     if bw > 64 {
-        return false;
+        return 0;
     }
     let mut min_bytes = [0u8; 8];
     min_bytes.copy_from_slice(&input[pos..pos + 8]);
@@ -223,14 +223,14 @@ pub(crate) fn decode_values_alp_range(
     let exc_count = ((input[pos] as usize) << 8) | (input[pos + 1] as usize);
     pos += 2;
     if exc_count > n {
-        return false;
+        return 0;
     }
 
     let factor = POW10[e];
     let bit_packed_start = pos;
     let packed_bytes = (n * bw as usize + 7) / 8;
     if bw > 0 && input.len() < bit_packed_start + packed_bytes {
-        return false;
+        return 0;
     }
 
     if bw > 0 {
@@ -260,7 +260,7 @@ pub(crate) fn decode_values_alp_range(
     if exc_count > 0 {
         decode_range_exceptions(input, &mut pos, n, exc_count, lo, effective_hi, out);
     }
-    true
+    span
 }
 
 fn decode_range_exceptions(
@@ -400,6 +400,23 @@ pub extern "C" fn decodeValuesALP(
     decode_values_alp_inner(input, val_out) as u32
 }
 
+/// Decode only values[lo..hi] from an ALP-encoded blob. Returns samples decoded.
+#[no_mangle]
+pub extern "C" fn decodeValuesALPRange(
+    in_ptr: *const u8,
+    in_len: u32,
+    lo: u32,
+    hi: u32,
+    val_ptr: *mut f64,
+    max_samples: u32,
+) -> u32 {
+    let input = unsafe { core::slice::from_raw_parts(in_ptr, in_len as usize) };
+    let val_out = unsafe { core::slice::from_raw_parts_mut(val_ptr, max_samples as usize) };
+    let lo_usize = lo as usize;
+    let hi_usize = hi as usize;
+    decode_values_alp_range(input, lo_usize, hi_usize, val_out) as u32
+}
+
 /// Encode values using ALP AND compute block stats in one pass.
 #[no_mangle]
 pub extern "C" fn encodeValuesALPWithStats(
@@ -503,7 +520,8 @@ mod tests {
 
         // Decode [10..20).
         let mut out = [0f64; 10];
-        delta_alp_decode_range(&buf[..written], 10, 20, &mut out);
+        let count = delta_alp_decode_range(&buf[..written], 10, 20, &mut out);
+        assert_eq!(count, 10);
         for i in 0..10 {
             assert_eq!(out[i], vals[10 + i], "range mismatch at {i}");
         }
@@ -573,6 +591,21 @@ mod tests {
         for i in 0..10 {
             assert_eq!(out[i], vals[10 + i], "range mismatch at {i}");
         }
+    }
+
+    #[test]
+    fn range_decode_regular_alp_clamps_hi_to_available_samples() {
+        let _g = crate::test_lock::LOCK.lock().unwrap();
+        let vals: std::vec::Vec<f64> = (0..10).map(|i| i as f64).collect();
+        let mut buf = [0u8; 65536];
+        let written = alp_encode_inner(&vals, &mut buf);
+        assert!(written > 0);
+
+        let mut out = [-1f64; 10];
+        let count = decode_values_alp_range(&buf[..written], 8, 20, &mut out);
+        assert_eq!(count, 2);
+        assert_eq!(out[0], vals[8]);
+        assert_eq!(out[1], vals[9]);
     }
 
     #[test]

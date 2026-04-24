@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { FlatStore } from "../src/flat-store.js";
 import { ScanEngine } from "../src/query.js";
 import { RowGroupStore } from "../src/row-group-store.js";
+import { TieredRowGroupStore } from "../src/tiered-row-group-store.js";
 import type { Labels, StorageBackend, ValuesCodec } from "../src/types.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -815,7 +816,9 @@ describe("ScanEngine", () => {
   const identityValuesCodec: ValuesCodec = {
     name: "identity",
     encodeValues(values: Float64Array): Uint8Array {
-      return new Uint8Array(values.buffer.slice(0));
+      return new Uint8Array(
+        values.buffer.slice(values.byteOffset, values.byteOffset + values.byteLength)
+      );
     },
     decodeValues(buf: Uint8Array): Float64Array {
       return new Float64Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
@@ -836,6 +839,118 @@ describe("ScanEngine", () => {
       store.append(id, BigInt(i) * 1_000n, (i + 1) * 10);
     }
     return store;
+  }
+
+  function makeNoDecodeCountStore(): RowGroupStore {
+    const noDecodeCodec: ValuesCodec = {
+      name: "no-decode",
+      encodeValues(values: Float64Array): Uint8Array {
+        return new Uint8Array(
+          values.buffer.slice(values.byteOffset, values.byteOffset + values.byteLength)
+        );
+      },
+      decodeValues(): Float64Array {
+        throw new Error("decodeValues should not be called for metadata-only count");
+      },
+    };
+    const store = new RowGroupStore(noDecodeCodec, 4, () => 0, 1);
+    const id = store.getOrCreateSeries(makeLabels("m"));
+    for (let i = 0; i < 8; i++) {
+      store.append(id, BigInt(i) * 1_000n, (i + 1) * 10);
+    }
+    return store;
+  }
+
+  function makeRangeViewStepStore(): RowGroupStore {
+    const rangeViewCodec: ValuesCodec = {
+      name: "range-view-step",
+      encodeValues(values: Float64Array): Uint8Array {
+        return new Uint8Array(
+          values.buffer.slice(values.byteOffset, values.byteOffset + values.byteLength)
+        );
+      },
+      decodeValues(): Float64Array {
+        throw new Error("decodeValues should not be called for partial step aggregation");
+      },
+      decodeValuesRange(): Float64Array {
+        throw new Error(
+          "decodeValuesRange should not be called when decodeValuesRangeView is available"
+        );
+      },
+      decodeValuesRangeView(buf: Uint8Array, startIndex: number, endIndex: number): Float64Array {
+        const values = new Float64Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 8));
+        return values.subarray(startIndex, endIndex);
+      },
+    };
+    const store = new RowGroupStore(rangeViewCodec, 4, () => 0, 1);
+    const id = store.getOrCreateSeries(makeLabels("m"));
+    for (let i = 0; i < 4; i++) {
+      store.append(id, BigInt(i) * 1_000n, (i + 1) * 10);
+    }
+    return store;
+  }
+
+  function makeTieredStore(): TieredRowGroupStore {
+    const store = new TieredRowGroupStore(identityValuesCodec, 4, 8, () => 0, 2);
+    const id = store.getOrCreateSeries(makeLabels("m", { host: "a" }));
+    for (let i = 0; i < 12; i++) {
+      store.append(id, BigInt(i) * 1_000n, i + 1);
+    }
+    return store;
+  }
+
+  function makeScratchViewPointAggStore(): StorageBackend {
+    const sharedTimestamps = new BigInt64Array(3);
+    const sharedValues = new Float64Array(3);
+    const labelsA = makeLabels("m", { host: "a" });
+    const labelsB = makeLabels("m", { host: "b" });
+
+    const decodeIntoScratch = (timestamps: bigint[], values: number[]) => {
+      sharedTimestamps.fill(0n);
+      sharedValues.fill(0);
+      for (let i = 0; i < timestamps.length; i++) {
+        sharedTimestamps[i] = timestamps[i] ?? 0n;
+        sharedValues[i] = values[i] ?? 0;
+      }
+      return {
+        timestamps: sharedTimestamps.subarray(0, timestamps.length),
+        values: sharedValues.subarray(0, values.length),
+      };
+    };
+
+    const makeLazyRange = (timestamps: bigint[], values: number[]) => ({
+      timestamps: new BigInt64Array(0),
+      values: new Float64Array(0),
+      decode: () => ({
+        timestamps: BigInt64Array.from(timestamps),
+        values: Float64Array.from(values),
+      }),
+      decodeView: () => decodeIntoScratch(timestamps, values),
+    });
+
+    return {
+      name: "scratch-view-point-agg",
+      getOrCreateSeries(): number {
+        throw new Error("not used in test");
+      },
+      append(): void {
+        throw new Error("not used in test");
+      },
+      appendBatch(): void {
+        throw new Error("not used in test");
+      },
+      matchLabel(label: string, value: string): number[] {
+        return label === "__name__" && value === "m" ? [0, 1] : [];
+      },
+      read(id: number) {
+        return id === 0
+          ? makeLazyRange([0n, 1_000n, 2_000n], [1, 2, 3])
+          : makeLazyRange([10n, 1_010n], [10, 20]);
+      },
+      labels(id: number): Labels | undefined {
+        return id === 0 ? labelsA : labelsB;
+      },
+    };
   }
 
   it("cross-segment: read spans frozen + rolled-over segments", () => {
@@ -1014,6 +1129,102 @@ describe("ScanEngine", () => {
     expect(s.values[2]).toBeCloseTo(110);
     // Bucket 3 [6000,8000): t=6000→70, t=7000→80 → sum=150
     expect(s.values[3]).toBeCloseTo(150);
+  });
+
+  it("stats-skip: count with small step folds regular chunks bucket-by-bucket", () => {
+    const store = makeStatsStore();
+    const result = engine.query(store, {
+      metric: "m",
+      start: 0n,
+      end: 7_000n,
+      agg: "count",
+      step: 2_000n,
+    });
+    const s = result.series[0];
+    expect(s).toBeDefined();
+    expect(s.timestamps.length).toBe(4);
+    expect(s.values[0]).toBe(2);
+    expect(s.values[1]).toBe(2);
+    expect(s.values[2]).toBe(2);
+    expect(s.values[3]).toBe(2);
+  });
+
+  it("stats-skip: count with small step does not decode values", () => {
+    const store = makeNoDecodeCountStore();
+    const result = engine.query(store, {
+      metric: "m",
+      start: 0n,
+      end: 7_000n,
+      agg: "count",
+      step: 2_000n,
+    });
+    const s = result.series[0];
+    expect(s).toBeDefined();
+    expect(s.values[0]).toBe(2);
+    expect(s.values[3]).toBe(2);
+  });
+
+  it("step aggregation can use ranged decode views for partial chunks", () => {
+    const store = makeRangeViewStepStore();
+    const result = engine.query(store, {
+      metric: "m",
+      start: 1_000n,
+      end: 2_000n,
+      agg: "sum",
+      step: 1_000n,
+    });
+    const s = result.series[0];
+    expect(s).toBeDefined();
+    expect(Array.from(s.timestamps)).toEqual([1_000n, 2_000n]);
+    expect(Array.from(s.values)).toEqual([20, 30]);
+  });
+
+  it("aggregates correctly across cold and live hot tiers", () => {
+    const store = makeTieredStore();
+    const result = engine.query(store, {
+      metric: "m",
+      start: 0n,
+      end: 11_000n,
+      agg: "sum",
+      step: 4_000n,
+    });
+    const s = result.series[0];
+    expect(s).toBeDefined();
+    expect(Array.from(s.timestamps)).toEqual([0n, 4_000n, 8_000n]);
+    expect(Array.from(s.values)).toEqual([10, 26, 42]);
+  });
+
+  it("point aggregation keeps scratch-backed decode views stable across series", () => {
+    const result = engine.query(makeScratchViewPointAggStore(), {
+      metric: "m",
+      start: 0n,
+      end: 5_000n,
+      agg: "sum",
+    });
+    const s = result.series[0];
+    expect(s).toBeDefined();
+    expect(Array.from(s.timestamps)).toEqual([0n, 1_000n, 2_000n]);
+    expect(Array.from(s.values)).toEqual([11, 22, 3]);
+  });
+
+  it("rejects regular-chunk fast paths for irregular timestamps", () => {
+    const store = new RowGroupStore(identityValuesCodec, 3, () => 0, 1);
+    const id = store.getOrCreateSeries(makeLabels("irregular"));
+    store.appendBatch(id, new BigInt64Array([0n, 1_000n, 4_000n]), new Float64Array([10, 20, 30]));
+
+    const result = engine.query(store, {
+      metric: "irregular",
+      start: 0n,
+      end: 4_000n,
+      agg: "sum",
+      step: 2_000n,
+    });
+    const s = result.series[0];
+    expect(s).toBeDefined();
+    expect(Array.from(s.timestamps)).toEqual([0n, 2_000n, 4_000n]);
+    expect(s.values[0]).toBe(30);
+    expect(s.values[1]).toBe(0);
+    expect(s.values[2]).toBe(30);
   });
 
   it("stats-skip: rate with RowGroupStore lazy-decodes correctly", () => {

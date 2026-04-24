@@ -39,6 +39,7 @@ export { MemPostings } from "./postings.js";
 export { ScanEngine } from "./query.js";
 export { RowGroupStore } from "./row-group-store.js";
 export { computeStats } from "./stats.js";
+export { TieredRowGroupStore } from "./tiered-row-group-store.js";
 // Core types — pluggable interfaces for storage, codecs, and queries
 export type {
   AggFn,

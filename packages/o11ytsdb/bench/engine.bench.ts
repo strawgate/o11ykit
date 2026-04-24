@@ -25,14 +25,15 @@ function pkgPath(rel: string): string {
 
 type StorageBackend = import("./types.js").StorageBackend;
 type Codec = import("./types.js").Codec;
+type ValuesCodec = import("./types.js").ValuesCodec;
 type Labels = import("./types.js").Labels;
 type QueryEngine = import("./types.js").QueryEngine;
 
 /** Wrap an ALP codec to enable delta-FoR mode (1) around encode calls. */
 function wrapWithDeltaFor(
-  alpVals: Codec,
+  alpVals: Omit<ValuesCodec, "name">,
   setMode: (mode: number) => void
-): Codec {
+): ValuesCodec {
   return {
     name: "alp-deltafor",
     encodeValues: (values: Float64Array) => {
@@ -43,12 +44,18 @@ function wrapWithDeltaFor(
     },
     decodeValues: alpVals.decodeValues,
     encodeValuesWithStats: (values: Float64Array) => {
+      if (!alpVals.encodeValuesWithStats) {
+        throw new Error("encodeValuesWithStats not available");
+      }
       setMode(1);
       const r = alpVals.encodeValuesWithStats(values);
       setMode(0);
       return r;
     },
     encodeBatchValuesWithStats: (arrays: Float64Array[]) => {
+      if (!alpVals.encodeBatchValuesWithStats) {
+        throw new Error("encodeBatchValuesWithStats not available");
+      }
       setMode(1);
       const r = alpVals.encodeBatchValuesWithStats(arrays);
       setMode(0);
