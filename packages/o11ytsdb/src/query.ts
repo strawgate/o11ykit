@@ -76,9 +76,19 @@ function hasChunkStats(range: TimeRange): boolean {
   return range.stats !== undefined || range.statsPacked !== undefined;
 }
 
+function supportsPackedStat(offset: number): boolean {
+  return (
+    offset === STATS_MIN ||
+    offset === STATS_MAX ||
+    offset === STATS_SUM ||
+    offset === STATS_COUNT ||
+    offset === STATS_LAST
+  );
+}
+
 function readPackedStat(range: TimeRange, offset: number, label: string): number | undefined {
   const packed = range.statsPacked;
-  if (!packed) return undefined;
+  if (!packed || !supportsPackedStat(offset)) return undefined;
   const base = range.statsOffset ?? 0;
   switch (offset) {
     case STATS_MIN:
@@ -97,6 +107,8 @@ function readPackedStat(range: TimeRange, offset: number, label: string): number
 }
 
 function readChunkStat(range: TimeRange, offset: number, label: string): number {
+  // Packed stats are intentionally a compact subset. Unsupported fields fall
+  // back to the full `stats` object when available.
   const packed = readPackedStat(range, offset, label);
   if (packed !== undefined) return packed;
   const stats = range.stats;

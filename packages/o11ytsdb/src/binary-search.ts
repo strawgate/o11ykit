@@ -29,6 +29,8 @@ export function concatRanges(parts: TimeRange[]): TimeRange {
     const only = parts[0]!;
     if ((only.timestamps.length > 0 && only.values.length > 0) || !only.decode) return only;
     const decoded = only.decodeView ? only.decodeView() : only.decode();
+    // `decodeView()` may borrow codec scratch memory, so `read()` must return
+    // stable owned arrays even for the single-part fast path.
     return {
       timestamps: decoded.timestamps.slice(),
       values: decoded.values.slice(),
