@@ -560,7 +560,7 @@ export class ColumnStore implements StorageBackend {
       for (let i = 0; i < fc.count; i++) {
         // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         bytes += fc.blobs[i]!.byteLength;
-        bytes += 68; // 8 stats fields × 8 bytes + 1 tsIndex × 4 bytes
+        bytes += STATS_STRIDE * 8 + 4; // packed stats + tsChunkIndex
       }
     }
     bytes += this.labelIndex.memoryBytes();

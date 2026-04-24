@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { concatRanges } from "../src/binary-search.js";
 import { FlatStore } from "../src/flat-store.js";
 import { RowGroupStore } from "../src/row-group-store.js";
 import { TieredRowGroupStore } from "../src/tiered-row-group-store.js";
@@ -401,6 +402,38 @@ describe("RowGroupStore freeze behavior", () => {
     expect(Array.from(data.timestamps)).toEqual([1_000n, 2_000n]);
     expect(Array.from(data.values)).toEqual([20, 30]);
   });
+
+  it("copies scratch-backed decodeView parts before concatenating multiple ranges", () => {
+    const scratchTs = new BigInt64Array(2);
+    const scratchVals = new Float64Array(2);
+    const merged = concatRanges([
+      {
+        timestamps: new BigInt64Array(0),
+        values: new Float64Array(0),
+        decodeView() {
+          scratchTs[0] = 1_000n;
+          scratchTs[1] = 2_000n;
+          scratchVals[0] = 10;
+          scratchVals[1] = 20;
+          return { timestamps: scratchTs.subarray(0, 2), values: scratchVals.subarray(0, 2) };
+        },
+      },
+      {
+        timestamps: new BigInt64Array(0),
+        values: new Float64Array(0),
+        decodeView() {
+          scratchTs[0] = 3_000n;
+          scratchTs[1] = 4_000n;
+          scratchVals[0] = 30;
+          scratchVals[1] = 40;
+          return { timestamps: scratchTs.subarray(0, 2), values: scratchVals.subarray(0, 2) };
+        },
+      },
+    ]);
+
+    expect(Array.from(merged.timestamps)).toEqual([1_000n, 2_000n, 3_000n, 4_000n]);
+    expect(Array.from(merged.values)).toEqual([10, 20, 30, 40]);
+  });
 });
 
 describe("TieredRowGroupStore compaction", () => {
@@ -492,5 +525,12 @@ describe("TieredRowGroupStore compaction", () => {
         store.append(id, BigInt(i) * 1_000n, i + 1);
       }
     }).toThrow(/expected 4 values/);
+    expect(store.sampleCount).toBe(8);
+
+    const hotStore = Reflect.get(store, "hotStore");
+    const hotGroups = Reflect.get(hotStore, "groups");
+    const hotLane = hotGroups[0].lanes[0];
+    expect(hotLane.rowGroups.length).toBe(2);
+    expect(hotLane.frozenTimestamps.length).toBe(2);
   });
 });

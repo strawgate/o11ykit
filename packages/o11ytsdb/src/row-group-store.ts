@@ -79,6 +79,10 @@ export interface RowGroupStoreCompactionChunk {
 }
 
 export interface RowGroupStoreLaneWindow {
+  groupId: number;
+  laneId: number;
+  rowGroupCount: number;
+  sampleCount: number;
   memberSeriesIds: SeriesId[];
   timestamps: BigInt64Array;
   rowGroups: RowGroupStoreCompactionChunk[];
@@ -593,7 +597,7 @@ export class RowGroupStore implements StorageBackend {
     return this.memoryBytes() - this.labelIndex.memoryBytes();
   }
 
-  drainCompactableLaneWindow(
+  peekCompactableLaneWindow(
     groupId: number,
     rowGroupCount: number,
     expectedChunkSize: number
@@ -608,8 +612,8 @@ export class RowGroupStore implements StorageBackend {
         continue;
       }
 
-      const rowGroups = lane.rowGroups.splice(0, rowGroupCount);
-      const tsChunks = lane.frozenTimestamps.splice(0, rowGroupCount);
+      const rowGroups = lane.rowGroups.slice(0, rowGroupCount);
+      const tsChunks = lane.frozenTimestamps.slice(0, rowGroupCount);
       const firstRowGroup = requireDefined(rowGroups[0], "missing compactable row group");
       const memberCount = firstRowGroup.memberCount;
       const windowSize = rowGroupCount * expectedChunkSize;
@@ -638,12 +642,11 @@ export class RowGroupStore implements StorageBackend {
         throw new RangeError(`expected ${windowSize} compacted timestamps, got ${tsOffset}`);
       }
 
-      for (const rowGroup of lane.rowGroups) {
-        rowGroup.tsChunkIndex -= rowGroupCount;
-      }
-
-      this._sampleCount = Math.max(this._sampleCount - memberCount * windowSize, 0);
       return {
+        groupId,
+        laneId,
+        rowGroupCount,
+        sampleCount: memberCount * windowSize,
         memberSeriesIds: lane.members.slice(0, memberCount).map((member) => member.seriesId),
         timestamps,
         rowGroups: rowGroups.map((rowGroup) => ({
@@ -655,6 +658,16 @@ export class RowGroupStore implements StorageBackend {
       };
     }
     return undefined;
+  }
+
+  commitCompactedLaneWindow(window: RowGroupStoreLaneWindow): void {
+    const lane = this.getLane(window.groupId, window.laneId);
+    lane.rowGroups.splice(0, window.rowGroupCount);
+    lane.frozenTimestamps.splice(0, window.rowGroupCount);
+    for (const rowGroup of lane.rowGroups) {
+      rowGroup.tsChunkIndex -= window.rowGroupCount;
+    }
+    this._sampleCount = Math.max(this._sampleCount - window.sampleCount, 0);
   }
 
   private canDrainLaneWindow(

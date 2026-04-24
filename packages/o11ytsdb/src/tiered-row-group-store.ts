@@ -203,7 +203,7 @@ export class TieredRowGroupStore implements StorageBackend {
 
   private compactReadyGroup(groupId: number): void {
     while (true) {
-      const laneWindow = this.hotStore.drainCompactableLaneWindow(
+      const laneWindow = this.hotStore.peekCompactableLaneWindow(
         groupId,
         this.hotsPerCold,
         this.hotChunkSize
@@ -212,6 +212,7 @@ export class TieredRowGroupStore implements StorageBackend {
         return;
       }
       this.compactLane(laneWindow);
+      this.hotStore.commitCompactedLaneWindow(laneWindow);
     }
   }
 

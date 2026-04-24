@@ -101,15 +101,15 @@ fn delta_alp_decode_inner(input: &[u8], val_out: &mut [f64]) -> usize {
     delta_count + 1
 }
 
-/// Decode only values[lo..hi] from a delta-ALP blob. Returns true on success.
+/// Decode only values[lo..hi] from a delta-ALP blob.
 pub(crate) fn delta_alp_decode_range(
     input: &[u8],
     lo: usize,
     hi: usize,
     out: &mut [f64],
-) -> bool {
+) -> usize {
     if input.len() < 23 || input[0] != DELTA_ALP_TAG {
-        return false;
+        return 0;
     }
 
     let mut base_bytes = [0u8; 8];
@@ -119,16 +119,16 @@ pub(crate) fn delta_alp_decode_range(
     let deltas = unsafe { &mut DELTA_VALS[..ALP_MAX_CHUNK] };
     let delta_count = alp_decode_regular(&input[9..], deltas);
     if delta_count == 0 {
-        return false;
+        return 0;
     }
     let total_n = delta_count + 1;
     let effective_hi = hi.min(total_n);
     if lo >= effective_hi {
-        return false;
+        return 0;
     }
     let span = effective_hi - lo;
     if span > out.len() {
-        return false;
+        return 0;
     }
 
     let mut acc = base;
@@ -151,7 +151,7 @@ pub(crate) fn delta_alp_decode_range(
             out[i] = acc;
         }
     }
-    true
+    span
 }
 
 // ── Top-level ALP dispatch: handles both regular ALP and delta-ALP ──
@@ -182,13 +182,7 @@ pub(crate) fn decode_values_alp_range(
         return 0;
     }
     if input[0] == DELTA_ALP_TAG {
-        return if delta_alp_decode_range(input, lo, hi, out) {
-            let mut deltas = unsafe { &mut DELTA_VALS[..ALP_MAX_CHUNK] };
-            let delta_count = alp_decode_regular(&input[9..], &mut deltas);
-            hi.min(delta_count + 1).saturating_sub(lo)
-        } else {
-            0
-        };
+        return delta_alp_decode_range(input, lo, hi, out);
     }
 
     if input.len() < ALP_HEADER_SIZE {
@@ -526,7 +520,8 @@ mod tests {
 
         // Decode [10..20).
         let mut out = [0f64; 10];
-        delta_alp_decode_range(&buf[..written], 10, 20, &mut out);
+        let count = delta_alp_decode_range(&buf[..written], 10, 20, &mut out);
+        assert_eq!(count, 10);
         for i in 0..10 {
             assert_eq!(out[i], vals[10 + i], "range mismatch at {i}");
         }

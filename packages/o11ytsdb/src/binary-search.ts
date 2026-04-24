@@ -41,14 +41,18 @@ export function concatRanges(parts: TimeRange[]): TimeRange {
   let total = 0;
   const materialized: TimeRange[] = [];
   for (const part of parts) {
-    const range =
-      part.timestamps.length === 0 || part.values.length === 0
-        ? part.decodeView
-          ? part.decodeView()
-          : part.decode
-            ? part.decode()
-            : part
-        : part;
+    let range = part;
+    if (part.timestamps.length === 0 || part.values.length === 0) {
+      if (part.decode) {
+        range = part.decode();
+      } else if (part.decodeView) {
+        const view = part.decodeView();
+        range = {
+          timestamps: view.timestamps.slice(),
+          values: view.values.slice(),
+        };
+      }
+    }
     materialized.push(range);
     total += range.timestamps.length;
   }
