@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { ScanEngine } from "../src/query.ts";
-import { RowGroupStore } from "../src/row-group-store.ts";
-import { TieredRowGroupStore } from "../src/tiered-row-group-store.ts";
-import type { Labels } from "../src/types.ts";
-import { initWasmCodecs } from "../src/wasm-codecs.ts";
+import {
+  initWasmCodecs,
+  RowGroupStore,
+  ScanEngine,
+  TieredRowGroupStore,
+  type Labels,
+} from "../dist/index.js";
 
 const NUM_SERIES = 32;
 const POINTS_PER_SERIES = 31_250; // 1,000,000 total
@@ -47,16 +49,14 @@ function ingestDataset(
   for (let off = 0; off < POINTS_PER_SERIES; off += BATCH) {
     const end = Math.min(off + BATCH, POINTS_PER_SERIES);
     for (let s = 0; s < NUM_SERIES; s++) {
-      const series = dataset[s];
-      store.appendBatch(ids[s], series.timestamps.subarray(off, end), series.values.subarray(off, end));
+      const series = dataset[s]!;
+      store.appendBatch(ids[s]!, series.timestamps.subarray(off, end), series.values.subarray(off, end));
     }
   }
 }
 
 async function main() {
-  const wasm = new WebAssembly.Module(
-    readFileSync(path.resolve("packages/o11ytsdb/wasm/o11ytsdb-rust.wasm"))
-  );
+  const wasm = new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")));
   const codecs = await initWasmCodecs(wasm);
   const dataset = buildDataset();
   const labels = Array.from({ length: NUM_SERIES }, (_, s) => makeLabels(s));

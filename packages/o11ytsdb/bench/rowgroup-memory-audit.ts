@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { RowGroupStore } from "../src/row-group-store.ts";
-import { initWasmCodecs } from "../src/wasm-codecs.ts";
+import { initWasmCodecs, RowGroupStore } from "../dist/index.js";
 
 const NUM_SERIES = 32;
 const POINTS_PER_SERIES = 262_144;
@@ -48,7 +47,8 @@ type AuditLabelIndex = {
   memoryBytes(): number;
 };
 
-type AuditStore = RowGroupStore & {
+type AuditStore = {
+  memoryBytes(): number;
   groups: AuditGroup[];
   allSeries: AuditSeries[];
   labelIndex: AuditLabelIndex;
@@ -78,9 +78,7 @@ function makeSeriesData(seriesIndex: number): {
 
 async function main() {
   const chunkSize = Number.parseInt(process.argv[2] ?? "256", 10);
-  const wasm = new WebAssembly.Module(
-    readFileSync(path.resolve("packages/o11ytsdb/wasm/o11ytsdb-rust.wasm"))
-  );
+  const wasm = new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")));
   const codecs = await initWasmCodecs(wasm);
   const store = new RowGroupStore(
     codecs.valuesCodec,

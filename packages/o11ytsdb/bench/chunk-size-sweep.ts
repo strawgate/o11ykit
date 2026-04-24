@@ -2,9 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
-import { ScanEngine } from "../src/query.ts";
-import { RowGroupStore } from "../src/row-group-store.ts";
-import { initWasmCodecs } from "../src/wasm-codecs.ts";
+import { initWasmCodecs, RowGroupStore, ScanEngine } from "../dist/index.js";
 
 const NUM_SERIES = 32;
 const POINTS_PER_SERIES = 262_144;
@@ -39,9 +37,7 @@ function median(samples: number[]): number {
 }
 
 async function main() {
-  const wasm = new WebAssembly.Module(
-    readFileSync(path.resolve("packages/o11ytsdb/wasm/o11ytsdb-rust.wasm"))
-  );
+  const wasm = new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")));
   const codecs = await initWasmCodecs(wasm);
   const engine = new ScanEngine();
   const iterations = Number.parseInt(process.argv[2] ?? "6", 10);

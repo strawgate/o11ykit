@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
-import type { WasmCodecs } from "../src/wasm-codecs.ts";
-import { initWasmCodecs } from "../src/wasm-codecs.ts";
+import type { WasmCodecs } from "../dist/index.js";
+import { initWasmCodecs } from "../dist/index.js";
 
 const NUM_SERIES = 32;
 const CHUNK_SIZE = 256;
@@ -161,7 +161,7 @@ async function main() {
   const batchSizes = [1, 4, 8, 16, 32, 64, 128];
   const modes: Array<"copy" | "view"> = ["copy", "view"];
   const codecs = await initWasmCodecs(
-    new WebAssembly.Module(readFileSync(path.resolve("packages/o11ytsdb/wasm/o11ytsdb-rust.wasm")))
+    new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")))
   );
   const dataset = encodeDataset(codecs);
   const baseline = runBatchFold(dataset, codecs, 1, "copy");

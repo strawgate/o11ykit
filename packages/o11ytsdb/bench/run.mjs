@@ -42,16 +42,16 @@ if (moduleFilter) {
 console.log();
 
 // Module registry — add each module's bench file as it's built.
-// Each value is a path to the compiled .js bench module in bench/dist/.
+// Each value is a path to the compiled .js bench module in dist-bench/.
 // The module must export a default async function that returns a BenchReport.
 const modules = {
-  codec: "./dist/codec.bench.js",
-  competitive: "./dist/competitive.bench.js",
-  engine: "./dist/engine.bench.js",
-  interner: "./dist/interner.bench.js",
-  postings: "./dist/postings.bench.js",
-  ingest: "./dist/ingest.bench.js",
-  query: "./dist/query.bench.js",
+  codec: "../dist-bench/codec.bench.js",
+  competitive: "../dist-bench/competitive.bench.js",
+  engine: "../dist-bench/engine.bench.js",
+  interner: "../dist-bench/interner.bench.js",
+  postings: "../dist-bench/postings.bench.js",
+  ingest: "../dist-bench/ingest.bench.js",
+  query: "../dist-bench/query.bench.js",
 };
 
 const available = Object.keys(modules);
@@ -70,7 +70,7 @@ if (available.length === 0) {
 }
 
 // Run each matching module.
-const { compareReports } = await import("./dist/harness.js");
+const { compareReports } = await import("../dist-bench/harness.js");
 const allReports = [];
 
 for (const [name, path] of Object.entries(modules)) {

@@ -1,15 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { RowGroupStore } from "../src/row-group-store.ts";
-import { computeStats } from "../src/stats.ts";
 import type {
   ChunkStats,
   Labels,
   TimestampCodec,
   ValuesCodec,
-} from "../src/types.ts";
-import { initWasmCodecs } from "../src/wasm-codecs.ts";
+} from "../dist/index.js";
+import { computeStats, initWasmCodecs, RowGroupStore } from "../dist/index.js";
 
 const HOT_SIZE = 80;
 const COLD_SIZE = 640;
@@ -243,9 +241,7 @@ class TieredRowGroupPrototype {
 }
 
 async function main() {
-  const wasm = new WebAssembly.Module(
-    readFileSync(path.resolve("packages/o11ytsdb/wasm/o11ytsdb-rust.wasm"))
-  );
+  const wasm = new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")));
   const codecs = await initWasmCodecs(wasm);
   const labels = Array.from({ length: NUM_SERIES }, (_, s) => makeLabels(s));
   const data = Array.from({ length: NUM_SERIES }, (_, s) => makeSeriesData(s));

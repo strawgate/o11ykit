@@ -4,10 +4,14 @@ import { Session } from "node:inspector";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
-import { ScanEngine } from "../src/query.ts";
-import { RowGroupStore } from "../src/row-group-store.ts";
-import type { Labels, QueryOpts, ValuesCodec } from "../src/types.ts";
-import { initWasmCodecs } from "../src/wasm-codecs.ts";
+import {
+  initWasmCodecs,
+  RowGroupStore,
+  ScanEngine,
+  type Labels,
+  type QueryOpts,
+  type ValuesCodec,
+} from "../dist/index.js";
 
 const NUM_SERIES = 32;
 const CHUNK_SIZE = 256;
@@ -140,7 +144,7 @@ function sessionPost<T>(session: Session, method: string, params?: object): Prom
 
 async function main() {
   const queryName = (process.argv[2] ?? "sum-coarse") as QueryCaseName;
-  const outDir = path.resolve(process.argv[3] ?? "packages/o11ytsdb/bench/results/profiles");
+  const outDir = path.resolve(process.argv[3] ?? "bench/results/profiles");
   const iterations = Number.parseInt(process.argv[4] ?? "6", 10);
   if (!Number.isInteger(iterations) || iterations < 1) {
     throw new Error(`iterations must be an integer >= 1, got ${process.argv[4] ?? "6"}`);
@@ -152,10 +156,8 @@ async function main() {
   await mkdir(outDir, { recursive: true });
 
   const codecs = USE_WASM_ALP
-    ? await initWasmCodecs(
-        new WebAssembly.Module(
-          readFileSync(path.resolve("packages/o11ytsdb/wasm/o11ytsdb-rust.wasm"))
-        )
+      ? await initWasmCodecs(
+        new WebAssembly.Module(readFileSync(path.resolve("wasm/o11ytsdb-rust.wasm")))
       )
     : null;
   const baseValuesCodec = codecs?.valuesCodec ?? identityValuesCodec;
