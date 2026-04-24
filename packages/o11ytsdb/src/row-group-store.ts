@@ -641,6 +641,197 @@ export class RowGroupStore implements StorageBackend {
     this._sampleCount = Math.max(this._sampleCount - window.sampleCount, 0);
   }
 
+  appendCompactedWindow(
+    memberSeriesIds: readonly SeriesId[],
+    timestamps: BigInt64Array,
+    valuesByMember: readonly Float64Array[]
+  ): void {
+    if (memberSeriesIds.length === 0) {
+      throw new RangeError("appendCompactedWindow requires at least one member");
+    }
+    if (memberSeriesIds.length !== valuesByMember.length) {
+      throw new RangeError(
+        `appendCompactedWindow: memberSeriesIds.length (${memberSeriesIds.length}) !== ` +
+          `valuesByMember.length (${valuesByMember.length})`
+      );
+    }
+    if (timestamps.length !== this.chunkSize) {
+      throw new RangeError(
+        `appendCompactedWindow: expected ${this.chunkSize} timestamps, got ${timestamps.length}`
+      );
+    }
+
+    const { lane } = this.ensureCompactionLane(memberSeriesIds);
+
+    for (let i = 0; i < memberSeriesIds.length; i++) {
+      const values = requireDefined(valuesByMember[i], `missing compacted member values ${i}`);
+      if (values.length !== this.chunkSize) {
+        throw new RangeError(
+          `appendCompactedWindow: expected ${this.chunkSize} values for member ${i}, got ${values.length}`
+        );
+      }
+    }
+
+    let tsChunk: TimestampChunk;
+    if (this.tsCodec) {
+      tsChunk = {
+        compressed: this.tsCodec.encodeTimestamps(timestamps),
+        minT: requireDefined(timestamps[0], "missing first timestamp in compacted window"),
+        maxT: requireDefined(
+          timestamps[this.chunkSize - 1],
+          "missing last timestamp in compacted window"
+        ),
+        count: this.chunkSize,
+      };
+    } else {
+      tsChunk = {
+        timestamps: timestamps.slice(),
+        minT: requireDefined(timestamps[0], "missing first timestamp in compacted window"),
+        maxT: requireDefined(
+          timestamps[this.chunkSize - 1],
+          "missing last timestamp in compacted window"
+        ),
+        count: this.chunkSize,
+      };
+    }
+
+    const blobs: Uint8Array[] = [];
+    const allStats: ChunkStats[] = [];
+    const hasBatch = typeof this.valuesCodec.encodeBatchValuesWithStats === "function";
+    const hasWasmStats = typeof this.valuesCodec.encodeValuesWithStats === "function";
+
+    if (hasBatch) {
+      const BATCH_CAP = 32;
+      for (let bStart = 0; bStart < valuesByMember.length; bStart += BATCH_CAP) {
+        const bEnd = Math.min(bStart + BATCH_CAP, valuesByMember.length);
+        const arrays: Float64Array[] = [];
+        const encodeBatchValuesWithStats = requireDefined(
+          this.valuesCodec.encodeBatchValuesWithStats,
+          "missing batch values encoder"
+        );
+        for (let i = bStart; i < bEnd; i++) {
+          arrays.push(
+            requireDefined(valuesByMember[i], `missing compacted values for member ${i}`)
+          );
+        }
+        const results = encodeBatchValuesWithStats(arrays);
+        for (let i = 0; i < results.length; i++) {
+          const { compressed, stats } = requireDefined(results[i], `missing batch result ${i}`);
+          blobs.push(compressed);
+          allStats.push(stats);
+        }
+      }
+    } else {
+      for (let i = 0; i < valuesByMember.length; i++) {
+        const values = requireDefined(
+          valuesByMember[i],
+          `missing compacted values for member ${i}`
+        );
+        let compressed: Uint8Array;
+        let stats: ChunkStats;
+        if (hasWasmStats) {
+          const encodeValuesWithStats = requireDefined(
+            this.valuesCodec.encodeValuesWithStats,
+            "missing values-with-stats encoder"
+          );
+          const result = encodeValuesWithStats(values);
+          compressed = result.compressed;
+          stats = result.stats;
+        } else {
+          compressed = this.valuesCodec.encodeValues(values);
+          stats = computeStats(values);
+        }
+        blobs.push(compressed);
+        allStats.push(stats);
+      }
+    }
+
+    let totalBytes = 0;
+    for (const blob of blobs) totalBytes += blob.byteLength;
+    const valueBuffer = new Uint8Array(totalBytes);
+    const offsets = new Uint32Array(memberSeriesIds.length);
+    const sizes = new Uint32Array(memberSeriesIds.length);
+    const packedStats = new Float64Array(memberSeriesIds.length * PACKED_STATS_STRIDE);
+
+    let pos = 0;
+    for (let i = 0; i < memberSeriesIds.length; i++) {
+      const blob = requireDefined(blobs[i], `missing compacted blob ${i}`);
+      valueBuffer.set(blob, pos);
+      offsets[i] = pos;
+      sizes[i] = blob.byteLength;
+      pos += blob.byteLength;
+
+      const st = requireDefined(allStats[i], `missing compacted stats ${i}`);
+      const si = i * PACKED_STATS_STRIDE;
+      packedStats[si] = st.minV;
+      packedStats[si + 1] = st.maxV;
+      packedStats[si + 2] = st.sum;
+      packedStats[si + 3] = st.count;
+      packedStats[si + 4] = st.lastV;
+    }
+
+    const tsChunkIndex = lane.frozenTimestamps.length;
+    lane.frozenTimestamps.push(tsChunk);
+    lane.rowGroups.push({
+      valueBuffer,
+      offsets,
+      sizes,
+      packedStats,
+      tsChunkIndex,
+      memberCount: memberSeriesIds.length,
+    });
+    this._sampleCount += memberSeriesIds.length * this.chunkSize;
+  }
+
+  private ensureCompactionLane(memberSeriesIds: readonly SeriesId[]): { lane: GroupLane } {
+    const firstSeriesId = requireDefined(memberSeriesIds[0], "missing first compacted member id");
+    const firstState = this.getActiveState(firstSeriesId);
+    const groupId = firstState.series.groupId;
+    let canReuseLane = firstState.segment.hot.count === 0 && firstState.lane.hotCount === 0;
+    let lane = firstState.lane;
+    let laneId = firstState.segment.laneId;
+
+    if (lane.members.length !== memberSeriesIds.length) {
+      canReuseLane = false;
+    }
+
+    for (let i = 0; i < memberSeriesIds.length; i++) {
+      const seriesId = requireDefined(memberSeriesIds[i], `missing compacted member id ${i}`);
+      const state = this.getActiveState(seriesId);
+      if (state.series.groupId !== groupId) {
+        throw new RangeError(
+          `appendCompactedWindow members must share one group: series=${seriesId} group=${state.series.groupId} expectedGroup=${groupId}`
+        );
+      }
+      if (state.segment.hot.count !== 0) {
+        throw new RangeError(
+          `appendCompactedWindow requires empty member hot state for series ${seriesId}, got ${state.segment.hot.count}`
+        );
+      }
+      if (
+        state.segment.laneId !== laneId ||
+        state.segment.laneMemberIndex !== i ||
+        lane.members.length !== memberSeriesIds.length
+      ) {
+        canReuseLane = false;
+      }
+    }
+
+    if (canReuseLane) {
+      return { lane };
+    }
+
+    const group = this.getGroup(groupId);
+    lane = createLane(this.chunkSize);
+    group.lanes.push(lane);
+    laneId = group.lanes.length - 1;
+    for (let i = 0; i < memberSeriesIds.length; i++) {
+      const seriesId = requireDefined(memberSeriesIds[i], `missing compacted member id ${i}`);
+      this.attachSegmentToLane(seriesId, laneId, lane, true);
+    }
+    return { lane };
+  }
+
   private canDrainLaneWindow(
     lane: GroupLane,
     rowGroupCount: number,

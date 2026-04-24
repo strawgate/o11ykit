@@ -594,4 +594,55 @@ describe("TieredRowGroupStore compaction", () => {
     const coldStore = Reflect.get(store, "coldStore");
     expect(coldStore.sampleCount).toBe(0);
   });
+
+  it("does not partially write cold data when compacted member encoding fails", () => {
+    const failOnSecondColdMemberCodec: ValuesCodec = {
+      name: "fail-on-second-cold-member",
+      encodeValues(values: Float64Array): Uint8Array {
+        if (values.length === 8 && values[0] === 100) {
+          throw new Error("boom during cold encode");
+        }
+        return new Uint8Array(
+          values.buffer.slice(values.byteOffset, values.byteOffset + values.byteLength)
+        );
+      },
+      decodeValues(buf: Uint8Array): Float64Array {
+        return new Float64Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+      },
+    };
+    const store = new TieredRowGroupStore(failOnSecondColdMemberCodec, 4, 8, () => 0, 2);
+    const aId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "a" }));
+    const bId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "b" }));
+
+    const timestamps = new BigInt64Array(8);
+    const aValues = new Float64Array(8);
+    const bValues = new Float64Array(8);
+    for (let i = 0; i < 8; i++) {
+      timestamps[i] = BigInt(i) * 1_000n;
+      aValues[i] = i;
+      bValues[i] = 100 + i;
+    }
+
+    expect(() => {
+      store.appendBatch(aId, timestamps, aValues);
+      store.appendBatch(bId, timestamps, bValues);
+    }).toThrow(/boom during cold encode/);
+
+    const coldStore = Reflect.get(store, "coldStore");
+    expect(coldStore.sampleCount).toBe(0);
+
+    const hotStore = Reflect.get(store, "hotStore");
+    const hotGroups = Reflect.get(hotStore, "groups");
+    const hotLane = hotGroups[0].lanes[0];
+    expect(hotLane.rowGroups.length).toBe(2);
+    expect(hotLane.frozenTimestamps.length).toBe(2);
+
+    const aData = store.read(aId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
+    expect(Array.from(aData.timestamps)).toEqual(Array.from(timestamps));
+    expect(Array.from(aData.values)).toEqual(Array.from(aValues));
+
+    const bData = store.read(bId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
+    expect(Array.from(bData.timestamps)).toEqual(Array.from(timestamps));
+    expect(Array.from(bData.values)).toEqual(Array.from(bValues));
+  });
 });

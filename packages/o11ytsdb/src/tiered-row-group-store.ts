@@ -251,7 +251,8 @@ export class TieredRowGroupStore implements StorageBackend {
   private compactLane(laneWindow: RowGroupStoreLaneWindow): void {
     const rowGroups = laneWindow.rowGroups;
     const memberCount = requireDefined(rowGroups[0], "missing compacted hot row group").memberCount;
-    const compactedMembers: Array<{ coldSeriesId: SeriesId; coldValues: Float64Array }> = [];
+    const coldSeriesIds: SeriesId[] = [];
+    const coldValuesByMember: Float64Array[] = [];
 
     for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
       const hotSeriesId = requireDefined(
@@ -300,11 +301,10 @@ export class TieredRowGroupStore implements StorageBackend {
           `expected ${this.coldChunkSize} compacted values for member ${memberIndex}, got ${valueOffset}`
         );
       }
-      compactedMembers.push({ coldSeriesId, coldValues });
+      coldSeriesIds.push(coldSeriesId);
+      coldValuesByMember.push(coldValues);
     }
 
-    for (const member of compactedMembers) {
-      this.coldStore.appendBatch(member.coldSeriesId, laneWindow.timestamps, member.coldValues);
-    }
+    this.coldStore.appendCompactedWindow(coldSeriesIds, laneWindow.timestamps, coldValuesByMember);
   }
 }
