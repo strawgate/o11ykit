@@ -269,9 +269,9 @@ export class TieredRowGroupStore implements StorageBackend {
   private compactLane(laneWindow: RowGroupStoreLaneWindow): void {
     const rowGroups = laneWindow.rowGroups;
     const memberCount = requireDefined(rowGroups[0], "missing compacted hot row group").memberCount;
-    const coldSeriesIds: SeriesId[] = [];
-    const coldValuesByMember: Float64Array[] = [];
-
+    const coldSeriesIds = new Array<SeriesId>(memberCount);
+    const coldValuesSlab = new Float64Array(memberCount * this.coldChunkSize);
+    const coldValuesByMember = new Array<Float64Array>(memberCount);
     for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
       const hotSeriesId = requireDefined(
         laneWindow.memberSeriesIds[memberIndex],
@@ -281,12 +281,23 @@ export class TieredRowGroupStore implements StorageBackend {
         this.hotToGlobal[hotSeriesId],
         `missing global series mapping for hot series ${hotSeriesId}`
       );
-      const coldSeriesId = this.ensureColdId(globalId);
-      const coldValues = new Float64Array(this.coldChunkSize);
-      let valueOffset = 0;
+      coldSeriesIds[memberIndex] = this.ensureColdId(globalId);
+      coldValuesByMember[memberIndex] = coldValuesSlab.subarray(
+        memberIndex * this.coldChunkSize,
+        (memberIndex + 1) * this.coldChunkSize
+      );
+    }
 
-      for (let i = 0; i < rowGroups.length; i++) {
-        const rowGroup = requireDefined(rowGroups[i], `missing compacted row group ${i}`);
+    const decodeBatchValuesView = this.valuesCodec.decodeBatchValuesView;
+    const decodeBatchValues = this.valuesCodec.decodeBatchValues;
+    for (let rowGroupIndex = 0; rowGroupIndex < rowGroups.length; rowGroupIndex++) {
+      const rowGroup = requireDefined(
+        rowGroups[rowGroupIndex],
+        `missing compacted row group ${rowGroupIndex}`
+      );
+      const valueOffset = rowGroupIndex * this.hotChunkSize;
+      const blobs = new Array<Uint8Array>(memberCount);
+      for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
         const start = requireDefined(
           rowGroup.offsets[memberIndex],
           `missing compacted value offset for member ${memberIndex}`
@@ -295,32 +306,31 @@ export class TieredRowGroupStore implements StorageBackend {
           rowGroup.sizes[memberIndex],
           `missing compacted value size for member ${memberIndex}`
         );
-        const values = this.valuesCodec.decodeValues(
-          rowGroup.valueBuffer.subarray(start, start + size)
+        blobs[memberIndex] = rowGroup.valueBuffer.subarray(start, start + size);
+      }
+
+      const decoded =
+        typeof decodeBatchValuesView === "function"
+          ? decodeBatchValuesView.call(this.valuesCodec, blobs, this.hotChunkSize)
+          : typeof decodeBatchValues === "function"
+            ? decodeBatchValues.call(this.valuesCodec, blobs, this.hotChunkSize)
+            : blobs.map((blob) => this.valuesCodec.decodeValues(blob));
+
+      for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
+        const values = requireDefined(
+          decoded[memberIndex],
+          `missing compacted decoded values for member ${memberIndex}, rowGroup ${rowGroupIndex}`
         );
         if (values.length !== this.hotChunkSize) {
           throw new RangeError(
-            `expected ${this.hotChunkSize} values for member ${memberIndex}, chunk ${i}, got ${values.length}`
+            `expected ${this.hotChunkSize} values for member ${memberIndex}, chunk ${rowGroupIndex}, got ${values.length}`
           );
         }
-        if (valueOffset + values.length > coldValues.length) {
-          throw new RangeError(
-            `hot->cold compaction overflow for member ${memberIndex}: ` +
-              `offset=${valueOffset} decoded=${values.length} cold=${coldValues.length} ` +
-              `hot=${this.hotChunkSize} groups=${rowGroups.length} size=${size} ` +
-              `memberCount=${memberCount} groupIndex=${i}`
-          );
-        }
-        coldValues.set(values, valueOffset);
-        valueOffset += values.length;
+        requireDefined(
+          coldValuesByMember[memberIndex],
+          `missing compacted cold values for member ${memberIndex}`
+        ).set(values, valueOffset);
       }
-      if (valueOffset !== this.coldChunkSize) {
-        throw new RangeError(
-          `expected ${this.coldChunkSize} compacted values for member ${memberIndex}, got ${valueOffset}`
-        );
-      }
-      coldSeriesIds.push(coldSeriesId);
-      coldValuesByMember.push(coldValues);
     }
 
     this.coldStore.appendCompactedWindow(coldSeriesIds, laneWindow.timestamps, coldValuesByMember);
