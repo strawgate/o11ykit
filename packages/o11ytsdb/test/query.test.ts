@@ -899,6 +899,60 @@ describe("ScanEngine", () => {
     return store;
   }
 
+  function makeScratchViewPointAggStore(): StorageBackend {
+    const sharedTimestamps = new BigInt64Array(3);
+    const sharedValues = new Float64Array(3);
+    const labelsA = makeLabels("m", { host: "a" });
+    const labelsB = makeLabels("m", { host: "b" });
+
+    const decodeIntoScratch = (timestamps: bigint[], values: number[]) => {
+      sharedTimestamps.fill(0n);
+      sharedValues.fill(0);
+      for (let i = 0; i < timestamps.length; i++) {
+        sharedTimestamps[i] = timestamps[i] ?? 0n;
+        sharedValues[i] = values[i] ?? 0;
+      }
+      return {
+        timestamps: sharedTimestamps.subarray(0, timestamps.length),
+        values: sharedValues.subarray(0, values.length),
+      };
+    };
+
+    const makeLazyRange = (timestamps: bigint[], values: number[]) => ({
+      timestamps: new BigInt64Array(0),
+      values: new Float64Array(0),
+      decode: () => ({
+        timestamps: BigInt64Array.from(timestamps),
+        values: Float64Array.from(values),
+      }),
+      decodeView: () => decodeIntoScratch(timestamps, values),
+    });
+
+    return {
+      name: "scratch-view-point-agg",
+      getOrCreateSeries(): number {
+        throw new Error("not used in test");
+      },
+      append(): void {
+        throw new Error("not used in test");
+      },
+      appendBatch(): void {
+        throw new Error("not used in test");
+      },
+      matchLabel(label: string, value: string): number[] {
+        return label === "__name__" && value === "m" ? [0, 1] : [];
+      },
+      read(id: number) {
+        return id === 0
+          ? makeLazyRange([0n, 1_000n, 2_000n], [1, 2, 3])
+          : makeLazyRange([10n, 1_010n], [10, 20]);
+      },
+      labels(id: number): Labels | undefined {
+        return id === 0 ? labelsA : labelsB;
+      },
+    };
+  }
+
   it("cross-segment: read spans frozen + rolled-over segments", () => {
     // 2 series share a lane; fill to freeze, then overflow one series into a new lane
     const store = new RowGroupStore(identityValuesCodec, 4, () => 0, 2);
@@ -1138,6 +1192,39 @@ describe("ScanEngine", () => {
     expect(s).toBeDefined();
     expect(Array.from(s.timestamps)).toEqual([0n, 4_000n, 8_000n]);
     expect(Array.from(s.values)).toEqual([10, 26, 42]);
+  });
+
+  it("point aggregation keeps scratch-backed decode views stable across series", () => {
+    const result = engine.query(makeScratchViewPointAggStore(), {
+      metric: "m",
+      start: 0n,
+      end: 5_000n,
+      agg: "sum",
+    });
+    const s = result.series[0];
+    expect(s).toBeDefined();
+    expect(Array.from(s.timestamps)).toEqual([0n, 1_000n, 2_000n]);
+    expect(Array.from(s.values)).toEqual([11, 22, 3]);
+  });
+
+  it("rejects regular-chunk fast paths for irregular timestamps", () => {
+    const store = new RowGroupStore(identityValuesCodec, 3, () => 0, 1);
+    const id = store.getOrCreateSeries(makeLabels("irregular"));
+    store.appendBatch(id, new BigInt64Array([0n, 1_000n, 4_000n]), new Float64Array([10, 20, 30]));
+
+    const result = engine.query(store, {
+      metric: "irregular",
+      start: 0n,
+      end: 4_000n,
+      agg: "sum",
+      step: 2_000n,
+    });
+    const s = result.series[0];
+    expect(s).toBeDefined();
+    expect(Array.from(s.timestamps)).toEqual([0n, 2_000n, 4_000n]);
+    expect(s.values[0]).toBe(30);
+    expect(s.values[1]).toBe(0);
+    expect(s.values[2]).toBe(30);
   });
 
   it("stats-skip: rate with RowGroupStore lazy-decodes correctly", () => {

@@ -11,6 +11,20 @@ interface WorkerLikeEndpoint {
   on?: (type: "message", listener: (data: unknown) => void) => void;
 }
 
+interface NodeFsModule {
+  existsSync(path: string): boolean;
+  readFileSync(path: string): Uint8Array;
+}
+
+interface NodePathModule {
+  dirname(path: string): string;
+  join(...parts: string[]): string;
+}
+
+interface NodeUrlModule {
+  fileURLToPath(url: string | URL): string;
+}
+
 function requireDefined<T>(value: T | undefined, message: string): T {
   if (value === undefined) {
     throw new Error(message);
@@ -68,15 +82,15 @@ async function tryLoadWasm(): Promise<WasmCodecs | null> {
     const dynamicImport = new Function("s", "return import(s)") as (
       specifier: string
     ) => Promise<unknown>;
-    const nodeFs = await dynamicImport("node:fs").catch(() => null);
-    const nodePath = await dynamicImport("node:path").catch(() => null);
-    const nodeUrl = await dynamicImport("node:url").catch(() => null);
+    const nodeFs = (await dynamicImport("node:fs").catch(() => null)) as NodeFsModule | null;
+    const nodePath = (await dynamicImport("node:path").catch(() => null)) as NodePathModule | null;
+    const nodeUrl = (await dynamicImport("node:url").catch(() => null)) as NodeUrlModule | null;
 
     if (nodeFs && nodePath && nodeUrl) {
       const thisDir = nodePath.dirname(nodeUrl.fileURLToPath(import.meta.url));
       const wasmPath = nodePath.join(thisDir, "..", "wasm", "o11ytsdb-rust.wasm");
       if (nodeFs.existsSync(wasmPath)) {
-        const bytes = nodeFs.readFileSync(wasmPath);
+        const bytes = Uint8Array.from(nodeFs.readFileSync(wasmPath));
         const module = new WebAssembly.Module(bytes);
         return initWasmCodecs(module);
       }

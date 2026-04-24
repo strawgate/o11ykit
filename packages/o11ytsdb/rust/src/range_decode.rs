@@ -73,21 +73,22 @@ pub extern "C" fn rangeDecodeALP(
         return 0;
     }
 
-    let range_count = hi - lo;
-    if range_count > max_out as usize {
+    let requested_count = hi - lo;
+    if requested_count > max_out as usize {
         return 0;
     }
 
     let val_input = unsafe { core::slice::from_raw_parts(val_ptr, val_len as usize) };
-    let out_vals = unsafe { core::slice::from_raw_parts_mut(out_val_ptr, range_count) };
+    let out_vals = unsafe { core::slice::from_raw_parts_mut(out_val_ptr, requested_count) };
     // Decode values first so we can bail out without mutating the ts output
     // if the value blob is malformed.
-    if !decode_values_alp_range(val_input, lo, hi, out_vals) {
+    let range_count = decode_values_alp_range(val_input, lo, hi, out_vals);
+    if range_count == 0 {
         return 0;
     }
 
     let out_ts = unsafe { core::slice::from_raw_parts_mut(out_ts_ptr, range_count) };
-    out_ts.copy_from_slice(&ts_buf[lo..hi]);
+    out_ts.copy_from_slice(&ts_buf[lo..lo + range_count]);
 
     range_count as u32
 }

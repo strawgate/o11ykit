@@ -452,9 +452,9 @@ export class ColumnStore implements StorageBackend {
                 values: this.valuesCodec.decodeValues(cv),
               };
             },
-            decodeView:
-              typeof decodeValuesView === "function"
-                ? () => {
+            ...(typeof decodeValuesView === "function"
+              ? {
+                  decodeView: () => {
                     if (!tsChunk.timestamps && this.tsCodec && tsChunk.compressed) {
                       tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed);
                     }
@@ -463,8 +463,9 @@ export class ColumnStore implements StorageBackend {
                       timestamps: tsChunk.timestamps!,
                       values: decodeValuesView(cv),
                     };
-                  }
-                : undefined,
+                  },
+                }
+              : {}),
           });
           continue;
         }
@@ -489,13 +490,14 @@ export class ColumnStore implements StorageBackend {
                 ? decodeValuesRange.call(this.valuesCodec, cv, lo, hi)
                 : this.valuesCodec.decodeValues(cv).subarray(lo, hi),
             }),
-            decodeView:
-              typeof decodeValuesRangeView === "function"
-                ? () => ({
+            ...(typeof decodeValuesRangeView === "function"
+              ? {
+                  decodeView: () => ({
                     timestamps: partialTimestamps,
                     values: decodeValuesRangeView.call(this.valuesCodec, cv, lo, hi),
-                  })
-                : undefined,
+                  }),
+                }
+              : {}),
           });
         }
       }

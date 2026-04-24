@@ -22,7 +22,7 @@ the design.
 
 ### Memory wins over query
 
-Per [PLAN.md](/Users/billeaston/.codex/worktrees/9d53/o11ykit/packages/o11ytsdb/PLAN.md),
+Per [PLAN.md](../PLAN.md),
 memory is the first priority. A hot-tier redesign that improves query time but
  materially increases bytes/sample is a miss.
 
@@ -116,7 +116,7 @@ with configurable sizes, not generic N-tier compaction.
 ## Current Implementation
 
 The first backend implementation lives in
-[tiered-row-group-store.ts](/Users/billeaston/.codex/worktrees/9d53/o11ykit/packages/o11ytsdb/src/tiered-row-group-store.ts).
+[tiered-row-group-store.ts](../src/tiered-row-group-store.ts).
 
 It currently works by:
 

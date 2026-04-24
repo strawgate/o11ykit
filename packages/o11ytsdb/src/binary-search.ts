@@ -27,8 +27,9 @@ export function concatRanges(parts: TimeRange[]): TimeRange {
   if (parts.length === 1) {
     // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const only = parts[0]!;
-    if ((only.timestamps.length > 0 && only.values.length > 0) || !only.decode) return only;
-    const decoded = only.decodeView ? only.decodeView() : only.decode();
+    if (only.timestamps.length > 0 && only.values.length > 0) return only;
+    const decoded = only.decodeView ? only.decodeView() : only.decode ? only.decode() : null;
+    if (!decoded) return only;
     // `decodeView()` may borrow codec scratch memory, so `read()` must return
     // stable owned arrays even for the single-part fast path.
     return {
@@ -41,10 +42,12 @@ export function concatRanges(parts: TimeRange[]): TimeRange {
   const materialized: TimeRange[] = [];
   for (const part of parts) {
     const range =
-      (part.timestamps.length === 0 || part.values.length === 0) && part.decode
+      part.timestamps.length === 0 || part.values.length === 0
         ? part.decodeView
           ? part.decodeView()
-          : part.decode()
+          : part.decode
+            ? part.decode()
+            : part
         : part;
     materialized.push(range);
     total += range.timestamps.length;

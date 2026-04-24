@@ -349,7 +349,9 @@ describe("RowGroupStore freeze behavior", () => {
     const rangedCodec: ValuesCodec = {
       name: "range-only",
       encodeValues(values: Float64Array): Uint8Array {
-        return new Uint8Array(values.buffer.slice(0));
+        return new Uint8Array(
+          values.buffer.slice(values.byteOffset, values.byteOffset + values.byteLength)
+        );
       },
       decodeValues(): Float64Array {
         throw new Error("decodeValues should not be called for partial ranged read");
@@ -374,7 +376,9 @@ describe("RowGroupStore freeze behavior", () => {
     const rangedViewCodec: ValuesCodec = {
       name: "range-view-only",
       encodeValues(values: Float64Array): Uint8Array {
-        return new Uint8Array(values.buffer.slice(0));
+        return new Uint8Array(
+          values.buffer.slice(values.byteOffset, values.byteOffset + values.byteLength)
+        );
       },
       decodeValues(): Float64Array {
         throw new Error("decodeValues should not be called for partial ranged read");
@@ -463,5 +467,30 @@ describe("TieredRowGroupStore compaction", () => {
     const decodedHot = parts[1].decode?.();
     expect(decodedHot).toBeDefined();
     expect(Array.from(decodedHot?.timestamps ?? [])).toEqual(Array.from(timestamps.slice(8, 12)));
+  });
+
+  it("fails compaction when a hot chunk decodes to fewer values than expected", () => {
+    const badDecodeCodec: ValuesCodec = {
+      name: "truncate-on-decode",
+      encodeValues(values: Float64Array): Uint8Array {
+        return new Uint8Array(
+          values.buffer.slice(values.byteOffset, values.byteOffset + values.byteLength)
+        );
+      },
+      decodeValues(buf: Uint8Array): Float64Array {
+        const all = new Float64Array(
+          buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+        );
+        return all.subarray(0, Math.max(0, all.length - 1));
+      },
+    };
+    const store = new TieredRowGroupStore(badDecodeCodec, 4, 8, () => 0, 2);
+    const id = store.getOrCreateSeries(makeLabels("tier_metric", { host: "solo" }));
+
+    expect(() => {
+      for (let i = 0; i < 8; i++) {
+        store.append(id, BigInt(i) * 1_000n, i + 1);
+      }
+    }).toThrow(/expected 4 values/);
   });
 });

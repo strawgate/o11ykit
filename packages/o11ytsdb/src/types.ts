@@ -21,7 +21,7 @@ export interface TimeRange {
   stats?: ChunkStats;
   /** Optional packed stats backing for allocation-free frozen chunk stats. */
   statsPacked?: Float64Array;
-  /** Start offset inside statsPacked for this chunk's 8 stat fields. */
+  /** Start offset inside statsPacked for this chunk's 5 packed stat fields (min/max/sum/count/last). */
   statsOffset?: number;
   /** Minimum timestamp in the original chunk (for bucket-fit checks). */
   chunkMinT?: bigint;

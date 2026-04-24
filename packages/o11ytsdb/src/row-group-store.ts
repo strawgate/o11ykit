@@ -481,10 +481,9 @@ export class RowGroupStore implements StorageBackend {
               chunkMinT: tsChunk.minT,
               chunkMaxT: tsChunk.maxT,
               decode: decodeFullRowGroupPart,
-              decodeView:
-                typeof this.valuesCodec.decodeValuesView === "function"
-                  ? decodeViewFullRowGroupPart
-                  : undefined,
+              ...(typeof this.valuesCodec.decodeValuesView === "function"
+                ? { decodeView: decodeViewFullRowGroupPart }
+                : {}),
               _timestampsRef: timestamps,
               _compressedValues: compressedValues,
               _valuesCodec: this.valuesCodec,
@@ -501,10 +500,9 @@ export class RowGroupStore implements StorageBackend {
               timestamps: partialTimestamps,
               values: EMPTY_VALUES,
               decode: decodePartialRowGroupPart,
-              decodeView:
-                typeof decodeValuesRangeView === "function"
-                  ? decodeViewPartialRowGroupPart
-                  : undefined,
+              ...(typeof decodeValuesRangeView === "function"
+                ? { decodeView: decodeViewPartialRowGroupPart }
+                : {}),
               _compressedValues: compressedValues,
               _valuesCodec: this.valuesCodec,
               _lo: lo,

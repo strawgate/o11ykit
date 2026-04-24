@@ -59,7 +59,19 @@ function requireDefined<T>(value: T | undefined, message: string): T {
 }
 
 function asInternals(store: RowGroupStore): RowGroupStoreInternals {
-  return store as unknown as RowGroupStoreInternals;
+  const candidate = store as unknown as Partial<RowGroupStoreInternals>;
+  if (
+    !candidate ||
+    !Array.isArray(candidate.groups) ||
+    !candidate.valuesCodec ||
+    typeof candidate._sampleCount !== "number" ||
+    !(candidate.labelIndex instanceof LabelIndex)
+  ) {
+    throw new TypeError(
+      "RowGroupStore internals changed; tiered compaction assumptions are invalid"
+    );
+  }
+  return candidate as RowGroupStoreInternals;
 }
 
 /**
@@ -309,8 +321,16 @@ export class TieredRowGroupStore implements StorageBackend {
       if (!timestamps) {
         throw new RangeError(`missing timestamps for hot chunk ${i} during compaction`);
       }
+      if (timestamps.length !== this.hotChunkSize) {
+        throw new RangeError(
+          `expected ${this.hotChunkSize} timestamps for hot chunk ${i}, got ${timestamps.length}`
+        );
+      }
       coldTimestamps.set(timestamps, tsOffset);
       tsOffset += timestamps.length;
+    }
+    if (tsOffset !== coldSize) {
+      throw new RangeError(`expected ${coldSize} compacted timestamps, got ${tsOffset}`);
     }
 
     for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
@@ -339,6 +359,11 @@ export class TieredRowGroupStore implements StorageBackend {
         const values = hot.valuesCodec.decodeValues(
           rowGroup.valueBuffer.subarray(start, start + size)
         );
+        if (values.length !== this.hotChunkSize) {
+          throw new RangeError(
+            `expected ${this.hotChunkSize} values for member ${memberIndex}, chunk ${i}, got ${values.length}`
+          );
+        }
         if (valueOffset + values.length > coldValues.length) {
           throw new RangeError(
             `hot->cold compaction overflow for member ${memberIndex}: ` +
@@ -349,6 +374,11 @@ export class TieredRowGroupStore implements StorageBackend {
         }
         coldValues.set(values, valueOffset);
         valueOffset += values.length;
+      }
+      if (valueOffset !== coldSize) {
+        throw new RangeError(
+          `expected ${coldSize} compacted values for member ${memberIndex}, got ${valueOffset}`
+        );
       }
 
       this.coldStore.appendBatch(coldSeriesId, coldTimestamps, coldValues);

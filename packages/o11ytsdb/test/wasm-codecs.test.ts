@@ -135,6 +135,24 @@ describe("initWasmCodecs", () => {
     expect(decodeValuesALPRange).toHaveBeenCalled();
   });
 
+  it("trims bounded ALP value decode to the sample count returned by WASM", async () => {
+    const fakeExports = createFakeWasmExports();
+    const decodeValuesALPRange = vi.fn(
+      (_inPtr: number, _inLen: number, _lo: number, _hi: number, valPtr: number, _max: number) => {
+        new Float64Array(fakeExports.memory.buffer, valPtr, 1).set([99]);
+        return 1;
+      }
+    );
+    fakeExports.decodeValuesALPRange = decodeValuesALPRange;
+    vi.spyOn(WebAssembly, "instantiate").mockResolvedValue({
+      exports: fakeExports,
+    } as unknown as WebAssembly.Instance);
+
+    const codecs = await initWasmCodecs({} as WebAssembly.Module);
+    const buf = new Uint8Array([0, 4, 0, 0]);
+    expect(Array.from(codecs.valuesCodec.decodeValuesRange?.(buf, 1, 4) ?? [])).toEqual([99]);
+  });
+
   it("returns a scratch-backed ALP view for single decode", async () => {
     const fakeExports = createFakeWasmExports();
     const decodeValuesALP = vi.fn(

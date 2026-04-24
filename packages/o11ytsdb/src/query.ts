@@ -556,9 +556,9 @@ function aggAccumulate(accum: number, v: number, fn: AggFn): number {
 function aggFinalize(values: Float64Array, counts: Float64Array, fn: AggFn): void {
   if (fn === "avg") {
     for (let i = 0; i < values.length; i++) {
-      const count = counts[i];
+      const count = readNumberAt(counts, i, "bucket count");
       if (count > 0) {
-        values[i] = values[i] / count;
+        values[i] = readNumberAt(values, i, "bucket value") / count;
       }
     }
   }
@@ -585,17 +585,34 @@ function aggregate(ranges: TimeRange[], fn: AggFn, step?: bigint): TimeRange {
 }
 
 function materializeRange(range: TimeRange): TimeRange {
-  if ((range.timestamps.length > 0 && range.values.length > 0) || !range.decode) {
+  if (
+    (range.timestamps.length > 0 && range.values.length > 0) ||
+    (!range.decode && !range.decodeView)
+  ) {
     return range;
   }
-  return range.decodeView ? range.decodeView() : range.decode();
+  if (range.decodeView) {
+    return range.decodeView();
+  }
+  return range.decode ? range.decode() : range;
+}
+
+function materializeRangeOwned(range: TimeRange): TimeRange {
+  if (range.timestamps.length > 0 && range.values.length > 0) {
+    return range;
+  }
+  const materialized = materializeRange(range);
+  return {
+    timestamps: materialized.timestamps.slice(),
+    values: materialized.values.slice(),
+  };
 }
 
 function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
   // Use the longest series as the timestamp base.
-  let longest = materializeRange(readItemAt(ranges, 0, "range"));
+  let longest = materializeRangeOwned(readItemAt(ranges, 0, "range"));
   for (const r of ranges) {
-    const materialized = materializeRange(r);
+    const materialized = materializeRangeOwned(r);
     if (materialized.timestamps.length > longest.timestamps.length) longest = materialized;
   }
 
@@ -608,7 +625,7 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
         `${fn}() without a subsequent aggregation must be evaluated per series (got ${ranges.length} ranges)`
       );
     }
-    const src = materializeRange(readItemAt(ranges, 0, "range"));
+    const src = materializeRangeOwned(readItemAt(ranges, 0, "range"));
     if (fn === "irate") {
       for (let i = 1; i < src.timestamps.length; i++) {
         const currentValue = readNumberAt(src.values, i, "point value");
@@ -799,22 +816,22 @@ function _foldStats(
   const lastV = readChunkStat(range, STATS_LAST, "chunk last");
   switch (fn) {
     case "min":
-      if (minV < values[bucket]) values[bucket] = minV;
+      if (minV < readNumberAt(values, bucket, "bucket value")) values[bucket] = minV;
       break;
     case "max":
-      if (maxV > values[bucket]) values[bucket] = maxV;
+      if (maxV > readNumberAt(values, bucket, "bucket value")) values[bucket] = maxV;
       break;
     case "sum":
     case "avg":
-      values[bucket] += sum;
+      values[bucket] = readNumberAt(values, bucket, "bucket value") + sum;
       break;
     case "count":
-      values[bucket] += count;
+      values[bucket] = readNumberAt(values, bucket, "bucket value") + count;
       break;
     case "last":
       // Use chunk maxT to ensure temporally-last value wins across series.
       if (lastTsTracker && chunkMaxTN !== undefined) {
-        if (chunkMaxTN >= lastTsTracker[bucket]) {
+        if (chunkMaxTN >= readNumberAt(lastTsTracker, bucket, "last timestamp")) {
           lastTsTracker[bucket] = chunkMaxTN;
           values[bucket] = lastV;
         }
@@ -823,7 +840,7 @@ function _foldStats(
       }
       break;
   }
-  counts[bucket] += count;
+  counts[bucket] = readNumberAt(counts, bucket, "bucket count") + count;
 }
 
 type RegularChunkMeta = {
@@ -854,7 +871,19 @@ function regularChunkMeta(
   chunkMinTN?: number,
   chunkMaxTN?: number
 ): RegularChunkMeta | null {
-  return regularChunkMetaFromLength(ts.length, chunkMinTN, chunkMaxTN);
+  const regular = regularChunkMetaFromLength(ts.length, chunkMinTN, chunkMaxTN);
+  if (!regular) {
+    return null;
+  }
+  for (let i = 0; i < ts.length; i++) {
+    if (
+      Number(readBigIntAt(ts, i, "regular timestamp")) !==
+      regular.chunkMinTN + i * regular.interval
+    ) {
+      return null;
+    }
+  }
+  return regular;
 }
 
 function ceilDiv(numerator: number, denominator: number): number {
@@ -975,16 +1004,13 @@ function _makeAccumulator(
   ): void => {
     const len = ts.length;
     if (len === 0) return;
-    if (len >= 2 && chunkMinTN !== undefined && chunkMaxTN !== undefined) {
-      const span = chunkMaxTN - chunkMinTN;
-      if (span > 0 && span % (len - 1) === 0) {
-        const interval = span / (len - 1);
-        const base = chunkMinTN - minTN;
-        for (let i = 0; i < len; i++) {
-          fold(((base + i * interval) / stepN) | 0, readNumberAtUnchecked(vs, i));
-        }
-        return;
+    const regular = regularChunkMeta(ts, chunkMinTN, chunkMaxTN);
+    if (regular) {
+      const base = regular.chunkMinTN - minTN;
+      for (let i = 0; i < len; i++) {
+        fold(((base + i * regular.interval) / stepN) | 0, readNumberAtUnchecked(vs, i));
       }
+      return;
     }
     const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
     for (let i = 0; i < len; i++) {
@@ -1002,17 +1028,14 @@ function _makeAccumulator(
   ): void => {
     const len = ts.length;
     if (len === 0) return;
-    if (len >= 2 && chunkMinTN !== undefined && chunkMaxTN !== undefined) {
-      const span = chunkMaxTN - chunkMinTN;
-      if (span > 0 && span % (len - 1) === 0) {
-        const interval = span / (len - 1);
-        const base = chunkMinTN - minTN;
-        for (let i = 0; i < len; i++) {
-          const t = chunkMinTN + i * interval;
-          fold(((base + i * interval) / stepN) | 0, readNumberAtUnchecked(vs, i), t);
-        }
-        return;
+    const regular = regularChunkMeta(ts, chunkMinTN, chunkMaxTN);
+    if (regular) {
+      const base = regular.chunkMinTN - minTN;
+      for (let i = 0; i < len; i++) {
+        const t = regular.chunkMinTN + i * regular.interval;
+        fold(((base + i * regular.interval) / stepN) | 0, readNumberAtUnchecked(vs, i), t);
       }
+      return;
     }
     const dv = new DataView(ts.buffer, ts.byteOffset, ts.byteLength);
     for (let i = 0; i < len; i++) {
@@ -1034,8 +1057,8 @@ function _makeAccumulator(
             stepN,
             (bucket, start, end) => {
               const min = minRange(vs, start, end);
-              if (min < values[bucket]) values[bucket] = min;
-              counts[bucket] += end - start;
+              if (min < readNumberAt(values, bucket, "bucket value")) values[bucket] = min;
+              counts[bucket] = readNumberAt(counts, bucket, "bucket count") + (end - start);
             }
           );
           return;
@@ -1044,8 +1067,8 @@ function _makeAccumulator(
           ts,
           vs,
           (bucket, v) => {
-            if (v < values[bucket]) values[bucket] = v;
-            counts[bucket] += 1;
+            if (v < readNumberAt(values, bucket, "bucket value")) values[bucket] = v;
+            counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           },
           cMin,
           cMax
@@ -1063,8 +1086,8 @@ function _makeAccumulator(
             stepN,
             (bucket, start, end) => {
               const max = maxRange(vs, start, end);
-              if (max > values[bucket]) values[bucket] = max;
-              counts[bucket] += end - start;
+              if (max > readNumberAt(values, bucket, "bucket value")) values[bucket] = max;
+              counts[bucket] = readNumberAt(counts, bucket, "bucket count") + (end - start);
             }
           );
           return;
@@ -1073,8 +1096,8 @@ function _makeAccumulator(
           ts,
           vs,
           (bucket, v) => {
-            if (v > values[bucket]) values[bucket] = v;
-            counts[bucket] += 1;
+            if (v > readNumberAt(values, bucket, "bucket value")) values[bucket] = v;
+            counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           },
           cMin,
           cMax
@@ -1092,8 +1115,9 @@ function _makeAccumulator(
             minTN,
             stepN,
             (bucket, start, end) => {
-              values[bucket] += sumRange(vs, start, end);
-              counts[bucket] += end - start;
+              values[bucket] =
+                readNumberAt(values, bucket, "bucket value") + sumRange(vs, start, end);
+              counts[bucket] = readNumberAt(counts, bucket, "bucket count") + (end - start);
             }
           );
           return;
@@ -1102,8 +1126,8 @@ function _makeAccumulator(
           ts,
           vs,
           (bucket, v) => {
-            values[bucket] += v;
-            counts[bucket] += 1;
+            values[bucket] = readNumberAt(values, bucket, "bucket value") + v;
+            counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           },
           cMin,
           cMax
@@ -1121,8 +1145,8 @@ function _makeAccumulator(
             stepN,
             (bucket, start, end) => {
               const count = end - start;
-              values[bucket] += count;
-              counts[bucket] += count;
+              values[bucket] = readNumberAt(values, bucket, "bucket value") + count;
+              counts[bucket] = readNumberAt(counts, bucket, "bucket count") + count;
             }
           );
           return;
@@ -1131,8 +1155,8 @@ function _makeAccumulator(
           ts,
           _vs,
           (bucket, _v) => {
-            values[bucket] += 1;
-            counts[bucket] += 1;
+            values[bucket] = readNumberAt(values, bucket, "bucket value") + 1;
+            counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           },
           cMin,
           cMax
@@ -1150,11 +1174,11 @@ function _makeAccumulator(
               minTN,
               stepN,
               (bucket, start, end, lastTN) => {
-                if (lastTN >= lastTsTracker[bucket]) {
+                if (lastTN >= readNumberAt(lastTsTracker, bucket, "last timestamp")) {
                   lastTsTracker[bucket] = lastTN;
                   values[bucket] = readNumberAtUnchecked(vs, end - 1);
                 }
-                counts[bucket] += end - start;
+                counts[bucket] = readNumberAt(counts, bucket, "bucket count") + (end - start);
               }
             );
             return;
@@ -1163,11 +1187,11 @@ function _makeAccumulator(
             ts,
             vs,
             (bucket, v, t) => {
-              if (t >= lastTsTracker[bucket]) {
+              if (t >= readNumberAt(lastTsTracker, bucket, "last timestamp")) {
                 lastTsTracker[bucket] = t;
                 values[bucket] = v;
               }
-              counts[bucket] += 1;
+              counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
             },
             cMin,
             cMax
@@ -1185,7 +1209,7 @@ function _makeAccumulator(
             stepN,
             (bucket, start, end) => {
               values[bucket] = readNumberAtUnchecked(vs, end - 1);
-              counts[bucket] += end - start;
+              counts[bucket] = readNumberAt(counts, bucket, "bucket count") + (end - start);
             }
           );
           return;
@@ -1195,7 +1219,7 @@ function _makeAccumulator(
           vs,
           (bucket, v) => {
             values[bucket] = v;
-            counts[bucket] += 1;
+            counts[bucket] = readNumberAt(counts, bucket, "bucket count") + 1;
           },
           cMin,
           cMax
