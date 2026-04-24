@@ -39,6 +39,20 @@ function timeMs(fn: () => void): number {
   return performance.now() - start;
 }
 
+function ingestDataset(
+  store: RowGroupStore | TieredRowGroupStore,
+  ids: number[],
+  dataset: Array<{ timestamps: BigInt64Array; values: Float64Array }>
+): void {
+  for (let off = 0; off < POINTS_PER_SERIES; off += BATCH) {
+    const end = Math.min(off + BATCH, POINTS_PER_SERIES);
+    for (let s = 0; s < NUM_SERIES; s++) {
+      const series = dataset[s];
+      store.appendBatch(ids[s], series.timestamps.subarray(off, end), series.values.subarray(off, end));
+    }
+  }
+}
+
 async function main() {
   const wasm = new WebAssembly.Module(
     readFileSync(path.resolve("packages/o11ytsdb/wasm/o11ytsdb-rust.wasm"))
@@ -46,45 +60,35 @@ async function main() {
   const codecs = await initWasmCodecs(wasm);
   const dataset = buildDataset();
   const labels = Array.from({ length: NUM_SERIES }, (_, s) => makeLabels(s));
-  const current = new RowGroupStore(codecs.valuesCodec, 640, () => 0, 8, undefined, codecs.tsCodec);
-  const tiered = new TieredRowGroupStore(
-    codecs.valuesCodec,
-    80,
-    640,
-    () => 0,
-    8,
-    undefined,
-    codecs.tsCodec
+  const makeCurrent = () =>
+    new RowGroupStore(codecs.valuesCodec, 640, () => 0, 8, undefined, codecs.tsCodec);
+  const makeTiered = () =>
+    new TieredRowGroupStore(codecs.valuesCodec, 80, 640, () => 0, 8, undefined, codecs.tsCodec);
+
+  const warmCurrent = makeCurrent();
+  const warmTiered = makeTiered();
+  ingestDataset(
+    warmCurrent,
+    labels.map((label) => warmCurrent.getOrCreateSeries(label)),
+    dataset
   );
+  ingestDataset(
+    warmTiered,
+    labels.map((label) => warmTiered.getOrCreateSeries(label)),
+    dataset
+  );
+
+  const current = makeCurrent();
+  const tiered = makeTiered();
   const currentIds = labels.map((label) => current.getOrCreateSeries(label));
   const tieredIds = labels.map((label) => tiered.getOrCreateSeries(label));
 
   const ingestCurrentMs = timeMs(() => {
-    for (let off = 0; off < POINTS_PER_SERIES; off += BATCH) {
-      const end = Math.min(off + BATCH, POINTS_PER_SERIES);
-      for (let s = 0; s < NUM_SERIES; s++) {
-        const series = dataset[s];
-        current.appendBatch(
-          currentIds[s],
-          series.timestamps.subarray(off, end),
-          series.values.subarray(off, end)
-        );
-      }
-    }
+    ingestDataset(current, currentIds, dataset);
   });
 
   const ingestTieredMs = timeMs(() => {
-    for (let off = 0; off < POINTS_PER_SERIES; off += BATCH) {
-      const end = Math.min(off + BATCH, POINTS_PER_SERIES);
-      for (let s = 0; s < NUM_SERIES; s++) {
-        const series = dataset[s];
-        tiered.appendBatch(
-          tieredIds[s],
-          series.timestamps.subarray(off, end),
-          series.values.subarray(off, end)
-        );
-      }
-    }
+    ingestDataset(tiered, tieredIds, dataset);
   });
 
   const engine = new ScanEngine();
@@ -96,6 +100,9 @@ async function main() {
     agg: "sum" as const,
     step: 300_000n,
   };
+
+  engine.query(warmCurrent, query);
+  engine.query(warmTiered, query);
 
   const currentQueryMs = timeMs(() => {
     engine.query(current, query);

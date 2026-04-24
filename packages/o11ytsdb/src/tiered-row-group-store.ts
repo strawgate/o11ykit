@@ -1,6 +1,7 @@
 import { concatRanges } from "./binary-search.js";
 import { LabelIndex } from "./label-index.js";
 import { RowGroupStore } from "./row-group-store.js";
+import type { RowGroupStoreLaneWindow } from "./row-group-store.js";
 import type {
   Labels,
   RangeDecodeCodec,
@@ -11,67 +12,11 @@ import type {
   ValuesCodec,
 } from "./types.js";
 
-interface TimestampChunk {
-  timestamps?: BigInt64Array;
-  compressed?: Uint8Array;
-  minT: bigint;
-  maxT: bigint;
-  count: number;
-}
-
-interface RowGroup {
-  valueBuffer: Uint8Array;
-  offsets: Uint32Array;
-  sizes: Uint32Array;
-  packedStats: Float64Array;
-  tsChunkIndex: number;
-  memberCount: number;
-}
-
-interface LaneMember {
-  seriesId: SeriesId;
-  segmentIndex: number;
-}
-
-interface GroupLane {
-  frozenTimestamps: TimestampChunk[];
-  members: LaneMember[];
-  rowGroups: RowGroup[];
-}
-
-interface SeriesGroup {
-  lanes: GroupLane[];
-}
-
-interface RowGroupStoreInternals {
-  groups: SeriesGroup[];
-  valuesCodec: ValuesCodec;
-  tsCodec?: TimestampCodec;
-  _sampleCount: number;
-  labelIndex: LabelIndex;
-}
-
 function requireDefined<T>(value: T | undefined, message: string): T {
   if (value === undefined) {
     throw new RangeError(message);
   }
   return value;
-}
-
-function asInternals(store: RowGroupStore): RowGroupStoreInternals {
-  const candidate = store as unknown as Partial<RowGroupStoreInternals>;
-  if (
-    !candidate ||
-    !Array.isArray(candidate.groups) ||
-    !candidate.valuesCodec ||
-    typeof candidate._sampleCount !== "number" ||
-    !(candidate.labelIndex instanceof LabelIndex)
-  ) {
-    throw new TypeError(
-      "RowGroupStore internals changed; tiered compaction assumptions are invalid"
-    );
-  }
-  return candidate as RowGroupStoreInternals;
 }
 
 /**
@@ -85,6 +30,7 @@ export class TieredRowGroupStore implements StorageBackend {
 
   private readonly hotStore: RowGroupStore;
   private readonly coldStore: RowGroupStore;
+  private readonly valuesCodec: ValuesCodec;
   private readonly hotChunkSize: number;
   private readonly coldChunkSize: number;
   private readonly groupResolver: (labels: Labels) => number;
@@ -128,6 +74,7 @@ export class TieredRowGroupStore implements StorageBackend {
 
     this.hotChunkSize = hotChunkSize;
     this.coldChunkSize = coldChunkSize;
+    this.valuesCodec = valuesCodec;
     this.groupResolver = groupResolver;
     this.hotsPerCold = coldChunkSize / hotChunkSize;
     this.hotStore = new RowGroupStore(
@@ -235,13 +182,9 @@ export class TieredRowGroupStore implements StorageBackend {
   }
 
   memoryBytes(): number {
-    const hotInternals = asInternals(this.hotStore);
-    const coldInternals = asInternals(this.coldStore);
     return (
-      this.hotStore.memoryBytes() +
-      this.coldStore.memoryBytes() -
-      hotInternals.labelIndex.memoryBytes() -
-      coldInternals.labelIndex.memoryBytes() +
+      this.hotStore.memoryBytesExcludingLabels() +
+      this.coldStore.memoryBytesExcludingLabels() +
       this.labelIndex.memoryBytes()
     );
   }
@@ -259,91 +202,34 @@ export class TieredRowGroupStore implements StorageBackend {
   }
 
   private compactReadyGroup(groupId: number): void {
-    let compacted = true;
-    const hot = asInternals(this.hotStore);
-    const group = requireDefined(hot.groups[groupId], `missing group ${groupId}`);
-    while (compacted) {
-      compacted = false;
-      for (let laneId = 0; laneId < group.lanes.length; laneId++) {
-        const lane = requireDefined(
-          group.lanes[laneId],
-          `missing lane ${laneId} for group ${groupId}`
-        );
-        if (!this.canCompactLane(lane)) continue;
-        this.compactLane(hot, lane);
-        compacted = true;
-      }
-    }
-  }
-
-  private canCompactLane(lane: GroupLane): boolean {
-    if (
-      lane.rowGroups.length < this.hotsPerCold ||
-      lane.frozenTimestamps.length < this.hotsPerCold
-    ) {
-      return false;
-    }
-
-    const firstGroup = requireDefined(lane.rowGroups[0], "missing first hot row group");
-    if (firstGroup.memberCount === 0) return false;
-
-    for (let i = 0; i < this.hotsPerCold; i++) {
-      const rowGroup = requireDefined(lane.rowGroups[i], `missing hot row group ${i}`);
-      if (rowGroup.memberCount !== firstGroup.memberCount || rowGroup.tsChunkIndex !== i) {
-        return false;
-      }
-      const tsChunk = requireDefined(
-        lane.frozenTimestamps[i],
-        `missing hot timestamp chunk ${i} during compaction check`
+    while (true) {
+      const laneWindow = this.hotStore.drainCompactableLaneWindow(
+        groupId,
+        this.hotsPerCold,
+        this.hotChunkSize
       );
-      if (tsChunk.count !== this.hotChunkSize) {
-        return false;
+      if (!laneWindow) {
+        return;
       }
+      this.compactLane(laneWindow);
     }
-    return true;
   }
 
-  private compactLane(hot: RowGroupStoreInternals, lane: GroupLane): void {
-    const rowGroups = lane.rowGroups.splice(0, this.hotsPerCold);
-    const tsChunks = lane.frozenTimestamps.splice(0, this.hotsPerCold);
+  private compactLane(laneWindow: RowGroupStoreLaneWindow): void {
+    const rowGroups = laneWindow.rowGroups;
     const memberCount = requireDefined(rowGroups[0], "missing compacted hot row group").memberCount;
-    const coldSize = this.coldChunkSize;
-    const coldTimestamps = new BigInt64Array(coldSize);
-
-    let tsOffset = 0;
-    for (let i = 0; i < tsChunks.length; i++) {
-      const chunk = requireDefined(tsChunks[i], `missing timestamp chunk ${i} for compaction`);
-      const timestamps =
-        chunk.timestamps ??
-        hot.tsCodec?.decodeTimestamps(
-          requireDefined(chunk.compressed, `missing compressed timestamps for chunk ${i}`)
-        );
-      if (!timestamps) {
-        throw new RangeError(`missing timestamps for hot chunk ${i} during compaction`);
-      }
-      if (timestamps.length !== this.hotChunkSize) {
-        throw new RangeError(
-          `expected ${this.hotChunkSize} timestamps for hot chunk ${i}, got ${timestamps.length}`
-        );
-      }
-      coldTimestamps.set(timestamps, tsOffset);
-      tsOffset += timestamps.length;
-    }
-    if (tsOffset !== coldSize) {
-      throw new RangeError(`expected ${coldSize} compacted timestamps, got ${tsOffset}`);
-    }
 
     for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
       const hotSeriesId = requireDefined(
-        lane.members[memberIndex],
+        laneWindow.memberSeriesIds[memberIndex],
         `missing lane member ${memberIndex}`
-      ).seriesId;
+      );
       const globalId = requireDefined(
         this.hotToGlobal[hotSeriesId],
         `missing global series mapping for hot series ${hotSeriesId}`
       );
       const coldSeriesId = this.requireColdId(globalId);
-      const coldValues = new Float64Array(coldSize);
+      const coldValues = new Float64Array(this.coldChunkSize);
       let valueOffset = 0;
 
       for (let i = 0; i < rowGroups.length; i++) {
@@ -356,7 +242,7 @@ export class TieredRowGroupStore implements StorageBackend {
           rowGroup.sizes[memberIndex],
           `missing compacted value size for member ${memberIndex}`
         );
-        const values = hot.valuesCodec.decodeValues(
+        const values = this.valuesCodec.decodeValues(
           rowGroup.valueBuffer.subarray(start, start + size)
         );
         if (values.length !== this.hotChunkSize) {
@@ -369,25 +255,19 @@ export class TieredRowGroupStore implements StorageBackend {
             `hot->cold compaction overflow for member ${memberIndex}: ` +
               `offset=${valueOffset} decoded=${values.length} cold=${coldValues.length} ` +
               `hot=${this.hotChunkSize} groups=${rowGroups.length} size=${size} ` +
-              `memberCount=${memberCount} tsChunks=${tsChunks.length} groupIndex=${i}`
+              `memberCount=${memberCount} groupIndex=${i}`
           );
         }
         coldValues.set(values, valueOffset);
         valueOffset += values.length;
       }
-      if (valueOffset !== coldSize) {
+      if (valueOffset !== this.coldChunkSize) {
         throw new RangeError(
-          `expected ${coldSize} compacted values for member ${memberIndex}, got ${valueOffset}`
+          `expected ${this.coldChunkSize} compacted values for member ${memberIndex}, got ${valueOffset}`
         );
       }
 
-      this.coldStore.appendBatch(coldSeriesId, coldTimestamps, coldValues);
+      this.coldStore.appendBatch(coldSeriesId, laneWindow.timestamps, coldValues);
     }
-
-    for (const rowGroup of lane.rowGroups) {
-      rowGroup.tsChunkIndex -= this.hotsPerCold;
-    }
-
-    hot._sampleCount = Math.max(hot._sampleCount - memberCount * coldSize, 0);
   }
 }

@@ -8,9 +8,19 @@ if (!file) {
 }
 
 const profile = JSON.parse(fs.readFileSync(file, "utf8"));
-const nodes = profile.nodes ?? [];
-const samples = profile.samples ?? [];
-const timeDeltas = profile.timeDeltas ?? [];
+if (
+  typeof profile !== "object" ||
+  profile === null ||
+  !Array.isArray(profile.nodes) ||
+  !Array.isArray(profile.samples) ||
+  !Array.isArray(profile.timeDeltas)
+) {
+  console.error("invalid cpuprofile: expected arrays `nodes`, `samples`, `timeDeltas`");
+  process.exit(1);
+}
+const nodes = profile.nodes;
+const samples = profile.samples;
+const timeDeltas = profile.timeDeltas;
 
 const nodeById = new Map(nodes.map((node) => [node.id, node]));
 const parentById = new Map();
@@ -31,9 +41,16 @@ function frameKey(node) {
   return `${fn} @ ${url}:${line}`;
 }
 
-for (let i = 0; i < samples.length; i++) {
+const sampleCount = Math.min(samples.length, timeDeltas.length);
+if (samples.length !== timeDeltas.length) {
+  console.warn(
+    `warning: samples (${samples.length}) and timeDeltas (${timeDeltas.length}) length mismatch; truncating to ${sampleCount}`
+  );
+}
+
+for (let i = 0; i < sampleCount; i++) {
   const nodeId = samples[i];
-  const weight = (timeDeltas[i] ?? 0) / 1000;
+  const weight = timeDeltas[i] / 1000;
   if (!nodeId || weight <= 0) continue;
 
   let currentId = nodeId;

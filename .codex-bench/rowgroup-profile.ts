@@ -142,6 +142,9 @@ async function main() {
   const queryName = (process.argv[2] ?? "sum-coarse") as QueryCaseName;
   const outDir = path.resolve(process.argv[3] ?? ".codex-bench/profiles");
   const iterations = Number.parseInt(process.argv[4] ?? "6", 10);
+  if (!Number.isInteger(iterations) || iterations < 1) {
+    throw new Error(`iterations must be an integer >= 1, got ${process.argv[4] ?? "6"}`);
+  }
   if (!(queryName in QUERY_CASES)) {
     throw new Error(`unknown query case: ${queryName}`);
   }

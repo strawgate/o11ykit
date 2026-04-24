@@ -8,6 +8,15 @@ if (!file) {
 }
 
 const profile = JSON.parse(fs.readFileSync(file, "utf8"));
+if (
+  typeof profile !== "object" ||
+  profile === null ||
+  !profile.head ||
+  typeof profile.head !== "object"
+) {
+  console.error("invalid heap profile: missing `head` node");
+  process.exit(1);
+}
 const selfByFrame = new Map();
 const totalByFrame = new Map();
 
@@ -19,15 +28,35 @@ function frameKey(node) {
   return `${fn} @ ${url}:${line}`;
 }
 
-function walk(node) {
-  const key = frameKey(node);
-  let total = node.selfSize ?? 0;
-  selfByFrame.set(key, (selfByFrame.get(key) ?? 0) + (node.selfSize ?? 0));
-  for (const child of node.children ?? []) {
-    total += walk(child);
+function walk(root) {
+  const totals = new WeakMap();
+  const stack = [{ node: root, visited: false }];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current?.node) continue;
+    const { node, visited } = current;
+
+    if (!visited) {
+      stack.push({ node, visited: true });
+      for (const child of node.children ?? []) {
+        stack.push({ node: child, visited: false });
+      }
+      continue;
+    }
+
+    const key = frameKey(node);
+    const self = node.selfSize ?? 0;
+    selfByFrame.set(key, (selfByFrame.get(key) ?? 0) + self);
+
+    let total = self;
+    for (const child of node.children ?? []) {
+      total += totals.get(child) ?? 0;
+    }
+
+    totals.set(node, total);
+    totalByFrame.set(key, (totalByFrame.get(key) ?? 0) + total);
   }
-  totalByFrame.set(key, (totalByFrame.get(key) ?? 0) + total);
-  return total;
 }
 
 walk(profile.head);

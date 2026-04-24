@@ -265,11 +265,13 @@ function printComparison(before: VersionResult, after: VersionResult): void {
 }
 
 async function main(): Promise<void> {
-  const beforeSrc = path.resolve(process.argv[2] ?? "");
-  const afterSrc = path.resolve(process.argv[3] ?? "");
-  if (!beforeSrc || !afterSrc) {
+  const beforeArg = process.argv[2];
+  const afterArg = process.argv[3];
+  if (!beforeArg || !afterArg) {
     throw new Error("usage: rowgroup-compare.ts <before-src-dir> <after-src-dir>");
   }
+  const beforeSrc = path.resolve(beforeArg);
+  const afterSrc = path.resolve(afterArg);
 
   const before = await runVersion("before", beforeSrc);
   const after = await runVersion("after", afterSrc);

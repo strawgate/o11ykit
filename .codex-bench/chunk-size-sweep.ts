@@ -45,6 +45,9 @@ async function main() {
   const codecs = await initWasmCodecs(wasm);
   const engine = new ScanEngine();
   const iterations = Number.parseInt(process.argv[2] ?? "6", 10);
+  if (!Number.isInteger(iterations) || iterations <= 0) {
+    throw new Error("usage: chunk-size-sweep.ts <iterations> [chunkSize...]");
+  }
   const chunkSizes =
     process.argv.length > 3
       ? process.argv
@@ -52,6 +55,9 @@ async function main() {
           .map((arg) => Number.parseInt(arg, 10))
           .filter((value) => Number.isFinite(value) && value > 0)
       : [64, 128, 192, 256, 320, 512, 640];
+  if (chunkSizes.length === 0) {
+    throw new Error("provide at least one positive chunk size");
+  }
   const stepSamplesList = [300, 900];
 
   for (const chunkSize of chunkSizes) {

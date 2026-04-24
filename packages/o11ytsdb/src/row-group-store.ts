@@ -71,6 +71,19 @@ interface SeriesGroup {
   lanes: GroupLane[];
 }
 
+export interface RowGroupStoreCompactionChunk {
+  valueBuffer: Uint8Array;
+  offsets: Uint32Array;
+  sizes: Uint32Array;
+  memberCount: number;
+}
+
+export interface RowGroupStoreLaneWindow {
+  memberSeriesIds: SeriesId[];
+  timestamps: BigInt64Array;
+  rowGroups: RowGroupStoreCompactionChunk[];
+}
+
 const EMPTY_TIMESTAMPS = new BigInt64Array(0);
 const EMPTY_VALUES = new Float64Array(0);
 const PACKED_STATS_STRIDE = 5;
@@ -574,6 +587,102 @@ export class RowGroupStore implements StorageBackend {
 
     bytes += this.labelIndex.memoryBytes();
     return bytes;
+  }
+
+  memoryBytesExcludingLabels(): number {
+    return this.memoryBytes() - this.labelIndex.memoryBytes();
+  }
+
+  drainCompactableLaneWindow(
+    groupId: number,
+    rowGroupCount: number,
+    expectedChunkSize: number
+  ): RowGroupStoreLaneWindow | undefined {
+    const group = this.getGroup(groupId);
+    for (let laneId = 0; laneId < group.lanes.length; laneId++) {
+      const lane = requireDefined(
+        group.lanes[laneId],
+        `missing lane ${laneId} for group ${groupId}`
+      );
+      if (!this.canDrainLaneWindow(lane, rowGroupCount, expectedChunkSize)) {
+        continue;
+      }
+
+      const rowGroups = lane.rowGroups.splice(0, rowGroupCount);
+      const tsChunks = lane.frozenTimestamps.splice(0, rowGroupCount);
+      const firstRowGroup = requireDefined(rowGroups[0], "missing compactable row group");
+      const memberCount = firstRowGroup.memberCount;
+      const windowSize = rowGroupCount * expectedChunkSize;
+      const timestamps = new BigInt64Array(windowSize);
+
+      let tsOffset = 0;
+      for (let i = 0; i < tsChunks.length; i++) {
+        const chunk = requireDefined(tsChunks[i], `missing compactable timestamp chunk ${i}`);
+        const decoded =
+          chunk.timestamps ??
+          this.tsCodec?.decodeTimestamps(
+            requireDefined(chunk.compressed, `missing compressed timestamps for chunk ${i}`)
+          );
+        if (!decoded) {
+          throw new RangeError(`missing timestamps for compactable chunk ${i}`);
+        }
+        if (decoded.length !== expectedChunkSize) {
+          throw new RangeError(
+            `expected ${expectedChunkSize} timestamps for chunk ${i}, got ${decoded.length}`
+          );
+        }
+        timestamps.set(decoded, tsOffset);
+        tsOffset += decoded.length;
+      }
+      if (tsOffset !== windowSize) {
+        throw new RangeError(`expected ${windowSize} compacted timestamps, got ${tsOffset}`);
+      }
+
+      for (const rowGroup of lane.rowGroups) {
+        rowGroup.tsChunkIndex -= rowGroupCount;
+      }
+
+      this._sampleCount = Math.max(this._sampleCount - memberCount * windowSize, 0);
+      return {
+        memberSeriesIds: lane.members.slice(0, memberCount).map((member) => member.seriesId),
+        timestamps,
+        rowGroups: rowGroups.map((rowGroup) => ({
+          valueBuffer: rowGroup.valueBuffer,
+          offsets: rowGroup.offsets,
+          sizes: rowGroup.sizes,
+          memberCount: rowGroup.memberCount,
+        })),
+      };
+    }
+    return undefined;
+  }
+
+  private canDrainLaneWindow(
+    lane: GroupLane,
+    rowGroupCount: number,
+    expectedChunkSize: number
+  ): boolean {
+    if (lane.rowGroups.length < rowGroupCount || lane.frozenTimestamps.length < rowGroupCount) {
+      return false;
+    }
+
+    const firstGroup = requireDefined(lane.rowGroups[0], "missing first compactable row group");
+    if (firstGroup.memberCount === 0) return false;
+
+    for (let i = 0; i < rowGroupCount; i++) {
+      const rowGroup = requireDefined(lane.rowGroups[i], `missing compactable row group ${i}`);
+      if (rowGroup.memberCount !== firstGroup.memberCount || rowGroup.tsChunkIndex !== i) {
+        return false;
+      }
+      const tsChunk = requireDefined(
+        lane.frozenTimestamps[i],
+        `missing compactable timestamp chunk ${i}`
+      );
+      if (tsChunk.count !== expectedChunkSize) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private attachInitialSegment(seriesId: SeriesId, groupId: number): void {
