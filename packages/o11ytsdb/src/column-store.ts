@@ -461,7 +461,7 @@ export class ColumnStore implements StorageBackend {
                     return {
                       // biome-ignore lint/style/noNonNullAssertion: materialized above when needed
                       timestamps: tsChunk.timestamps!,
-                      values: decodeValuesView(cv),
+                      values: decodeValuesView.call(this.valuesCodec, cv),
                     };
                   },
                 }

@@ -93,6 +93,20 @@ class TieredRowGroupPrototype {
   }
 
   appendAlignedBatch(timestamps: BigInt64Array, valuesBySeries: Float64Array[]): void {
+    if (valuesBySeries.length !== this.activeValues.length) {
+      throw new RangeError(
+        `expected ${this.activeValues.length} value arrays, got ${valuesBySeries.length}`
+      );
+    }
+    for (let s = 0; s < valuesBySeries.length; s++) {
+      const values = requireDefined(valuesBySeries[s], `missing batch values for series ${s}`);
+      if (values.length !== timestamps.length) {
+        throw new RangeError(
+          `timestamps.length (${timestamps.length}) !== valuesBySeries[${s}].length (${values.length})`
+        );
+      }
+    }
+
     let offset = 0;
     while (offset < timestamps.length) {
       const available = HOT_SIZE - this.activeCount;

@@ -133,7 +133,7 @@ function runBatchFold(
         const idx = chunkIndex + i;
         const chunkMinT = series.chunkMinTs[idx] ?? 0;
         const chunkMaxT = series.chunkMaxTs[idx] ?? chunkMinT;
-        const interval = (chunkMaxT - chunkMinT) / (vs.length - 1);
+        const interval = vs.length > 1 ? (chunkMaxT - chunkMinT) / (vs.length - 1) : 0;
         forEachRegularBucketSegment(
           vs.length,
           chunkMinT,

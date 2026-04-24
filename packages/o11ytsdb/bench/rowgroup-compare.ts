@@ -180,8 +180,8 @@ async function loadModules(srcDir: string): Promise<{
   rowGroup: RowGroupModule;
 }> {
   const [query, rowGroup] = await Promise.all([
-    importVersion<QueryModule>(srcDir, "query.ts"),
-    importVersion<RowGroupModule>(srcDir, "row-group-store.ts"),
+    importVersion<QueryModule>(srcDir, "query.js"),
+    importVersion<RowGroupModule>(srcDir, "row-group-store.js"),
   ]);
   return { query, rowGroup };
 }

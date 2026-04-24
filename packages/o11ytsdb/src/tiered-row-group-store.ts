@@ -169,32 +169,35 @@ export class TieredRowGroupStore implements StorageBackend {
   scanParts(id: SeriesId, start: bigint, end: bigint, visit: (part: TimeRange) => void): void {
     const coldId = this.requireColdId(id);
     const hotId = this.requireHotId(id);
-    const parts: TimeRange[] = [];
+    const coldParts = this.coldStore.readParts
+      ? this.coldStore.readParts(coldId, start, end)
+      : [this.coldStore.read(coldId, start, end)];
+    const hotParts = this.hotStore.readParts
+      ? this.hotStore.readParts(hotId, start, end)
+      : [this.hotStore.read(hotId, start, end)];
 
-    if (this.coldStore.scanParts) {
-      this.coldStore.scanParts(coldId, start, end, (part) => {
-        parts.push(part);
-      });
-    } else {
-      parts.push(this.coldStore.read(coldId, start, end));
-    }
-
-    if (this.hotStore.scanParts) {
-      this.hotStore.scanParts(hotId, start, end, (part) => {
-        parts.push(part);
-      });
-    } else {
-      parts.push(this.hotStore.read(hotId, start, end));
-    }
-
-    parts.sort((a, b) => {
-      const aStart = partStart(a);
-      const bStart = partStart(b);
-      return aStart < bStart ? -1 : aStart > bStart ? 1 : 0;
-    });
-
-    for (const part of parts) {
-      visit(part);
+    let coldIndex = 0;
+    let hotIndex = 0;
+    while (coldIndex < coldParts.length || hotIndex < hotParts.length) {
+      const nextCold = coldParts[coldIndex];
+      const nextHot = hotParts[hotIndex];
+      if (!nextHot) {
+        visit(requireDefined(nextCold, `missing cold part ${coldIndex}`));
+        coldIndex++;
+        continue;
+      }
+      if (!nextCold) {
+        visit(nextHot);
+        hotIndex++;
+        continue;
+      }
+      if (partStart(nextCold) <= partStart(nextHot)) {
+        visit(nextCold);
+        coldIndex++;
+      } else {
+        visit(nextHot);
+        hotIndex++;
+      }
     }
   }
 

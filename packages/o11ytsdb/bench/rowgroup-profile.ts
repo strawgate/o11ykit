@@ -138,7 +138,7 @@ async function main() {
   if (!Number.isInteger(iterations) || iterations < 1) {
     throw new Error(`iterations must be an integer >= 1, got ${process.argv[4] ?? "6"}`);
   }
-  if (!(queryName in QUERY_CASES)) {
+  if (!Object.hasOwn(QUERY_CASES, queryName)) {
     throw new Error(`unknown query case: ${queryName}`);
   }
 
@@ -185,6 +185,7 @@ async function main() {
 
   const beforeMemory = memorySnapshot();
   const samples: number[] = [];
+  let fingerprintStable = true;
   let finalFingerprint = warmFingerprint;
   let finalStats = {
     scannedSeries: warmResult.scannedSeries,
@@ -196,7 +197,11 @@ async function main() {
     const t0 = performance.now();
     const result = engine.query(store, queryOpts);
     samples.push(performance.now() - t0);
-    finalFingerprint = fingerprintResult(result);
+    const thisFingerprint = fingerprintResult(result);
+    if (thisFingerprint !== warmFingerprint) {
+      fingerprintStable = false;
+    }
+    finalFingerprint = thisFingerprint;
     finalStats = {
       scannedSeries: result.scannedSeries,
       scannedSamples: result.scannedSamples,
@@ -245,7 +250,7 @@ async function main() {
     result: {
       warmFingerprint,
       finalFingerprint,
-      fingerprintStable: warmFingerprint === finalFingerprint,
+      fingerprintStable,
       ...finalStats,
     },
     profiles: {
