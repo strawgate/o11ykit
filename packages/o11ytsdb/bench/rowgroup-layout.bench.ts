@@ -22,9 +22,9 @@ function pkgPath(rel: string): string {
   return join(__dirname, "..", "..", rel);
 }
 
-type StorageBackend = import("../src/types.js").StorageBackend;
-type Labels = import("../src/types.js").Labels;
-type QueryEngine = import("../src/types.js").QueryEngine;
+type StorageBackend = import("../dist/index.js").StorageBackend;
+type Labels = import("../dist/index.js").Labels;
+type QueryEngine = import("../dist/index.js").QueryEngine;
 
 const SERIES_COUNT = 10_000;
 const MAX_POINTS = 1_024;
@@ -187,7 +187,7 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
       maxHotCount = Math.max(maxHotCount, hotCount);
       maxHotCapacity = Math.max(maxHotCapacity, hotTimestamps.length);
       if (hotTimestamps.length > CHUNK_SIZE) groupsOverChunkCapacity++;
-      hotTimestampBytes += hotTimestamps.byteLength;
+      hotTimestampBytes += typedArrayByteLength(hotTimestamps);
       for (let i = 0; i < frozenTimestamps.length; i++) {
         const chunk = frozenTimestamps[i];
         if (typeof chunk !== "object" || chunk === null) {
@@ -243,7 +243,7 @@ function collectLayoutStats(store: StorageBackend): LayoutStats {
         maxSeriesHotCapacity = Math.max(maxSeriesHotCapacity, values.length);
         maxSeriesHotCount = Math.max(maxSeriesHotCount, count);
         if (values.length > CHUNK_SIZE) seriesOverChunkCapacity++;
-        hotValueBytes += values.byteLength;
+        hotValueBytes += typedArrayByteLength(values);
       }
       continue;
     }

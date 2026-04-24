@@ -4,7 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "rootDir": ".",
-    "outDir": "./dist",
+    "outDir": "../dist-bench",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "isolatedModules": true,

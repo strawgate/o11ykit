@@ -19,4 +19,5 @@ export type {
   TimestampCodec,
   TransformOp,
   ValuesCodec,
-} from "../src/types.js";
+  WasmCodecs,
+} from "../dist/index.js";

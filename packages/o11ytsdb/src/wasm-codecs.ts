@@ -46,6 +46,14 @@ interface WasmExports {
   // ALP values
   encodeValuesALP: (val_ptr: number, count: number, out_ptr: number, out_cap: number) => number;
   decodeValuesALP: (in_ptr: number, in_len: number, val_ptr: number, max: number) => number;
+  decodeValuesALPRange: (
+    in_ptr: number,
+    in_len: number,
+    lo: number,
+    hi: number,
+    val_ptr: number,
+    max: number
+  ) => number;
   encodeValuesALPWithStats: (
     val_ptr: number,
     count: number,
@@ -248,6 +256,56 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
       return new Float64Array(wasm.memory.buffer.slice(valPtr, valPtr + n * 8));
     },
 
+    decodeValuesView(buf: Uint8Array): Float64Array {
+      if (buf.length < 2) return new Float64Array(0);
+      wasm.resetScratch();
+      const inPtr = wasm.allocScratch(buf.length);
+      checkScratch(inPtr, "decodeValuesView/inPtr");
+      mem().set(buf, inPtr);
+      const maxSamples = readAlpSampleCount(buf);
+      if (maxSamples === 0) return new Float64Array(0);
+      const valPtr = wasm.allocScratch(maxSamples * 8);
+      checkScratch(valPtr, "decodeValuesView/valPtr");
+      const n = wasm.decodeValuesALP(inPtr, buf.length, valPtr, maxSamples);
+      return new Float64Array(wasm.memory.buffer, valPtr, n);
+    },
+
+    decodeValuesRange(buf: Uint8Array, startIndex: number, endIndex: number): Float64Array {
+      if (buf.length < 2 || endIndex <= startIndex) return new Float64Array(0);
+      const maxSamples = readAlpSampleCount(buf);
+      if (maxSamples === 0) return new Float64Array(0);
+      const lo = Math.max(0, Math.min(startIndex, maxSamples));
+      const hi = Math.max(lo, Math.min(endIndex, maxSamples));
+      if (hi === lo) return new Float64Array(0);
+
+      wasm.resetScratch();
+      const inPtr = wasm.allocScratch(buf.length);
+      checkScratch(inPtr, "decodeValuesRange/inPtr");
+      mem().set(buf, inPtr);
+      const valPtr = wasm.allocScratch((hi - lo) * 8);
+      checkScratch(valPtr, "decodeValuesRange/valPtr");
+      const n = wasm.decodeValuesALPRange(inPtr, buf.length, lo, hi, valPtr, hi - lo);
+      return new Float64Array(wasm.memory.buffer.slice(valPtr, valPtr + n * 8));
+    },
+
+    decodeValuesRangeView(buf: Uint8Array, startIndex: number, endIndex: number): Float64Array {
+      if (buf.length < 2 || endIndex <= startIndex) return new Float64Array(0);
+      const maxSamples = readAlpSampleCount(buf);
+      if (maxSamples === 0) return new Float64Array(0);
+      const lo = Math.max(0, Math.min(startIndex, maxSamples));
+      const hi = Math.max(lo, Math.min(endIndex, maxSamples));
+      if (hi === lo) return new Float64Array(0);
+
+      wasm.resetScratch();
+      const inPtr = wasm.allocScratch(buf.length);
+      checkScratch(inPtr, "decodeValuesRangeView/inPtr");
+      mem().set(buf, inPtr);
+      const valPtr = wasm.allocScratch((hi - lo) * 8);
+      checkScratch(valPtr, "decodeValuesRangeView/valPtr");
+      const n = wasm.decodeValuesALPRange(inPtr, buf.length, lo, hi, valPtr, hi - lo);
+      return new Float64Array(wasm.memory.buffer, valPtr, n);
+    },
+
     encodeValuesWithStats(values: Float64Array) {
       const n = values.length;
       wasm.resetScratch();
@@ -382,6 +440,45 @@ export async function initWasmCodecs(wasmModule: WebAssembly.Module): Promise<Wa
             wasm.memory.buffer.slice(outPtr + i * chunkSize * 8, outPtr + (i + 1) * chunkSize * 8)
           )
         );
+      }
+      return results;
+    },
+
+    decodeBatchValuesView(blobs: Uint8Array[], chunkSize: number): Float64Array[] {
+      const numBlobs = blobs.length;
+      wasm.resetScratch();
+
+      let totalBytes = 0;
+      for (const b of blobs) totalBytes += b.length;
+
+      const blobsPtr = wasm.allocScratch(totalBytes);
+      checkScratch(blobsPtr, "decodeBatchValuesView/blobsPtr");
+      const offsetsPtr = wasm.allocScratch(numBlobs * 4);
+      checkScratch(offsetsPtr, "decodeBatchValuesView/offsetsPtr");
+      const sizesPtr = wasm.allocScratch(numBlobs * 4);
+      checkScratch(sizesPtr, "decodeBatchValuesView/sizesPtr");
+
+      const wasmMem = mem();
+      const offsets = new Uint32Array(numBlobs);
+      const sizes = new Uint32Array(numBlobs);
+      let off = 0;
+      for (let i = 0; i < numBlobs; i++) {
+        const b = readItemAt(blobs, i, "compressed blob");
+        wasmMem.set(b, blobsPtr + off);
+        offsets[i] = off;
+        sizes[i] = b.length;
+        off += b.length;
+      }
+      wasmMem.set(new Uint8Array(offsets.buffer), offsetsPtr);
+      wasmMem.set(new Uint8Array(sizes.buffer), sizesPtr);
+
+      const outPtr = wasm.allocScratch(numBlobs * chunkSize * 8);
+      checkScratch(outPtr, "decodeBatchValuesView/outPtr");
+      wasm.decodeBatchValuesALP(blobsPtr, offsetsPtr, sizesPtr, numBlobs, outPtr, chunkSize);
+
+      const results: Float64Array[] = [];
+      for (let i = 0; i < numBlobs; i++) {
+        results.push(new Float64Array(wasm.memory.buffer, outPtr + i * chunkSize * 8, chunkSize));
       }
       return results;
     },
