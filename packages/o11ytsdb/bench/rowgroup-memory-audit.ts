@@ -24,6 +24,7 @@ type AuditHot = {
 };
 
 type AuditLane = {
+  hot: AuditHot;
   hotTimestamps: BigInt64Array;
   frozenTimestamps: AuditTimestampChunk[];
   rowGroups: AuditRowGroup[];
@@ -126,6 +127,19 @@ async function main() {
 
   const labelIndexBytes = anyStore.labelIndex.memoryBytes();
   const total = store.memoryBytes();
+  const computedSum =
+    hotTimestamps +
+    frozenTimestampsCompressed +
+    frozenTimestampsDecoded +
+    rowGroupValueBuffer +
+    rowGroupOffsets +
+    rowGroupSizes +
+    rowGroupPackedStats +
+    hotValues +
+    labelIndexBytes;
+  if (Math.abs(computedSum - total) > 1) {
+    console.warn(`Breakdown mismatch: computed=${computedSum}, total=${total}`);
+  }
 
   console.log(
     JSON.stringify(

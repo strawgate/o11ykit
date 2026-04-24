@@ -107,14 +107,20 @@ async function main() {
         current640: {
           sampleCount: current.sampleCount,
           memoryBytes: current.memoryBytes(),
-          bytesPerSample: Number((current.memoryBytes() / current.sampleCount).toFixed(4)),
+          bytesPerSample:
+            current.sampleCount > 0
+              ? Number((current.memoryBytes() / current.sampleCount).toFixed(4))
+              : 0,
           ingestMs: Number(ingestCurrentMs.toFixed(3)),
           queryMs: Number(currentQueryMs.toFixed(3)),
         },
         tiered80to640: {
           sampleCount: tiered.sampleCount,
           memoryBytes: tiered.memoryBytes(),
-          bytesPerSample: Number((tiered.memoryBytes() / tiered.sampleCount).toFixed(4)),
+          bytesPerSample:
+            tiered.sampleCount > 0
+              ? Number((tiered.memoryBytes() / tiered.sampleCount).toFixed(4))
+              : 0,
           ingestMs: Number(ingestTieredMs.toFixed(3)),
           queryMs: Number(tieredQueryMs.toFixed(3)),
         },

@@ -46,9 +46,14 @@ function makeSeriesData(seriesIndex: number) {
 }
 
 function tieredStores(store: TieredRowGroupStore): TieredInternals {
+  const hotStore = Reflect.get(store, "hotStore") as RowGroupStore | undefined;
+  const coldStore = Reflect.get(store, "coldStore") as RowGroupStore | undefined;
+  if (!hotStore || !coldStore) {
+    throw new Error("failed to access tiered store internals");
+  }
   return {
-    hotStore: Reflect.get(store, "hotStore") as RowGroupStore,
-    coldStore: Reflect.get(store, "coldStore") as RowGroupStore,
+    hotStore,
+    coldStore,
   };
 }
 

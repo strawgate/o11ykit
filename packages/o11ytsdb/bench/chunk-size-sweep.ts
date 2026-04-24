@@ -73,7 +73,7 @@ async function main() {
       const opts = {
         metric: "cpu_usage",
         start: 0n,
-        end: BigInt(POINTS_PER_SERIES - 1) * INTERVAL,
+        end: BigInt(POINTS_PER_SERIES) * INTERVAL,
         agg: "sum" as const,
         step: BigInt(stepSamples) * INTERVAL,
       };
