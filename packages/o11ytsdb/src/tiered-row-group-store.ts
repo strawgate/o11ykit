@@ -19,6 +19,20 @@ function requireDefined<T>(value: T | undefined, message: string): T {
   return value;
 }
 
+function partStart(part: TimeRange): bigint {
+  if (part.timestamps.length > 0) {
+    return requireDefined(part.timestamps[0], "missing first timestamp");
+  }
+  if (part.chunkMinT !== undefined) {
+    return part.chunkMinT;
+  }
+  const decoded = part.decode ? part.decode() : part.decodeView ? part.decodeView() : null;
+  if (decoded && decoded.timestamps.length > 0) {
+    return requireDefined(decoded.timestamps[0], "missing decoded first timestamp");
+  }
+  throw new RangeError("cannot determine part start time");
+}
+
 /**
  * Tiered row-group store.
  *
@@ -155,17 +169,32 @@ export class TieredRowGroupStore implements StorageBackend {
   scanParts(id: SeriesId, start: bigint, end: bigint, visit: (part: TimeRange) => void): void {
     const coldId = this.requireColdId(id);
     const hotId = this.requireHotId(id);
+    const parts: TimeRange[] = [];
 
     if (this.coldStore.scanParts) {
-      this.coldStore.scanParts(coldId, start, end, visit);
+      this.coldStore.scanParts(coldId, start, end, (part) => {
+        parts.push(part);
+      });
     } else {
-      visit(this.coldStore.read(coldId, start, end));
+      parts.push(this.coldStore.read(coldId, start, end));
     }
 
     if (this.hotStore.scanParts) {
-      this.hotStore.scanParts(hotId, start, end, visit);
+      this.hotStore.scanParts(hotId, start, end, (part) => {
+        parts.push(part);
+      });
     } else {
-      visit(this.hotStore.read(hotId, start, end));
+      parts.push(this.hotStore.read(hotId, start, end));
+    }
+
+    parts.sort((a, b) => {
+      const aStart = partStart(a);
+      const bStart = partStart(b);
+      return aStart < bStart ? -1 : aStart > bStart ? 1 : 0;
+    });
+
+    for (const part of parts) {
+      visit(part);
     }
   }
 
@@ -219,6 +248,7 @@ export class TieredRowGroupStore implements StorageBackend {
   private compactLane(laneWindow: RowGroupStoreLaneWindow): void {
     const rowGroups = laneWindow.rowGroups;
     const memberCount = requireDefined(rowGroups[0], "missing compacted hot row group").memberCount;
+    const compactedMembers: Array<{ coldSeriesId: SeriesId; coldValues: Float64Array }> = [];
 
     for (let memberIndex = 0; memberIndex < memberCount; memberIndex++) {
       const hotSeriesId = requireDefined(
@@ -267,8 +297,11 @@ export class TieredRowGroupStore implements StorageBackend {
           `expected ${this.coldChunkSize} compacted values for member ${memberIndex}, got ${valueOffset}`
         );
       }
+      compactedMembers.push({ coldSeriesId, coldValues });
+    }
 
-      this.coldStore.appendBatch(coldSeriesId, laneWindow.timestamps, coldValues);
+    for (const member of compactedMembers) {
+      this.coldStore.appendBatch(member.coldSeriesId, laneWindow.timestamps, member.coldValues);
     }
   }
 }

@@ -373,7 +373,7 @@ describe("RowGroupStore freeze behavior", () => {
     expect(Array.from(data.values)).toEqual([20, 30]);
   });
 
-  it("uses decodeValuesRangeView for partial frozen reads when available", () => {
+  it("does not surface scratch-backed range views from partial frozen reads", () => {
     const rangedViewCodec: ValuesCodec = {
       name: "range-view-only",
       encodeValues(values: Float64Array): Uint8Array {
@@ -381,11 +381,8 @@ describe("RowGroupStore freeze behavior", () => {
           values.buffer.slice(values.byteOffset, values.byteOffset + values.byteLength)
         );
       },
-      decodeValues(): Float64Array {
-        throw new Error("decodeValues should not be called for partial ranged read");
-      },
-      decodeValuesRange(): Float64Array {
-        throw new Error("decodeValuesRange should not be called when range views are available");
+      decodeValues(buf: Uint8Array): Float64Array {
+        return new Float64Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
       },
       decodeValuesRangeView(buf: Uint8Array, startIndex: number, endIndex: number): Float64Array {
         const values = new Float64Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 8));
@@ -397,6 +394,10 @@ describe("RowGroupStore freeze behavior", () => {
     const ts = new BigInt64Array([0n, 1_000n, 2_000n, 3_000n]);
     const values = new Float64Array([10, 20, 30, 40]);
     store.appendBatch(id, ts, values);
+
+    const parts = store.readParts(id, 1_000n, 2_000n);
+    expect(parts).toHaveLength(1);
+    expect(parts[0]?.decodeView).toBeUndefined();
 
     const data = store.read(id, 1_000n, 2_000n);
     expect(Array.from(data.timestamps)).toEqual([1_000n, 2_000n]);
@@ -502,6 +503,63 @@ describe("TieredRowGroupStore compaction", () => {
     expect(Array.from(decodedHot?.timestamps ?? [])).toEqual(Array.from(timestamps.slice(8, 12)));
   });
 
+  it("merges hot and cold parts by time when a fast series rolls to a fresh lane", () => {
+    const store = new TieredRowGroupStore(tsValuesCodec, 4, 8, () => 0, 2);
+    const fastId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "fast" }));
+    const slowId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "slow" }));
+
+    for (let i = 0; i < 16; i++) {
+      store.append(fastId, BigInt(i) * 1_000n, i);
+    }
+    store.append(slowId, 0n, 999);
+
+    const parts = store.readParts(fastId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
+    expect(parts.length).toBe(2);
+
+    const decoded = parts.map((part) => part.decode?.() ?? part);
+    expect(Array.from(decoded[0]?.timestamps ?? [])).toEqual([
+      0n,
+      1_000n,
+      2_000n,
+      3_000n,
+      4_000n,
+      5_000n,
+      6_000n,
+      7_000n,
+    ]);
+    expect(Array.from(decoded[1]?.timestamps ?? [])).toEqual([
+      8_000n,
+      9_000n,
+      10_000n,
+      11_000n,
+      12_000n,
+      13_000n,
+      14_000n,
+      15_000n,
+    ]);
+
+    const data = store.read(fastId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
+    expect(Array.from(data.timestamps)).toEqual([
+      0n,
+      1_000n,
+      2_000n,
+      3_000n,
+      4_000n,
+      5_000n,
+      6_000n,
+      7_000n,
+      8_000n,
+      9_000n,
+      10_000n,
+      11_000n,
+      12_000n,
+      13_000n,
+      14_000n,
+      15_000n,
+    ]);
+    expect(Array.from(data.values)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+  });
+
   it("fails compaction when a hot chunk decodes to fewer values than expected", () => {
     const badDecodeCodec: ValuesCodec = {
       name: "truncate-on-decode",
@@ -532,5 +590,8 @@ describe("TieredRowGroupStore compaction", () => {
     const hotLane = hotGroups[0].lanes[0];
     expect(hotLane.rowGroups.length).toBe(2);
     expect(hotLane.frozenTimestamps.length).toBe(2);
+
+    const coldStore = Reflect.get(store, "coldStore");
+    expect(coldStore.sampleCount).toBe(0);
   });
 });

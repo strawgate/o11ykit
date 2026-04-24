@@ -129,18 +129,6 @@ function decodeFullRowGroupPart(this: LazyRowGroupPart): TimeRange {
   return this;
 }
 
-function decodeViewFullRowGroupPart(this: LazyRowGroupPart): TimeRange {
-  this.timestamps = requireDefined(this._timestampsRef, "missing row-group timestamps");
-  this.values = requireDefined(
-    requireDefined(this._valuesCodec, "missing values codec").decodeValuesView,
-    "missing decodeValuesView implementation"
-  ).call(
-    requireDefined(this._valuesCodec, "missing values codec"),
-    requireDefined(this._compressedValues, "missing compressed values")
-  );
-  return this;
-}
-
 function decodePartialRowGroupPart(this: LazyRowGroupPart): TimeRange {
   const codec = requireDefined(this._valuesCodec, "missing values codec");
   const compressedValues = requireDefined(this._compressedValues, "missing compressed values");
@@ -149,20 +137,6 @@ function decodePartialRowGroupPart(this: LazyRowGroupPart): TimeRange {
   this.values = codec.decodeValuesRange
     ? codec.decodeValuesRange.call(codec, compressedValues, lo, hi)
     : codec.decodeValues(compressedValues).subarray(lo, hi);
-  return this;
-}
-
-function decodeViewPartialRowGroupPart(this: LazyRowGroupPart): TimeRange {
-  const codec = requireDefined(this._valuesCodec, "missing values codec");
-  this.values = requireDefined(
-    codec.decodeValuesRangeView,
-    "missing decodeValuesRangeView implementation"
-  ).call(
-    codec,
-    requireDefined(this._compressedValues, "missing compressed values"),
-    requireDefined(this._lo, "missing partial decode start"),
-    requireDefined(this._hi, "missing partial decode end")
-  );
   return this;
 }
 
@@ -498,9 +472,6 @@ export class RowGroupStore implements StorageBackend {
               chunkMinT: tsChunk.minT,
               chunkMaxT: tsChunk.maxT,
               decode: decodeFullRowGroupPart,
-              ...(typeof this.valuesCodec.decodeValuesView === "function"
-                ? { decodeView: decodeViewFullRowGroupPart }
-                : {}),
               _timestampsRef: timestamps,
               _compressedValues: compressedValues,
               _valuesCodec: this.valuesCodec,
@@ -511,15 +482,11 @@ export class RowGroupStore implements StorageBackend {
           const lo = lowerBound(timestamps, start, 0, tsChunk.count);
           const hi = upperBound(timestamps, end, lo, tsChunk.count);
           if (hi > lo) {
-            const decodeValuesRangeView = this.valuesCodec.decodeValuesRangeView;
             const partialTimestamps = timestamps.subarray(lo, hi);
             visit({
               timestamps: partialTimestamps,
               values: EMPTY_VALUES,
               decode: decodePartialRowGroupPart,
-              ...(typeof decodeValuesRangeView === "function"
-                ? { decodeView: decodeViewPartialRowGroupPart }
-                : {}),
               _compressedValues: compressedValues,
               _valuesCodec: this.valuesCodec,
               _lo: lo,

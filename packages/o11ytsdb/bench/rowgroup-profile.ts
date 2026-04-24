@@ -163,18 +163,9 @@ async function main() {
   const baseValuesCodec = codecs?.valuesCodec ?? identityValuesCodec;
   const valuesCodec: ValuesCodec = {
     ...baseValuesCodec,
-    decodeValuesRange:
-      ENABLE_RANGE_HOOK || !baseValuesCodec.decodeValuesRange
-        ? baseValuesCodec.decodeValuesRange
-        : undefined,
-    decodeValuesRangeView:
-      ENABLE_RANGE_VIEW || !baseValuesCodec.decodeValuesRangeView
-        ? baseValuesCodec.decodeValuesRangeView
-        : undefined,
-    decodeValuesView:
-      ENABLE_DECODE_VIEW || !baseValuesCodec.decodeValuesView
-        ? baseValuesCodec.decodeValuesView
-        : undefined,
+    decodeValuesRange: ENABLE_RANGE_HOOK ? baseValuesCodec.decodeValuesRange : undefined,
+    decodeValuesRangeView: ENABLE_RANGE_VIEW ? baseValuesCodec.decodeValuesRangeView : undefined,
+    decodeValuesView: ENABLE_DECODE_VIEW ? baseValuesCodec.decodeValuesView : undefined,
   };
   const tsCodec = codecs?.tsCodec;
   const store = new RowGroupStore(valuesCodec, CHUNK_SIZE, () => 0, 8, undefined, tsCodec);

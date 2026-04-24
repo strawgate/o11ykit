@@ -125,7 +125,13 @@ function makeSeriesData(seriesIndex: number): {
 
 function summarize(samples: number[]): Omit<BenchStats, "fingerprint"> {
   const sorted = [...samples].sort((a, b) => a - b);
-  const medianMs = sorted[Math.floor(sorted.length / 2)] ?? 0;
+  const mid = Math.floor(sorted.length / 2);
+  const medianMs =
+    sorted.length === 0
+      ? 0
+      : sorted.length % 2 === 0
+        ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
+        : (sorted[mid] ?? 0);
   const avgMs = samples.reduce((sum, value) => sum + value, 0) / samples.length;
   return {
     medianMs,
