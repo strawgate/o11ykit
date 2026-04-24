@@ -18,6 +18,31 @@ function formatApproxBytes(bytes) {
   return `${bytes} B`;
 }
 
+function shouldConfirmLargeScenarioLoad(approxBytes) {
+  const deviceMemoryGiB =
+    typeof navigator !== "undefined" && typeof navigator.deviceMemory === "number"
+      ? navigator.deviceMemory
+      : null;
+  if (approxBytes >= 256 * 1024 * 1024) return true;
+  return deviceMemoryGiB != null && deviceMemoryGiB <= 4 && approxBytes >= 64 * 1024 * 1024;
+}
+
+function confirmLargeScenarioLoad(scenario, approxBytes) {
+  if (!shouldConfirmLargeScenarioLoad(approxBytes) || typeof window?.confirm !== "function") {
+    return true;
+  }
+  return window.confirm(
+    [
+      `Load ${scenario.name}?`,
+      "",
+      `This scenario will allocate roughly ${formatApproxBytes(approxBytes)} of raw typed-array data before storage overhead.`,
+      "On lower-memory browsers this can stall the page for a few seconds.",
+      "",
+      "Press OK to continue or Cancel to keep the current dataset.",
+    ].join("\n")
+  );
+}
+
 export function createDatasetController({
   createStore,
   chunkSize,
@@ -90,6 +115,14 @@ export function createDatasetController({
   }
 
   function loadScenario(scenario, clickedCard) {
+    const approxBytes = estimateScenarioArrayBytes(scenario);
+    if (!confirmLargeScenarioLoad(scenario, approxBytes)) {
+      clearScenarioSelection();
+      const inline = document.getElementById("customGeneratorInline");
+      if (inline) inline.hidden = true;
+      return;
+    }
+
     clearScenarioSelection();
     const inline = document.getElementById("customGeneratorInline");
     if (inline) inline.hidden = true;
@@ -104,7 +137,6 @@ export function createDatasetController({
       setTimeout(() => {
         try {
           const backendType = "column";
-          const approxBytes = estimateScenarioArrayBytes(scenario);
           if (approxBytes >= 128 * 1024 * 1024) {
             console.warn(
               `Generating scenario ${scenario.id} with roughly ${formatApproxBytes(approxBytes)} of typed-array payload before storage overhead.`
