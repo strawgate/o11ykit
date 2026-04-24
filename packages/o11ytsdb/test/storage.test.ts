@@ -597,6 +597,43 @@ describe("TieredRowGroupStore compaction", () => {
     expect(Array.from(data.values)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
   });
 
+  it("preserves read order for a series that spans multiple promoted lanes", () => {
+    const store = new TieredRowGroupStore(tsValuesCodec, 4, 8, () => 0, 2);
+    const slowId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "slow" }));
+    const fastId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "fast" }));
+
+    const slowTs = new BigInt64Array([0n, 1_000n]);
+    const slowVals = new Float64Array([10, 11]);
+    const fastTs = new BigInt64Array(12);
+    const fastVals = new Float64Array(12);
+    for (let i = 0; i < 12; i++) {
+      fastTs[i] = BigInt(i) * 1_000n;
+      fastVals[i] = i;
+    }
+
+    store.appendBatch(slowId, slowTs, slowVals);
+    store.appendBatch(fastId, fastTs, fastVals);
+
+    const hotStore = Reflect.get(store, "hotStore");
+    const hotIds = Reflect.get(store, "hotIds");
+    const allSeries = Reflect.get(hotStore, "allSeries");
+    const fastHotId = hotIds[fastId];
+    const fastSeries = allSeries[fastHotId];
+    const segments = Reflect.get(fastSeries, "segments");
+    expect(Array.isArray(segments)).toBe(true);
+    expect(segments.length).toBeGreaterThanOrEqual(2);
+
+    const beforeDrain = store.read(fastId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
+    expect(Array.from(beforeDrain.timestamps)).toEqual(Array.from(fastTs));
+    expect(Array.from(beforeDrain.values)).toEqual(Array.from(fastVals));
+
+    store.drainCompaction();
+
+    const afterDrain = store.read(fastId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
+    expect(Array.from(afterDrain.timestamps)).toEqual(Array.from(fastTs));
+    expect(Array.from(afterDrain.values)).toEqual(Array.from(fastVals));
+  });
+
   it("re-encodes promoted windows into larger compacted cold chunks", () => {
     let encodeCount = 0;
     let decodeCount = 0;

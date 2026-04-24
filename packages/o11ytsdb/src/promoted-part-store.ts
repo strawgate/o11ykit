@@ -37,12 +37,22 @@ export type PromotedLaneWindow = {
   sampleCount: number;
 };
 
-type PromotedPartRef = {
-  window: PromotedLaneWindow;
-  rowGroupIndex: number;
+type PromotedLanePage = PromotedLaneWindow & {
+  minT: bigint;
+  maxT: bigint;
+};
+
+type PromotedLaneMembership = {
+  lane: PromotedLane;
   memberIndex: number;
-  chunkMinT: bigint;
-  chunkMaxT: bigint;
+};
+
+type PromotedLane = {
+  groupId: number;
+  laneId: number;
+  memberSeriesIds: readonly SeriesId[];
+  pages: PromotedLanePage[];
+  head: number;
 };
 
 export type PromotedPartLayoutSummary = {
@@ -99,9 +109,10 @@ function decodeRangePromotedPart(this: LazyPromotedPart): TimeRange {
 export class PromotedPartStore {
   readonly name: string;
 
-  private readonly windows: PromotedLaneWindow[] = [];
-  private readonly seriesParts: PromotedPartRef[][] = [];
-  private readonly materializedSeries = new Set<number>();
+  private readonly lanesByKey = new Map<string, PromotedLane>();
+  private readonly seriesLanes: PromotedLaneMembership[][] = [];
+  private readonly activeSeries = new Set<number>();
+  private readonly activePartCounts: number[] = [];
   private _sampleCount = 0;
   private readonly valuesCodec: ValuesCodec;
   private readonly tsCodec: TimestampCodec | undefined;
@@ -120,7 +131,7 @@ export class PromotedPartStore {
   }
 
   get seriesCount(): number {
-    return this.materializedSeries.size;
+    return this.activeSeries.size;
   }
 
   get sampleCount(): number {
@@ -131,43 +142,28 @@ export class PromotedPartStore {
     window: RowGroupStorePromotedLaneWindow,
     globalSeriesIds: readonly SeriesId[]
   ): void {
-    const promotedWindow: PromotedLaneWindow = {
+    const lane = this.getOrCreateLane(window.groupId, window.laneId, globalSeriesIds);
+    const firstChunk = requireDefined(
+      window.timestampChunks[0],
+      "missing first promoted timestamp chunk"
+    );
+    const lastChunk = requireDefined(
+      window.timestampChunks[window.timestampChunks.length - 1],
+      "missing last promoted timestamp chunk"
+    );
+    const page: PromotedLanePage = {
       groupId: window.groupId,
       laneId: window.laneId,
       memberSeriesIds: globalSeriesIds.slice(),
       timestampChunks: window.timestampChunks,
       rowGroups: window.rowGroups,
       sampleCount: window.sampleCount,
+      minT: firstChunk.minT,
+      maxT: lastChunk.maxT,
     };
-    this.windows.push(promotedWindow);
+    lane.pages.push(page);
     this._sampleCount += window.sampleCount;
-
-    for (let memberIndex = 0; memberIndex < globalSeriesIds.length; memberIndex++) {
-      const globalId = requireDefined(
-        globalSeriesIds[memberIndex],
-        `missing global series id for promoted member ${memberIndex}`
-      );
-      let parts = this.seriesParts[globalId];
-      if (!parts) {
-        parts = [];
-        this.seriesParts[globalId] = parts;
-      }
-      this.materializedSeries.add(globalId);
-      for (let rowGroupIndex = 0; rowGroupIndex < window.rowGroups.length; rowGroupIndex++) {
-        const timestampChunk = requireDefined(
-          window.timestampChunks[rowGroupIndex],
-          `missing promoted timestamp chunk ${rowGroupIndex}`
-        );
-        const ref: PromotedPartRef = {
-          window: promotedWindow,
-          rowGroupIndex,
-          memberIndex,
-          chunkMinT: timestampChunk.minT,
-          chunkMaxT: timestampChunk.maxT,
-        };
-        this.insertPartRef(parts, ref, globalId);
-      }
-    }
+    this.adjustActiveSeries(globalSeriesIds, window.rowGroups.length);
   }
 
   peekCompactableLaneWindows(
@@ -179,48 +175,65 @@ export class PromotedPartStore {
     if (windowCount < 1) {
       throw new RangeError(`windowCount must be >= 1, got ${windowCount}`);
     }
-    const matches: PromotedLaneWindow[] = [];
-    let expectedMembers: readonly SeriesId[] | undefined;
-    for (const window of this.windows) {
-      if (window.groupId !== groupId || window.laneId !== laneId) {
-        continue;
-      }
+    const lane = this.lanesByKey.get(laneKey(groupId, laneId));
+    if (!lane) {
+      return undefined;
+    }
+    const remaining = lane.pages.length - lane.head;
+    if (remaining < windowCount) {
+      return undefined;
+    }
+    for (let i = 0; i < windowCount; i++) {
+      const page = requireDefined(
+        lane.pages[lane.head + i],
+        `missing promoted lane page ${lane.head + i} for ${groupId}:${laneId}`
+      );
       if (
-        window.timestampChunks.length !== 1 ||
-        window.rowGroups.length !== 1 ||
-        window.timestampChunks[0]?.count !== expectedChunkSize
+        page.timestampChunks.length !== 1 ||
+        page.rowGroups.length !== 1 ||
+        page.timestampChunks[0]?.count !== expectedChunkSize
       ) {
-        break;
-      }
-      if (!expectedMembers) {
-        expectedMembers = window.memberSeriesIds;
-      } else if (!sameSeriesIds(expectedMembers, window.memberSeriesIds)) {
-        break;
-      }
-      matches.push(window);
-      if (matches.length === windowCount) {
-        return matches;
+        return undefined;
       }
     }
-    return undefined;
+    return lane.pages.slice(lane.head, lane.head + windowCount);
   }
 
   commitCompactedLaneWindows(windows: readonly PromotedLaneWindow[]): void {
     if (windows.length === 0) {
       return;
     }
-    const toRemove = new Set(windows);
-    if (toRemove.size !== windows.length) {
-      throw new RangeError("commitCompactedLaneWindows received duplicate windows");
+    const firstWindow = windows[0];
+    const lane = this.lanesByKey.get(
+      laneKey(
+        requireDefined(firstWindow?.groupId, "missing compacted promoted group id"),
+        requireDefined(firstWindow?.laneId, "missing compacted promoted lane id")
+      )
+    );
+    if (!lane) {
+      throw new RangeError("commitCompactedLaneWindows received unknown promoted lane");
     }
-    const remaining = this.windows.filter((window) => !toRemove.has(window));
-    if (remaining.length + toRemove.size !== this.windows.length) {
-      throw new RangeError("commitCompactedLaneWindows received unknown promoted window");
+    const activePages = lane.pages.slice(lane.head, lane.head + windows.length);
+    if (activePages.length !== windows.length) {
+      throw new RangeError("commitCompactedLaneWindows received too many windows");
     }
 
-    this.windows.length = 0;
-    this.windows.push(...remaining);
-    this.rebuildSeriesParts();
+    let removedSamples = 0;
+    let removedPartCount = 0;
+    for (let i = 0; i < windows.length; i++) {
+      const expected = requireDefined(activePages[i], `missing compacted promoted page ${i}`);
+      const received = requireDefined(windows[i], `missing compacted promoted window ${i}`);
+      if (expected !== received) {
+        throw new RangeError("commitCompactedLaneWindows received windows out of order");
+      }
+      removedSamples += expected.sampleCount;
+      removedPartCount += expected.rowGroups.length;
+    }
+
+    this._sampleCount -= removedSamples;
+    this.adjustActiveSeries(lane.memberSeriesIds, -removedPartCount);
+    lane.head += windows.length;
+    this.maybeTrimLane(lane);
   }
 
   read(id: SeriesId, start: bigint, end: bigint): TimeRange {
@@ -236,140 +249,59 @@ export class PromotedPartStore {
   }
 
   scanParts(id: SeriesId, start: bigint, end: bigint, visit: (part: TimeRange) => void): void {
-    const parts = this.seriesParts[id];
-    if (!parts || parts.length === 0) {
+    if ((this.activePartCounts[id] ?? 0) < 1) {
       return;
     }
-    for (const part of parts) {
-      if (part.chunkMaxT < start || part.chunkMinT > end) {
-        continue;
-      }
-
-      const timestampChunk = requireDefined(
-        part.window.timestampChunks[part.rowGroupIndex],
-        `missing promoted timestamp chunk ${part.rowGroupIndex}`
-      );
-      const rowGroup = requireDefined(
-        part.window.rowGroups[part.rowGroupIndex],
-        `missing promoted row group ${part.rowGroupIndex}`
-      );
-      const offset = requireDefined(
-        rowGroup.offsets[part.memberIndex],
-        `missing promoted offset for member ${part.memberIndex}`
-      );
-      const size = requireDefined(
-        rowGroup.sizes[part.memberIndex],
-        `missing promoted size for member ${part.memberIndex}`
-      );
-      const compressedValues = rowGroup.valueBuffer.subarray(offset, offset + size);
-
-      if (this.rangeCodec && this.tsCodec) {
-        const compressedTimestamps = requireDefined(
-          timestampChunk.compressed,
-          `missing promoted compressed timestamps for chunk ${part.rowGroupIndex}`
-        );
-        if (part.chunkMinT >= start && part.chunkMaxT <= end) {
-          visit({
-            timestamps: EMPTY_TIMESTAMPS,
-            values: EMPTY_VALUES,
-            statsPacked: rowGroup.packedStats,
-            statsOffset: part.memberIndex * PACKED_STATS_STRIDE,
-            chunkMinT: part.chunkMinT,
-            chunkMaxT: part.chunkMaxT,
-            decode: decodeRangePromotedPart,
-            _rangeCodec: this.rangeCodec,
-            _compressedTimestamps: compressedTimestamps,
-            _compressedValues: compressedValues,
-            _startT: part.chunkMinT,
-            _endT: part.chunkMaxT,
-          } as LazyPromotedPart);
-          continue;
-        }
-        const result = this.rangeCodec.rangeDecodeValues(
-          compressedTimestamps,
-          compressedValues,
-          start,
-          end
-        );
-        if (result.timestamps.length > 0) {
-          visit(result);
-        }
-        continue;
-      }
-
-      if (!timestampChunk.timestamps && this.tsCodec && timestampChunk.compressed) {
-        timestampChunk.timestamps = this.tsCodec.decodeTimestamps(timestampChunk.compressed);
-      }
-      const timestamps = requireDefined(
-        timestampChunk.timestamps,
-        `missing promoted decoded timestamps for chunk ${part.rowGroupIndex}`
-      );
-      if (part.chunkMinT >= start && part.chunkMaxT <= end) {
-        visit({
-          timestamps: EMPTY_TIMESTAMPS,
-          values: EMPTY_VALUES,
-          statsPacked: rowGroup.packedStats,
-          statsOffset: part.memberIndex * PACKED_STATS_STRIDE,
-          chunkMinT: part.chunkMinT,
-          chunkMaxT: part.chunkMaxT,
-          decode: decodeFullPromotedPart,
-          _timestampsRef: timestamps,
-          _compressedValues: compressedValues,
-          _valuesCodec: this.valuesCodec,
-        } as LazyPromotedPart);
-        continue;
-      }
-
-      const lo = lowerBound(timestamps, start, 0, timestampChunk.count);
-      const hi = upperBound(timestamps, end, lo, timestampChunk.count);
-      if (hi > lo) {
-        visit({
-          timestamps: timestamps.subarray(lo, hi),
-          values: EMPTY_VALUES,
-          decode: decodePartialPromotedPart,
-          _compressedValues: compressedValues,
-          _valuesCodec: this.valuesCodec,
-          _lo: lo,
-          _hi: hi,
-        } as LazyPromotedPart);
-      }
+    const memberships = this.seriesLanes[id];
+    if (!memberships || memberships.length === 0) {
+      return;
+    }
+    for (const membership of memberships) {
+      this.scanLaneMembership(membership, start, end, visit);
     }
   }
 
   layoutSummary(): PromotedPartLayoutSummary {
+    let windowCount = 0;
     let partCount = 0;
     let timestampChunkCount = 0;
     let memberTotal = 0;
-    for (const window of this.windows) {
-      timestampChunkCount += window.timestampChunks.length;
-      memberTotal += window.memberSeriesIds.length;
-      partCount += window.timestampChunks.length * window.memberSeriesIds.length;
+    for (const lane of this.lanesByKey.values()) {
+      for (let i = lane.head; i < lane.pages.length; i++) {
+        const page = requireDefined(lane.pages[i], `missing promoted page ${i}`);
+        windowCount++;
+        timestampChunkCount += page.timestampChunks.length;
+        memberTotal += page.memberSeriesIds.length;
+        partCount += page.timestampChunks.length * page.memberSeriesIds.length;
+      }
     }
     return {
-      windowCount: this.windows.length,
+      windowCount,
       partCount,
       timestampChunkCount,
-      avgMembersPerWindow:
-        this.windows.length > 0 ? Number((memberTotal / this.windows.length).toFixed(2)) : 0,
+      avgMembersPerWindow: windowCount > 0 ? Number((memberTotal / windowCount).toFixed(2)) : 0,
     };
   }
 
   memoryBytes(): number {
     let bytes = 0;
-    for (const window of this.windows) {
-      for (const timestampChunk of window.timestampChunks) {
-        if (timestampChunk.compressed) {
-          bytes += timestampChunk.compressed.byteLength;
+    for (const lane of this.lanesByKey.values()) {
+      for (let i = lane.head; i < lane.pages.length; i++) {
+        const page = requireDefined(lane.pages[i], `missing promoted page ${i}`);
+        for (const timestampChunk of page.timestampChunks) {
+          if (timestampChunk.compressed) {
+            bytes += timestampChunk.compressed.byteLength;
+          }
+          if (timestampChunk.timestamps) {
+            bytes += timestampChunk.timestamps.byteLength;
+          }
         }
-        if (timestampChunk.timestamps) {
-          bytes += timestampChunk.timestamps.byteLength;
+        for (const rowGroup of page.rowGroups) {
+          bytes += rowGroup.valueBuffer.byteLength;
+          bytes += rowGroup.offsets.byteLength;
+          bytes += rowGroup.sizes.byteLength;
+          bytes += rowGroup.packedStats.byteLength;
         }
-      }
-      for (const rowGroup of window.rowGroups) {
-        bytes += rowGroup.valueBuffer.byteLength;
-        bytes += rowGroup.offsets.byteLength;
-        bytes += rowGroup.sizes.byteLength;
-        bytes += rowGroup.packedStats.byteLength;
       }
     }
     return bytes;
@@ -379,55 +311,202 @@ export class PromotedPartStore {
     return this.memoryBytes();
   }
 
-  private rebuildSeriesParts(): void {
-    this.seriesParts.length = 0;
-    this.materializedSeries.clear();
-    this._sampleCount = 0;
+  private getOrCreateLane(
+    groupId: number,
+    laneId: number,
+    globalSeriesIds: readonly SeriesId[]
+  ): PromotedLane {
+    const key = laneKey(groupId, laneId);
+    const existing = this.lanesByKey.get(key);
+    if (existing) {
+      if (!sameSeriesIds(existing.memberSeriesIds, globalSeriesIds)) {
+        throw new RangeError(`promoted lane ${groupId}:${laneId} changed member layout`);
+      }
+      return existing;
+    }
 
-    for (const window of this.windows) {
-      this._sampleCount += window.sampleCount;
-      for (let memberIndex = 0; memberIndex < window.memberSeriesIds.length; memberIndex++) {
-        const globalId = requireDefined(
-          window.memberSeriesIds[memberIndex],
-          `missing global series id for promoted member ${memberIndex}`
-        );
-        let parts = this.seriesParts[globalId];
-        if (!parts) {
-          parts = [];
-          this.seriesParts[globalId] = parts;
-        }
-        this.materializedSeries.add(globalId);
-        for (let rowGroupIndex = 0; rowGroupIndex < window.rowGroups.length; rowGroupIndex++) {
-          const timestampChunk = requireDefined(
-            window.timestampChunks[rowGroupIndex],
-            `missing promoted timestamp chunk ${rowGroupIndex}`
-          );
-          const ref: PromotedPartRef = {
-            window,
-            rowGroupIndex,
-            memberIndex,
-            chunkMinT: timestampChunk.minT,
-            chunkMaxT: timestampChunk.maxT,
-          };
-          this.insertPartRef(parts, ref, globalId);
-        }
+    const lane: PromotedLane = {
+      groupId,
+      laneId,
+      memberSeriesIds: globalSeriesIds.slice(),
+      pages: [],
+      head: 0,
+    };
+    this.lanesByKey.set(key, lane);
+    for (let memberIndex = 0; memberIndex < globalSeriesIds.length; memberIndex++) {
+      const globalId = requireDefined(
+        globalSeriesIds[memberIndex],
+        `missing global series id for promoted member ${memberIndex}`
+      );
+      let memberships = this.seriesLanes[globalId];
+      if (!memberships) {
+        memberships = [];
+        this.seriesLanes[globalId] = memberships;
+      }
+      memberships.push({ lane, memberIndex });
+      this.activePartCounts[globalId] ??= 0;
+    }
+    return lane;
+  }
+
+  private adjustActiveSeries(globalSeriesIds: readonly SeriesId[], delta: number): void {
+    if (delta === 0) {
+      return;
+    }
+    for (const globalId of globalSeriesIds) {
+      const next = (this.activePartCounts[globalId] ?? 0) + delta;
+      if (next < 0) {
+        throw new RangeError(`promoted active-part count went negative for series ${globalId}`);
+      }
+      this.activePartCounts[globalId] = next;
+      if (next === 0) {
+        this.activeSeries.delete(globalId);
+      } else {
+        this.activeSeries.add(globalId);
       }
     }
   }
 
-  private insertPartRef(parts: PromotedPartRef[], ref: PromotedPartRef, globalId: SeriesId): void {
-    let insertAt = parts.length;
-    while (insertAt > 0) {
-      const prev = requireDefined(
-        parts[insertAt - 1],
-        `missing promoted part ${insertAt - 1} for series ${globalId}`
-      );
-      if (prev.chunkMinT <= ref.chunkMinT) {
-        break;
-      }
-      insertAt--;
+  private maybeTrimLane(lane: PromotedLane): void {
+    if (lane.head === 0) {
+      return;
     }
-    parts.splice(insertAt, 0, ref);
+    if (lane.head >= lane.pages.length) {
+      lane.pages.length = 0;
+      lane.head = 0;
+      return;
+    }
+    if (lane.head >= 32 && lane.head * 2 >= lane.pages.length) {
+      lane.pages.splice(0, lane.head);
+      lane.head = 0;
+    }
+  }
+
+  private scanLaneMembership(
+    membership: PromotedLaneMembership,
+    start: bigint,
+    end: bigint,
+    visit: (part: TimeRange) => void
+  ): void {
+    const lane = membership.lane;
+    if (lane.head >= lane.pages.length) {
+      return;
+    }
+    const firstPageIndex = lowerBoundPagesByMax(lane.pages, lane.head, start);
+    const endPageIndex = upperBoundPagesByMin(lane.pages, firstPageIndex, end);
+    for (let pageIndex = firstPageIndex; pageIndex < endPageIndex; pageIndex++) {
+      const page = requireDefined(
+        lane.pages[pageIndex],
+        `missing promoted page ${pageIndex} for lane ${lane.groupId}:${lane.laneId}`
+      );
+      for (let rowGroupIndex = 0; rowGroupIndex < page.rowGroups.length; rowGroupIndex++) {
+        this.visitPagePart(page, membership.memberIndex, rowGroupIndex, start, end, visit);
+      }
+    }
+  }
+
+  private visitPagePart(
+    page: PromotedLanePage,
+    memberIndex: number,
+    rowGroupIndex: number,
+    start: bigint,
+    end: bigint,
+    visit: (part: TimeRange) => void
+  ): void {
+    const timestampChunk = requireDefined(
+      page.timestampChunks[rowGroupIndex],
+      `missing promoted timestamp chunk ${rowGroupIndex}`
+    );
+    const chunkMinT = timestampChunk.minT;
+    const chunkMaxT = timestampChunk.maxT;
+    if (chunkMaxT < start || chunkMinT > end) {
+      return;
+    }
+
+    const rowGroup = requireDefined(
+      page.rowGroups[rowGroupIndex],
+      `missing promoted row group ${rowGroupIndex}`
+    );
+    const offset = requireDefined(
+      rowGroup.offsets[memberIndex],
+      `missing promoted offset for member ${memberIndex}`
+    );
+    const size = requireDefined(
+      rowGroup.sizes[memberIndex],
+      `missing promoted size for member ${memberIndex}`
+    );
+    const compressedValues = rowGroup.valueBuffer.subarray(offset, offset + size);
+
+    if (this.rangeCodec && this.tsCodec) {
+      const compressedTimestamps = requireDefined(
+        timestampChunk.compressed,
+        `missing promoted compressed timestamps for chunk ${rowGroupIndex}`
+      );
+      if (chunkMinT >= start && chunkMaxT <= end) {
+        visit({
+          timestamps: EMPTY_TIMESTAMPS,
+          values: EMPTY_VALUES,
+          statsPacked: rowGroup.packedStats,
+          statsOffset: memberIndex * PACKED_STATS_STRIDE,
+          chunkMinT,
+          chunkMaxT,
+          decode: decodeRangePromotedPart,
+          _rangeCodec: this.rangeCodec,
+          _compressedTimestamps: compressedTimestamps,
+          _compressedValues: compressedValues,
+          _startT: chunkMinT,
+          _endT: chunkMaxT,
+        } as LazyPromotedPart);
+        return;
+      }
+      const result = this.rangeCodec.rangeDecodeValues(
+        compressedTimestamps,
+        compressedValues,
+        start,
+        end
+      );
+      if (result.timestamps.length > 0) {
+        visit(result);
+      }
+      return;
+    }
+
+    if (!timestampChunk.timestamps && this.tsCodec && timestampChunk.compressed) {
+      timestampChunk.timestamps = this.tsCodec.decodeTimestamps(timestampChunk.compressed);
+    }
+    const timestamps = requireDefined(
+      timestampChunk.timestamps,
+      `missing promoted decoded timestamps for chunk ${rowGroupIndex}`
+    );
+    if (chunkMinT >= start && chunkMaxT <= end) {
+      visit({
+        timestamps: EMPTY_TIMESTAMPS,
+        values: EMPTY_VALUES,
+        statsPacked: rowGroup.packedStats,
+        statsOffset: memberIndex * PACKED_STATS_STRIDE,
+        chunkMinT,
+        chunkMaxT,
+        decode: decodeFullPromotedPart,
+        _timestampsRef: timestamps,
+        _compressedValues: compressedValues,
+        _valuesCodec: this.valuesCodec,
+      } as LazyPromotedPart);
+      return;
+    }
+
+    const lo = lowerBound(timestamps, start, 0, timestampChunk.count);
+    const hi = upperBound(timestamps, end, lo, timestampChunk.count);
+    if (hi > lo) {
+      visit({
+        timestamps: timestamps.subarray(lo, hi),
+        values: EMPTY_VALUES,
+        decode: decodePartialPromotedPart,
+        _compressedValues: compressedValues,
+        _valuesCodec: this.valuesCodec,
+        _lo: lo,
+        _hi: hi,
+      } as LazyPromotedPart);
+    }
   }
 }
 
@@ -441,4 +520,46 @@ function sameSeriesIds(left: readonly SeriesId[], right: readonly SeriesId[]): b
     }
   }
   return true;
+}
+
+function laneKey(groupId: number, laneId: number): string {
+  return `${groupId}:${laneId}`;
+}
+
+function lowerBoundPagesByMax(
+  pages: readonly PromotedLanePage[],
+  from: number,
+  target: bigint
+): number {
+  let lo = from;
+  let hi = pages.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    const page = requireDefined(pages[mid], `missing promoted page ${mid}`);
+    if (page.maxT < target) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
+}
+
+function upperBoundPagesByMin(
+  pages: readonly PromotedLanePage[],
+  from: number,
+  target: bigint
+): number {
+  let lo = from;
+  let hi = pages.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    const page = requireDefined(pages[mid], `missing promoted page ${mid}`);
+    if (page.minT <= target) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo;
 }
