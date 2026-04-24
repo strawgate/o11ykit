@@ -332,7 +332,16 @@ export class TieredRowGroupStore implements StorageBackend {
     this.compactionScheduled = true;
     this.compactionScheduler(() => {
       this.compactionScheduled = false;
-      this.drainCompaction(this.backgroundLanesPerRun);
+      try {
+        this.drainCompaction(this.backgroundLanesPerRun);
+      } catch {
+        // Background compaction is best-effort for this experimental store.
+        // A failed lane remains queryable in promoted form, and subsequent
+        // queued lanes should still be allowed to make forward progress.
+      }
+      if (this.pendingCompactionLanes.length > 0) {
+        this.scheduleCompaction();
+      }
     });
   }
 
