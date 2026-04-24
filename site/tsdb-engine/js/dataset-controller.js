@@ -18,20 +18,31 @@ function formatApproxBytes(bytes) {
   return `${bytes} B`;
 }
 
+const LARGE_SCENARIO_WARN_BYTES = 128 * 1024 * 1024;
+const LARGE_SCENARIO_CONFIRM_BYTES = 256 * 1024 * 1024;
+const LOW_MEMORY_DEVICE_GIB = 4;
+const LOW_MEMORY_CONFIRM_BYTES = 64 * 1024 * 1024;
+
 function shouldConfirmLargeScenarioLoad(approxBytes) {
   const deviceMemoryGiB =
     typeof navigator !== "undefined" && typeof navigator.deviceMemory === "number"
       ? navigator.deviceMemory
       : null;
-  if (approxBytes >= 256 * 1024 * 1024) return true;
-  return deviceMemoryGiB != null && deviceMemoryGiB <= 4 && approxBytes >= 64 * 1024 * 1024;
+  if (approxBytes >= LARGE_SCENARIO_CONFIRM_BYTES) return true;
+  return (
+    deviceMemoryGiB != null &&
+    deviceMemoryGiB <= LOW_MEMORY_DEVICE_GIB &&
+    approxBytes >= LOW_MEMORY_CONFIRM_BYTES
+  );
 }
 
 function confirmLargeScenarioLoad(scenario, approxBytes) {
-  if (!shouldConfirmLargeScenarioLoad(approxBytes) || typeof window?.confirm !== "function") {
+  const confirmFn =
+    typeof window !== "undefined" && typeof window.confirm === "function" ? window.confirm : null;
+  if (!shouldConfirmLargeScenarioLoad(approxBytes) || !confirmFn) {
     return true;
   }
-  return window.confirm(
+  return confirmFn(
     [
       `Load ${scenario.name}?`,
       "",
@@ -137,7 +148,7 @@ export function createDatasetController({
       setTimeout(() => {
         try {
           const backendType = "column";
-          if (approxBytes >= 128 * 1024 * 1024) {
+          if (approxBytes >= LARGE_SCENARIO_WARN_BYTES) {
             console.warn(
               `Generating scenario ${scenario.id} with roughly ${formatApproxBytes(approxBytes)} of typed-array payload before storage overhead.`
             );
