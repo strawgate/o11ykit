@@ -4,10 +4,10 @@ import { Session } from "node:inspector";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
-import { ScanEngine } from "../packages/o11ytsdb/src/query.ts";
-import { RowGroupStore } from "../packages/o11ytsdb/src/row-group-store.ts";
-import type { Labels, QueryOpts, ValuesCodec } from "../packages/o11ytsdb/src/types.ts";
-import { initWasmCodecs } from "../packages/o11ytsdb/src/wasm-codecs.ts";
+import { ScanEngine } from "../src/query.ts";
+import { RowGroupStore } from "../src/row-group-store.ts";
+import type { Labels, QueryOpts, ValuesCodec } from "../src/types.ts";
+import { initWasmCodecs } from "../src/wasm-codecs.ts";
 
 const NUM_SERIES = 32;
 const CHUNK_SIZE = 256;
@@ -140,7 +140,7 @@ function sessionPost<T>(session: Session, method: string, params?: object): Prom
 
 async function main() {
   const queryName = (process.argv[2] ?? "sum-coarse") as QueryCaseName;
-  const outDir = path.resolve(process.argv[3] ?? ".codex-bench/profiles");
+  const outDir = path.resolve(process.argv[3] ?? "packages/o11ytsdb/bench/results/profiles");
   const iterations = Number.parseInt(process.argv[4] ?? "6", 10);
   if (!Number.isInteger(iterations) || iterations < 1) {
     throw new Error(`iterations must be an integer >= 1, got ${process.argv[4] ?? "6"}`);

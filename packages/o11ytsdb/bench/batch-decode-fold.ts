@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 
-import type { WasmCodecs } from "../packages/o11ytsdb/src/wasm-codecs.ts";
-import { initWasmCodecs } from "../packages/o11ytsdb/src/wasm-codecs.ts";
+import type { WasmCodecs } from "../src/wasm-codecs.ts";
+import { initWasmCodecs } from "../src/wasm-codecs.ts";
 
 const NUM_SERIES = 32;
 const CHUNK_SIZE = 256;

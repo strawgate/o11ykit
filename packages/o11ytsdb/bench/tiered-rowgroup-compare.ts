@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { ScanEngine } from "../packages/o11ytsdb/src/query.ts";
-import { RowGroupStore } from "../packages/o11ytsdb/src/row-group-store.ts";
-import { TieredRowGroupStore } from "../packages/o11ytsdb/src/tiered-row-group-store.ts";
-import type { Labels } from "../packages/o11ytsdb/src/types.ts";
-import { initWasmCodecs } from "../packages/o11ytsdb/src/wasm-codecs.ts";
+import { ScanEngine } from "../src/query.ts";
+import { RowGroupStore } from "../src/row-group-store.ts";
+import { TieredRowGroupStore } from "../src/tiered-row-group-store.ts";
+import type { Labels } from "../src/types.ts";
+import { initWasmCodecs } from "../src/wasm-codecs.ts";
 
 const NUM_SERIES = 32;
 const POINTS_PER_SERIES = 31_250; // 1,000,000 total

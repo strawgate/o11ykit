@@ -1,15 +1,15 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { RowGroupStore } from "../packages/o11ytsdb/src/row-group-store.ts";
-import { computeStats } from "../packages/o11ytsdb/src/stats.ts";
+import { RowGroupStore } from "../src/row-group-store.ts";
+import { computeStats } from "../src/stats.ts";
 import type {
   ChunkStats,
   Labels,
   TimestampCodec,
   ValuesCodec,
-} from "../packages/o11ytsdb/src/types.ts";
-import { initWasmCodecs } from "../packages/o11ytsdb/src/wasm-codecs.ts";
+} from "../src/types.ts";
+import { initWasmCodecs } from "../src/wasm-codecs.ts";
 
 const HOT_SIZE = 80;
 const COLD_SIZE = 640;

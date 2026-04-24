@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { RowGroupStore } from "../packages/o11ytsdb/src/row-group-store.ts";
-import { initWasmCodecs } from "../packages/o11ytsdb/src/wasm-codecs.ts";
+import { RowGroupStore } from "../src/row-group-store.ts";
+import { initWasmCodecs } from "../src/wasm-codecs.ts";
 
 const NUM_SERIES = 32;
 const POINTS_PER_SERIES = 262_144;
