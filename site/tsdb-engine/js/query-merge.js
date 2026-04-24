@@ -5,6 +5,12 @@ function labelsKey(labels) {
     .join("\0");
 }
 
+function sortedGroupEntries(groups) {
+  return [...groups.values()]
+    .map((group) => ({ group, key: labelsKey(group.labels) }))
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
 export function deserializeWorkerResult(result) {
   return {
     scannedSeries: result.scannedSeries,
@@ -78,7 +84,7 @@ export function mergeReductionWorkerResults(results, agg) {
     requestedStep: results[0]?.requestedStep ?? null,
     effectiveStep: results[0]?.effectiveStep ?? null,
     pointBudget: results[0]?.pointBudget ?? null,
-    series: [...groups.values()].map((group) => {
+    series: sortedGroupEntries(groups).map(({ group }) => {
       const points = [...group.points.values()].sort((a, b) =>
         a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0
       );
@@ -142,7 +148,7 @@ export function mergeAvgWorkerResults(sumResults, countResults) {
     requestedStep: sumResults[0]?.requestedStep ?? null,
     effectiveStep: sumResults[0]?.effectiveStep ?? null,
     pointBudget: sumResults[0]?.pointBudget ?? null,
-    series: [...groups.values()].map((group) => {
+    series: sortedGroupEntries(groups).map(({ group }) => {
       const points = [...group.points.values()].sort((a, b) =>
         a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0
       );

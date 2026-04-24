@@ -60,6 +60,8 @@ export function deriveTopologyPlan({
     requestedWorkers,
     capabilities.hardwareConcurrency
   );
+  // Small workloads do not amortize worker startup and merge overhead well, so
+  // cap series counts below 16 to a single worker even when auto-sizing higher.
   const actualWorkers = capabilities.workers
     ? seriesCount > 0 && seriesCount < 16
       ? Math.min(normalizedWorkers, 1)
