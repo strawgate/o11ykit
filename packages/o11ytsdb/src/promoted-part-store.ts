@@ -40,11 +40,13 @@ export type PromotedLaneWindow = {
 type PromotedLanePage = PromotedLaneWindow & {
   minT: bigint;
   maxT: bigint;
+  retired: boolean;
 };
 
-type PromotedLaneMembership = {
-  lane: PromotedLane;
+type PromotedSeriesRef = {
+  page: PromotedLanePage;
   memberIndex: number;
+  rowGroupIndex: number;
 };
 
 type PromotedLane = {
@@ -110,9 +112,9 @@ export class PromotedPartStore {
   readonly name: string;
 
   private readonly lanesByKey = new Map<string, PromotedLane>();
-  private readonly seriesLanes: PromotedLaneMembership[][] = [];
   private readonly activeSeries = new Set<number>();
   private readonly activePartCounts: number[] = [];
+  private readonly seriesRefs: PromotedSeriesRef[][] = [];
   private _sampleCount = 0;
   private readonly valuesCodec: ValuesCodec;
   private readonly tsCodec: TimestampCodec | undefined;
@@ -160,10 +162,12 @@ export class PromotedPartStore {
       sampleCount: window.sampleCount,
       minT: firstChunk.minT,
       maxT: lastChunk.maxT,
+      retired: false,
     };
     lane.pages.push(page);
     this._sampleCount += window.sampleCount;
     this.adjustActiveSeries(globalSeriesIds, window.rowGroups.length);
+    this.appendSeriesRefs(page, globalSeriesIds);
   }
 
   peekCompactableLaneWindows(
@@ -228,6 +232,7 @@ export class PromotedPartStore {
       }
       removedSamples += expected.sampleCount;
       removedPartCount += expected.rowGroups.length;
+      expected.retired = true;
     }
 
     this._sampleCount -= removedSamples;
@@ -252,13 +257,7 @@ export class PromotedPartStore {
     if ((this.activePartCounts[id] ?? 0) < 1) {
       return;
     }
-    const memberships = this.seriesLanes[id];
-    if (!memberships || memberships.length === 0) {
-      return;
-    }
-    for (const membership of memberships) {
-      this.scanLaneMembership(membership, start, end, visit);
-    }
+    this.scanSeriesRefs(id, start, end, visit);
   }
 
   layoutSummary(): PromotedPartLayoutSummary {
@@ -338,15 +337,27 @@ export class PromotedPartStore {
         globalSeriesIds[memberIndex],
         `missing global series id for promoted member ${memberIndex}`
       );
-      let memberships = this.seriesLanes[globalId];
-      if (!memberships) {
-        memberships = [];
-        this.seriesLanes[globalId] = memberships;
-      }
-      memberships.push({ lane, memberIndex });
       this.activePartCounts[globalId] ??= 0;
+      this.seriesRefs[globalId] ??= [];
     }
     return lane;
+  }
+
+  private appendSeriesRefs(page: PromotedLanePage, globalSeriesIds: readonly SeriesId[]): void {
+    for (let memberIndex = 0; memberIndex < globalSeriesIds.length; memberIndex++) {
+      const globalId = requireDefined(
+        globalSeriesIds[memberIndex],
+        `missing global series id for promoted ref member ${memberIndex}`
+      );
+      let refs = this.seriesRefs[globalId];
+      if (!refs) {
+        refs = [];
+        this.seriesRefs[globalId] = refs;
+      }
+      for (let rowGroupIndex = 0; rowGroupIndex < page.rowGroups.length; rowGroupIndex++) {
+        refs.push({ page, memberIndex, rowGroupIndex });
+      }
+    }
   }
 
   private adjustActiveSeries(globalSeriesIds: readonly SeriesId[], delta: number): void {
@@ -382,26 +393,29 @@ export class PromotedPartStore {
     }
   }
 
-  private scanLaneMembership(
-    membership: PromotedLaneMembership,
+  private scanSeriesRefs(
+    id: SeriesId,
     start: bigint,
     end: bigint,
     visit: (part: TimeRange) => void
   ): void {
-    const lane = membership.lane;
-    if (lane.head >= lane.pages.length) {
+    const refs = this.seriesRefs[id];
+    if (!refs || refs.length === 0) {
       return;
     }
-    const firstPageIndex = lowerBoundPagesByMax(lane.pages, lane.head, start);
-    const endPageIndex = upperBoundPagesByMin(lane.pages, firstPageIndex, end);
-    for (let pageIndex = firstPageIndex; pageIndex < endPageIndex; pageIndex++) {
-      const page = requireDefined(
-        lane.pages[pageIndex],
-        `missing promoted page ${pageIndex} for lane ${lane.groupId}:${lane.laneId}`
-      );
-      for (let rowGroupIndex = 0; rowGroupIndex < page.rowGroups.length; rowGroupIndex++) {
-        this.visitPagePart(page, membership.memberIndex, rowGroupIndex, start, end, visit);
+    let trimPrefix = 0;
+    for (let i = 0; i < refs.length; i++) {
+      const ref = requireDefined(refs[i], `missing promoted series ref ${i}`);
+      if (ref.page.retired) {
+        if (i === trimPrefix) {
+          trimPrefix++;
+        }
+        continue;
       }
+      this.visitPagePart(ref.page, ref.memberIndex, ref.rowGroupIndex, start, end, visit);
+    }
+    if (trimPrefix >= 32 && trimPrefix * 2 >= refs.length) {
+      refs.splice(0, trimPrefix);
     }
   }
 
@@ -524,42 +538,4 @@ function sameSeriesIds(left: readonly SeriesId[], right: readonly SeriesId[]): b
 
 function laneKey(groupId: number, laneId: number): string {
   return `${groupId}:${laneId}`;
-}
-
-function lowerBoundPagesByMax(
-  pages: readonly PromotedLanePage[],
-  from: number,
-  target: bigint
-): number {
-  let lo = from;
-  let hi = pages.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    const page = requireDefined(pages[mid], `missing promoted page ${mid}`);
-    if (page.maxT < target) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-  return lo;
-}
-
-function upperBoundPagesByMin(
-  pages: readonly PromotedLanePage[],
-  from: number,
-  target: bigint
-): number {
-  let lo = from;
-  let hi = pages.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    const page = requireDefined(pages[mid], `missing promoted page ${mid}`);
-    if (page.minT <= target) {
-      lo = mid + 1;
-    } else {
-      hi = mid;
-    }
-  }
-  return lo;
 }
