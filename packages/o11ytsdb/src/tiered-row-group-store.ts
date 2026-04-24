@@ -25,6 +25,9 @@ type CompactionLane = { groupId: number; laneId: number };
 type CompactionScheduler = (task: () => void) => void;
 
 export type TieredRowGroupStoreOptions = {
+  // Pass `null` to disable automatic background scheduling. This is mainly
+  // useful in deterministic tests and benchmarks that call drainCompaction()
+  // manually to separate append-path cost from background catch-up cost.
   compactionScheduler?: CompactionScheduler | null;
   backgroundLanesPerRun?: number;
 };
@@ -65,6 +68,8 @@ export class TieredRowGroupStore implements StorageBackend {
   private readonly hotStore: RowGroupStore;
   private readonly promotedStore: PromotedPartStore;
   private readonly compactedStore: RowGroupStore;
+  private readonly valuesCodec: ValuesCodec;
+  private readonly tsCodec: TimestampCodec | undefined;
   private readonly hotChunkSize: number;
   private readonly coldChunkSize: number;
   private readonly groupResolver: (labels: Labels) => number;
@@ -114,6 +119,8 @@ export class TieredRowGroupStore implements StorageBackend {
 
     this.hotChunkSize = hotChunkSize;
     this.coldChunkSize = coldChunkSize;
+    this.valuesCodec = valuesCodec;
+    this.tsCodec = tsCodec;
     this.groupResolver = groupResolver;
     this.compactionScheduler =
       options.compactionScheduler === undefined
@@ -342,11 +349,7 @@ export class TieredRowGroupStore implements StorageBackend {
         window.timestampChunks[0],
         "missing promoted timestamp chunk for compaction"
       );
-      const decodedTimestamps = decodeTimestampChunk(
-        timestampChunk,
-        this.hotStore,
-        this.promotedStore
-      );
+      const decodedTimestamps = decodeTimestampChunk(timestampChunk, this.tsCodec);
       if (decodedTimestamps.length !== this.hotChunkSize) {
         throw new RangeError(
           `expected ${this.hotChunkSize} promoted timestamps, got ${decodedTimestamps.length}`
@@ -362,7 +365,7 @@ export class TieredRowGroupStore implements StorageBackend {
         rowGroup,
         memberSeriesIds.length,
         this.hotChunkSize,
-        this.hotStore
+        this.valuesCodec
       );
       for (let memberIndex = 0; memberIndex < decodedValues.length; memberIndex++) {
         const decoded = requireDefined(
@@ -451,19 +454,13 @@ function mergeSortedPartSources(
 
 function decodeTimestampChunk(
   chunk: { timestamps: BigInt64Array | undefined; compressed: Uint8Array | undefined },
-  hotStore: RowGroupStore,
-  promotedStore: PromotedPartStore
+  tsCodec: TimestampCodec | undefined
 ): BigInt64Array {
   if (chunk.timestamps) {
     return chunk.timestamps;
   }
-  const tsCodec = Reflect.get(hotStore, "tsCodec") as TimestampCodec | undefined;
   if (tsCodec && chunk.compressed) {
     return tsCodec.decodeTimestamps(chunk.compressed);
-  }
-  const promotedTsCodec = Reflect.get(promotedStore, "tsCodec") as TimestampCodec | undefined;
-  if (promotedTsCodec && chunk.compressed) {
-    return promotedTsCodec.decodeTimestamps(chunk.compressed);
   }
   throw new RangeError("missing timestamp codec for promoted compaction");
 }
@@ -472,12 +469,8 @@ function decodePromotedRowGroupValues(
   rowGroup: { valueBuffer: Uint8Array; offsets: Uint32Array; sizes: Uint32Array },
   memberCount: number,
   chunkSize: number,
-  hotStore: RowGroupStore
+  valuesCodec: ValuesCodec
 ): Float64Array[] {
-  const valuesCodec = Reflect.get(hotStore, "valuesCodec") as ValuesCodec | undefined;
-  if (!valuesCodec) {
-    throw new RangeError("missing values codec for promoted compaction");
-  }
   const blobs = Array.from({ length: memberCount }, (_, memberIndex) => {
     const offset = requireDefined(
       rowGroup.offsets[memberIndex],

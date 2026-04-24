@@ -165,18 +165,7 @@ export class PromotedPartStore {
           chunkMinT: timestampChunk.minT,
           chunkMaxT: timestampChunk.maxT,
         };
-        let insertAt = parts.length;
-        while (insertAt > 0) {
-          const prev = requireDefined(
-            parts[insertAt - 1],
-            `missing promoted part ${insertAt - 1} for series ${globalId}`
-          );
-          if (prev.chunkMinT <= ref.chunkMinT) {
-            break;
-          }
-          insertAt--;
-        }
-        parts.splice(insertAt, 0, ref);
+        this.insertPartRef(parts, ref, globalId);
       }
     }
   }
@@ -420,21 +409,25 @@ export class PromotedPartStore {
             chunkMinT: timestampChunk.minT,
             chunkMaxT: timestampChunk.maxT,
           };
-          let insertAt = parts.length;
-          while (insertAt > 0) {
-            const prev = requireDefined(
-              parts[insertAt - 1],
-              `missing promoted part ${insertAt - 1} for series ${globalId}`
-            );
-            if (prev.chunkMinT <= ref.chunkMinT) {
-              break;
-            }
-            insertAt--;
-          }
-          parts.splice(insertAt, 0, ref);
+          this.insertPartRef(parts, ref, globalId);
         }
       }
     }
+  }
+
+  private insertPartRef(parts: PromotedPartRef[], ref: PromotedPartRef, globalId: SeriesId): void {
+    let insertAt = parts.length;
+    while (insertAt > 0) {
+      const prev = requireDefined(
+        parts[insertAt - 1],
+        `missing promoted part ${insertAt - 1} for series ${globalId}`
+      );
+      if (prev.chunkMinT <= ref.chunkMinT) {
+        break;
+      }
+      insertAt--;
+    }
+    parts.splice(insertAt, 0, ref);
   }
 }
 

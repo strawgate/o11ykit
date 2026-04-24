@@ -119,7 +119,7 @@ const EMPTY_TIMESTAMPS = new BigInt64Array(0);
 const EMPTY_VALUES = new Float64Array(0);
 const PACKED_STATS_STRIDE = 5;
 
-function createLane(_chunkSize: number): GroupLane {
+function createLane(): GroupLane {
   return {
     // Grow hot timestamp storage on first write. Many lanes, especially
     // compaction-only cold lanes, never receive direct hot appends.
@@ -272,7 +272,7 @@ export class RowGroupStore implements StorageBackend {
     }
 
     while (this.groups.length <= groupId) {
-      this.groups.push({ lanes: [createLane(this.chunkSize)] });
+      this.groups.push({ lanes: [createLane()] });
     }
 
     const series: LaneSeries = {
@@ -897,7 +897,7 @@ export class RowGroupStore implements StorageBackend {
     }
 
     const group = this.getGroup(groupId);
-    lane = createLane(this.chunkSize);
+    lane = createLane();
     group.lanes.push(lane);
     laneId = group.lanes.length - 1;
     for (let i = 0; i < memberSeriesIds.length; i++) {
@@ -950,7 +950,7 @@ export class RowGroupStore implements StorageBackend {
       lane.hotCount > 0 ||
       lane.rowGroups.length > 0
     ) {
-      lane = createLane(this.chunkSize);
+      lane = createLane();
       group.lanes.push(lane);
       laneId = group.lanes.length - 1;
     }
@@ -987,7 +987,7 @@ export class RowGroupStore implements StorageBackend {
   } {
     const series = requireDefined(this.allSeries[seriesId], `unknown series id ${seriesId}`);
     const group = this.getGroup(series.groupId);
-    const lane = createLane(this.chunkSize);
+    const lane = createLane();
     group.lanes.push(lane);
     const laneId = group.lanes.length - 1;
     const segment = this.attachSegmentToLane(seriesId, laneId, lane, true);
