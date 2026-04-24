@@ -71,6 +71,10 @@ interface SeriesGroup {
   lanes: GroupLane[];
 }
 
+const EMPTY_TIMESTAMPS = new BigInt64Array(0);
+const EMPTY_VALUES = new Float64Array(0);
+const PACKED_STATS_STRIDE = 5;
+
 function createLane(chunkSize: number): GroupLane {
   return {
     hotTimestamps: new BigInt64Array(chunkSize),
@@ -86,6 +90,75 @@ function requireDefined<T>(value: T | undefined, message: string): T {
     throw new RangeError(message);
   }
   return value;
+}
+
+type LazyRowGroupPart = TimeRange & {
+  _timestampsRef?: BigInt64Array;
+  _compressedValues?: Uint8Array;
+  _compressedTimestamps?: Uint8Array;
+  _valuesCodec?: ValuesCodec;
+  _rangeCodec?: RangeDecodeCodec;
+  _startT?: bigint;
+  _endT?: bigint;
+  _lo?: number;
+  _hi?: number;
+};
+
+function decodeFullRowGroupPart(this: LazyRowGroupPart): TimeRange {
+  this.timestamps = requireDefined(this._timestampsRef, "missing row-group timestamps");
+  this.values = requireDefined(this._valuesCodec, "missing values codec").decodeValues(
+    requireDefined(this._compressedValues, "missing compressed values")
+  );
+  return this;
+}
+
+function decodeViewFullRowGroupPart(this: LazyRowGroupPart): TimeRange {
+  this.timestamps = requireDefined(this._timestampsRef, "missing row-group timestamps");
+  this.values = requireDefined(
+    requireDefined(this._valuesCodec, "missing values codec").decodeValuesView,
+    "missing decodeValuesView implementation"
+  ).call(
+    requireDefined(this._valuesCodec, "missing values codec"),
+    requireDefined(this._compressedValues, "missing compressed values")
+  );
+  return this;
+}
+
+function decodePartialRowGroupPart(this: LazyRowGroupPart): TimeRange {
+  const codec = requireDefined(this._valuesCodec, "missing values codec");
+  const compressedValues = requireDefined(this._compressedValues, "missing compressed values");
+  const lo = requireDefined(this._lo, "missing partial decode start");
+  const hi = requireDefined(this._hi, "missing partial decode end");
+  this.values = codec.decodeValuesRange
+    ? codec.decodeValuesRange.call(codec, compressedValues, lo, hi)
+    : codec.decodeValues(compressedValues).subarray(lo, hi);
+  return this;
+}
+
+function decodeViewPartialRowGroupPart(this: LazyRowGroupPart): TimeRange {
+  const codec = requireDefined(this._valuesCodec, "missing values codec");
+  this.values = requireDefined(
+    codec.decodeValuesRangeView,
+    "missing decodeValuesRangeView implementation"
+  ).call(
+    codec,
+    requireDefined(this._compressedValues, "missing compressed values"),
+    requireDefined(this._lo, "missing partial decode start"),
+    requireDefined(this._hi, "missing partial decode end")
+  );
+  return this;
+}
+
+function decodeRangeRowGroupPart(this: LazyRowGroupPart): TimeRange {
+  const result = requireDefined(this._rangeCodec, "missing range codec").rangeDecodeValues(
+    requireDefined(this._compressedTimestamps, "missing compressed timestamps"),
+    requireDefined(this._compressedValues, "missing compressed values"),
+    requireDefined(this._startT, "missing range decode start"),
+    requireDefined(this._endT, "missing range decode end")
+  );
+  this.timestamps = result.timestamps;
+  this.values = result.values;
+  return this;
 }
 
 export class RowGroupStore implements StorageBackend {
@@ -341,6 +414,28 @@ export class RowGroupStore implements StorageBackend {
 
           const compressedValues = rg.valueBuffer.subarray(offset, offset + size);
 
+          if (tsChunk.minT >= start && tsChunk.maxT <= end) {
+            const rangeCodec = requireDefined(
+              this.rangeCodec,
+              "missing range codec for stats-aware row-group decode"
+            );
+            visit({
+              timestamps: EMPTY_TIMESTAMPS,
+              values: EMPTY_VALUES,
+              statsPacked: rg.packedStats,
+              statsOffset: segment.laneMemberIndex * PACKED_STATS_STRIDE,
+              chunkMinT: tsChunk.minT,
+              chunkMaxT: tsChunk.maxT,
+              decode: decodeRangeRowGroupPart,
+              _rangeCodec: rangeCodec,
+              _compressedTimestamps: compressedTimestamps,
+              _compressedValues: compressedValues,
+              _startT: tsChunk.minT,
+              _endT: tsChunk.maxT,
+            } as LazyRowGroupPart);
+            continue;
+          }
+
           const result = this.rangeCodec.rangeDecodeValues(
             compressedTimestamps,
             compressedValues,
@@ -377,14 +472,44 @@ export class RowGroupStore implements StorageBackend {
           );
 
           const compressedValues = rg.valueBuffer.subarray(offset, offset + size);
-          const values = this.valuesCodec.decodeValues(compressedValues);
+          if (tsChunk.minT >= start && tsChunk.maxT <= end) {
+            visit({
+              timestamps: EMPTY_TIMESTAMPS,
+              values: EMPTY_VALUES,
+              statsPacked: rg.packedStats,
+              statsOffset: segment.laneMemberIndex * PACKED_STATS_STRIDE,
+              chunkMinT: tsChunk.minT,
+              chunkMaxT: tsChunk.maxT,
+              decode: decodeFullRowGroupPart,
+              decodeView:
+                typeof this.valuesCodec.decodeValuesView === "function"
+                  ? decodeViewFullRowGroupPart
+                  : undefined,
+              _timestampsRef: timestamps,
+              _compressedValues: compressedValues,
+              _valuesCodec: this.valuesCodec,
+            } as LazyRowGroupPart);
+            continue;
+          }
+
           const lo = lowerBound(timestamps, start, 0, tsChunk.count);
           const hi = upperBound(timestamps, end, lo, tsChunk.count);
           if (hi > lo) {
+            const decodeValuesRangeView = this.valuesCodec.decodeValuesRangeView;
+            const partialTimestamps = timestamps.subarray(lo, hi);
             visit({
-              timestamps: timestamps.slice(lo, hi),
-              values: values.slice(lo, hi),
-            });
+              timestamps: partialTimestamps,
+              values: EMPTY_VALUES,
+              decode: decodePartialRowGroupPart,
+              decodeView:
+                typeof decodeValuesRangeView === "function"
+                  ? decodeViewPartialRowGroupPart
+                  : undefined,
+              _compressedValues: compressedValues,
+              _valuesCodec: this.valuesCodec,
+              _lo: lo,
+              _hi: hi,
+            } as LazyRowGroupPart);
           }
         }
       }
@@ -693,7 +818,7 @@ export class RowGroupStore implements StorageBackend {
       const valueBuffer = new Uint8Array(totalBytes);
       const offsets = new Uint32Array(numMembers);
       const sizes = new Uint32Array(numMembers);
-      const packedStats = new Float64Array(numMembers * 8);
+      const packedStats = new Float64Array(numMembers * PACKED_STATS_STRIDE);
 
       let pos = 0;
       for (let m = 0; m < numMembers; m++) {
@@ -704,15 +829,12 @@ export class RowGroupStore implements StorageBackend {
         pos += blob.byteLength;
 
         const st = requireDefined(allStats[m], `missing stats ${m}`);
-        const si = m * 8;
+        const si = m * PACKED_STATS_STRIDE;
         packedStats[si] = st.minV;
         packedStats[si + 1] = st.maxV;
         packedStats[si + 2] = st.sum;
         packedStats[si + 3] = st.count;
-        packedStats[si + 4] = st.firstV;
-        packedStats[si + 5] = st.lastV;
-        packedStats[si + 6] = st.sumOfSquares;
-        packedStats[si + 7] = st.resetCount;
+        packedStats[si + 4] = st.lastV;
       }
 
       lane.rowGroups.push({

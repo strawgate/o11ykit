@@ -1,0 +1,127 @@
+{
+  "file": ".codex-bench/profiles/raw-full-read.cpuprofile.json",
+  "topSelfMs": [
+    {
+      "frame": "decodeValues @ rowgroup-profile.ts:1",
+      "ms": 239.03799999999998
+    },
+    {
+      "frame": "concatRanges @ binary-search.ts:1",
+      "ms": 159.25300000000001
+    },
+    {
+      "frame": "scanParts @ row-group-store.ts:1",
+      "ms": 45.916000000000004
+    },
+    {
+      "frame": "set Navigator @ (native):0",
+      "ms": 28.79200000000001
+    },
+    {
+      "frame": "(garbage collector) @ (native):0",
+      "ms": 27.212
+    },
+    {
+      "frame": "post @ node:inspector:112",
+      "ms": 23.041
+    },
+    {
+      "frame": "__name @ row-group-store.ts:1",
+      "ms": 13.373999999999999
+    },
+    {
+      "frame": "(anonymous) @ row-group-store.ts:1",
+      "ms": 5.333
+    },
+    {
+      "frame": "readParts @ row-group-store.ts:1",
+      "ms": 5.041
+    },
+    {
+      "frame": "read @ row-group-store.ts:1",
+      "ms": 4.417
+    },
+    {
+      "frame": "(program) @ (native):0",
+      "ms": 3.792
+    },
+    {
+      "frame": "query @ query.ts:1",
+      "ms": 3.75
+    },
+    {
+      "frame": "resolve @ interner.ts:1",
+      "ms": 1.25
+    },
+    {
+      "frame": "rowGroupStatsAt @ row-group-store.ts:1",
+      "ms": 1.25
+    },
+    {
+      "frame": "labels @ label-index.ts:1",
+      "ms": 1.041
+    }
+  ],
+  "topTotalMs": [
+    {
+      "frame": "(root) @ (native):0",
+      "ms": 562.4999999999995
+    },
+    {
+      "frame": "main @ rowgroup-profile.ts:1",
+      "ms": 531.4959999999992
+    },
+    {
+      "frame": "query @ query.ts:1",
+      "ms": 508.454999999999
+    },
+    {
+      "frame": "read @ row-group-store.ts:1",
+      "ms": 502.4139999999991
+    },
+    {
+      "frame": "concatRanges @ binary-search.ts:1",
+      "ms": 398.29099999999937
+    },
+    {
+      "frame": "(anonymous) @ row-group-store.ts:1",
+      "ms": 244.37099999999998
+    },
+    {
+      "frame": "decodeValues @ rowgroup-profile.ts:1",
+      "ms": 239.03799999999998
+    },
+    {
+      "frame": "readParts @ row-group-store.ts:1",
+      "ms": 99.706
+    },
+    {
+      "frame": "scanParts @ row-group-store.ts:1",
+      "ms": 94.665
+    },
+    {
+      "frame": "__name @ row-group-store.ts:1",
+      "ms": 39.62400000000001
+    },
+    {
+      "frame": "set Navigator @ (native):0",
+      "ms": 28.79200000000001
+    },
+    {
+      "frame": "(garbage collector) @ (native):0",
+      "ms": 27.212
+    },
+    {
+      "frame": "post @ node:inspector:112",
+      "ms": 23.041
+    },
+    {
+      "frame": "(anonymous) @ rowgroup-profile.ts:1",
+      "ms": 23.041
+    },
+    {
+      "frame": "sessionPost @ rowgroup-profile.ts:1",
+      "ms": 23.041
+    }
+  ]
+}

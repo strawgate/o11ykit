@@ -400,6 +400,27 @@ pub extern "C" fn decodeValuesALP(
     decode_values_alp_inner(input, val_out) as u32
 }
 
+/// Decode only values[lo..hi] from an ALP-encoded blob. Returns samples decoded.
+#[no_mangle]
+pub extern "C" fn decodeValuesALPRange(
+    in_ptr: *const u8,
+    in_len: u32,
+    lo: u32,
+    hi: u32,
+    val_ptr: *mut f64,
+    max_samples: u32,
+) -> u32 {
+    let input = unsafe { core::slice::from_raw_parts(in_ptr, in_len as usize) };
+    let val_out = unsafe { core::slice::from_raw_parts_mut(val_ptr, max_samples as usize) };
+    let lo_usize = lo as usize;
+    let hi_usize = hi as usize;
+    if decode_values_alp_range(input, lo_usize, hi_usize, val_out) {
+        hi_usize.saturating_sub(lo_usize) as u32
+    } else {
+        0
+    }
+}
+
 /// Encode values using ALP AND compute block stats in one pass.
 #[no_mangle]
 pub extern "C" fn encodeValuesALPWithStats(

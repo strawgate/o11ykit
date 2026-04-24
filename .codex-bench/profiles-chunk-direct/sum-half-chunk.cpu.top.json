@@ -1,0 +1,127 @@
+{
+  "file": ".codex-bench/profiles-chunk-direct/sum-half-chunk.cpuprofile.json",
+  "topSelfMs": [
+    {
+      "frame": "decodeValues @ rowgroup-profile.ts:1",
+      "ms": 332.0819999999998
+    },
+    {
+      "frame": "scanParts @ row-group-store.ts:1",
+      "ms": 97.043
+    },
+    {
+      "frame": "post @ node:inspector:112",
+      "ms": 83.5
+    },
+    {
+      "frame": "forEachRegularBucketSegment @ query.ts:1",
+      "ms": 56.66800000000001
+    },
+    {
+      "frame": "__name @ row-group-store.ts:1",
+      "ms": 43.542
+    },
+    {
+      "frame": "set TextEncoder @ (native):0",
+      "ms": 41.041
+    },
+    {
+      "frame": "(garbage collector) @ (native):0",
+      "ms": 28.957000000000004
+    },
+    {
+      "frame": "addPart @ query.ts:1",
+      "ms": 8.917
+    },
+    {
+      "frame": "rowGroupStatsAt @ row-group-store.ts:1",
+      "ms": 8.792
+    },
+    {
+      "frame": "streamStepAggregateByGroup @ query.ts:1",
+      "ms": 3.791
+    },
+    {
+      "frame": "(program) @ (native):0",
+      "ms": 3.709
+    },
+    {
+      "frame": "query @ query.ts:1",
+      "ms": 2.5
+    },
+    {
+      "frame": "(anonymous) @ query.ts:1",
+      "ms": 2.041
+    },
+    {
+      "frame": "decode @ encoding:440",
+      "ms": 1.25
+    },
+    {
+      "frame": "wrappedFn @ errors:535",
+      "ms": 1.25
+    }
+  ],
+  "topTotalMs": [
+    {
+      "frame": "(root) @ (native):0",
+      "ms": 717.4159999999997
+    },
+    {
+      "frame": "main @ rowgroup-profile.ts:1",
+      "ms": 684.7499999999997
+    },
+    {
+      "frame": "query @ query.ts:1",
+      "ms": 598.7919999999995
+    },
+    {
+      "frame": "streamStepAggregateByGroup @ query.ts:1",
+      "ms": 596.2919999999995
+    },
+    {
+      "frame": "scanParts @ row-group-store.ts:1",
+      "ms": 590.1259999999994
+    },
+    {
+      "frame": "(anonymous) @ query.ts:1",
+      "ms": 456.3759999999993
+    },
+    {
+      "frame": "addPart @ query.ts:1",
+      "ms": 397.66699999999963
+    },
+    {
+      "frame": "decodeValues @ rowgroup-profile.ts:1",
+      "ms": 332.0819999999998
+    },
+    {
+      "frame": "(anonymous) @ row-group-store.ts:1",
+      "ms": 332.0819999999998
+    },
+    {
+      "frame": "post @ node:inspector:112",
+      "ms": 83.5
+    },
+    {
+      "frame": "(anonymous) @ rowgroup-profile.ts:1",
+      "ms": 83.5
+    },
+    {
+      "frame": "sessionPost @ rowgroup-profile.ts:1",
+      "ms": 83.5
+    },
+    {
+      "frame": "__name @ row-group-store.ts:1",
+      "ms": 83.333
+    },
+    {
+      "frame": "forEachRegularBucketSegment @ query.ts:1",
+      "ms": 56.66800000000001
+    },
+    {
+      "frame": "set TextEncoder @ (native):0",
+      "ms": 41.041
+    }
+  ]
+}

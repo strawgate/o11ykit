@@ -1,0 +1,87 @@
+{
+  "file": ".codex-bench/profiles/raw-full-read.heapprofile.json",
+  "topSelfBytes": [
+    {
+      "frame": "post @ node:inspector:112",
+      "bytes": 261392
+    },
+    {
+      "frame": "#onMessage @ node:inspector:81",
+      "bytes": 33520
+    },
+    {
+      "frame": "fingerprintResult @ rowgroup-profile.ts:1",
+      "bytes": 32800
+    },
+    {
+      "frame": "(root) @ (native):0",
+      "bytes": 0
+    },
+    {
+      "frame": "(anonymous) @ (native):0",
+      "bytes": 0
+    },
+    {
+      "frame": "main @ rowgroup-profile.ts:1",
+      "bytes": 0
+    },
+    {
+      "frame": "sessionPost @ rowgroup-profile.ts:1",
+      "bytes": 0
+    },
+    {
+      "frame": "Promise @ (native):0",
+      "bytes": 0
+    },
+    {
+      "frame": "(anonymous) @ rowgroup-profile.ts:1",
+      "bytes": 0
+    },
+    {
+      "frame": "(anonymous) @ node:inspector:63",
+      "bytes": 0
+    }
+  ],
+  "topTotalBytes": [
+    {
+      "frame": "main @ rowgroup-profile.ts:1",
+      "bytes": 327712
+    },
+    {
+      "frame": "(anonymous) @ (native):0",
+      "bytes": 327712
+    },
+    {
+      "frame": "(root) @ (native):0",
+      "bytes": 327712
+    },
+    {
+      "frame": "post @ node:inspector:112",
+      "bytes": 294912
+    },
+    {
+      "frame": "(anonymous) @ rowgroup-profile.ts:1",
+      "bytes": 294912
+    },
+    {
+      "frame": "Promise @ (native):0",
+      "bytes": 294912
+    },
+    {
+      "frame": "sessionPost @ rowgroup-profile.ts:1",
+      "bytes": 294912
+    },
+    {
+      "frame": "#onMessage @ node:inspector:81",
+      "bytes": 33520
+    },
+    {
+      "frame": "(anonymous) @ node:inspector:63",
+      "bytes": 33520
+    },
+    {
+      "frame": "fingerprintResult @ rowgroup-profile.ts:1",
+      "bytes": 32800
+    }
+  ]
+}

@@ -24,19 +24,37 @@ export function concatRanges(parts: TimeRange[]): TimeRange {
   if (parts.length === 0) {
     return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
   }
-  // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-  if (parts.length === 1) return parts[0]!;
+  if (parts.length === 1) {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+    const only = parts[0]!;
+    if ((only.timestamps.length > 0 && only.values.length > 0) || !only.decode) return only;
+    const decoded = only.decodeView ? only.decodeView() : only.decode();
+    return {
+      timestamps: decoded.timestamps.slice(),
+      values: decoded.values.slice(),
+    };
+  }
 
   let total = 0;
-  for (const p of parts) total += p.timestamps.length;
+  const materialized: TimeRange[] = [];
+  for (const part of parts) {
+    const range =
+      (part.timestamps.length === 0 || part.values.length === 0) && part.decode
+        ? part.decodeView
+          ? part.decodeView()
+          : part.decode()
+        : part;
+    materialized.push(range);
+    total += range.timestamps.length;
+  }
 
   const timestamps = new BigInt64Array(total);
   const values = new Float64Array(total);
   let offset = 0;
-  for (const p of parts) {
-    timestamps.set(p.timestamps, offset);
-    values.set(p.values, offset);
-    offset += p.timestamps.length;
+  for (const part of materialized) {
+    timestamps.set(part.timestamps, offset);
+    values.set(part.values, offset);
+    offset += part.timestamps.length;
   }
   return { timestamps, values };
 }

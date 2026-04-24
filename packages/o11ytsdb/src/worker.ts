@@ -40,6 +40,22 @@ function createValuesCodec(): ValuesCodec {
       );
       return values.slice();
     },
+    decodeValuesRange(buf: Uint8Array, startIndex: number, endIndex: number): Float64Array {
+      if (buf.byteLength < 4 || endIndex <= startIndex) return new Float64Array(0);
+      const n = new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint32(0, true);
+      const raw = buf.subarray(4);
+      const clampedStart = Math.max(0, Math.min(startIndex, n));
+      const clampedEnd = Math.max(clampedStart, Math.min(endIndex, n));
+      const byteStart = clampedStart * 8;
+      const byteEnd = clampedEnd * 8;
+      const bytes = Math.max(
+        0,
+        Math.min(raw.byteLength, byteEnd) - Math.min(raw.byteLength, byteStart)
+      );
+      if (bytes === 0) return new Float64Array(0);
+      const copy = raw.slice(byteStart, byteStart + bytes);
+      return new Float64Array(copy.buffer, copy.byteOffset, Math.floor(bytes / 8)).slice();
+    },
   };
 }
 
@@ -51,7 +67,7 @@ async function tryLoadWasm(): Promise<WasmCodecs | null> {
   try {
     const dynamicImport = new Function("s", "return import(s)") as (
       specifier: string
-    ) => Promise<any>;
+    ) => Promise<unknown>;
     const nodeFs = await dynamicImport("node:fs").catch(() => null);
     const nodePath = await dynamicImport("node:path").catch(() => null);
     const nodeUrl = await dynamicImport("node:url").catch(() => null);

@@ -1,0 +1,63 @@
+{
+  "file": ".codex-bench/profiles-count-direct/count-half-chunk.heapprofile.json",
+  "topSelfBytes": [
+    {
+      "frame": "post @ node:inspector:112",
+      "bytes": 236352
+    },
+    {
+      "frame": "main @ rowgroup-profile.ts:1",
+      "bytes": 33864
+    },
+    {
+      "frame": "(root) @ (native):0",
+      "bytes": 0
+    },
+    {
+      "frame": "(anonymous) @ (native):0",
+      "bytes": 0
+    },
+    {
+      "frame": "sessionPost @ rowgroup-profile.ts:1",
+      "bytes": 0
+    },
+    {
+      "frame": "Promise @ (native):0",
+      "bytes": 0
+    },
+    {
+      "frame": "(anonymous) @ rowgroup-profile.ts:1",
+      "bytes": 0
+    }
+  ],
+  "topTotalBytes": [
+    {
+      "frame": "main @ rowgroup-profile.ts:1",
+      "bytes": 270216
+    },
+    {
+      "frame": "(anonymous) @ (native):0",
+      "bytes": 270216
+    },
+    {
+      "frame": "(root) @ (native):0",
+      "bytes": 270216
+    },
+    {
+      "frame": "post @ node:inspector:112",
+      "bytes": 236352
+    },
+    {
+      "frame": "(anonymous) @ rowgroup-profile.ts:1",
+      "bytes": 236352
+    },
+    {
+      "frame": "Promise @ (native):0",
+      "bytes": 236352
+    },
+    {
+      "frame": "sessionPost @ rowgroup-profile.ts:1",
+      "bytes": 236352
+    }
+  ]
+}

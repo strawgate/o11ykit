@@ -19,6 +19,10 @@ export interface TimeRange {
   values: Float64Array;
   /** Pre-computed chunk statistics (when available, query engine may skip sample iteration). */
   stats?: ChunkStats;
+  /** Optional packed stats backing for allocation-free frozen chunk stats. */
+  statsPacked?: Float64Array;
+  /** Start offset inside statsPacked for this chunk's 8 stat fields. */
+  statsOffset?: number;
   /** Minimum timestamp in the original chunk (for bucket-fit checks). */
   chunkMinT?: bigint;
   /** Maximum timestamp in the original chunk (for bucket-fit checks). */
@@ -47,10 +51,20 @@ export interface ValuesCodec {
   readonly name: string;
   encodeValues(values: Float64Array): Uint8Array;
   decodeValues(buf: Uint8Array): Float64Array;
+  /** Optional: decode only values in the half-open sample interval [startIndex, endIndex). */
+  decodeValuesRange?(buf: Uint8Array, startIndex: number, endIndex: number): Float64Array;
+  /** Optional: decode a value range into codec-owned scratch memory and return a view.
+   *  The returned Float64Array is only valid until the next decode call on
+   *  the same codec instance — callers must consume the data immediately. */
+  decodeValuesRangeView?(buf: Uint8Array, startIndex: number, endIndex: number): Float64Array;
   /** Optional: decode values into codec-owned scratch memory and return a view.
    *  The returned Float64Array is only valid until the next decode call on
    *  the same codec instance — callers must consume the data immediately. */
   decodeValuesView?(buf: Uint8Array): Float64Array;
+  /** Optional: batch-decode N blobs and return views into codec scratch memory.
+   *  The returned views are only valid until the next decode call on the same
+   *  codec instance. */
+  decodeBatchValuesView?(blobs: Uint8Array[], chunkSize: number): Float64Array[];
   /** Optional: encode values and compute block stats in one pass (WASM fast-path). */
   encodeValuesWithStats?(values: Float64Array): { compressed: Uint8Array; stats: ChunkStats };
   /** Optional: batch-encode N arrays in a single WASM call, returning compressed blobs + stats. */
