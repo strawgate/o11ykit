@@ -134,6 +134,10 @@ function decodePartialRowGroupPart(this: LazyRowGroupPart): TimeRange {
   const compressedValues = requireDefined(this._compressedValues, "missing compressed values");
   const lo = requireDefined(this._lo, "missing partial decode start");
   const hi = requireDefined(this._hi, "missing partial decode end");
+  if (codec.decodeValuesRangeView) {
+    this.values = codec.decodeValuesRangeView.call(codec, compressedValues, lo, hi).slice();
+    return this;
+  }
   this.values = codec.decodeValuesRange
     ? codec.decodeValuesRange.call(codec, compressedValues, lo, hi)
     : codec.decodeValues(compressedValues).subarray(lo, hi);
