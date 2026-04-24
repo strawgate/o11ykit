@@ -48,6 +48,10 @@ async function main() {
     throw new Error("provide at least one positive chunk size");
   }
   const stepSamplesList = [300, 900];
+  const seriesBatches = Array.from({ length: NUM_SERIES }, (_, seriesIndex) => ({
+    seriesIndex,
+    ...makeSeriesData(seriesIndex),
+  }));
 
   for (const chunkSize of chunkSizes) {
     const store = new RowGroupStore(
@@ -58,9 +62,8 @@ async function main() {
       undefined,
       codecs.tsCodec
     );
-    for (let s = 0; s < NUM_SERIES; s++) {
-      const id = store.getOrCreateSeries(makeLabels(s));
-      const { timestamps, values } = makeSeriesData(s);
+    for (const { seriesIndex, timestamps, values } of seriesBatches) {
+      const id = store.getOrCreateSeries(makeLabels(seriesIndex));
       store.appendBatch(id, timestamps, values);
     }
 

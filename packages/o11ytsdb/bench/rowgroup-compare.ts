@@ -158,16 +158,20 @@ function fingerprintResult(result: {
     values: Float64Array;
   }>;
 }): string {
-  let acc = `${result.scannedSeries}:${result.scannedSamples}:${result.series.length}`;
-  for (const series of result.series) {
-    const firstTs = series.timestamps[0] ?? 0n;
-    const lastTs = series.timestamps[series.timestamps.length - 1] ?? 0n;
-    const firstV = series.values[0] ?? 0;
-    const lastV = series.values[series.values.length - 1] ?? 0;
-    const midV = series.values[Math.floor(series.values.length / 2)] ?? 0;
-    acc += `|${labelsKey(series.labels)}:${series.timestamps.length}:${firstTs}:${lastTs}:${firstV}:${midV}:${lastV}`;
-  }
-  return acc;
+  const canonical = [...result.series]
+    .map((series) => ({
+      labelKey: labelsKey(series.labels),
+      timestamps: Array.from(series.timestamps, (value) => value.toString()),
+      values: Array.from(series.values, (value) =>
+        Number.isFinite(value) ? value.toPrecision(17) : String(value)
+      ),
+    }))
+    .sort((a, b) => a.labelKey.localeCompare(b.labelKey));
+  return JSON.stringify({
+    scannedSeries: result.scannedSeries,
+    scannedSamples: result.scannedSamples,
+    series: canonical,
+  });
 }
 
 async function importVersion<T>(srcDir: string, fileName: string): Promise<T> {
@@ -250,6 +254,13 @@ function printComparison(before: VersionResult, after: VersionResult): void {
           if (!beforeStats || !afterStats) {
             throw new Error(`missing results for ${queryCase.name}`);
           }
+          const fingerprintStable = beforeStats.fingerprint === afterStats.fingerprint;
+          if (!fingerprintStable) {
+            throw new Error(
+              `fingerprint mismatch between before/after for ${queryCase.name}: ` +
+                `${beforeStats.fingerprint} !== ${afterStats.fingerprint}`
+            );
+          }
           return {
             name: queryCase.name,
             beforeMedianMs: beforeStats.medianMs,
@@ -258,7 +269,7 @@ function printComparison(before: VersionResult, after: VersionResult): void {
             speedup: beforeStats.medianMs / afterStats.medianMs,
             beforeAvgMs: beforeStats.avgMs,
             afterAvgMs: afterStats.avgMs,
-            fingerprintStable: beforeStats.fingerprint === afterStats.fingerprint,
+            fingerprintStable,
             beforeSamples: beforeStats.samples,
             afterSamples: afterStats.samples,
           };

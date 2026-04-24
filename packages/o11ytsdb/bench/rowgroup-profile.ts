@@ -22,7 +22,7 @@ const INTERVAL = 1_000n;
 const COARSE_STEP = BigInt(CHUNK_SIZE) * INTERVAL;
 const HALF_CHUNK_STEP = COARSE_STEP / 2n;
 const NARROW_START = 32n * INTERVAL;
-const NARROW_END = 95n * INTERVAL;
+const NARROW_END = 96n * INTERVAL;
 const ENABLE_RANGE_HOOK = process.env.DISABLE_RANGE_HOOK !== "1";
 const ENABLE_RANGE_VIEW = process.env.DISABLE_RANGE_VIEW !== "1";
 const ENABLE_DECODE_VIEW = process.env.DISABLE_DECODE_VIEW !== "1";
@@ -169,7 +169,7 @@ async function main() {
     end:
       queryName === "raw-narrow-read" || queryName === "sum-narrow-step"
         ? NARROW_END
-        : BigInt(POINTS_PER_SERIES - 1) * INTERVAL,
+        : BigInt(POINTS_PER_SERIES) * INTERVAL,
     ...QUERY_CASES[queryName],
   };
 
@@ -214,13 +214,28 @@ async function main() {
   const heapProfile = await sessionPost<{ profile: unknown }>(session, "HeapProfiler.stopSampling");
   session.disconnect();
 
-  const cpuProfilePath = path.join(outDir, `${queryName}.cpuprofile.json`);
-  const heapProfilePath = path.join(outDir, `${queryName}.heapprofile.json`);
+  const runtimeConfig = [
+    queryName,
+    USE_WASM_ALP ? "wasm-alp" : "identity",
+    ENABLE_RANGE_HOOK ? "range" : "no-range",
+    ENABLE_RANGE_VIEW ? "range-view" : "no-range-view",
+    ENABLE_DECODE_VIEW ? "decode-view" : "no-decode-view",
+  ].join(".");
+  const cpuProfilePath = path.join(outDir, `${runtimeConfig}.cpuprofile.json`);
+  const heapProfilePath = path.join(outDir, `${runtimeConfig}.heapprofile.json`);
   await writeFile(cpuProfilePath, JSON.stringify(cpuProfile.profile));
   await writeFile(heapProfilePath, JSON.stringify(heapProfile.profile));
 
   const summary = {
     queryName,
+    runtimeConfig,
+    codec: valuesCodec.name,
+    toggles: {
+      useWasmAlp: USE_WASM_ALP,
+      enableRangeHook: ENABLE_RANGE_HOOK,
+      enableRangeView: ENABLE_RANGE_VIEW,
+      enableDecodeView: ENABLE_DECODE_VIEW,
+    },
     dataset: {
       series: NUM_SERIES,
       pointsPerSeries: POINTS_PER_SERIES,

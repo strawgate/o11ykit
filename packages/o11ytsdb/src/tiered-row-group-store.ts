@@ -19,16 +19,28 @@ function requireDefined<T>(value: T | undefined, message: string): T {
   return value;
 }
 
+type TimeRangeWithStartCache = TimeRange & { _startCache?: bigint };
+
 function partStart(part: TimeRange): bigint {
+  const cachedPart = part as TimeRangeWithStartCache;
+  if (cachedPart._startCache !== undefined) {
+    return cachedPart._startCache;
+  }
   if (part.timestamps.length > 0) {
-    return requireDefined(part.timestamps[0], "missing first timestamp");
+    cachedPart._startCache = requireDefined(part.timestamps[0], "missing first timestamp");
+    return cachedPart._startCache;
   }
   if (part.chunkMinT !== undefined) {
-    return part.chunkMinT;
+    cachedPart._startCache = part.chunkMinT;
+    return cachedPart._startCache;
   }
-  const decoded = part.decode ? part.decode() : part.decodeView ? part.decodeView() : null;
+  const decoded = part.decode ? part.decode() : null;
   if (decoded && decoded.timestamps.length > 0) {
-    return requireDefined(decoded.timestamps[0], "missing decoded first timestamp");
+    cachedPart._startCache = requireDefined(
+      decoded.timestamps[0],
+      "missing decoded first timestamp"
+    );
+    return cachedPart._startCache;
   }
   throw new RangeError("cannot determine part start time");
 }
