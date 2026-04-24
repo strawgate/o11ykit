@@ -89,10 +89,9 @@ function applyTransform(data, transform) {
 }
 
 export class ScanEngine {
-  query(storage, opts) {
+  _selectIds(storage, opts) {
     let ids = storage.matchLabel("__name__", opts.metric);
 
-    // Apply matchers
     if (opts.matchers && opts.matchers.length > 0) {
       for (const m of opts.matchers) {
         if (m.op === "!=" || m.op === "not=") {
@@ -105,14 +104,31 @@ export class ScanEngine {
         }
       }
     }
+    return ids;
+  }
+
+  _effectiveStep(opts) {
+    return opts.start !== undefined && opts.end !== undefined
+      ? resolveStep(opts.step, opts.start, opts.end, opts.maxPoints)
+      : opts.step;
+  }
+
+  _resultMeta(scannedSeries, scannedSamples, requestedStep, effectiveStep) {
+    return {
+      scannedSeries,
+      scannedSamples,
+      requestedStep: requestedStep ?? null,
+      effectiveStep,
+      pointBudget: null,
+    };
+  }
+
+  query(storage, opts) {
+    const ids = this._selectIds(storage, opts);
 
     let scannedSamples = 0;
-    const effectiveStep =
-      opts.start !== undefined && opts.end !== undefined
-        ? resolveStep(opts.step, opts.start, opts.end, opts.maxPoints)
-        : opts.step;
+    const effectiveStep = this._effectiveStep(opts);
 
-    // No aggregation: just return raw series (with optional transform)
     if (!opts.agg) {
       const series = [];
       for (const id of ids) {
@@ -127,15 +143,11 @@ export class ScanEngine {
       }
       return {
         series,
-        scannedSeries: ids.length,
-        scannedSamples,
-        requestedStep: opts.step ?? null,
-        effectiveStep,
+        ...this._resultMeta(ids.length, scannedSamples, opts.step, effectiveStep),
         pointBudget: opts.maxPoints ?? null,
       };
     }
 
-    // Aggregation path
     const groups = new Map();
     for (const id of ids) {
       let data = storage.read(id, opts.start, opts.end);
@@ -168,11 +180,62 @@ export class ScanEngine {
     }
     return {
       series,
-      scannedSeries: ids.length,
-      scannedSamples,
-      requestedStep: opts.step ?? null,
-      effectiveStep,
+      ...this._resultMeta(ids.length, scannedSamples, opts.step, effectiveStep),
       pointBudget: opts.maxPoints ?? null,
+    };
+  }
+
+  queryAveragePartials(storage, opts) {
+    const ids = this._selectIds(storage, opts);
+    const effectiveStep = this._effectiveStep(opts);
+    let scannedSamples = 0;
+    const groups = new Map();
+
+    for (const id of ids) {
+      let data = storage.read(id, opts.start, opts.end);
+      scannedSamples += data.timestamps.length;
+      if (opts.transform) data = applyTransform(data, opts.transform);
+
+      const labels = storage.labels(id) ?? new Map();
+      const groupKey = opts.groupBy
+        ? opts.groupBy.map((k) => labels.get(k) ?? "").join("\0")
+        : "__all__";
+      let group = groups.get(groupKey);
+      if (!group) {
+        const gl = new Map();
+        gl.set("__name__", opts.metric);
+        if (opts.groupBy)
+          for (const k of opts.groupBy) {
+            const v = labels.get(k);
+            if (v) gl.set(k, v);
+          }
+        group = { labels: gl, ranges: [] };
+        groups.set(groupKey, group);
+      }
+      group.ranges.push(data);
+    }
+
+    const sumSeries = [];
+    const countSeries = [];
+    for (const [, group] of groups) {
+      const partial = this._aggregateAveragePartials(group.ranges, effectiveStep);
+      sumSeries.push({
+        labels: group.labels,
+        timestamps: partial.timestamps,
+        values: partial.sums,
+      });
+      countSeries.push({
+        labels: group.labels,
+        timestamps: partial.timestamps,
+        values: partial.counts,
+      });
+    }
+
+    const meta = this._resultMeta(ids.length, scannedSamples, opts.step, effectiveStep);
+    meta.pointBudget = opts.maxPoints ?? null;
+    return {
+      sum: { series: sumSeries, ...meta },
+      count: { series: countSeries, ...meta },
     };
   }
 
@@ -182,6 +245,18 @@ export class ScanEngine {
     if (!step) return this._pointAggregate(ranges, fn);
     if (isPercentile(fn)) return this._percentileStepAggregate(ranges, fn, step);
     return this._stepAggregate(ranges, fn, step);
+  }
+
+  _aggregateAveragePartials(ranges, step) {
+    if (ranges.length === 0) {
+      return {
+        timestamps: new BigInt64Array(0),
+        sums: new Float64Array(0),
+        counts: new Float64Array(0),
+      };
+    }
+    if (!step) return this._pointAggregateAveragePartials(ranges);
+    return this._stepAggregateAveragePartials(ranges, step);
   }
 
   _pointAggregate(ranges, fn) {
@@ -224,6 +299,23 @@ export class ScanEngine {
     return { timestamps, values };
   }
 
+  _pointAggregateAveragePartials(ranges) {
+    let longest = ranges[0];
+    for (const r of ranges) if (r.timestamps.length > longest.timestamps.length) longest = r;
+    const timestamps = longest.timestamps;
+    const sums = new Float64Array(timestamps.length);
+    const counts = new Float64Array(timestamps.length);
+
+    for (const r of ranges) {
+      const len = Math.min(r.values.length, timestamps.length);
+      for (let i = 0; i < len; i++) {
+        sums[i] += r.values[i];
+        counts[i]++;
+      }
+    }
+    return { timestamps, sums, counts };
+  }
+
   _stepAggregate(ranges, fn, step) {
     let minT = BigInt("9223372036854775807");
     let maxT = -minT;
@@ -256,6 +348,44 @@ export class ScanEngine {
     }
     aggFinalize(values, counts, fn);
     return { timestamps, values };
+  }
+
+  _stepAggregateAveragePartials(ranges, step) {
+    let minT = BigInt("9223372036854775807");
+    let maxT = -minT;
+    let hasSamples = false;
+
+    for (const r of ranges) {
+      if (r.timestamps.length === 0) continue;
+      hasSamples = true;
+      if (r.timestamps[0] < minT) minT = r.timestamps[0];
+      if (r.timestamps[r.timestamps.length - 1] > maxT)
+        maxT = r.timestamps[r.timestamps.length - 1];
+    }
+
+    if (!hasSamples) {
+      return {
+        timestamps: new BigInt64Array(0),
+        sums: new Float64Array(0),
+        counts: new Float64Array(0),
+      };
+    }
+
+    const bucketCount = Number((maxT - minT) / step) + 1;
+    const timestamps = new BigInt64Array(bucketCount);
+    const sums = new Float64Array(bucketCount);
+    const counts = new Float64Array(bucketCount);
+    for (let i = 0; i < bucketCount; i++) timestamps[i] = minT + BigInt(i) * step;
+
+    for (const r of ranges) {
+      for (let i = 0; i < r.timestamps.length; i++) {
+        const bucket = Number((r.timestamps[i] - minT) / step);
+        if (bucket < 0 || bucket >= bucketCount) continue;
+        sums[bucket] += r.values[i];
+        counts[bucket]++;
+      }
+    }
+    return { timestamps, sums, counts };
   }
 
   _percentileStepAggregate(ranges, fn, step) {

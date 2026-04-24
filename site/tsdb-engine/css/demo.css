@@ -1616,10 +1616,9 @@
 
 .query-execution-head {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
+  align-items: flex-start;
   gap: 16px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .query-execution-kicker {
@@ -1638,13 +1637,15 @@
 }
 
 .query-execution-status {
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(37, 99, 235, 0.18);
-  background: rgba(255, 255, 255, 0.88);
-  font-family: var(--mono);
-  font-size: 12px;
-  color: #43607b;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 .query-execution-details {
@@ -1679,14 +1680,12 @@
 
 .query-execution-body {
   display: grid;
-  gap: 14px;
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
 .fabric-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .fabric-card {
@@ -1719,6 +1718,11 @@
   background: linear-gradient(180deg, #c084fc, #8b5cf6);
 }
 
+.fabric-card-coordinator {
+  padding: 11px 12px;
+  max-width: 720px;
+}
+
 .fabric-card-top {
   display: flex;
   align-items: center;
@@ -1727,12 +1731,22 @@
   margin-bottom: 10px;
 }
 
+.fabric-card-top-compact {
+  margin-bottom: 6px;
+}
+
 .fabric-role {
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: #6885a2;
+}
+
+.fabric-coordinator-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #6f88a2;
 }
 
 .fabric-status {
@@ -1779,6 +1793,13 @@
   color: #607d99;
 }
 
+.fabric-detail-compact {
+  min-height: 0;
+  margin-bottom: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .fabric-task {
   margin: 8px 0 10px;
   font-family: var(--mono);
@@ -1817,6 +1838,155 @@
   color: #758da5;
 }
 
+.fabric-worker-toggle {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(110, 138, 166, 0.12);
+}
+
+.fabric-worker-toggle-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #55738f;
+}
+
+.fabric-worker-toggle-summary::-webkit-details-marker {
+  display: none;
+}
+
+.fabric-worker-toggle-summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--accent);
+  transition: transform 0.18s ease;
+}
+
+.fabric-worker-toggle[open] .fabric-worker-toggle-summary::before {
+  transform: rotate(90deg);
+}
+
+.fabric-worker-toggle-meta {
+  color: #7a90a6;
+}
+
+.fabric-worker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.fabric-worker-mini {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(110, 138, 166, 0.14);
+  background: rgba(250, 252, 255, 0.94);
+}
+
+.fabric-worker-mini::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: rgba(148, 163, 184, 0.35);
+}
+
+.fabric-worker-mini.role-hot-owner::after {
+  background: linear-gradient(180deg, #fb923c, #f59e0b);
+}
+
+.fabric-worker-mini.role-history-shard::after {
+  background: linear-gradient(180deg, #60a5fa, #2563eb);
+}
+
+.fabric-worker-mini-summary {
+  display: block;
+  padding: 10px 12px 10px 14px;
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+}
+
+.fabric-worker-mini-summary::-webkit-details-marker {
+  display: none;
+}
+
+.fabric-worker-mini-summary::after {
+  content: "▾";
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 11px;
+  color: #6f88a2;
+  transform: rotate(-90deg);
+  transition: transform 0.18s ease;
+}
+
+.fabric-worker-mini[open] .fabric-worker-mini-summary::after {
+  transform: rotate(0deg);
+}
+
+.fabric-worker-mini-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.fabric-worker-mini-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: #173550;
+}
+
+.fabric-worker-mini-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #6f88a2;
+}
+
+.fabric-meter-compact {
+  height: 6px;
+  margin-bottom: 0;
+}
+
+.fabric-worker-mini-body {
+  padding: 0 12px 12px 14px;
+  border-top: 1px solid rgba(110, 138, 166, 0.12);
+  background: rgba(245, 249, 255, 0.72);
+}
+
+.fabric-worker-mini .fabric-detail {
+  min-height: 0;
+  margin: 10px 0 8px;
+  font-size: 12px;
+}
+
+.fabric-worker-mini .fabric-task {
+  margin: 0 0 8px;
+  font-size: 11px;
+}
+
+.fabric-worker-mini .fabric-metrics {
+  gap: 6px 10px;
+  font-size: 10px;
+}
+
 @keyframes fabric-pulse {
   from {
     background-position: 0% 0;
@@ -1835,12 +2005,7 @@
 
 @media (max-width: 700px) {
   .query-execution-head {
-    align-items: flex-start;
     flex-direction: column;
-  }
-
-  .query-execution-status {
-    max-width: none;
   }
 }
 
