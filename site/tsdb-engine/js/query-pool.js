@@ -113,6 +113,8 @@ export class QueryWorkerPool {
 
   async dispose(preserveLoadPromise = false) {
     const disposedError = new Error("Query worker pool disposed");
+    // loadStore() keeps awaiting this.loadPromise while it tears down and rebuilds
+    // the pool, so internal dispose() calls must preserve the promise reference.
     if (!preserveLoadPromise) this.loadPromise = null;
     for (const [workerId, pending] of this.pendingLoads) {
       pending.reject(disposedError);

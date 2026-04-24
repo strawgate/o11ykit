@@ -13,6 +13,12 @@ import {
 import { ScanEngine } from "./query.js";
 import { createQueryBuilderController } from "./query-builder-controller.js";
 import { formatEffectiveStepStat, summarizeStepResolution } from "./query-builder-model.js";
+import {
+  deserializeWorkerResult as _deserializeWorkerResult,
+  mergeAvgWorkerResults as _mergeAvgWorkerResults,
+  mergeRawWorkerResults as _mergeRawWorkerResults,
+  mergeReductionWorkerResults as _mergeReductionWorkerResults,
+} from "./query-merge.js";
 import { QueryWorkerPool, supportsParallelQuery } from "./query-pool.js";
 import { buildStorageExplorer } from "./storage-explorer.js";
 import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
@@ -101,7 +107,7 @@ function renderNoMatchResults(reason, queryTime, requestedStep = null) {
   if (planSection) showSection("section-query-plan");
   if (planSummary) planSummary.textContent = reason;
 
-  if (queryWorkerPool) {
+  if (queryWorkerPool && queryWorkerPool.state?.phase !== "loading") {
     queryWorkerPool.markComplete(reason, {
       scannedSeries: 0,
       scannedSamples: 0,
@@ -236,33 +242,37 @@ function _renderQueryFabricMonitor(state) {
           ${workers
             .map((worker) => {
               const phase = escapeHtml(worker.phase || "idle");
-              const role = escapeHtml(_workerRoleLabel(worker.role));
+              const roleClass = escapeHtml(worker.role || "worker");
+              const roleLabel = escapeHtml(_workerRoleLabel(worker.role));
+              const taskText = escapeHtml(worker.task || "Idle");
+              const durationText =
+                worker.durationMs != null ? `${worker.durationMs.toFixed(1)} ms` : taskText;
               const isExpanded =
                 worker.phase === "running" ||
                 worker.phase === "loading" ||
                 worker.phase === "fallback";
               return `
-                <details class="fabric-worker-mini phase-${phase} role-${role}" ${isExpanded ? "open" : ""}>
+                <details class="fabric-worker-mini phase-${phase} role-${roleClass}" ${isExpanded ? "open" : ""}>
                   <summary class="fabric-worker-mini-summary">
                     <div class="fabric-worker-mini-top">
                       <span class="fabric-worker-mini-name">${escapeHtml(worker.name)}</span>
                       <span class="fabric-status">${phase}</span>
                     </div>
                     <div class="fabric-worker-mini-meta">
-                      <span>${role}</span>
+                      <span>${roleLabel}</span>
                       <span>${worker.seriesCount?.toLocaleString() || 0} series</span>
-                      <span>${worker.durationMs ? `${worker.durationMs.toFixed(1)} ms` : worker.task || "Idle"}</span>
+                      <span>${durationText}</span>
                     </div>
                     <div class="fabric-meter fabric-meter-compact"><span style="width:${_workerMeterWidth(worker)}%"></span></div>
                   </summary>
                   <div class="fabric-worker-mini-body">
                     <div class="fabric-detail">${escapeHtml(worker.detail || "Idle")}</div>
-                    <div class="fabric-task">${escapeHtml(worker.task || "Idle")}</div>
+                    <div class="fabric-task">${taskText}</div>
                     <div class="fabric-metrics">
                       <span>${worker.sampleCount?.toLocaleString() || 0} samples resident</span>
                       <span>${worker.scannedSeries?.toLocaleString() || 0} scanned</span>
                       <span>${worker.scannedSamples?.toLocaleString() || 0} pts</span>
-                      <span>${worker.durationMs ? `${worker.durationMs.toFixed(1)} ms` : "No query yet"}</span>
+                      <span>${worker.durationMs != null ? `${worker.durationMs.toFixed(1)} ms` : "No query yet"}</span>
                     </div>
                   </div>
                 </details>
@@ -363,6 +373,10 @@ function _workerPhaseSummary(workers) {
     if (!count) continue;
     parts.push(`${count} ${phase}`);
   }
+  for (const [phase, count] of counts) {
+    if (order.includes(phase)) continue;
+    parts.push(`${count} ${phase}`);
+  }
   return `${workers.length} workers · ${parts.join(" · ")}`;
 }
 
@@ -408,164 +422,6 @@ function _coordinatorNarrative(state) {
     default:
       return "Waiting for a dataset before matching labels and dispatching chunk scans.";
   }
-}
-
-function _labelsKey(labels) {
-  return [...labels.entries()]
-    .sort((a, b) => (a[0] === b[0] ? a[1].localeCompare(b[1]) : a[0].localeCompare(b[0])))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\0");
-}
-
-function _deserializeWorkerResult(result) {
-  return {
-    scannedSeries: result.scannedSeries,
-    scannedSamples: result.scannedSamples,
-    requestedStep: result.requestedStep ?? null,
-    effectiveStep: result.effectiveStep ?? null,
-    pointBudget: result.pointBudget ?? null,
-    series: result.series.map((series) => ({
-      labels: new Map(series.labels),
-      timestamps: series.timestamps,
-      values: series.values,
-    })),
-  };
-}
-
-function _mergeRawWorkerResults(results) {
-  const series = [];
-  let scannedSeries = 0;
-  let scannedSamples = 0;
-  for (const result of results) {
-    scannedSeries += result.scannedSeries;
-    scannedSamples += result.scannedSamples;
-    series.push(...result.series);
-  }
-  series.sort((a, b) => _labelsKey(a.labels).localeCompare(_labelsKey(b.labels)));
-  return {
-    series,
-    scannedSeries,
-    scannedSamples,
-    requestedStep: results[0]?.requestedStep ?? null,
-    effectiveStep: results[0]?.effectiveStep ?? null,
-    pointBudget: results[0]?.pointBudget ?? null,
-  };
-}
-
-function _mergeReductionWorkerResults(results, agg) {
-  const groups = new Map();
-  let scannedSeries = 0;
-  let scannedSamples = 0;
-
-  for (const result of results) {
-    scannedSeries += result.scannedSeries;
-    scannedSamples += result.scannedSamples;
-    for (const series of result.series) {
-      const key = _labelsKey(series.labels);
-      let group = groups.get(key);
-      if (!group) {
-        group = { labels: series.labels, points: new Map() };
-        groups.set(key, group);
-      }
-      for (let i = 0; i < series.timestamps.length; i++) {
-        const timestamp = series.timestamps[i];
-        const value = series.values[i];
-        const pointKey = timestamp.toString();
-        if (!group.points.has(pointKey)) {
-          group.points.set(pointKey, { timestamp, value });
-          continue;
-        }
-        const existing = group.points.get(pointKey);
-        if (agg === "sum" || agg === "count") existing.value += value;
-        else if (agg === "min") existing.value = Math.min(existing.value, value);
-        else if (agg === "max") existing.value = Math.max(existing.value, value);
-      }
-    }
-  }
-
-  return {
-    scannedSeries,
-    scannedSamples,
-    requestedStep: results[0]?.requestedStep ?? null,
-    effectiveStep: results[0]?.effectiveStep ?? null,
-    pointBudget: results[0]?.pointBudget ?? null,
-    series: [...groups.values()].map((group) => {
-      const points = [...group.points.values()].sort((a, b) =>
-        a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0
-      );
-      return {
-        labels: group.labels,
-        timestamps: BigInt64Array.from(points.map((point) => point.timestamp)),
-        values: Float64Array.from(points.map((point) => point.value)),
-      };
-    }),
-  };
-}
-
-function _mergeAvgWorkerResults(sumResults, countResults) {
-  const groups = new Map();
-  let scannedSeries = 0;
-  let scannedSamples = 0;
-
-  for (const result of sumResults) {
-    scannedSeries += result.scannedSeries;
-    scannedSamples += result.scannedSamples;
-    for (const series of result.series) {
-      const key = _labelsKey(series.labels);
-      let group = groups.get(key);
-      if (!group) {
-        group = { labels: series.labels, points: new Map() };
-        groups.set(key, group);
-      }
-      for (let i = 0; i < series.timestamps.length; i++) {
-        const timestamp = series.timestamps[i];
-        const pointKey = timestamp.toString();
-        if (!group.points.has(pointKey)) {
-          group.points.set(pointKey, { timestamp, sum: 0, count: 0 });
-        }
-        group.points.get(pointKey).sum += series.values[i];
-      }
-    }
-  }
-
-  for (const result of countResults) {
-    for (const series of result.series) {
-      const key = _labelsKey(series.labels);
-      let group = groups.get(key);
-      if (!group) {
-        group = { labels: series.labels, points: new Map() };
-        groups.set(key, group);
-      }
-      for (let i = 0; i < series.timestamps.length; i++) {
-        const timestamp = series.timestamps[i];
-        const pointKey = timestamp.toString();
-        if (!group.points.has(pointKey)) {
-          group.points.set(pointKey, { timestamp, sum: 0, count: 0 });
-        }
-        group.points.get(pointKey).count += series.values[i];
-      }
-    }
-  }
-
-  return {
-    scannedSeries,
-    scannedSamples,
-    requestedStep: sumResults[0]?.requestedStep ?? null,
-    effectiveStep: sumResults[0]?.effectiveStep ?? null,
-    pointBudget: sumResults[0]?.pointBudget ?? null,
-    series: [...groups.values()].map((group) => {
-      const points = [...group.points.values()].sort((a, b) =>
-        a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0
-      );
-      return {
-        labels: group.labels,
-        timestamps: BigInt64Array.from(points.map((point) => point.timestamp)),
-        values: Float64Array.from(
-          points.map((point) => (point.count > 0 ? point.sum / point.count : 0))
-        ),
-      };
-    }),
-  };
 }
 
 function _canRunOnWorkers(opts) {

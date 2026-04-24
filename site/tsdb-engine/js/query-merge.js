@@ -29,9 +29,10 @@ export function mergeRawWorkerResults(results) {
     scannedSamples += result.scannedSamples;
     series.push(...result.series);
   }
-  series.sort((a, b) => labelsKey(a.labels).localeCompare(labelsKey(b.labels)));
+  const keyedSeries = series.map((entry) => ({ entry, key: labelsKey(entry.labels) }));
+  keyedSeries.sort((a, b) => a.key.localeCompare(b.key));
   return {
-    series,
+    series: keyedSeries.map(({ entry }) => entry),
     scannedSeries,
     scannedSamples,
     requestedStep: results[0]?.requestedStep ?? null,
@@ -159,9 +160,7 @@ export function mergeAvgWorkerResults(sumResults, countResults) {
 export function mergeWorkerResponses(workerResponses, agg) {
   if (agg === "avg") {
     const sumResults = workerResponses.map((response) => deserializeWorkerResult(response.sum));
-    const countResults = workerResponses.map((response) =>
-      deserializeWorkerResult(response.count)
-    );
+    const countResults = workerResponses.map((response) => deserializeWorkerResult(response.count));
     return mergeAvgWorkerResults(sumResults, countResults);
   }
 
@@ -172,7 +171,11 @@ export function mergeWorkerResponses(workerResponses, agg) {
     );
   }
 
-  return mergeRawWorkerResults(
-    workerResponses.map((response) => deserializeWorkerResult(response.result))
-  );
+  if (agg == null) {
+    return mergeRawWorkerResults(
+      workerResponses.map((response) => deserializeWorkerResult(response.result))
+    );
+  }
+
+  throw new Error(`Unknown aggregation: ${agg}`);
 }

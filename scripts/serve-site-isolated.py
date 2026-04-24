@@ -7,6 +7,7 @@ import posixpath
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SITE_ROOT = ROOT / "site"
 PREFIX = "/o11ykit"
 
 
@@ -16,14 +17,13 @@ class IsolatedSiteHandler(SimpleHTTPRequestHandler):
         path = unquote(path)
         if path == PREFIX:
             path = f"{PREFIX}/"
-        if path.startswith(f"{PREFIX}/"):
-            path = f"/site{path[len(PREFIX):]}"
+        if not path.startswith(f"{PREFIX}/"):
+            return str(SITE_ROOT / "__missing__")
 
-        path = posixpath.normpath(path)
-        parts = [part for part in path.split("/") if part and part not in (".", "..")]
-        full = ROOT
-        for part in parts:
-            full /= part
+        rel = posixpath.normpath(path[len(PREFIX):] or "/").lstrip("/")
+        full = (SITE_ROOT / rel).resolve()
+        if full != SITE_ROOT and SITE_ROOT not in full.parents:
+            return str(SITE_ROOT / "__missing__")
         return str(full)
 
     def end_headers(self) -> None:

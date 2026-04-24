@@ -26,7 +26,7 @@ describe("data-gen kubernetes scenario", () => {
     expect(first.labels.has("k8s.pod.name")).toBe(true);
   });
 
-  it("scales the kubernetes scenario to roughly 10x the original sample volume", () => {
+  it("scales the kubernetes scenario to the expected series and sample totals", () => {
     const scenario = SCENARIOS.find((entry) => entry.id === "kubernetes");
     expect(scenario).toBeTruthy();
     expect(scenarioSeriesCount(scenario)).toBe(468);

@@ -130,6 +130,36 @@ describe("ScanEngine", () => {
       expect(partials.sum.scannedSamples).toBe(4);
       expect(partials.count.scannedSamples).toBe(4);
     });
+
+    it("emits stepped avg partials", () => {
+      const store = buildStore([
+        {
+          labels: makeLabels("cpu", { host: "a" }),
+          timestamps: [1n * SEC, 2n * SEC, 3n * SEC],
+          values: [10, 20, 30],
+        },
+        {
+          labels: makeLabels("cpu", { host: "b" }),
+          timestamps: [1n * SEC, 2n * SEC, 3n * SEC],
+          values: [30, 40, 50],
+        },
+      ]);
+      const partials = engine.queryAveragePartials(store, {
+        metric: "cpu",
+        start: 0n,
+        end: 10n * SEC,
+        agg: "avg",
+        groupBy: [],
+        step: 2n * SEC,
+      });
+      expect(partials.sum.series).toHaveLength(1);
+      expect(partials.count.series).toHaveLength(1);
+      expect(Array.from(partials.sum.series[0].timestamps)).toEqual([1n * SEC, 3n * SEC]);
+      expect(Array.from(partials.sum.series[0].values)).toEqual([100, 80]);
+      expect(Array.from(partials.count.series[0].values)).toEqual([4, 2]);
+      expect(partials.sum.scannedSamples).toBe(6);
+      expect(partials.count.scannedSamples).toBe(6);
+    });
   });
 
   describe("min aggregation", () => {

@@ -1,4 +1,5 @@
 import {
+  estimateScenarioArrayBytes,
   generateScenarioData,
   generateValue,
   INSTANCES,
@@ -9,6 +10,13 @@ import {
   scenarioSeriesCount,
 } from "./data-gen.js";
 import { escapeHtml } from "./utils.js";
+
+function formatApproxBytes(bytes) {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
 
 export function createDatasetController({
   createStore,
@@ -30,6 +38,7 @@ export function createDatasetController({
     const scenarioCards = SCENARIOS.map((s) => {
       const seriesCount = scenarioSeriesCount(s);
       const sampleCount = scenarioSampleCount(s);
+      const approxBytes = estimateScenarioArrayBytes(s);
       const interval =
         s.intervalMs >= 60000 ? `${s.intervalMs / 60000}min` : `${s.intervalMs / 1000}s`;
       return `
@@ -42,7 +51,7 @@ export function createDatasetController({
       <div class="sc-meta">
         ${s.metrics.map((m) => `<span class="sc-metric">${escapeHtml(m.name)}</span>`).join("")}
       </div>
-      <div class="sc-stats">${seriesCount.toLocaleString()} series · ${sampleCount.toLocaleString()} pts · ${interval} interval</div>
+      <div class="sc-stats">${seriesCount.toLocaleString()} series · ${sampleCount.toLocaleString()} pts · ${interval} interval · ~${formatApproxBytes(approxBytes)} raw arrays</div>
       <div class="sc-loading-indicator"><span class="sc-spinner"></span><span class="sc-loading-text">Generating data…</span></div>
     </button>`;
     }).join("");
@@ -95,6 +104,12 @@ export function createDatasetController({
       setTimeout(() => {
         try {
           const backendType = "column";
+          const approxBytes = estimateScenarioArrayBytes(scenario);
+          if (approxBytes >= 128 * 1024 * 1024) {
+            console.warn(
+              `Generating scenario ${scenario.id} with roughly ${formatApproxBytes(approxBytes)} of typed-array payload before storage overhead.`
+            );
+          }
           const store = createStore(backendType, chunkSize);
           const t0 = performance.now();
           const seriesData = generateScenarioData(scenario);

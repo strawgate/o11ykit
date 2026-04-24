@@ -91,6 +91,7 @@ export function buildWorkerPartitionPayload(store, ids) {
   const seenBuffers = new Set();
   const cloneCache = new Map();
   let kind = "raw";
+  let mixedKinds = false;
 
   for (const id of ids) {
     const labels = store.labels(id);
@@ -99,6 +100,7 @@ export function buildWorkerPartitionPayload(store, ids) {
     const chunkInfo = typeof store.getChunkInfo === "function" ? store.getChunkInfo(id) : null;
     const entryKind = snapshotKind(store, chunkInfo);
     if (series.length === 0) kind = entryKind;
+    else if (entryKind !== kind) mixedKinds = true;
 
     if (entryKind === "column" && chunkInfo) {
       const entry = buildColumnSeriesSnapshot(labels, chunkInfo, cloneCache);
@@ -130,6 +132,12 @@ export function buildWorkerPartitionPayload(store, ids) {
     const entry = buildRawSeriesSnapshot(store, id, labels);
     pushTransferables(transfer, seenBuffers, entry.timestamps, entry.values);
     series.push(entry);
+  }
+
+  if (mixedKinds) {
+    throw new Error(
+      `Worker partition payload contains mixed snapshot kinds; expected ${kind} for all entries`
+    );
   }
 
   return { kind, series, transfer };
