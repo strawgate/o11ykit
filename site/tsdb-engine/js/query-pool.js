@@ -22,7 +22,11 @@ function normalizeRequestedWorkers(requestedWorkers, hardwareConcurrency) {
   if (requestedWorkers === "auto" || requestedWorkers == null) {
     return clamp(Math.max(1, Math.floor(hardwareConcurrency / 2)), 1, 4);
   }
-  return clamp(Math.floor(requestedWorkers), 0, Math.max(1, hardwareConcurrency));
+  const parsed = typeof requestedWorkers === "number" ? requestedWorkers : Number(requestedWorkers);
+  if (!Number.isFinite(parsed)) {
+    return clamp(Math.max(1, Math.floor(hardwareConcurrency / 2)), 1, 4);
+  }
+  return clamp(Math.floor(parsed), 0, Math.max(1, hardwareConcurrency));
 }
 
 function topologyFromWorkerCount(workerCount) {
@@ -68,7 +72,7 @@ export function deriveTopologyPlan({
       : normalizedWorkers
     : 0;
   const topology = topologyFromWorkerCount(actualWorkers);
-  const transport = transportFromCapabilities(capabilities);
+  const transport = actualWorkers > 0 ? transportFromCapabilities(capabilities) : "inline";
   return {
     requestedWorkers,
     actualWorkers,
@@ -265,7 +269,15 @@ export class QueryWorkerPool {
         });
       });
 
-      await Promise.all(loadPromises);
+      try {
+        await Promise.all(loadPromises);
+      } catch (error) {
+        // Worker error handling already moved the pool into fallback mode; avoid
+        // rethrowing the same failure through loadStore() when inline fallback is
+        // now the intended execution path.
+        if (this.state.phase === "fallback") return;
+        throw error;
+      }
       const totalSamples = this.state.workers.reduce((sum, worker) => sum + worker.sampleCount, 0);
       this.state.phase = "ready";
       this.state.summary = `${workerCount} query workers ready in ${plan.topology} mode across ${totalSamples.toLocaleString()} raw samples`;

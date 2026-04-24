@@ -71,6 +71,20 @@ class FakeWorker {
   }
 }
 
+class FailingLoadWorker extends FakeWorker {
+  postMessage(message) {
+    if (message.type === "load-partition") {
+      setTimeout(() => {
+        this.listeners.error?.forEach((listener) => {
+          listener(new Error("worker failed"));
+        });
+      }, 0);
+      return;
+    }
+    super.postMessage(message);
+  }
+}
+
 function buildStore(seriesCount = 4) {
   const store = new FlatStore();
   for (let i = 0; i < seriesCount; i++) {
@@ -170,5 +184,46 @@ describe("QueryWorkerPool", () => {
 
     expect(plan.actualWorkers).toBe(4);
     expect(plan.transport).toBe("shared-frozen");
+  });
+
+  it("falls back to the auto worker count when requestedWorkers is invalid", () => {
+    const plan = deriveTopologyPlan({
+      seriesCount: 64,
+      requestedWorkers: "foo",
+      capabilities: {
+        workers: true,
+        sharedArrayBuffer: false,
+        crossOriginIsolated: false,
+        hardwareConcurrency: 8,
+      },
+    });
+
+    expect(plan.actualWorkers).toBe(4);
+  });
+
+  it("reports inline transport when worker count resolves to zero", () => {
+    const plan = deriveTopologyPlan({
+      seriesCount: 64,
+      requestedWorkers: 0,
+      capabilities: {
+        workers: true,
+        sharedArrayBuffer: true,
+        crossOriginIsolated: true,
+        hardwareConcurrency: 8,
+      },
+    });
+
+    expect(plan.topology).toBe("inline");
+    expect(plan.transport).toBe("inline");
+  });
+
+  it("resolves loadStore after switching to fallback on worker load failure", async () => {
+    globalThis.Worker = FailingLoadWorker;
+
+    const pool = new QueryWorkerPool();
+    await expect(pool.loadStore(buildStore())).resolves.toBeUndefined();
+    expect(pool.state.phase).toBe("fallback");
+
+    await pool.dispose();
   });
 });
