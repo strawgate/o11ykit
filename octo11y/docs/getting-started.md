@@ -135,6 +135,11 @@ describe additional features you can layer on.
           comment-on-pr: true      # post/update a PR comment
 ```
 
+If your suite has expected matrix lanes and tolerated probe lanes, add
+`matrix-policy` to `actions/compare`. With that input, `fail-on-regression`
+fails only on required-lane failures or missing required results, while probe
+lane failures are still reported in the summary.
+
 ### Telemetry with monitor and benchkit-emit
 
 If you want host metrics or custom OTLP metrics, start the monitor once near the top of the job:

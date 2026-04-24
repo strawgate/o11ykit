@@ -21,8 +21,11 @@ inputs:
     description: 'Percentage change threshold for regression detection.'
     required: false
     default: '5'
+  matrix-policy:
+    description: 'Optional matrix policy JSON string or path to a JSON file for required/probe lane completeness and gating.'
+    required: false
   fail-on-regression:
-    description: 'Fail the action step when a regression is detected.'
+    description: 'Fail the action step when a regression is detected, or when a matrix policy is provided and required lanes fail or go missing.'
     required: false
     default: 'false'
   comment-on-pr:
@@ -36,6 +39,18 @@ inputs:
 outputs:
   has-regression:
     description: "'true' if any benchmark regressed beyond the threshold, 'false' otherwise."
+  has-required-failure:
+    description: "'true' if any required matrix lane failed or is missing, 'false' otherwise."
+  missing-result-count:
+    description: "Number of expected matrix lanes with no current result."
+  required-passed-count:
+    description: "Number of required matrix lanes that passed."
+  required-failed-count:
+    description: "Number of required matrix lanes that failed."
+  probe-failed-count:
+    description: "Number of probe matrix lanes that failed."
+  matrix-summary-json:
+    description: 'JSON-encoded matrix completeness and lane outcome summary.'
   summary:
     description: 'Markdown-formatted comparison report.'
 runs:

@@ -14,6 +14,7 @@ async function run(): Promise<void> {
   const dataBranch = core.getInput("data-branch") || DEFAULT_DATA_BRANCH;
   const baselineRuns = parseInt(core.getInput("baseline-runs") || "5", 10);
   const threshold = parseFloat(core.getInput("threshold") || "5");
+  const matrixPolicyInput = core.getInput("matrix-policy");
   const failOnRegression = core.getBooleanInput("fail-on-regression");
   const commentOnPr = core.getBooleanInput("comment-on-pr");
   const token = core.getInput("github-token", { required: true });
@@ -31,6 +32,12 @@ async function run(): Promise<void> {
     const markdown = "No baseline data branch found. Skipping comparison.";
     core.warning(markdown);
     core.setOutput("has-regression", "false");
+    core.setOutput("has-required-failure", "false");
+    core.setOutput("missing-result-count", "0");
+    core.setOutput("required-passed-count", "0");
+    core.setOutput("required-failed-count", "0");
+    core.setOutput("probe-failed-count", "0");
+    core.setOutput("matrix-summary-json", "");
     core.setOutput("summary", markdown);
     await core.summary.addRaw(markdown, true).write();
     return;
@@ -38,17 +45,33 @@ async function run(): Promise<void> {
 
   try {
     const runsDir = path.join(worktree, "data", "runs");
-    const { markdown, hasRegression } = runComparison({
+    const {
+      markdown,
+      hasRegression,
+      hasRequiredFailure,
+      missingResultCount,
+      requiredPassedCount,
+      requiredFailedCount,
+      probeFailedCount,
+      matrixSummaryJson,
+    } = runComparison({
       files,
       format,
       runsDir,
       baselineRuns,
       threshold,
+      matrixPolicyInput,
       currentCommit: process.env.GITHUB_SHA,
       currentRef: process.env.GITHUB_REF,
     });
 
     core.setOutput("has-regression", String(hasRegression));
+    core.setOutput("has-required-failure", String(hasRequiredFailure));
+    core.setOutput("missing-result-count", String(missingResultCount));
+    core.setOutput("required-passed-count", String(requiredPassedCount));
+    core.setOutput("required-failed-count", String(requiredFailedCount));
+    core.setOutput("probe-failed-count", String(probeFailedCount));
+    core.setOutput("matrix-summary-json", matrixSummaryJson);
     core.setOutput("summary", markdown);
     await core.summary.addRaw(markdown, true).write();
 
@@ -58,8 +81,14 @@ async function run(): Promise<void> {
       core.info("Not a pull request event — skipping PR comment.");
     }
 
-    if (failOnRegression && hasRegression) {
-      core.setFailed("Benchmark regression detected. See job summary for details.");
+    if (failOnRegression) {
+      if (matrixPolicyInput) {
+        if (hasRequiredFailure) {
+          core.setFailed("Required benchmark lane failure detected. See job summary for details.");
+        }
+      } else if (hasRegression) {
+        core.setFailed("Benchmark regression detected. See job summary for details.");
+      }
     }
   } finally {
     await exec.exec("git", ["worktree", "remove", worktree, "--force"], { ignoreReturnCode: true });

@@ -9,21 +9,23 @@ import type { Direction } from "./otlp-conventions.js";
 function makeBatch(
   entries: Array<{
     scenario: string;
+    series?: string;
     metric: string;
     value: number;
     unit?: string;
     direction?: Direction;
+    tags?: Record<string, string>;
   }>,
 ): MetricsBatch {
   const points: MetricPoint[] = entries.map((e) => ({
     scenario: e.scenario,
-    series: "default",
+    series: e.series ?? e.scenario,
     metric: e.metric,
     value: e.value,
     unit: e.unit ?? "",
     direction: e.direction,
     role: undefined,
-    tags: {},
+    tags: e.tags ?? {},
     timestamp: undefined,
   }));
   return MetricsBatch.fromPoints(points);
@@ -267,5 +269,222 @@ describe("compare", () => {
     // 5% change with 5% threshold → stable (<=)
     const result = compare(current, baseline, { test: "percentage", threshold: 5 });
     assert.equal(result.entries[0].status, "stable");
+  });
+
+  it("matches baselines by lane tags instead of scenario alone", () => {
+    const baseline = [
+      makeBatch([
+        {
+          scenario: "BenchA",
+          metric: "ns_per_op",
+          value: 100,
+          unit: "ns/op",
+          direction: "smaller_is_better",
+          tags: { collector: "otelcol" },
+        },
+        {
+          scenario: "BenchA",
+          metric: "ns_per_op",
+          value: 200,
+          unit: "ns/op",
+          direction: "smaller_is_better",
+          tags: { collector: "vector" },
+        },
+      ]),
+    ];
+    const current = makeBatch([
+      {
+        scenario: "BenchA",
+        metric: "ns_per_op",
+        value: 180,
+        unit: "ns/op",
+        direction: "smaller_is_better",
+        tags: { collector: "vector" },
+      },
+    ]);
+
+    const result = compare(current, baseline);
+    assert.equal(result.entries.length, 1);
+    assert.equal(result.entries[0].baseline, 200);
+    assert.equal(result.entries[0].status, "improved");
+    assert.equal(result.entries[0].lane, "BenchA [collector=vector]");
+  });
+
+  it("normalizes redundant series values when matching baselines", () => {
+    const baseline = [
+      makeBatch([
+        {
+          scenario: "BenchA",
+          series: "BenchA",
+          metric: "ns_per_op",
+          value: 100,
+          unit: "ns/op",
+          direction: "smaller_is_better",
+        },
+      ]),
+    ];
+    const current = makeBatch([
+      {
+        scenario: "BenchA",
+        series: "",
+        metric: "ns_per_op",
+        value: 105,
+        unit: "ns/op",
+        direction: "smaller_is_better",
+      },
+    ]);
+
+    const result = compare(current, baseline);
+    assert.equal(result.entries.length, 1);
+    assert.equal(result.entries[0].baseline, 100);
+    assert.equal(result.entries[0].status, "stable");
+  });
+
+  it("computes required, probe, and missing matrix lanes", () => {
+    const baseline = [
+      makeBatch([
+        {
+          scenario: "BenchA",
+          metric: "ns_per_op",
+          value: 100,
+          unit: "ns/op",
+          direction: "smaller_is_better",
+          tags: { collector: "otelcol", target_eps: "10" },
+        },
+        {
+          scenario: "BenchA",
+          metric: "ns_per_op",
+          value: 150,
+          unit: "ns/op",
+          direction: "smaller_is_better",
+          tags: { collector: "otelcol", target_eps: "10000" },
+        },
+      ]),
+    ];
+    const current = makeBatch([
+      {
+        scenario: "BenchA",
+        metric: "ns_per_op",
+        value: 105,
+        unit: "ns/op",
+        direction: "smaller_is_better",
+        tags: { collector: "otelcol", target_eps: "10" },
+      },
+      {
+        scenario: "BenchA",
+        metric: "ns_per_op",
+        value: 180,
+        unit: "ns/op",
+        direction: "smaller_is_better",
+        tags: { collector: "otelcol", target_eps: "10000" },
+      },
+    ]);
+
+    const result = compare(current, baseline, {
+      test: "percentage",
+      threshold: 5,
+      matrixPolicy: {
+        dimensions: {
+          collector: ["otelcol"],
+          target_eps: [10, 10000, "max"],
+        },
+        required: [{ target_eps: { lte: 1000 } }],
+        probe: [{ target_eps: { gte: 10000 } }, { target_eps: "max" }],
+      },
+    });
+
+    assert.ok(result.matrix);
+    assert.equal(result.matrix.expectedCount, 3);
+    assert.equal(result.matrix.observedCount, 2);
+    assert.equal(result.matrix.missingResultCount, 1);
+    assert.equal(result.matrix.requiredPassedCount, 1);
+    assert.equal(result.matrix.requiredFailedCount, 0);
+    assert.equal(result.matrix.probeFailedCount, 1);
+    assert.equal(result.matrix.hasRequiredFailure, false);
+
+    const missingLane = result.matrix.lanes.find((lane) => lane.label === "collector=otelcol, target_eps=max");
+    assert.equal(missingLane?.laneClass, "probe");
+    assert.equal(missingLane?.status, "missing");
+
+    const failedProbe = result.entries.find((entry) => entry.tags?.target_eps === "10000");
+    assert.equal(failedProbe?.status, "regressed");
+    assert.equal(failedProbe?.laneClass, "probe");
+  });
+
+  it("treats missing required lanes as required failures", () => {
+    const current = makeBatch([
+      {
+        scenario: "BenchA",
+        metric: "ns_per_op",
+        value: 100,
+        unit: "ns/op",
+        direction: "smaller_is_better",
+        tags: { collector: "otelcol", target_eps: "10" },
+      },
+    ]);
+
+    const result = compare(current, [], {
+      test: "percentage",
+      threshold: 5,
+      matrixPolicy: {
+        dimensions: {
+          collector: ["otelcol"],
+          target_eps: [10, 100],
+        },
+        required: [{ target_eps: { lte: 1000 } }],
+      },
+    });
+
+    assert.equal(result.hasRegression, false);
+    assert.ok(result.matrix);
+    assert.equal(result.matrix.requiredPassedCount, 1);
+    assert.equal(result.matrix.missingResultCount, 1);
+    assert.equal(result.matrix.hasRequiredFailure, true);
+  });
+
+  it("gives required matchers precedence over probe matchers", () => {
+    const current = makeBatch([
+      {
+        scenario: "BenchA",
+        metric: "ns_per_op",
+        value: 120,
+        unit: "ns/op",
+        direction: "smaller_is_better",
+        tags: { collector: "otelcol", target_eps: "10000" },
+      },
+    ]);
+
+    const result = compare(current, [], {
+      test: "percentage",
+      threshold: 5,
+      matrixPolicy: {
+        dimensions: {
+          collector: ["otelcol"],
+          target_eps: [10000],
+        },
+        required: [{ collector: "otelcol", target_eps: 10000 }],
+        probe: [{ target_eps: { gte: 10000 } }],
+      },
+    });
+
+    assert.ok(result.matrix);
+    assert.equal(result.matrix.lanes[0].laneClass, "required");
+    assert.equal(result.matrix.hasRequiredFailure, false);
+  });
+
+  it("rejects matrix policies that expand past the lane budget", () => {
+    assert.throws(
+      () => compare(makeBatch([]), [], {
+        test: "percentage",
+        threshold: 5,
+        matrixPolicy: {
+          dimensions: {
+            a: Array.from({ length: 101 }, (_, i) => i),
+            b: Array.from({ length: 100 }, (_, i) => i),
+          },
+        },
+      }),
+      /exceeding the limit of 10,000/,
+    );
   });
 });
