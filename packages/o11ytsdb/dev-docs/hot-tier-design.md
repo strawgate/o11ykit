@@ -258,6 +258,11 @@ Any implementation must ship numbers for:
 
 3. final bytes/sample at steady state
 
+4. query latency
+   - recent-window
+   - mixed hot+cold window
+   - full-range query
+
 ## Current Measured Status
 
 The maintained one-shot comparison now lives in:
@@ -314,11 +319,6 @@ That means the next engineering work should focus on:
    only breaks even
 3. only then reconsidering whether `80 -> 640` should become configurable or
    default
-
-4. query latency
-   - recent-window
-   - mixed hot+cold window
-   - full-range query
 
 ## Open Questions
 

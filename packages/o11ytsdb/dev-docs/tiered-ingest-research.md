@@ -2,7 +2,7 @@
 
 ## Summary
 
-The current `TieredRowGroupStore(80 -> 640)` memory story is good, but ingest is still too expensive because every promoted hot window is synchronously decoded and re-encoded on the write path. Both the local compaction profile and the external systems research point to the same answer:
+The current `TieredRowGroupStore(80 -> 640)` memory story is good, but ingest is still too expensive end-to-end because every promoted hot window must eventually be decoded and re-encoded by background compaction. Both the local compaction profile and the external systems research point to the same answer:
 
 - keep writes on an append-only / immutable-promotion path
 - make larger / denser cold layouts a later background concern
@@ -52,16 +52,18 @@ If we want a big ingest win, we need to stop doing one or more of those steps on
 
 The current promotion seam is:
 
-- [`TieredRowGroupStore.compactLane()`](../src/tiered-row-group-store.ts)
-  - reads a [`RowGroupStoreLaneWindow`](../src/row-group-store.ts)
-  - decodes each sealed hot `80` value blob
-  - copies into `memberCount x 640` slabs
-  - writes to [`RowGroupStore.appendCompactedWindow()`](../src/row-group-store.ts)
-- the cold tier today is just another [`RowGroupStore`](../src/row-group-store.ts)
+- writes freeze hot row groups and publish them as promoted parts without
+  decoding the sealed `80`-sample value blobs
+- [`TieredRowGroupStore.scanParts()`](../src/tiered-row-group-store.ts) merges
+  compacted-store parts, promoted parts, and live hot parts into timestamp order
+- background compaction later drains promoted parts into the compacted
+  [`RowGroupStore`](../src/row-group-store.ts) when enough promoted windows are
+  available for a `640`-sample chunk
 - reads depend on:
   - ascending `scanParts()` order from [`StorageBackend`](../src/types.ts)
-  - `TimeRange` parts that may be stats-only or lazy-decoded
-  - hot+cold merge in [`TieredRowGroupStore.scanParts()`](../src/tiered-row-group-store.ts)
+  - promoted parts that may be stats-only or lazy-decoded
+  - hot+promoted+compacted merge in
+    [`TieredRowGroupStore.scanParts()`](../src/tiered-row-group-store.ts)
 
 That means the lowest-risk design changes are the ones that preserve:
 

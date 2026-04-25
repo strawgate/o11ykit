@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { concatRanges } from "../src/binary-search.js";
 import { FlatStore } from "../src/flat-store.js";
+import { PromotedPartStore } from "../src/promoted-part-store.js";
 import { RowGroupStore } from "../src/row-group-store.js";
 import { TieredRowGroupStore } from "../src/tiered-row-group-store.js";
 import type { Labels, StorageBackend, ValuesCodec } from "../src/types.js";
@@ -26,6 +27,42 @@ function makeLabels(name: string, extra?: Record<string, string>): Labels {
     for (const [k, v] of Object.entries(extra)) m.set(k, v);
   }
   return m;
+}
+
+function makePromotedWindow(
+  groupId: number,
+  laneId: number,
+  timestamps: readonly bigint[],
+  values: readonly number[]
+) {
+  const timestampArray = new BigInt64Array(timestamps);
+  const valueArray = new Float64Array(values);
+  const valueBuffer = tsValuesCodec.encodeValues(valueArray);
+  return {
+    groupId,
+    laneId,
+    rowGroupCount: 1,
+    sampleCount: timestamps.length,
+    memberSeriesIds: [0],
+    timestampChunks: [
+      {
+        timestamps: timestampArray,
+        compressed: undefined,
+        minT: timestampArray[0],
+        maxT: timestampArray[timestampArray.length - 1],
+        count: timestampArray.length,
+      },
+    ],
+    rowGroups: [
+      {
+        valueBuffer,
+        offsets: new Uint32Array([0]),
+        sizes: new Uint32Array([valueBuffer.byteLength]),
+        memberCount: 1,
+        packedStats: new Float64Array(5),
+      },
+    ],
+  };
 }
 
 function insertSamples(
@@ -438,6 +475,32 @@ describe("RowGroupStore freeze behavior", () => {
 });
 
 describe("TieredRowGroupStore compaction", () => {
+  it("reads promoted refs in chronological order when promotion order differs", () => {
+    const store = new PromotedPartStore(tsValuesCodec, undefined, undefined);
+
+    store.promoteWindow(makePromotedWindow(0, 0, [100_000n, 101_000n], [100, 101]), [0]);
+    store.promoteWindow(makePromotedWindow(0, 1, [0n, 1_000n], [0, 1]), [0]);
+
+    const data = store.read(0, 0n, BigInt(Number.MAX_SAFE_INTEGER));
+    expect(Array.from(data.timestamps)).toEqual([0n, 1_000n, 100_000n, 101_000n]);
+    expect(Array.from(data.values)).toEqual([0, 1, 100, 101]);
+  });
+
+  it("counts retained retired promoted pages as resident memory", () => {
+    const store = new PromotedPartStore(tsValuesCodec, undefined, undefined);
+
+    store.promoteWindow(makePromotedWindow(0, 0, [0n, 1_000n], [0, 1]), [0]);
+    store.promoteWindow(makePromotedWindow(0, 0, [2_000n, 3_000n], [2, 3]), [0]);
+    const beforeCompactionBytes = store.memoryBytes();
+
+    const windows = store.peekCompactableLaneWindows(0, 0, 1, 2);
+    expect(windows).toBeDefined();
+    store.commitCompactedLaneWindows(windows ?? []);
+
+    expect(store.sampleCount).toBe(2);
+    expect(store.memoryBytes()).toBe(beforeCompactionBytes);
+  });
+
   it("rejects invalid background compaction lane budgets", () => {
     expect(
       () =>

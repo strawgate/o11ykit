@@ -295,7 +295,10 @@ export class PromotedPartStore {
   memoryBytes(): number {
     let bytes = 0;
     for (const lane of this.lanesByKey.values()) {
-      for (let i = lane.head; i < lane.pages.length; i++) {
+      // Resident memory includes retired pages until maybeTrimLane() drops the
+      // retained prefix; sampleCount/layout summaries intentionally track only
+      // queryable active pages.
+      for (let i = 0; i < lane.pages.length; i++) {
         const page = requireDefined(lane.pages[i], `missing promoted page ${i}`);
         for (const timestampChunk of page.timestampChunks) {
           // Report resident memory: after lazy decode, both compressed and
@@ -416,6 +419,12 @@ export class PromotedPartStore {
       return;
     }
     let trimPrefix = 0;
+    const activeRefs: Array<{
+      ref: PromotedSeriesRef;
+      chunkMinT: bigint;
+      chunkMaxT: bigint;
+      index: number;
+    }> = [];
     for (let i = 0; i < refs.length; i++) {
       const ref = requireDefined(refs[i], `missing promoted series ref ${i}`);
       if (ref.page.retired) {
@@ -424,6 +433,27 @@ export class PromotedPartStore {
         }
         continue;
       }
+      const timestampChunk = requireDefined(
+        ref.page.timestampChunks[ref.rowGroupIndex],
+        `missing promoted timestamp chunk ${ref.rowGroupIndex}`
+      );
+      activeRefs.push({
+        ref,
+        chunkMinT: timestampChunk.minT,
+        chunkMaxT: timestampChunk.maxT,
+        index: i,
+      });
+    }
+    activeRefs.sort((a, b) => {
+      if (a.chunkMinT !== b.chunkMinT) {
+        return a.chunkMinT < b.chunkMinT ? -1 : 1;
+      }
+      if (a.chunkMaxT !== b.chunkMaxT) {
+        return a.chunkMaxT < b.chunkMaxT ? -1 : 1;
+      }
+      return a.index - b.index;
+    });
+    for (const { ref } of activeRefs) {
       this.visitPagePart(ref.page, ref.memberIndex, ref.rowGroupIndex, start, end, visit);
     }
     if (trimPrefix >= 32 && trimPrefix * 2 >= refs.length) {
