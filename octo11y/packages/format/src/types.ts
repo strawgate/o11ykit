@@ -62,6 +62,14 @@ export interface MatrixLaneMatcher {
   [dimension: string]: MatrixMatcherValue;
 }
 
+/**
+ * Declares the expected matrix of benchmark lanes and how missing/failing
+ * lanes are classified.
+ *
+ * - Lanes **not** listed in `probe` are treated as `"required"` by default.
+ * - `required` only matters when it overlaps with `probe`; in that case the
+ *   `required` classification wins the overlap.
+ */
 export interface MatrixPolicy {
   dimensions: Record<string, MatrixDimensionValue[]>;
   excludes?: MatrixLaneMatcher[];

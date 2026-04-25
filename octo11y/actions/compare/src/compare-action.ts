@@ -41,12 +41,69 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isDimensionValue(value: unknown): value is MatrixDimensionValue {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+}
+
+const RECOGNIZED_MATCHER_KEYS = new Set(["eq", "in", "notIn", "lt", "lte", "gt", "gte"]);
+
+function validateMatcherValue(listName: string, index: number, dimension: string, value: unknown): void {
+  if (isDimensionValue(value)) {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const element of value) {
+      if (!isDimensionValue(element)) {
+        throw new Error(
+          `matrix-policy.${listName}[${index}].${dimension}: array elements must be string, number, or boolean`,
+        );
+      }
+    }
+    return;
+  }
+  if (isRecord(value)) {
+    const keys = Object.keys(value);
+    if (keys.length === 0) {
+      throw new Error(
+        `matrix-policy.${listName}[${index}].${dimension}: matcher object must have at least one key`,
+      );
+    }
+    for (const key of keys) {
+      if (!RECOGNIZED_MATCHER_KEYS.has(key)) {
+        throw new Error(
+          `matrix-policy.${listName}[${index}].${dimension}: unrecognized matcher key "${key}"`,
+        );
+      }
+    }
+    if (value.in !== undefined && !Array.isArray(value.in)) {
+      throw new Error(
+        `matrix-policy.${listName}[${index}].${dimension}: "in" must be an array`,
+      );
+    }
+    if (value.notIn !== undefined && !Array.isArray(value.notIn)) {
+      throw new Error(
+        `matrix-policy.${listName}[${index}].${dimension}: "notIn" must be an array`,
+      );
+    }
+    return;
+  }
+  throw new Error(
+    `matrix-policy.${listName}[${index}].${dimension}: value must be a primitive, array, or matcher object`,
+  );
+}
+
 function validateMatcherList(name: string, value: unknown): void {
   if (value === undefined) {
     return;
   }
   if (!Array.isArray(value) || value.some((matcher) => !isRecord(matcher))) {
     throw new Error(`matrix-policy.${name} must be an array of matcher objects`);
+  }
+  for (let i = 0; i < value.length; i++) {
+    const matcher = value[i] as Record<string, unknown>;
+    for (const [dimension, matcherValue] of Object.entries(matcher)) {
+      validateMatcherValue(name, i, dimension, matcherValue);
+    }
   }
 }
 
@@ -166,6 +223,16 @@ export function parseMatrixPolicyInput(input: string | undefined): MatrixPolicy 
   for (const [name, value] of Object.entries(dimensions)) {
     if (!Array.isArray(value)) {
       throw new Error(`matrix-policy.dimensions.${name} must be an array`);
+    }
+    if (value.length === 0) {
+      throw new Error(`matrix-policy.dimensions.${name} must have at least one element`);
+    }
+    for (const element of value) {
+      if (!isDimensionValue(element)) {
+        throw new Error(
+          `matrix-policy.dimensions.${name}: each value must be a string, number, or boolean`,
+        );
+      }
     }
   }
 

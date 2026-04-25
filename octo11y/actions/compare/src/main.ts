@@ -27,34 +27,47 @@ async function run(): Promise<void> {
   }
   core.info(`Found ${files.length} result file(s)`);
 
+  function setMatrixOutputs(result: {
+    hasRegression: boolean;
+    hasRequiredFailure: boolean;
+    missingResultCount: number;
+    requiredPassedCount: number;
+    requiredFailedCount: number;
+    probeFailedCount: number;
+    matrixSummaryJson: string;
+    markdown: string;
+  }): void {
+    core.setOutput("has-regression", String(result.hasRegression));
+    core.setOutput("has-required-failure", String(result.hasRequiredFailure));
+    core.setOutput("missing-result-count", String(result.missingResultCount));
+    core.setOutput("required-passed-count", String(result.requiredPassedCount));
+    core.setOutput("required-failed-count", String(result.requiredFailedCount));
+    core.setOutput("probe-failed-count", String(result.probeFailedCount));
+    core.setOutput("matrix-summary-json", result.matrixSummaryJson);
+    core.setOutput("summary", result.markdown);
+  }
+
   const worktree = await fetchDataBranch(dataBranch, token);
   if (!worktree) {
     const markdown = "No baseline data branch found. Skipping comparison.";
     core.warning(markdown);
-    core.setOutput("has-regression", "false");
-    core.setOutput("has-required-failure", "false");
-    core.setOutput("missing-result-count", "0");
-    core.setOutput("required-passed-count", "0");
-    core.setOutput("required-failed-count", "0");
-    core.setOutput("probe-failed-count", "0");
-    core.setOutput("matrix-summary-json", "");
-    core.setOutput("summary", markdown);
+    setMatrixOutputs({
+      hasRegression: false,
+      hasRequiredFailure: false,
+      missingResultCount: 0,
+      requiredPassedCount: 0,
+      requiredFailedCount: 0,
+      probeFailedCount: 0,
+      matrixSummaryJson: "",
+      markdown,
+    });
     await core.summary.addRaw(markdown, true).write();
     return;
   }
 
   try {
     const runsDir = path.join(worktree, "data", "runs");
-    const {
-      markdown,
-      hasRegression,
-      hasRequiredFailure,
-      missingResultCount,
-      requiredPassedCount,
-      requiredFailedCount,
-      probeFailedCount,
-      matrixSummaryJson,
-    } = runComparison({
+    const result = runComparison({
       files,
       format,
       runsDir,
@@ -65,28 +78,21 @@ async function run(): Promise<void> {
       currentRef: process.env.GITHUB_REF,
     });
 
-    core.setOutput("has-regression", String(hasRegression));
-    core.setOutput("has-required-failure", String(hasRequiredFailure));
-    core.setOutput("missing-result-count", String(missingResultCount));
-    core.setOutput("required-passed-count", String(requiredPassedCount));
-    core.setOutput("required-failed-count", String(requiredFailedCount));
-    core.setOutput("probe-failed-count", String(probeFailedCount));
-    core.setOutput("matrix-summary-json", matrixSummaryJson);
-    core.setOutput("summary", markdown);
-    await core.summary.addRaw(markdown, true).write();
+    setMatrixOutputs(result);
+    await core.summary.addRaw(result.markdown, true).write();
 
     if (commentOnPr && github.context.payload.pull_request) {
-      await postPrComment(token, markdown);
+      await postPrComment(token, result.markdown);
     } else if (commentOnPr) {
       core.info("Not a pull request event — skipping PR comment.");
     }
 
     if (failOnRegression) {
       if (matrixPolicyInput) {
-        if (hasRequiredFailure) {
+        if (result.hasRequiredFailure) {
           core.setFailed("Required benchmark lane failure detected. See job summary for details.");
         }
-      } else if (hasRegression) {
+      } else if (result.hasRegression) {
         core.setFailed("Benchmark regression detected. See job summary for details.");
       }
     }
