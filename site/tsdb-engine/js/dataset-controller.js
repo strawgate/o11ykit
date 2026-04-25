@@ -187,7 +187,7 @@ export function createDatasetController({
               metrics,
               Math.max(1, performance.now() - liveStartedAt),
               0,
-              scenario.intervalMs,
+              scenario.intervalMs
             );
             return;
           }

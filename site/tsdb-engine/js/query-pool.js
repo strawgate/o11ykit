@@ -359,7 +359,12 @@ export class QueryWorkerPool {
   }
 
   async broadcastLiveAppend(store, appendsBySeriesId) {
-    if (this.state.phase !== "ready" && this.state.phase !== "complete" && this.state.phase !== "running") return;
+    if (
+      this.state.phase !== "ready" &&
+      this.state.phase !== "complete" &&
+      this.state.phase !== "running"
+    )
+      return;
     if (this.workers.length === 0) return;
 
     const workerCount = this.workers.length;

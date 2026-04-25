@@ -75,7 +75,9 @@ export class FlatStore {
 
   appendBatch(id, timestamps, values) {
     if (timestamps.length !== values.length) {
-      throw new Error(`appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`);
+      throw new Error(
+        `appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`
+      );
     }
     const s = this._series[id];
     const need = s.count + timestamps.length;
@@ -172,7 +174,9 @@ export class ChunkedStore {
 
   appendBatch(id, timestamps, values) {
     if (timestamps.length !== values.length) {
-      throw new Error(`appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`);
+      throw new Error(
+        `appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`
+      );
     }
     const s = this._series[id];
     let offset = 0;
@@ -342,7 +346,9 @@ export class ColumnStore {
 
   appendBatch(id, timestamps, values) {
     if (timestamps.length !== values.length) {
-      throw new Error(`appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`);
+      throw new Error(
+        `appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`
+      );
     }
     const s = this._allSeries[id];
     const group = this._groups[s.groupId];
