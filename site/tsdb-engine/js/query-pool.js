@@ -358,6 +358,39 @@ export class QueryWorkerPool {
     return responses;
   }
 
+  async broadcastLiveAppend(store, appendsBySeriesId) {
+    if (this.state.phase !== "ready" && this.state.phase !== "complete") return;
+    if (this.workers.length === 0) return;
+
+    const workerCount = this.workers.length;
+    const workerAppends = Array.from({ length: workerCount }, () => []);
+
+    for (const [seriesId, data] of appendsBySeriesId.entries()) {
+      const workerIdx = seriesId % workerCount;
+      const partitionId = Math.floor(seriesId / workerCount);
+      
+      // If this is a new series the worker doesn't know about yet, send metadata
+      const labels = store.labels(seriesId);
+      
+      workerAppends[workerIdx].push({
+        partitionId,
+        labels: labels ? [...labels.entries()] : null,
+        timestamps: data.timestamps,
+        values: data.values,
+      });
+    }
+
+    for (let i = 0; i < workerCount; i++) {
+      const appends = workerAppends[i];
+      if (appends.length === 0) continue;
+      this.workers[i].worker.postMessage({
+        type: "append-live",
+        workerId: i,
+        appends,
+      });
+    }
+  }
+
   markMerged(queryId, detail, stats = null) {
     if (queryId !== this.activeQueryId) return;
     this.state.phase = "complete";
@@ -418,6 +451,19 @@ export class QueryWorkerPool {
       );
       this._emitState();
       pending.resolve(message);
+      return;
+    }
+
+    if (message.type === "append-ack") {
+      this.state.workers = this.state.workers.map((worker) =>
+        worker.id === message.workerId
+          ? {
+              ...worker,
+              sampleCount: message.sampleCount,
+            }
+          : worker
+      );
+      this._emitState();
       return;
     }
 

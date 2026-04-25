@@ -321,15 +321,21 @@ export const SCENARIOS = [
     metrics: [
       { name: "browser_mouse_x", pattern: "live" },
       { name: "browser_mouse_y", pattern: "live" },
+      { name: "browser_mouse_velocity", pattern: "live" },
+      { name: "browser_interaction_clicks", pattern: "live" },
+      { name: "browser_interaction_keypresses", pattern: "live" },
       { name: "browser_memory_used_bytes", pattern: "live" },
       { name: "browser_scroll_y", pattern: "live" },
-      { name: "browser_interaction_clicks", pattern: "live" },
+      { name: "browser_window_width", pattern: "live" },
+      { name: "browser_window_height", pattern: "live" },
+      { name: "browser_connection_downlink", pattern: "live" },
+      { name: "browser_event_loop_lag_ms", pattern: "live" },
     ],
     labelDimensions: {
       instance: ["current-session"],
     },
-    numPoints: 500,
-    intervalMs: 250, // High-res 4fps ingestion
+    numPoints: 1000,
+    intervalMs: 200, // Slightly faster 5fps ingestion
   },
 ];
 
@@ -426,7 +432,10 @@ export function startLiveBrowserScraper(store, scenario, onUpdate) {
   const state = {
     mouseX: 0,
     mouseY: 0,
+    lastMouseX: 0,
+    lastMouseY: 0,
     clicks: 0,
+    keypresses: 0,
     scrollY: 0,
   };
 
@@ -435,44 +444,73 @@ export function startLiveBrowserScraper(store, scenario, onUpdate) {
     state.mouseY = e.clientY;
   };
   const onClick = () => state.clicks++;
+  const onKeyDown = () => state.keypresses++;
   const onScroll = () => (state.scrollY = window.scrollY);
 
   window.addEventListener("mousemove", onMouseMove);
   window.addEventListener("click", onClick);
+  window.addEventListener("keydown", onKeyDown);
   window.addEventListener("scroll", onScroll);
 
+  let lastTick = performance.now();
   let count = 0;
+
   const timer = setInterval(() => {
+    const nowMs = performance.now();
+    const lag = nowMs - lastTick - intervalMs;
+    lastTick = nowMs;
+
     const now = BigInt(Date.now()) * 1_000_000n;
     const ts = new BigInt64Array([now]);
 
     const mem = (performance && performance.memory) || { usedJSHeapSize: 0 };
+    const conn = navigator.connection || { downlink: 0 };
+
+    const dx = state.mouseX - state.lastMouseX;
+    const dy = state.mouseY - state.lastMouseY;
+    const velocity = Math.sqrt(dx * dx + dy * dy);
+    state.lastMouseX = state.mouseX;
+    state.lastMouseY = state.mouseY;
 
     const values = {
       browser_mouse_x: state.mouseX,
       browser_mouse_y: state.mouseY,
+      browser_mouse_velocity: velocity,
       browser_memory_used_bytes: mem.usedJSHeapSize,
       browser_scroll_y: state.scrollY,
       browser_interaction_clicks: state.clicks,
+      browser_interaction_keypresses: state.keypresses,
+      browser_window_width: window.innerWidth,
+      browser_window_height: window.innerHeight,
+      browser_connection_downlink: conn.downlink,
+      browser_event_loop_lag_ms: Math.max(0, lag),
     };
+
+    const appends = new Map();
 
     for (const [name, val] of Object.entries(values)) {
       const id = seriesIds.get(name);
       if (id !== undefined) {
         store.appendBatch(id, ts, new Float64Array([val]));
+        appends.set(id, { timestamps: ts, values: new Float64Array([val]) });
       }
     }
 
     count++;
-    scenario.numPoints = count; // Live update point count for stats
 
-    if (onUpdate) onUpdate(count);
+    if (onUpdate) onUpdate(count, appends);
   }, intervalMs);
 
-  return () => {
+  const stop = () => {
     clearInterval(timer);
     window.removeEventListener("mousemove", onMouseMove);
     window.removeEventListener("click", onClick);
+    window.removeEventListener("keydown", onKeyDown);
     window.removeEventListener("scroll", onScroll);
+    window.removeEventListener("beforeunload", stop);
   };
+
+  window.addEventListener("beforeunload", stop);
+
+  return stop;
 }

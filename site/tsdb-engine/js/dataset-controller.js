@@ -167,7 +167,7 @@ export function createDatasetController({
           const metrics = [...new Set(scenario.metrics.map((m) => m.name))];
 
           if (scenario.isLive) {
-            _activeScraperStop = startLiveBrowserScraper(store, scenario, (count) => {
+            _activeScraperStop = startLiveBrowserScraper(store, scenario, (count, appends) => {
               if (clickedCard) {
                 const doneEl = clickedCard.querySelector(".sc-done-stats");
                 if (doneEl) {
@@ -176,12 +176,12 @@ export function createDatasetController({
                   doneEl.textContent = `Live: ${totalPts.toLocaleString()} pts · ${formatBytes(memBytes)}`;
                 }
               }
-              onLiveUpdate?.(store, scenario);
+              onLiveUpdate?.(store, scenario, appends);
             });
             
             clickedCard.classList.remove("loading");
             clickedCard.classList.add("active", "loaded");
-            onDataLoaded(store, metrics, 0, 0, scenario.intervalMs);
+            onDataLoaded(store, metrics, 0, count, scenario.intervalMs);
             return;
           }
 
