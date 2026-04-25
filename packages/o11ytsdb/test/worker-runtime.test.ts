@@ -313,6 +313,50 @@ describe("O11yWorkerRuntime", () => {
       }
     });
 
+    it("ingests aligned series that share one timestamp vector", async () => {
+      mock.sendRequest(makeRequest(1, { type: "init", chunkSize: 1024 }));
+      await waitForResponse(mock);
+
+      mock.sendRequest(
+        makeRequest(2, {
+          type: "batch-ingest",
+          count: 2,
+          labels: [
+            [
+              ["__name__", "cpu"],
+              ["host", "a"],
+            ],
+            [
+              ["__name__", "cpu"],
+              ["host", "b"],
+            ],
+          ],
+          allTimestampsMs: new Float64Array([100, 200, 300, 100, 200, 300]),
+          allValues: new Float64Array([1, 2, 3, 10, 20, 30]),
+          offsets: new Uint32Array([0, 3, 3, 3]),
+        })
+      );
+      const resp = await waitForResponse(mock);
+
+      expect(resp.payload.ok).toBe(true);
+      if (resp.payload.type === "batch-ingest") {
+        expect(resp.payload.seriesCount).toBe(2);
+        expect(resp.payload.totalSamples).toBe(6);
+      }
+
+      mock.sendRequest(
+        makeRequest(3, {
+          type: "query",
+          opts: { metric: "cpu", start: 0n, end: 1_000_000_000n },
+        })
+      );
+      const queryResp = await waitForResponse(mock);
+      if (queryResp.payload.type === "query") {
+        expect(queryResp.payload.result.series.length).toBe(2);
+        expect(queryResp.payload.result.scannedSamples).toBe(6);
+      }
+    });
+
     it("handles empty batch (all zero-length series)", async () => {
       mock.sendRequest(makeRequest(1, { type: "init" }));
       await waitForResponse(mock);

@@ -149,8 +149,8 @@ export function measureTieredQueryMatrix(codecs: WasmCodecs, iterations = DEFAUL
       tieredHotChunkSize: HOT_SIZE,
       tieredColdChunkSize: COLD_SIZE,
     },
-    current640: benchmarkStore(current, engine, workloads, iterations),
-    tiered80to640: benchmarkStore(tiered, engine, workloads, iterations),
+    current600: benchmarkStore(current, engine, workloads, iterations),
+    tiered60to600: benchmarkStore(tiered, engine, workloads, iterations),
   };
 }
 
@@ -207,7 +207,7 @@ export function measureTieredIngestCompare(codecs: WasmCodecs) {
   const tieredPostQueryMemoryBytes = tiered.memoryBytes();
 
   return {
-    current640: {
+    current600: {
       sampleCount: current.sampleCount,
       memoryBytes: currentPostIngestMemoryBytes,
       bytesPerSample:
@@ -222,7 +222,7 @@ export function measureTieredIngestCompare(codecs: WasmCodecs) {
       ingestMs: Number(ingestCurrentMs.toFixed(3)),
       queryMs: Number(currentQueryMs.toFixed(3)),
     },
-    tiered80to640: {
+    tiered60to600: {
       sampleCount: tiered.sampleCount,
       memoryBytes: tieredPostIngestMemoryBytes,
       bytesPerSample:
@@ -353,11 +353,11 @@ export function measureTieredMemoryCurve(codecs: WasmCodecs, batchSize = BATCH) 
       const tieredInternals = tieredStores(tiered);
       rows.push({
         samples,
-        current640: {
+        current600: {
           memoryBytes: current.memoryBytes(),
           bytesPerSample: Number((current.memoryBytes() / samples).toFixed(4)),
         },
-        tiered80to640: {
+        tiered60to600: {
           memoryBytes: tiered.memoryBytes(),
           bytesPerSample: Number((tiered.memoryBytes() / samples).toFixed(4)),
           hotBytes: tieredInternals.hotStore.memoryBytesExcludingLabels(),

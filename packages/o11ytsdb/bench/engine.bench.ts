@@ -545,11 +545,9 @@ export default async function (): Promise<BenchReport> {
     for (let offset = 0; offset < POINTS_PER_SERIES; offset += CHUNK_SIZE) {
       const end = Math.min(offset + CHUNK_SIZE, POINTS_PER_SERIES);
       for (let s = 0; s < NUM_SERIES; s++) {
-        fresh.appendBatch(
-          ids[s]!,
-          data.timestamps[s]!.subarray(offset, end),
-          data.values[s]!.subarray(offset, end)
-        );
+        fresh.append(data.timestamps[s]!.subarray(offset, end), [
+          { id: ids[s]!, values: data.values[s]!.subarray(offset, end) },
+        ]);
       }
     }
 

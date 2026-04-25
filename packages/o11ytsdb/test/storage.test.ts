@@ -74,7 +74,9 @@ function insertSamples(
 ) {
   const id = store.getOrCreateSeries(labels);
   for (let i = 0; i < count; i++) {
-    store.append(id, t0 + BigInt(i) * interval, i * 1.5);
+    store.append(new BigInt64Array([t0 + BigInt(i) * interval]), [
+      { id, values: new Float64Array([i * 1.5]) },
+    ]);
   }
   return id;
 }
@@ -93,7 +95,7 @@ function insertBatch(
     ts[i] = t0 + BigInt(i) * interval;
     vals[i] = i * 1.5;
   }
-  store.appendBatch(id, ts, vals);
+  store.append(ts, [{ id, values: vals }]);
   return id;
 }
 
@@ -154,6 +156,39 @@ function describeStorageBackend(name: string, create: () => StorageBackend) {
       expect(store.sampleCount).toBe(200);
       const data = store.read(id, 0n, BigInt(Number.MAX_SAFE_INTEGER));
       expect(data.timestamps.length).toBe(200);
+    });
+
+    it("append inserts multiple series with one shared timestamp vector", () => {
+      const store = create();
+      const aId = store.getOrCreateSeries(makeLabels("shared_metric", { host: "a" }));
+      const bId = store.getOrCreateSeries(makeLabels("shared_metric", { host: "b" }));
+      const timestamps = new BigInt64Array([1_000n, 2_000n, 3_000n]);
+      const aValues = new Float64Array([1, 2, 3]);
+      const bValues = new Float64Array([10, 20, 30]);
+
+      store.append(timestamps, [
+        { id: aId, values: aValues },
+        { id: bId, values: bValues },
+      ]);
+
+      expect(store.sampleCount).toBe(6);
+      expect(Array.from(store.read(aId, 0n, 4_000n).values)).toEqual([1, 2, 3]);
+      expect(Array.from(store.read(bId, 0n, 4_000n).values)).toEqual([10, 20, 30]);
+    });
+
+    it("append rejects shape mismatches before mutating any series", () => {
+      const store = create();
+      const aId = store.getOrCreateSeries(makeLabels("bad_shared_metric", { host: "a" }));
+      const bId = store.getOrCreateSeries(makeLabels("bad_shared_metric", { host: "b" }));
+      const timestamps = new BigInt64Array([1_000n, 2_000n, 3_000n]);
+
+      expect(() =>
+        store.append(timestamps, [
+          { id: aId, values: new Float64Array([1, 2, 3]) },
+          { id: bId, values: new Float64Array([10, 20]) },
+        ])
+      ).toThrow(/timestamps\.length/);
+      expect(store.sampleCount).toBe(0);
     });
 
     it("matchLabel finds correct series", () => {
@@ -475,6 +510,20 @@ describe("RowGroupStore freeze behavior", () => {
 });
 
 describe("TieredRowGroupStore compaction", () => {
+  function appendInHotChunks(
+    store: TieredRowGroupStore,
+    id: number,
+    timestamps: BigInt64Array,
+    values: Float64Array,
+    hotChunkSize = 4
+  ): void {
+    for (let offset = 0; offset < timestamps.length; offset += hotChunkSize) {
+      store.append(timestamps.subarray(offset, offset + hotChunkSize), [
+        { id, values: values.subarray(offset, offset + hotChunkSize) },
+      ]);
+    }
+  }
+
   it("reads promoted refs in chronological order when promotion order differs", () => {
     const store = new PromotedPartStore(tsValuesCodec, undefined, undefined);
 
@@ -589,8 +638,8 @@ describe("TieredRowGroupStore compaction", () => {
       fastValues[i] = i * 10;
     }
 
-    store.appendBatch(slowId, timestamps, slowValues);
-    store.appendBatch(fastId, timestamps, fastValues);
+    appendInHotChunks(store, slowId, timestamps, slowValues);
+    appendInHotChunks(store, fastId, timestamps, fastValues);
     store.drainCompaction();
 
     const hotStore = Reflect.get(store, "hotStore");
@@ -603,7 +652,6 @@ describe("TieredRowGroupStore compaction", () => {
     const hotLane = hotGroups[0].lanes[0];
     expect(hotLane.rowGroups.length).toBe(0);
     expect(hotLane.frozenTimestamps.length).toBe(0);
-    expect(Reflect.get(hotLane, "hotCount")).toBe(4);
     expect(promotedStore.sampleCount).toBeGreaterThan(0);
     expect(compactedStore.seriesCount).toBe(2);
     expect(compactedStore.sampleCount).toBeGreaterThan(0);
@@ -624,23 +672,18 @@ describe("TieredRowGroupStore compaction", () => {
       values[i] = i;
     }
 
-    store.appendBatch(id, timestamps, values);
+    store.append(timestamps, [{ id, values }]);
 
     const parts = store.readParts(id, 0n, BigInt(Number.MAX_SAFE_INTEGER));
-    expect(parts.length).toBe(3);
+    expect(parts.length).toBe(2);
     expect(parts[0].chunkMinT).toBe(timestamps[0]);
-    expect(parts[0].chunkMaxT).toBe(timestamps[3]);
+    expect(parts[0].chunkMaxT).toBe(timestamps[7]);
     const decodedCold = parts[0].decode?.();
     expect(decodedCold).toBeDefined();
-    expect(Array.from(decodedCold?.timestamps ?? [])).toEqual(Array.from(timestamps.slice(0, 4)));
-    expect(parts[1].chunkMinT).toBe(timestamps[4]);
-    expect(parts[1].chunkMaxT).toBe(timestamps[7]);
-    const decodedWarm = parts[1].decode?.();
-    expect(decodedWarm).toBeDefined();
-    expect(Array.from(decodedWarm?.timestamps ?? [])).toEqual(Array.from(timestamps.slice(4, 8)));
-    expect(parts[2].chunkMinT).toBe(timestamps[8]);
-    expect(parts[2].chunkMaxT).toBe(timestamps[11]);
-    const decodedHot = parts[2].decode?.();
+    expect(Array.from(decodedCold?.timestamps ?? [])).toEqual(Array.from(timestamps.slice(0, 8)));
+    expect(parts[1].chunkMinT).toBe(timestamps[8]);
+    expect(parts[1].chunkMaxT).toBe(timestamps[11]);
+    const decodedHot = parts[1].decode?.();
     expect(decodedHot).toBeDefined();
     expect(Array.from(decodedHot?.timestamps ?? [])).toEqual(Array.from(timestamps.slice(8, 12)));
   });
@@ -696,8 +739,8 @@ describe("TieredRowGroupStore compaction", () => {
       fastVals[i] = i;
     }
 
-    store.appendBatch(slowId, slowTs, slowVals);
-    store.appendBatch(fastId, fastTs, fastVals);
+    appendInHotChunks(store, slowId, slowTs, slowVals);
+    appendInHotChunks(store, fastId, fastTs, fastVals);
 
     const hotStore = Reflect.get(store, "hotStore");
     const hotIds = Reflect.get(store, "hotIds");
@@ -748,8 +791,8 @@ describe("TieredRowGroupStore compaction", () => {
       bValues[i] = 100 + i;
     }
 
-    store.appendBatch(aId, timestamps, aValues);
-    store.appendBatch(bId, timestamps, bValues);
+    appendInHotChunks(store, aId, timestamps, aValues);
+    appendInHotChunks(store, bId, timestamps, bValues);
     store.drainCompaction();
 
     const promotedStore = Reflect.get(store, "promotedStore");
@@ -772,6 +815,53 @@ describe("TieredRowGroupStore compaction", () => {
     const bData = store.read(bId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
     expect(Array.from(bData.timestamps)).toEqual(Array.from(timestamps));
     expect(Array.from(bData.values)).toEqual(Array.from(bValues));
+  });
+
+  it("writes cold-sized shared appends directly to compacted storage", () => {
+    let encodeCount = 0;
+    let decodeCount = 0;
+    const countingCodec: ValuesCodec = {
+      name: "direct-counting-identity",
+      encodeValues(values: Float64Array): Uint8Array {
+        encodeCount++;
+        return new Uint8Array(
+          values.buffer.slice(values.byteOffset, values.byteOffset + values.byteLength)
+        );
+      },
+      decodeValues(buf: Uint8Array): Float64Array {
+        decodeCount++;
+        return new Float64Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+      },
+    };
+    const store = new TieredRowGroupStore(countingCodec, 4, 8, () => 0, 2);
+    const aId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "a" }));
+    const bId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "b" }));
+
+    const timestamps = new BigInt64Array(8);
+    const aValues = new Float64Array(8);
+    const bValues = new Float64Array(8);
+    for (let i = 0; i < 8; i++) {
+      timestamps[i] = BigInt(i) * 1_000n;
+      aValues[i] = i;
+      bValues[i] = 100 + i;
+    }
+
+    store.append(timestamps, [
+      { id: aId, values: aValues },
+      { id: bId, values: bValues },
+    ]);
+
+    const promotedStore = Reflect.get(store, "promotedStore");
+    const compactedStore = Reflect.get(store, "compactedStore");
+    expect(promotedStore.sampleCount).toBe(0);
+    expect(compactedStore.sampleCount).toBe(16);
+    expect(encodeCount).toBe(2);
+    expect(decodeCount).toBe(0);
+    expect(store.drainCompaction()).toBe(0);
+    expect(Array.from(store.read(aId, 0n, BigInt(Number.MAX_SAFE_INTEGER)).values)).toEqual(
+      Array.from(aValues)
+    );
+    expect(decodeCount).toBeGreaterThan(0);
   });
 
   it("keeps failed compaction lanes retryable while promoted data remains readable", () => {
@@ -804,8 +894,8 @@ describe("TieredRowGroupStore compaction", () => {
       bValues[i] = 100 + i;
     }
 
-    store.appendBatch(aId, timestamps, aValues);
-    store.appendBatch(bId, timestamps, bValues);
+    appendInHotChunks(store, aId, timestamps, aValues);
+    appendInHotChunks(store, bId, timestamps, bValues);
 
     failNextEncode = true;
     expect(store.drainCompaction()).toBe(1);

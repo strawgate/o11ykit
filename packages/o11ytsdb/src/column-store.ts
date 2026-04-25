@@ -22,6 +22,7 @@ import type {
   ChunkStats,
   Labels,
   RangeDecodeCodec,
+  SeriesAppend,
   SeriesId,
   StorageBackend,
   TimeRange,
@@ -228,7 +229,31 @@ export class ColumnStore implements StorageBackend {
     return id;
   }
 
-  append(id: SeriesId, timestamp: bigint, value: number): void {
+  append(timestamps: BigInt64Array, series: readonly SeriesAppend[]): void;
+  append(id: SeriesId, timestamp: bigint, value: number): void;
+  append(
+    timestampsOrId: BigInt64Array | SeriesId,
+    seriesOrTimestamp: readonly SeriesAppend[] | bigint,
+    value?: number
+  ): void {
+    if (typeof timestampsOrId === "number") {
+      this.appendSample(timestampsOrId, seriesOrTimestamp as bigint, value as number);
+      return;
+    }
+    const series = seriesOrTimestamp as readonly SeriesAppend[];
+    for (const item of series) {
+      if (item.values.length !== timestampsOrId.length) {
+        throw new RangeError(
+          `append: timestamps.length (${timestampsOrId.length}) !== values.length (${item.values.length})`
+        );
+      }
+    }
+    for (const item of series) {
+      this.appendBatch(item.id, timestampsOrId, item.values);
+    }
+  }
+
+  private appendSample(id: SeriesId, timestamp: bigint, value: number): void {
     // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
     const s = this.allSeries[id]!;
     // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
