@@ -622,6 +622,14 @@ export class RowGroupStore implements StorageBackend {
     return this.memoryBytes() - this.labelIndex.memoryBytes();
   }
 
+  /** Returns true if any lane in the given group has pending hot samples. */
+  groupHasHotResidue(groupId: number): boolean {
+    if (groupId >= this.groups.length) return false;
+    const group = this.groups[groupId];
+    if (!group) return false;
+    return group.lanes.some((lane) => lane.hotCount > 0);
+  }
+
   peekCompactableLaneWindow(
     groupId: number,
     rowGroupCount: number,

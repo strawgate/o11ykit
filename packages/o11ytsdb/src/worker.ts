@@ -330,7 +330,9 @@ export class O11yWorkerRuntime {
             const vals = allValues.subarray(off, off + len);
             const groupKey = timestampGroupKey(tsArr);
             const candidates = appendGroupsByKey.get(groupKey) ?? [];
-            let appendGroup = candidates.find((group) => sameBigInt64Array(group.timestamps, tsArr));
+            let appendGroup = candidates.find((group) =>
+              sameBigInt64Array(group.timestamps, tsArr)
+            );
             if (appendGroup === undefined) {
               appendGroup = { timestamps: tsArr, series: [] };
               candidates.push(appendGroup);

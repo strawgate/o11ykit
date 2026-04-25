@@ -74,7 +74,10 @@ function measureScenario(
 }
 
 async function main(): Promise<void> {
-  const iterations = Number(process.argv[2] ?? DEFAULT_ITERATIONS);
+  const iterations = Number.parseInt(process.argv[2] ?? `${DEFAULT_ITERATIONS}`, 10);
+  if (!Number.isInteger(iterations) || iterations <= 0) {
+    throw new Error("usage: tiered-direct-ingest.ts [iterations]");
+  }
   const codecs = await loadBenchWasmCodecs();
   const config: TieredBenchConfig = {
     ...DEFAULT_TIERED_BENCH_CONFIG,

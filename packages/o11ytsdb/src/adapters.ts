@@ -153,7 +153,7 @@ function assertAlignedSeries(series: SeriesResult, index: number): void {
 
 function seriesId(series: SeriesResult, index: number): string {
   const parts = [...series.labels.entries()].map(([key, value]) => `${key}=${value}`);
-  return parts.length > 0 ? parts.join("\0") : `series-${index}`;
+  return parts.length > 0 ? parts.join(",") : `series-${index}`;
 }
 
 function seriesLabel(series: SeriesResult, index: number, options: TsdbAdapterOptions): string {

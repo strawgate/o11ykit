@@ -60,23 +60,22 @@ describe("native TSDB adapters", () => {
 
   it("builds latest-value rows with custom labels and timestamp units", () => {
     const model = toTsdbLatestValueModel(result, {
-      timestampUnit: "milliseconds",
       seriesLabel: (series) => series.labels.get("host") ?? "unknown",
     });
 
     expect(model.rows).toEqual([
       {
-        id: "__name__=cpu\0host=a",
+        id: "__name__=cpu,host=a",
         label: "a",
         labels: result.series[0]?.labels,
-        t: 3_000_000,
+        t: 3,
         value: 3,
       },
       {
-        id: "__name__=cpu\0host=b",
+        id: "__name__=cpu,host=b",
         label: "b",
         labels: result.series[1]?.labels,
-        t: 3_000_000,
+        t: 3,
         value: 30,
       },
     ]);

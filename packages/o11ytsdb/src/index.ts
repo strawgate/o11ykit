@@ -4,12 +4,6 @@
  * Public API surface.
  */
 
-// Worker isolation + transfer protocol
-export {
-  toTsdbLatestValueModel,
-  toTsdbLineSeriesModel,
-  toTsdbWideTableModel,
-} from "./adapters.js";
 export type {
   TsdbAdapterOptions,
   TsdbLatestValueModel,
@@ -20,6 +14,12 @@ export type {
   TsdbTimestampUnit,
   TsdbWideTableModel,
   TsdbWideTableRow,
+} from "./adapters.js";
+// Worker isolation + transfer protocol
+export {
+  toTsdbLatestValueModel,
+  toTsdbLineSeriesModel,
+  toTsdbWideTableModel,
 } from "./adapters.js";
 export { BackpressureController } from "./backpressure.js";
 export type { DecodedChunk } from "./codec.js";

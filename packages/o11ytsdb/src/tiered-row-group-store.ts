@@ -239,7 +239,13 @@ export class TieredRowGroupStore implements StorageBackend {
     timestamps: BigInt64Array,
     series: readonly SeriesAppend[]
   ): void {
-    const coldSamples = Math.floor(timestamps.length / this.coldChunkSize) * this.coldChunkSize;
+    // Only use the direct-cold fast path when none of the series in this
+    // group have pending hot samples. If there is hot residue the first
+    // cold-sized slice must finish the open hot window before bypassing it.
+    const canDirectCold = !this.hotStore.groupHasHotResidue(groupId);
+    const coldSamples = canDirectCold
+      ? Math.floor(timestamps.length / this.coldChunkSize) * this.coldChunkSize
+      : 0;
     if (coldSamples > 0) {
       for (let offset = 0; offset < coldSamples; offset += this.coldChunkSize) {
         this._sampleCount += this.appendDirectColdWindow(
