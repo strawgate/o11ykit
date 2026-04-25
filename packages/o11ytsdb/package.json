@@ -57,6 +57,7 @@
     "bench:rowgroup-memory-audit": "npm run bench:prepare && node dist-bench/rowgroup-memory-audit.js",
     "bench:rowgroup-profile": "npm run bench:prepare && node --expose-gc dist-bench/rowgroup-profile.js",
     "bench:tiered-cardinality-sweep": "npm run bench:prepare && node dist-bench/tiered-cardinality-sweep.js",
+    "bench:tiered-direct-ingest": "npm run bench:prepare && node dist-bench/tiered-direct-ingest.js",
     "bench:tiered-store-matrix": "npm run bench:prepare && node dist-bench/tiered-store-matrix.js",
     "bench:tiered-size-sweep": "npm run bench:prepare && node dist-bench/tiered-size-sweep.js",
     "bench:tiered-rowgroup": "npm run bench:prepare && node dist-bench/tiered-rowgroup-compare.js",
