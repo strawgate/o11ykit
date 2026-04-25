@@ -6,36 +6,10 @@ import {
   parseBenchmarks as parse,
   MetricsBatch,
   type Format,
+  type MatrixDimensionValue,
+  type MatrixPolicy,
 } from "@benchkit/format";
 import type { OtlpMetricsDocument } from "@octo11y/core";
-
-type MatrixDimensionValue = string | number | boolean;
-
-interface MatrixValueMatcher {
-  eq?: MatrixDimensionValue;
-  in?: MatrixDimensionValue[];
-  notIn?: MatrixDimensionValue[];
-  lt?: number;
-  lte?: number;
-  gt?: number;
-  gte?: number;
-}
-
-type MatrixMatcherValue =
-  | MatrixDimensionValue
-  | MatrixDimensionValue[]
-  | MatrixValueMatcher;
-
-interface MatrixLaneMatcher {
-  [dimension: string]: MatrixMatcherValue;
-}
-
-interface MatrixPolicy {
-  dimensions: Record<string, MatrixDimensionValue[]>;
-  excludes?: MatrixLaneMatcher[];
-  required?: MatrixLaneMatcher[];
-  probe?: MatrixLaneMatcher[];
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
