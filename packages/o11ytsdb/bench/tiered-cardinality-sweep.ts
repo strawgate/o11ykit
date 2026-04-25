@@ -21,9 +21,9 @@ const MAX_TOTAL_SAMPLES = 8_000_000;
 
 const SERIES_COUNTS = [32, 128, 512, 2048];
 const SHAPES = [
-  { name: "low-fill-80", pointsPerSeries: 80 },
-  { name: "partial-fill-320", pointsPerSeries: 320 },
-  { name: "cold-fill-640", pointsPerSeries: 640 },
+  { name: "low-fill-60", pointsPerSeries: 60 },
+  { name: "partial-fill-300", pointsPerSeries: 300 },
+  { name: "cold-fill-600", pointsPerSeries: 600 },
   { name: "steady-state-31250", pointsPerSeries: 31_250 },
 ];
 
@@ -34,7 +34,7 @@ type SweepRow =
       pointsPerSeries: number;
       totalSamples: number;
       skipped: false;
-      current640: {
+      current600: {
         memoryBytes: number;
         bytesPerSample: number;
         ingestMs: number;
@@ -47,7 +47,7 @@ type SweepRow =
           avgMembersPerRowGroup: number;
         };
       };
-      tiered80to640: {
+      tiered60to600: {
         memoryBytes: number;
         bytesPerSample: number;
         hotBytes: number;
@@ -189,7 +189,7 @@ function measureScenario(codecs: WasmCodecs, config: TieredBenchConfig): SweepRo
     pointsPerSeries: config.pointsPerSeries,
     totalSamples,
     skipped: false,
-    current640: {
+    current600: {
       memoryBytes: current.memoryBytes(),
       bytesPerSample: Number((current.memoryBytes() / totalSamples).toFixed(4)),
       ingestMs: Number(ingestCurrentMs.toFixed(3)),
@@ -197,7 +197,7 @@ function measureScenario(codecs: WasmCodecs, config: TieredBenchConfig): SweepRo
       hotReadMs: Number(currentHotReadMs.toFixed(3)),
       layout: currentLayout,
     },
-    tiered80to640: {
+    tiered60to600: {
       memoryBytes: tiered.memoryBytes(),
       bytesPerSample: Number((tiered.memoryBytes() / totalSamples).toFixed(4)),
       hotBytes: tieredInternals.hotStore.memoryBytesExcludingLabels(),

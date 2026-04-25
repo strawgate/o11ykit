@@ -7,9 +7,9 @@ import {
 
 export const DEFAULT_NUM_SERIES = 32;
 export const DEFAULT_POINTS_PER_SERIES = 31_250;
-export const HOT_SIZE = 80;
-export const COLD_SIZE = 640;
-export const BATCH = 64;
+export const HOT_SIZE = 60;
+export const COLD_SIZE = 600;
+export const BATCH = HOT_SIZE;
 export const INTERVAL = 1_000n;
 export const NUM_SERIES = DEFAULT_NUM_SERIES;
 export const POINTS_PER_SERIES = DEFAULT_POINTS_PER_SERIES;

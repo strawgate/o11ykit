@@ -114,6 +114,12 @@ export interface ChunkStats {
   resetCount: number;
 }
 
+/** Values for one series in a shared-timestamp append. */
+export interface SeriesAppend {
+  id: SeriesId;
+  values: Float64Array;
+}
+
 // ── Storage backend ──────────────────────────────────────────────────
 
 export interface StorageBackend {
@@ -124,11 +130,14 @@ export interface StorageBackend {
   /** Resolve labels to a series ID. Creates the series if new. */
   getOrCreateSeries(labels: Labels): SeriesId;
 
-  /** Append a single sample. */
-  append(id: SeriesId, timestamp: bigint, value: number): void;
-
-  /** Append a batch of samples for one series (bulk ingest). */
-  appendBatch(id: SeriesId, timestamps: BigInt64Array, values: Float64Array): void;
+  /**
+   * Append one shared timestamp vector for one or more series.
+   *
+   * Every series must provide exactly one value per timestamp. Single-series
+   * and single-sample writes are represented as degenerate calls to this same
+   * primitive.
+   */
+  append(timestamps: BigInt64Array, series: readonly SeriesAppend[]): void;
 
   // ── Query ──
 
