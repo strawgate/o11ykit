@@ -832,6 +832,12 @@ const datasetController = createDatasetController({
     _lastIngestTime = ingestTime;
     onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs);
   },
+  onLiveUpdate(store, scenario) {
+    if (_storagePopulated) {
+      _storagePopulated = false; // force re-render of stats/storage
+      _revealStorage();
+    }
+  },
 });
 
 // ── WASM init + auto-load ─────────────────────────────────────────────

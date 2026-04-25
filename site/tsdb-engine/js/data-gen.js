@@ -241,6 +241,10 @@ export function generateValue(pattern, i, seriesIdx, _total, decimals) {
     case "constant":
       v = 42.0 + seriesIdx * 0.001;
       break;
+    case "live":
+      // These are replaced by real values in startLiveBrowserScraper
+      v = 0;
+      break;
     default:
       v = Math.random() * 100;
   }
@@ -307,6 +311,25 @@ export const SCENARIOS = [
     buildLabelGroups: buildKubernetesLabelGroups,
     numPoints: 20000,
     intervalMs: 15000,
+  },
+  {
+    id: "browser-live",
+    name: "Live Browser Session",
+    emoji: "🧭",
+    isLive: true,
+    description: "Real-time telemetry from your own browser session: mouse coordinates, interaction counts, memory heap, and scroll depth.",
+    metrics: [
+      { name: "browser_mouse_x", pattern: "live" },
+      { name: "browser_mouse_y", pattern: "live" },
+      { name: "browser_memory_used_bytes", pattern: "live" },
+      { name: "browser_scroll_y", pattern: "live" },
+      { name: "browser_interaction_clicks", pattern: "live" },
+    ],
+    labelDimensions: {
+      instance: ["current-session"],
+    },
+    numPoints: 500,
+    intervalMs: 250, // High-res 4fps ingestion
   },
 ];
 
@@ -387,4 +410,69 @@ export function generateScenarioData(scenario, onProgress) {
   }
   if (onProgress) onProgress(totalSeries, totalSeries);
   return series;
+}
+
+export function startLiveBrowserScraper(store, scenario, onUpdate) {
+  const intervalMs = scenario.intervalMs || 250;
+  const metrics = scenario.metrics;
+  const seriesIds = new Map();
+  const labelGroup = { instance: "current-session" };
+
+  for (const m of metrics) {
+    const labels = new Map([["__name__", m.name], ...Object.entries(labelGroup)]);
+    seriesIds.set(m.name, store.getOrCreateSeries(labels));
+  }
+
+  const state = {
+    mouseX: 0,
+    mouseY: 0,
+    clicks: 0,
+    scrollY: 0,
+  };
+
+  const onMouseMove = (e) => {
+    state.mouseX = e.clientX;
+    state.mouseY = e.clientY;
+  };
+  const onClick = () => state.clicks++;
+  const onScroll = () => (state.scrollY = window.scrollY);
+
+  window.addEventListener("mousemove", onMouseMove);
+  window.addEventListener("click", onClick);
+  window.addEventListener("scroll", onScroll);
+
+  let count = 0;
+  const timer = setInterval(() => {
+    const now = BigInt(Date.now()) * 1_000_000n;
+    const ts = new BigInt64Array([now]);
+
+    const mem = (performance && performance.memory) || { usedJSHeapSize: 0 };
+
+    const values = {
+      browser_mouse_x: state.mouseX,
+      browser_mouse_y: state.mouseY,
+      browser_memory_used_bytes: mem.usedJSHeapSize,
+      browser_scroll_y: state.scrollY,
+      browser_interaction_clicks: state.clicks,
+    };
+
+    for (const [name, val] of Object.entries(values)) {
+      const id = seriesIds.get(name);
+      if (id !== undefined) {
+        store.appendBatch(id, ts, new Float64Array([val]));
+      }
+    }
+
+    count++;
+    scenario.numPoints = count; // Live update point count for stats
+
+    if (onUpdate) onUpdate(count);
+  }, intervalMs);
+
+  return () => {
+    clearInterval(timer);
+    window.removeEventListener("mousemove", onMouseMove);
+    window.removeEventListener("click", onClick);
+    window.removeEventListener("scroll", onScroll);
+  };
 }
