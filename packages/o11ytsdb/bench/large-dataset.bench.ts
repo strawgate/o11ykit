@@ -264,11 +264,9 @@ async function runTier(
     const data = generateValues(s, pointsPerSeries, rng);
     for (let offset = 0; offset < pointsPerSeries; offset += CHUNK_SIZE) {
       const end = Math.min(offset + CHUNK_SIZE, pointsPerSeries);
-      store.appendBatch(
-        ids[s]!,
-        data.timestamps.subarray(offset, end),
-        data.values.subarray(offset, end)
-      );
+      store.append(data.timestamps.subarray(offset, end), [
+        { id: ids[s]!, values: data.values.subarray(offset, end) },
+      ]);
     }
 
     // Progress reporting for large tiers

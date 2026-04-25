@@ -374,7 +374,7 @@ export function flushSamplesToStorage(
         tsArr[i] = BigInt(millis) * 1_000_000n;
       }
     }
-    storage.appendBatch(id, tsArr, Float64Array.from(batch.values));
+    storage.append(tsArr, [{ id, values: Float64Array.from(batch.values) }]);
     result.samplesInserted += len;
   }
 

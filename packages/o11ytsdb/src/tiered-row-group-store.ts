@@ -6,6 +6,7 @@ import { RowGroupStore } from "./row-group-store.js";
 import type {
   Labels,
   RangeDecodeCodec,
+  SeriesAppend,
   SeriesId,
   StorageBackend,
   TimeRange,
@@ -182,16 +183,48 @@ export class TieredRowGroupStore implements StorageBackend {
     return id;
   }
 
-  append(id: SeriesId, timestamp: bigint, value: number): void {
+  append(timestamps: BigInt64Array, series: readonly SeriesAppend[]): void;
+  append(id: SeriesId, timestamp: bigint, value: number): void;
+  append(
+    timestampsOrId: BigInt64Array | SeriesId,
+    seriesOrTimestamp: readonly SeriesAppend[] | bigint,
+    value?: number
+  ): void {
+    if (typeof timestampsOrId === "number") {
+      this.appendSample(timestampsOrId, seriesOrTimestamp as bigint, value as number);
+      return;
+    }
+
+    const groupsToPromote = new Set<number>();
+    let sampleCount = 0;
+    const series = seriesOrTimestamp as readonly SeriesAppend[];
+    for (const item of series) {
+      if (item.values.length !== timestampsOrId.length) {
+        throw new RangeError(
+          `append: timestamps.length (${timestampsOrId.length}) !== values.length (${item.values.length})`
+        );
+      }
+    }
+    const hotSeries = series.map((item) => {
+      groupsToPromote.add(this.requireGroupId(item.id));
+      sampleCount += item.values.length;
+      return { id: this.requireHotId(item.id), values: item.values };
+    });
+    this.hotStore.append(timestampsOrId, hotSeries);
+    this._sampleCount += sampleCount;
+    for (const groupId of groupsToPromote) {
+      this.promoteReadyGroup(groupId);
+    }
+  }
+
+  private appendSample(id: SeriesId, timestamp: bigint, value: number): void {
     this.hotStore.append(this.requireHotId(id), timestamp, value);
     this._sampleCount++;
     this.promoteReadyGroup(this.requireGroupId(id));
   }
 
   appendBatch(id: SeriesId, timestamps: BigInt64Array, values: Float64Array): void {
-    this.hotStore.appendBatch(this.requireHotId(id), timestamps, values);
-    this._sampleCount += timestamps.length;
-    this.promoteReadyGroup(this.requireGroupId(id));
+    this.append(timestamps, [{ id, values }]);
   }
 
   matchLabel(label: string, value: string): SeriesId[] {

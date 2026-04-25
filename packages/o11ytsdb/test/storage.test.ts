@@ -74,7 +74,9 @@ function insertSamples(
 ) {
   const id = store.getOrCreateSeries(labels);
   for (let i = 0; i < count; i++) {
-    store.append(id, t0 + BigInt(i) * interval, i * 1.5);
+    store.append(new BigInt64Array([t0 + BigInt(i) * interval]), [
+      { id, values: new Float64Array([i * 1.5]) },
+    ]);
   }
   return id;
 }
@@ -93,7 +95,7 @@ function insertBatch(
     ts[i] = t0 + BigInt(i) * interval;
     vals[i] = i * 1.5;
   }
-  store.appendBatch(id, ts, vals);
+  store.append(ts, [{ id, values: vals }]);
   return id;
 }
 
@@ -154,6 +156,39 @@ function describeStorageBackend(name: string, create: () => StorageBackend) {
       expect(store.sampleCount).toBe(200);
       const data = store.read(id, 0n, BigInt(Number.MAX_SAFE_INTEGER));
       expect(data.timestamps.length).toBe(200);
+    });
+
+    it("append inserts multiple series with one shared timestamp vector", () => {
+      const store = create();
+      const aId = store.getOrCreateSeries(makeLabels("shared_metric", { host: "a" }));
+      const bId = store.getOrCreateSeries(makeLabels("shared_metric", { host: "b" }));
+      const timestamps = new BigInt64Array([1_000n, 2_000n, 3_000n]);
+      const aValues = new Float64Array([1, 2, 3]);
+      const bValues = new Float64Array([10, 20, 30]);
+
+      store.append(timestamps, [
+        { id: aId, values: aValues },
+        { id: bId, values: bValues },
+      ]);
+
+      expect(store.sampleCount).toBe(6);
+      expect(Array.from(store.read(aId, 0n, 4_000n).values)).toEqual([1, 2, 3]);
+      expect(Array.from(store.read(bId, 0n, 4_000n).values)).toEqual([10, 20, 30]);
+    });
+
+    it("append rejects shape mismatches before mutating any series", () => {
+      const store = create();
+      const aId = store.getOrCreateSeries(makeLabels("bad_shared_metric", { host: "a" }));
+      const bId = store.getOrCreateSeries(makeLabels("bad_shared_metric", { host: "b" }));
+      const timestamps = new BigInt64Array([1_000n, 2_000n, 3_000n]);
+
+      expect(() =>
+        store.append(timestamps, [
+          { id: aId, values: new Float64Array([1, 2, 3]) },
+          { id: bId, values: new Float64Array([10, 20]) },
+        ])
+      ).toThrow(/timestamps\.length/);
+      expect(store.sampleCount).toBe(0);
     });
 
     it("matchLabel finds correct series", () => {

@@ -13,6 +13,7 @@ import type {
   ChunkStats,
   Labels,
   RangeDecodeCodec,
+  SeriesAppend,
   SeriesId,
   StorageBackend,
   TimeRange,
@@ -285,7 +286,31 @@ export class RowGroupStore implements StorageBackend {
     return id;
   }
 
-  append(id: SeriesId, timestamp: bigint, value: number): void {
+  append(timestamps: BigInt64Array, series: readonly SeriesAppend[]): void;
+  append(id: SeriesId, timestamp: bigint, value: number): void;
+  append(
+    timestampsOrId: BigInt64Array | SeriesId,
+    seriesOrTimestamp: readonly SeriesAppend[] | bigint,
+    value?: number
+  ): void {
+    if (typeof timestampsOrId === "number") {
+      this.appendSample(timestampsOrId, seriesOrTimestamp as bigint, value as number);
+      return;
+    }
+    const series = seriesOrTimestamp as readonly SeriesAppend[];
+    for (const item of series) {
+      if (item.values.length !== timestampsOrId.length) {
+        throw new RangeError(
+          `append: timestamps.length (${timestampsOrId.length}) !== values.length (${item.values.length})`
+        );
+      }
+    }
+    for (const item of series) {
+      this.appendBatch(item.id, timestampsOrId, item.values);
+    }
+  }
+
+  private appendSample(id: SeriesId, timestamp: bigint, value: number): void {
     const state = this.ensureWriteSpace(id);
     // Leader-only: only the segment at the lane's high-water mark writes shared timestamps
     if (state.segment.hot.count === state.lane.hotCount) {
