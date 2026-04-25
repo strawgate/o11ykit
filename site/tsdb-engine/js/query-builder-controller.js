@@ -6,6 +6,12 @@ export function createQueryBuilderController({ getStore, recommendGroupByForMetr
   let activeGroupBy = [];
   const availableLabels = new Map();
 
+  function selectedMetricValue() {
+    const sel = document.getElementById("queryMetric");
+    if (!(sel instanceof HTMLSelectElement)) return "";
+    return sel.value || sel.options[0]?.value || "";
+  }
+
   function clearActiveRecipe() {
     document.querySelectorAll(".query-recipe.active").forEach((btn) => {
       btn.classList.remove("active");
@@ -21,6 +27,7 @@ export function createQueryBuilderController({ getStore, recommendGroupByForMetr
   function populateQueryMetrics(metrics) {
     const sel = document.getElementById("queryMetric");
     if (!sel) return;
+    const previousValue = sel.value;
     sel.innerHTML = "";
     for (const metric of metrics) {
       const opt = document.createElement("option");
@@ -28,6 +35,9 @@ export function createQueryBuilderController({ getStore, recommendGroupByForMetr
       opt.textContent = metric;
       sel.appendChild(opt);
     }
+    const nextValue =
+      metrics.includes(previousValue) && previousValue ? previousValue : metrics[0] || "";
+    sel.value = nextValue;
   }
 
   function populateGroupByOptions() {
@@ -59,7 +69,7 @@ export function createQueryBuilderController({ getStore, recommendGroupByForMetr
     const el = document.getElementById("queryPreview")?.querySelector(".query-preview-code");
     if (!el) return;
 
-    const metric = document.getElementById("queryMetric")?.value || "…";
+    const metric = selectedMetricValue() || "…";
     const agg = document.getElementById("queryAgg")?.value;
     const transform = document.getElementById("queryTransform")?.value;
     const stepMs = parseInt(document.getElementById("queryStep")?.value || "0", 10);
@@ -150,7 +160,7 @@ export function createQueryBuilderController({ getStore, recommendGroupByForMetr
     const aggEl = document.getElementById("queryAgg");
     const transformEl = document.getElementById("queryTransform");
     const stepEl = document.getElementById("queryStep");
-    const metric = document.getElementById("queryMetric")?.value;
+    const metric = selectedMetricValue();
     if (!aggEl || !transformEl || !stepEl) return;
     const recipeConfig = buildQueryRecipeConfig(recipe, metric, recommendGroupByForMetric);
     if (!recipeConfig) return;
@@ -256,7 +266,7 @@ export function createQueryBuilderController({ getStore, recommendGroupByForMetr
 
   function readConfig() {
     return {
-      metric: document.getElementById("queryMetric")?.value,
+      metric: selectedMetricValue(),
       agg: document.getElementById("queryAgg")?.value || undefined,
       transform: document.getElementById("queryTransform")?.value || undefined,
       stepMs: parseInt(document.getElementById("queryStep")?.value || "0", 10),

@@ -12,11 +12,13 @@ import {
 } from "./metrics-model.js";
 import { ScanEngine } from "./query.js";
 import { createQueryBuilderController } from "./query-builder-controller.js";
+import { formatEffectiveStepStat, summarizeStepResolution } from "./query-builder-model.js";
 import {
-  formatEffectiveStepStat,
-  formatStepLabel,
-  summarizeStepResolution,
-} from "./query-builder-model.js";
+  deserializeWorkerResult as _deserializeWorkerResult,
+  mergeAvgWorkerResults as _mergeAvgWorkerResults,
+  mergeRawWorkerResults as _mergeRawWorkerResults,
+  mergeReductionWorkerResults as _mergeReductionWorkerResults,
+} from "./query-merge.js";
 import { QueryWorkerPool, supportsParallelQuery } from "./query-pool.js";
 import { buildStorageExplorer } from "./storage-explorer.js";
 import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
@@ -86,6 +88,48 @@ function renderLegend(container, series) {
   }
 }
 
+function clearResultsVisuals() {
+  const canvas = document.getElementById("chartCanvas");
+  if (canvas instanceof HTMLCanvasElement) {
+    const ctx = canvas.getContext("2d");
+    if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  const legend = document.getElementById("chartLegend");
+  if (legend) legend.innerHTML = "";
+}
+
+function renderNoMatchResults(reason, queryTime, requestedStep = null) {
+  showSection("section-results");
+  queryBuilder.updatePreview();
+
+  const planSection = document.getElementById("section-query-plan");
+  const planSummary = document.getElementById("queryExecutionSummary");
+  if (planSection) showSection("section-query-plan");
+  if (planSummary) planSummary.textContent = reason;
+
+  if (queryWorkerPool && queryWorkerPool.state?.phase !== "loading") {
+    queryWorkerPool.markComplete(reason, {
+      scannedSeries: 0,
+      scannedSamples: 0,
+      resultSeries: 0,
+      queryTimeMs: queryTime,
+    });
+  }
+
+  document.getElementById("qStatScannedSeries").innerHTML = "Scanned: <strong>no matches</strong>";
+  document.getElementById("qStatScannedSamples").innerHTML = "Samples: <strong>none</strong>";
+  document.getElementById("qStatResultSeries").innerHTML = "Result: <strong>empty</strong>";
+  document.getElementById("qStatEffectiveStep").innerHTML = formatEffectiveStepStat({
+    effectiveStep: requestedStep,
+    requestedStep,
+    pointBudget: null,
+  });
+  document.getElementById("qStatQueryTime").innerHTML =
+    `Time: <strong>${queryTime.toFixed(1)} ms</strong>`;
+
+  clearResultsVisuals();
+}
+
 function resetMetricsExplorer() {
   metricsExplorer.reset();
 }
@@ -135,21 +179,6 @@ function onDataLoaded(store, metrics, _ingestTime, numPoints, intervalMs) {
   void _provisionQueryWorkers(store);
 }
 
-function _snapshotSeriesData(store) {
-  const seriesData = [];
-  for (let id = 0; id < store.seriesCount; id++) {
-    const labels = store.labels(id);
-    if (!labels) continue;
-    const data = store.read(id, -MAX_I64, MAX_I64);
-    seriesData.push({
-      labels: new Map(labels),
-      timestamps: data.timestamps.slice(0),
-      values: data.values.slice(0),
-    });
-  }
-  return seriesData;
-}
-
 async function _provisionQueryWorkers(store) {
   if (typeof Worker === "undefined") {
     _renderQueryFabricMonitor({
@@ -168,7 +197,7 @@ async function _provisionQueryWorkers(store) {
   }
 
   try {
-    await queryWorkerPool.loadSeriesData(_snapshotSeriesData(store));
+    await queryWorkerPool.loadStore(store);
   } catch (error) {
     console.error("Failed to provision query workers", error);
     queryWorkerPool.markFallback("Worker pool failed to initialize");
@@ -189,60 +218,90 @@ function _renderQueryFabricMonitor(state) {
   if (state.phase === "running") detailsEl.open = true;
 
   const cards = [];
+  const workers = state.workers || [];
+  const plan = state.plan || null;
+  const phaseSummary = _workerPhaseSummary(workers);
+  const expandWorkers =
+    state.phase === "running" || state.phase === "loading" || state.phase === "fallback";
   cards.push(`
     <article class="fabric-card fabric-card-coordinator phase-${escapeHtml(state.coordinator?.phase || "idle")}">
-      <div class="fabric-card-top">
+      <div class="fabric-card-top fabric-card-top-compact">
         <span class="fabric-role">Coordinator</span>
-        <span class="fabric-status">${escapeHtml(state.coordinator?.phase || "idle")}</span>
+        <span class="fabric-coordinator-meta">${escapeHtml(_planMeta(plan, workers.length || 0))}</span>
       </div>
-      <div class="fabric-name">coordinator/01</div>
-      <div class="fabric-detail">${escapeHtml(state.coordinator?.detail || "Waiting for dataset")}</div>
-      <div class="fabric-metrics">
-        <span>${escapeHtml(state.phase || "idle")}</span>
-        <span>${state.workers?.length || 0} workers</span>
-      </div>
+      <div class="fabric-detail fabric-detail-compact">${escapeHtml(_coordinatorNarrative(state))}</div>
+      ${
+        workers.length
+          ? `
+      <details class="fabric-worker-toggle" ${expandWorkers ? "open" : ""}>
+        <summary class="fabric-worker-toggle-summary">
+          <span>Show ${workers.length} query workers</span>
+          <span class="fabric-worker-toggle-meta">${escapeHtml(phaseSummary)}</span>
+        </summary>
+        <div class="fabric-worker-grid">
+          ${workers
+            .map((worker) => {
+              const phase = escapeHtml(worker.phase || "idle");
+              const roleClass = escapeHtml(worker.role || "worker");
+              const roleLabel = escapeHtml(_workerRoleLabel(worker.role));
+              const taskText = escapeHtml(worker.task || "Idle");
+              const durationText =
+                worker.durationMs != null ? `${worker.durationMs.toFixed(1)} ms` : taskText;
+              const isExpanded =
+                worker.phase === "running" ||
+                worker.phase === "loading" ||
+                worker.phase === "fallback";
+              return `
+                <details class="fabric-worker-mini phase-${phase} role-${roleClass}" ${isExpanded ? "open" : ""}>
+                  <summary class="fabric-worker-mini-summary">
+                    <div class="fabric-worker-mini-top">
+                      <span class="fabric-worker-mini-name">${escapeHtml(worker.name)}</span>
+                      <span class="fabric-status">${phase}</span>
+                    </div>
+                    <div class="fabric-worker-mini-meta">
+                      <span>${roleLabel}</span>
+                      <span>${worker.seriesCount?.toLocaleString() || 0} series</span>
+                      <span>${durationText}</span>
+                    </div>
+                    <div class="fabric-meter fabric-meter-compact"><span style="width:${_workerMeterWidth(worker)}%"></span></div>
+                  </summary>
+                  <div class="fabric-worker-mini-body">
+                    <div class="fabric-detail">${escapeHtml(worker.detail || "Idle")}</div>
+                    <div class="fabric-task">${taskText}</div>
+                    <div class="fabric-metrics">
+                      <span>${worker.sampleCount?.toLocaleString() || 0} samples resident</span>
+                      <span>${worker.scannedSeries?.toLocaleString() || 0} scanned</span>
+                      <span>${worker.scannedSamples?.toLocaleString() || 0} pts</span>
+                      <span>${worker.durationMs != null ? `${worker.durationMs.toFixed(1)} ms` : "No query yet"}</span>
+                    </div>
+                  </div>
+                </details>
+              `;
+            })
+            .join("")}
+        </div>
+      </details>`
+          : ""
+      }
     </article>
   `);
-
-  for (const worker of state.workers || []) {
-    cards.push(`
-      <article class="fabric-card fabric-card-worker phase-${escapeHtml(worker.phase || "idle")} role-${escapeHtml(worker.role || "query-shard")}">
-        <div class="fabric-card-top">
-          <span class="fabric-role">${escapeHtml(worker.role || "query-shard")}</span>
-          <span class="fabric-status">${escapeHtml(worker.phase || "idle")}</span>
-        </div>
-        <div class="fabric-name">${escapeHtml(worker.name)}</div>
-        <div class="fabric-detail">${escapeHtml(worker.detail || "Idle")}</div>
-        <div class="fabric-metrics">
-          <span>${worker.seriesCount?.toLocaleString() || 0} series</span>
-          <span>${worker.sampleCount?.toLocaleString() || 0} samples</span>
-        </div>
-        <div class="fabric-task">${escapeHtml(worker.task || "Idle")}</div>
-        <div class="fabric-meter"><span style="width:${_workerMeterWidth(worker)}%"></span></div>
-        <div class="fabric-metrics">
-          <span>${worker.scannedSeries?.toLocaleString() || 0} scanned</span>
-          <span>${worker.scannedSamples?.toLocaleString() || 0} pts</span>
-          <span>${worker.durationMs ? `${worker.durationMs.toFixed(1)} ms` : "—"}</span>
-        </div>
-      </article>
-    `);
-  }
 
   gridEl.innerHTML = cards.join("");
 }
 
 function _executionStatusText(state) {
+  const plan = state.plan || null;
   switch (state.phase) {
     case "loading":
-      return "Provisioning workers";
+      return plan ? `Provisioning ${_planTitle(plan)}` : "Provisioning workers";
     case "running":
       return "Running now";
     case "complete":
       return "Latest query complete";
     case "fallback":
-      return "Coordinator fallback";
+      return plan?.topology === "inline" ? "Inline engine" : "Coordinator fallback";
     case "ready":
-      return "Workers ready";
+      return plan ? `${_planTitle(plan)} ready` : "Workers ready";
     default:
       return "Waiting for dataset";
   }
@@ -265,168 +324,110 @@ function _workerMeterWidth(worker) {
   return 18;
 }
 
-function _labelsKey(labels) {
-  return [...labels.entries()]
-    .sort((a, b) => (a[0] === b[0] ? a[1].localeCompare(b[1]) : a[0].localeCompare(b[0])))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\0");
+function _planTitle(plan) {
+  if (!plan) return "worker pool";
+  const topology =
+    plan.topology === "single-worker"
+      ? "single-worker"
+      : plan.topology === "split"
+        ? "split"
+        : plan.topology === "pooled"
+          ? "pooled"
+          : "inline";
+  const transport = plan.transport === "shared-frozen" ? "shared" : plan.transport;
+  return `${topology} ${transport}`;
 }
 
-function _deserializeWorkerResult(result) {
-  return {
-    scannedSeries: result.scannedSeries,
-    scannedSamples: result.scannedSamples,
-    requestedStep: result.requestedStep ?? null,
-    effectiveStep: result.effectiveStep ?? null,
-    pointBudget: result.pointBudget ?? null,
-    series: result.series.map((series) => ({
-      labels: new Map(series.labels),
-      timestamps: series.timestamps,
-      values: series.values,
-    })),
-  };
+function _planMeta(plan, workerCount) {
+  if (!plan) return `${workerCount} workers`;
+  const transport = plan.transport === "shared-frozen" ? "SAB" : plan.transport;
+  return `${plan.actualWorkers} workers · ${plan.topology} · ${transport}`;
 }
 
-function _mergeRawWorkerResults(results) {
-  const series = [];
-  let scannedSeries = 0;
-  let scannedSamples = 0;
-  for (const result of results) {
-    scannedSeries += result.scannedSeries;
-    scannedSamples += result.scannedSamples;
-    series.push(...result.series);
+function _workerRoleLabel(role) {
+  switch (role) {
+    case "combined-engine":
+      return "coordinator + hot + frozen";
+    case "primary-engine":
+      return "coordinator + hot";
+    case "query-shard":
+      return "frozen";
+    default:
+      return role || "worker";
   }
-  series.sort((a, b) => _labelsKey(a.labels).localeCompare(_labelsKey(b.labels)));
-  return {
-    series,
-    scannedSeries,
-    scannedSamples,
-    requestedStep: results[0]?.requestedStep ?? null,
-    effectiveStep: results[0]?.effectiveStep ?? null,
-    pointBudget: results[0]?.pointBudget ?? null,
-  };
 }
 
-function _mergeReductionWorkerResults(results, agg) {
-  const groups = new Map();
-  let scannedSeries = 0;
-  let scannedSamples = 0;
+function _workerPhaseSummary(workers) {
+  if (!workers.length) return "No workers provisioned yet.";
 
-  for (const result of results) {
-    scannedSeries += result.scannedSeries;
-    scannedSamples += result.scannedSamples;
-    for (const series of result.series) {
-      const key = _labelsKey(series.labels);
-      let group = groups.get(key);
-      if (!group) {
-        group = { labels: series.labels, points: new Map() };
-        groups.set(key, group);
-      }
-      for (let i = 0; i < series.timestamps.length; i++) {
-        const timestamp = series.timestamps[i];
-        const value = series.values[i];
-        const pointKey = timestamp.toString();
-        if (!group.points.has(pointKey)) {
-          group.points.set(pointKey, { timestamp, value });
-          continue;
-        }
-        const existing = group.points.get(pointKey);
-        if (agg === "sum" || agg === "count") existing.value += value;
-        else if (agg === "min") existing.value = Math.min(existing.value, value);
-        else if (agg === "max") existing.value = Math.max(existing.value, value);
-      }
-    }
+  const counts = new Map();
+  for (const worker of workers) {
+    const phase = worker.phase || "idle";
+    counts.set(phase, (counts.get(phase) || 0) + 1);
   }
 
-  return {
-    scannedSeries,
-    scannedSamples,
-    requestedStep: results[0]?.requestedStep ?? null,
-    effectiveStep: results[0]?.effectiveStep ?? null,
-    pointBudget: results[0]?.pointBudget ?? null,
-    series: [...groups.values()].map((group) => {
-      const points = [...group.points.values()].sort((a, b) =>
-        a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0
-      );
-      return {
-        labels: group.labels,
-        timestamps: BigInt64Array.from(points.map((point) => point.timestamp)),
-        values: Float64Array.from(points.map((point) => point.value)),
-      };
-    }),
-  };
+  const order = ["running", "loading", "ready", "complete", "fallback", "idle"];
+  const parts = [];
+  for (const phase of order) {
+    const count = counts.get(phase);
+    if (!count) continue;
+    parts.push(`${count} ${phase}`);
+  }
+  for (const [phase, count] of counts) {
+    if (order.includes(phase)) continue;
+    parts.push(`${count} ${phase}`);
+  }
+  return `${workers.length} workers · ${parts.join(" · ")}`;
 }
 
-function _mergeAvgWorkerResults(sumResults, countResults) {
-  const groups = new Map();
-  let scannedSeries = 0;
-  let scannedSamples = 0;
+function _coordinatorNarrative(state) {
+  const workers = state.workers || [];
+  const workerCount = workers.length;
+  const plan = state.plan || null;
+  if (!workerCount)
+    return (
+      plan?.reason ||
+      "Handles label matching, dispatch, and result merge once workers are provisioned."
+    );
 
-  for (const result of sumResults) {
-    scannedSeries += result.scannedSeries;
-    scannedSamples += result.scannedSamples;
-    for (const series of result.series) {
-      const key = _labelsKey(series.labels);
-      let group = groups.get(key);
-      if (!group) {
-        group = { labels: series.labels, points: new Map() };
-        groups.set(key, group);
-      }
-      for (let i = 0; i < series.timestamps.length; i++) {
-        const timestamp = series.timestamps[i];
-        const pointKey = timestamp.toString();
-        if (!group.points.has(pointKey)) {
-          group.points.set(pointKey, { timestamp, sum: 0, count: 0 });
-        }
-        group.points.get(pointKey).sum += series.values[i];
-      }
-    }
+  const mergedStats = state.coordinator?.stats || null;
+  if (
+    mergedStats &&
+    mergedStats.scannedSeries === 0 &&
+    mergedStats.scannedSamples === 0 &&
+    mergedStats.resultSeries === 0
+  ) {
+    return "No series matched the current metric and label filters across the worker pool.";
   }
 
-  for (const result of countResults) {
-    for (const series of result.series) {
-      const key = _labelsKey(series.labels);
-      let group = groups.get(key);
-      if (!group) {
-        group = { labels: series.labels, points: new Map() };
-        groups.set(key, group);
-      }
-      for (let i = 0; i < series.timestamps.length; i++) {
-        const timestamp = series.timestamps[i];
-        const pointKey = timestamp.toString();
-        if (!group.points.has(pointKey)) {
-          group.points.set(pointKey, { timestamp, sum: 0, count: 0 });
-        }
-        group.points.get(pointKey).count += series.values[i];
-      }
-    }
-  }
+  const residentSeries = workers.reduce((sum, worker) => sum + (worker.seriesCount || 0), 0);
+  const matchedSeries = workers.reduce((sum, worker) => sum + (worker.scannedSeries || 0), 0);
+  const scannedSamples = workers.reduce((sum, worker) => sum + (worker.scannedSamples || 0), 0);
+  const partialSeries = workers.reduce((sum, worker) => sum + (worker.resultSeries || 0), 0);
 
-  return {
-    scannedSeries,
-    scannedSamples,
-    requestedStep: sumResults[0]?.requestedStep ?? null,
-    effectiveStep: sumResults[0]?.effectiveStep ?? null,
-    pointBudget: sumResults[0]?.pointBudget ?? null,
-    series: [...groups.values()].map((group) => {
-      const points = [...group.points.values()].sort((a, b) =>
-        a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0
-      );
-      return {
-        labels: group.labels,
-        timestamps: BigInt64Array.from(points.map((point) => point.timestamp)),
-        values: Float64Array.from(
-          points.map((point) => (point.count > 0 ? point.sum / point.count : 0))
-        ),
-      };
-    }),
-  };
+  switch (state.phase) {
+    case "loading":
+      return `Planning ${plan?.topology || "worker"} execution and partitioning ${residentSeries.toLocaleString()} series across ${workerCount} workers.`;
+    case "ready":
+      return `${plan?.reason || "Matches labels on the coordinator, then routes chunk scans and decode work across workers."} Using ${workerCount} workers in ${plan?.topology || "worker"} mode.`;
+    case "running":
+      return `Matched ${matchedSeries.toLocaleString()} of ${residentSeries.toLocaleString()} resident series and is fanning ${scannedSamples.toLocaleString()} samples out to ${workerCount} workers.`;
+    case "complete":
+      if (mergedStats) {
+        return `Matched ${mergedStats.scannedSeries.toLocaleString()} series, pushed ${mergedStats.scannedSamples.toLocaleString()} samples through ${workerCount} workers, and merged ${mergedStats.resultSeries.toLocaleString()} outputs in ${mergedStats.queryTimeMs.toFixed(1)} ms.`;
+      }
+      return `Matched ${matchedSeries.toLocaleString()} series, pushed ${scannedSamples.toLocaleString()} samples through ${workerCount} workers, and merged ${partialSeries.toLocaleString()} partial outputs.`;
+    case "fallback":
+      return "Worker fan-out is unavailable, so the coordinator is matching labels, scanning chunks, and merging locally.";
+    default:
+      return "Waiting for a dataset before matching labels and dispatching chunk scans.";
+  }
 }
 
 function _canRunOnWorkers(opts) {
-  return (
-    !!queryWorkerPool && queryWorkerPool.state?.phase !== "running" && supportsParallelQuery(opts)
-  );
+  if (!queryWorkerPool || !supportsParallelQuery(opts)) return false;
+  const phase = queryWorkerPool.state?.phase;
+  return phase === "loading" || phase === "ready" || phase === "complete";
 }
 
 // ── Metrics Explorer ──────────────────────────────────────────────────
@@ -609,9 +610,10 @@ async function runQuery(options = {}) {
   const { scrollToResults = false } = options;
   if (!currentStore) return;
   const runSeq = ++_queryRunSeq;
+  const t0 = performance.now();
 
   const queryConfig = queryBuilder.readConfig();
-  const metric = queryConfig.metric;
+  const metric = queryConfig.metric || generatedMetrics[0] || "";
   const agg = queryConfig.agg;
   const groupBy = queryConfig.groupBy;
   const stepMs = queryConfig.stepMs;
@@ -621,8 +623,11 @@ async function runQuery(options = {}) {
     document.getElementById("chartCanvas")?.parentElement?.clientWidth || window.innerWidth || 1200;
   const maxPoints = Math.max(240, Math.floor(chartWidth * 1.25));
 
-  // Pipeline stage 1: Label matching
-  const totalSeries = currentStore.seriesCount || 0;
+  if (!metric) {
+    renderNoMatchResults("Load a dataset to query metrics.", performance.now() - t0, step ?? null);
+    return;
+  }
+
   let ids = currentStore.matchLabel("__name__", metric);
   const activeMatchers = queryBuilder.getActiveMatchers();
   if (activeMatchers.length > 0) {
@@ -636,7 +641,15 @@ async function runQuery(options = {}) {
       }
     }
   }
-  if (ids.length === 0) return;
+  if (ids.length === 0) {
+    if (runSeq !== _queryRunSeq) return;
+    renderNoMatchResults(
+      "No series matched the current metric and label filters.",
+      performance.now() - t0,
+      step ?? null
+    );
+    return;
+  }
 
   let minT = BigInt("9223372036854775807");
   let maxT = -minT;
@@ -647,6 +660,15 @@ async function runQuery(options = {}) {
       if (data.timestamps[data.timestamps.length - 1] > maxT)
         maxT = data.timestamps[data.timestamps.length - 1];
     }
+  }
+  if (minT === BigInt("9223372036854775807")) {
+    if (runSeq !== _queryRunSeq) return;
+    renderNoMatchResults(
+      "The selected series do not contain samples in the current range.",
+      performance.now() - t0,
+      step ?? null
+    );
+    return;
   }
 
   const queryOpts = {
@@ -660,8 +682,6 @@ async function runQuery(options = {}) {
     transform: transform || undefined,
     matchers: activeMatchers,
   };
-
-  const t0 = performance.now();
   let result;
   let workerQueryId = null;
   let usedWorkers = false;
@@ -714,57 +734,53 @@ async function runQuery(options = {}) {
   showSection("section-results");
   queryBuilder.updatePreview();
 
-  // ── Pipeline visualization ──
   const planSection = document.getElementById("section-query-plan");
   const planSummary = document.getElementById("queryExecutionSummary");
-  const pipelineEl = document.getElementById("queryPipeline");
   if (planSection) showSection("section-query-plan");
   if (planSummary) {
     const stepSummary = summarizeStepResolution(result);
-    planSummary.textContent = `${result.scannedSeries.toLocaleString()} series matched, ${result.scannedSamples.toLocaleString()} samples scanned, ${result.series.length.toLocaleString()} outputs, ${stepSummary}`;
-  }
-  if (pipelineEl) {
-    // Stage 1: Label matching
-    const matchEl = document.getElementById("pipelineMatchDetail");
-    if (matchEl) {
-      matchEl.innerHTML = `<strong>${result.scannedSeries.toLocaleString()}</strong> of ${totalSeries.toLocaleString()} series matched`;
-    }
-    // Stage 2: Chunk scan
-    const chunksEl = document.getElementById("pipelineChunksDetail");
-    if (chunksEl) {
-      chunksEl.innerHTML = `<strong>${result.scannedSamples.toLocaleString()}</strong> samples across ${result.scannedSeries.toLocaleString()} series`;
-    }
-    // Stage 3: Decode & aggregate
-    const decodeEl = document.getElementById("pipelineDecodeDetail");
-    if (decodeEl) {
-      const stepDetail =
-        result.effectiveStep === null || result.effectiveStep === undefined
-          ? "raw resolution"
-          : `step <strong>${formatStepLabel(result.effectiveStep)}</strong>`;
-      decodeEl.innerHTML = `<strong>${result.series.length.toLocaleString()}</strong> result series · ${stepDetail} · <strong>${queryTime.toFixed(1)} ms</strong>`;
+    if (result.scannedSeries === 0 && result.scannedSamples === 0 && result.series.length === 0) {
+      planSummary.textContent = "No series matched the current metric and label filters.";
+    } else {
+      planSummary.textContent = `${result.scannedSeries.toLocaleString()} series matched, ${result.scannedSamples.toLocaleString()} samples scanned, ${result.series.length.toLocaleString()} outputs, ${stepSummary}`;
     }
   }
 
   if (usedWorkers && workerQueryId !== null) {
     queryWorkerPool.markMerged(
       workerQueryId,
-      `${queryWorkerPool.workers.length} workers merged ${result.series.length.toLocaleString()} outputs in ${queryTime.toFixed(1)} ms`
+      `${queryWorkerPool.workers.length} workers merged ${result.series.length.toLocaleString()} outputs in ${queryTime.toFixed(1)} ms`,
+      {
+        scannedSeries: result.scannedSeries,
+        scannedSamples: result.scannedSamples,
+        resultSeries: result.series.length,
+        queryTimeMs: queryTime,
+      }
     );
   }
 
-  document.getElementById("qStatScannedSeries").innerHTML =
-    `Scanned: <strong>${result.scannedSeries}</strong> series`;
-  document.getElementById("qStatScannedSamples").innerHTML =
-    `Samples: <strong>${result.scannedSamples.toLocaleString()}</strong>`;
-  document.getElementById("qStatResultSeries").innerHTML =
-    `Result: <strong>${result.series.length}</strong> series`;
+  const noMatches =
+    result.scannedSeries === 0 && result.scannedSamples === 0 && result.series.length === 0;
+  document.getElementById("qStatScannedSeries").innerHTML = noMatches
+    ? "Scanned: <strong>no matches</strong>"
+    : `Scanned: <strong>${result.scannedSeries}</strong> series`;
+  document.getElementById("qStatScannedSamples").innerHTML = noMatches
+    ? "Samples: <strong>none</strong>"
+    : `Samples: <strong>${result.scannedSamples.toLocaleString()}</strong>`;
+  document.getElementById("qStatResultSeries").innerHTML = noMatches
+    ? "Result: <strong>empty</strong>"
+    : `Result: <strong>${result.series.length}</strong> series`;
   document.getElementById("qStatEffectiveStep").innerHTML = formatEffectiveStepStat(result);
   document.getElementById("qStatQueryTime").innerHTML =
     `Time: <strong>${queryTime.toFixed(1)} ms</strong>`;
 
-  renderChart(document.getElementById("chartCanvas"), result.series, "");
-  setupChartTooltip();
-  renderLegend(document.getElementById("chartLegend"), result.series);
+  if (noMatches) {
+    clearResultsVisuals();
+  } else {
+    renderChart(document.getElementById("chartCanvas"), result.series, "");
+    setupChartTooltip();
+    renderLegend(document.getElementById("chartLegend"), result.series);
+  }
 
   if (scrollToResults) {
     requestAnimationFrame(() => {

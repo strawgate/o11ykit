@@ -71,9 +71,59 @@ interface SeriesGroup {
   lanes: GroupLane[];
 }
 
-function createLane(chunkSize: number): GroupLane {
+export interface RowGroupStoreCompactionChunk {
+  valueBuffer: Uint8Array;
+  offsets: Uint32Array;
+  sizes: Uint32Array;
+  memberCount: number;
+}
+
+export interface RowGroupStorePromotedTimestampChunk {
+  timestamps: BigInt64Array | undefined;
+  compressed: Uint8Array | undefined;
+  minT: bigint;
+  maxT: bigint;
+  count: number;
+}
+
+export interface RowGroupStorePromotedChunk extends RowGroupStoreCompactionChunk {
+  packedStats: Float64Array;
+}
+
+export interface RowGroupStoreLaneWindow {
+  groupId: number;
+  laneId: number;
+  rowGroupCount: number;
+  sampleCount: number;
+  memberSeriesIds: SeriesId[];
+  timestamps: BigInt64Array;
+  rowGroups: RowGroupStoreCompactionChunk[];
+}
+
+export interface RowGroupStorePromotedLaneWindow {
+  groupId: number;
+  laneId: number;
+  rowGroupCount: number;
+  sampleCount: number;
+  memberSeriesIds: SeriesId[];
+  timestampChunks: RowGroupStorePromotedTimestampChunk[];
+  rowGroups: RowGroupStorePromotedChunk[];
+}
+
+type RowGroupStoreCommittedWindow = Pick<
+  RowGroupStoreLaneWindow,
+  "groupId" | "laneId" | "rowGroupCount" | "sampleCount"
+>;
+
+const EMPTY_TIMESTAMPS = new BigInt64Array(0);
+const EMPTY_VALUES = new Float64Array(0);
+const PACKED_STATS_STRIDE = 5;
+
+function createLane(): GroupLane {
   return {
-    hotTimestamps: new BigInt64Array(chunkSize),
+    // Grow hot timestamp storage on first write. Many lanes, especially
+    // compaction-only cold lanes, never receive direct hot appends.
+    hotTimestamps: EMPTY_TIMESTAMPS,
     hotCount: 0,
     frozenTimestamps: [],
     members: [],
@@ -86,6 +136,53 @@ function requireDefined<T>(value: T | undefined, message: string): T {
     throw new RangeError(message);
   }
   return value;
+}
+
+type LazyRowGroupPart = TimeRange & {
+  _timestampsRef?: BigInt64Array;
+  _compressedValues?: Uint8Array;
+  _compressedTimestamps?: Uint8Array;
+  _valuesCodec?: ValuesCodec;
+  _rangeCodec?: RangeDecodeCodec;
+  _startT?: bigint;
+  _endT?: bigint;
+  _lo?: number;
+  _hi?: number;
+};
+
+function decodeFullRowGroupPart(this: LazyRowGroupPart): TimeRange {
+  this.timestamps = requireDefined(this._timestampsRef, "missing row-group timestamps");
+  this.values = requireDefined(this._valuesCodec, "missing values codec").decodeValues(
+    requireDefined(this._compressedValues, "missing compressed values")
+  );
+  return this;
+}
+
+function decodePartialRowGroupPart(this: LazyRowGroupPart): TimeRange {
+  const codec = requireDefined(this._valuesCodec, "missing values codec");
+  const compressedValues = requireDefined(this._compressedValues, "missing compressed values");
+  const lo = requireDefined(this._lo, "missing partial decode start");
+  const hi = requireDefined(this._hi, "missing partial decode end");
+  if (codec.decodeValuesRangeView) {
+    this.values = codec.decodeValuesRangeView.call(codec, compressedValues, lo, hi).slice();
+    return this;
+  }
+  this.values = codec.decodeValuesRange
+    ? codec.decodeValuesRange.call(codec, compressedValues, lo, hi)
+    : codec.decodeValues(compressedValues).subarray(lo, hi);
+  return this;
+}
+
+function decodeRangeRowGroupPart(this: LazyRowGroupPart): TimeRange {
+  const result = requireDefined(this._rangeCodec, "missing range codec").rangeDecodeValues(
+    requireDefined(this._compressedTimestamps, "missing compressed timestamps"),
+    requireDefined(this._compressedValues, "missing compressed values"),
+    requireDefined(this._startT, "missing range decode start"),
+    requireDefined(this._endT, "missing range decode end")
+  );
+  this.timestamps = result.timestamps;
+  this.values = result.values;
+  return this;
 }
 
 export class RowGroupStore implements StorageBackend {
@@ -175,7 +272,7 @@ export class RowGroupStore implements StorageBackend {
     }
 
     while (this.groups.length <= groupId) {
-      this.groups.push({ lanes: [createLane(this.chunkSize)] });
+      this.groups.push({ lanes: [createLane()] });
     }
 
     const series: LaneSeries = {
@@ -341,6 +438,28 @@ export class RowGroupStore implements StorageBackend {
 
           const compressedValues = rg.valueBuffer.subarray(offset, offset + size);
 
+          if (tsChunk.minT >= start && tsChunk.maxT <= end) {
+            const rangeCodec = requireDefined(
+              this.rangeCodec,
+              "missing range codec for stats-aware row-group decode"
+            );
+            visit({
+              timestamps: EMPTY_TIMESTAMPS,
+              values: EMPTY_VALUES,
+              statsPacked: rg.packedStats,
+              statsOffset: segment.laneMemberIndex * PACKED_STATS_STRIDE,
+              chunkMinT: tsChunk.minT,
+              chunkMaxT: tsChunk.maxT,
+              decode: decodeRangeRowGroupPart,
+              _rangeCodec: rangeCodec,
+              _compressedTimestamps: compressedTimestamps,
+              _compressedValues: compressedValues,
+              _startT: tsChunk.minT,
+              _endT: tsChunk.maxT,
+            } as LazyRowGroupPart);
+            continue;
+          }
+
           const result = this.rangeCodec.rangeDecodeValues(
             compressedTimestamps,
             compressedValues,
@@ -377,14 +496,35 @@ export class RowGroupStore implements StorageBackend {
           );
 
           const compressedValues = rg.valueBuffer.subarray(offset, offset + size);
-          const values = this.valuesCodec.decodeValues(compressedValues);
+          if (tsChunk.minT >= start && tsChunk.maxT <= end) {
+            visit({
+              timestamps: EMPTY_TIMESTAMPS,
+              values: EMPTY_VALUES,
+              statsPacked: rg.packedStats,
+              statsOffset: segment.laneMemberIndex * PACKED_STATS_STRIDE,
+              chunkMinT: tsChunk.minT,
+              chunkMaxT: tsChunk.maxT,
+              decode: decodeFullRowGroupPart,
+              _timestampsRef: timestamps,
+              _compressedValues: compressedValues,
+              _valuesCodec: this.valuesCodec,
+            } as LazyRowGroupPart);
+            continue;
+          }
+
           const lo = lowerBound(timestamps, start, 0, tsChunk.count);
           const hi = upperBound(timestamps, end, lo, tsChunk.count);
           if (hi > lo) {
+            const partialTimestamps = timestamps.subarray(lo, hi);
             visit({
-              timestamps: timestamps.slice(lo, hi),
-              values: values.slice(lo, hi),
-            });
+              timestamps: partialTimestamps,
+              values: EMPTY_VALUES,
+              decode: decodePartialRowGroupPart,
+              _compressedValues: compressedValues,
+              _valuesCodec: this.valuesCodec,
+              _lo: lo,
+              _hi: hi,
+            } as LazyRowGroupPart);
           }
         }
       }
@@ -453,6 +593,348 @@ export class RowGroupStore implements StorageBackend {
     return bytes;
   }
 
+  memoryBytesExcludingLabels(): number {
+    return this.memoryBytes() - this.labelIndex.memoryBytes();
+  }
+
+  peekCompactableLaneWindow(
+    groupId: number,
+    rowGroupCount: number,
+    expectedChunkSize: number
+  ): RowGroupStoreLaneWindow | undefined {
+    const group = this.getGroup(groupId);
+    for (let laneId = 0; laneId < group.lanes.length; laneId++) {
+      const lane = requireDefined(
+        group.lanes[laneId],
+        `missing lane ${laneId} for group ${groupId}`
+      );
+      if (!this.canDrainLaneWindow(lane, rowGroupCount, expectedChunkSize)) {
+        continue;
+      }
+
+      const rowGroups = lane.rowGroups.slice(0, rowGroupCount);
+      const tsChunks = lane.frozenTimestamps.slice(0, rowGroupCount);
+      const firstRowGroup = requireDefined(rowGroups[0], "missing compactable row group");
+      const memberCount = firstRowGroup.memberCount;
+      const windowSize = rowGroupCount * expectedChunkSize;
+      const timestamps = new BigInt64Array(windowSize);
+
+      let tsOffset = 0;
+      for (let i = 0; i < tsChunks.length; i++) {
+        const chunk = requireDefined(tsChunks[i], `missing compactable timestamp chunk ${i}`);
+        const decoded =
+          chunk.timestamps ??
+          this.tsCodec?.decodeTimestamps(
+            requireDefined(chunk.compressed, `missing compressed timestamps for chunk ${i}`)
+          );
+        if (!decoded) {
+          throw new RangeError(`missing timestamps for compactable chunk ${i}`);
+        }
+        if (decoded.length !== expectedChunkSize) {
+          throw new RangeError(
+            `expected ${expectedChunkSize} timestamps for chunk ${i}, got ${decoded.length}`
+          );
+        }
+        timestamps.set(decoded, tsOffset);
+        tsOffset += decoded.length;
+      }
+      if (tsOffset !== windowSize) {
+        throw new RangeError(`expected ${windowSize} compacted timestamps, got ${tsOffset}`);
+      }
+
+      return {
+        groupId,
+        laneId,
+        rowGroupCount,
+        sampleCount: memberCount * windowSize,
+        memberSeriesIds: lane.members.slice(0, memberCount).map((member) => member.seriesId),
+        timestamps,
+        rowGroups: rowGroups.map((rowGroup) => ({
+          valueBuffer: rowGroup.valueBuffer,
+          offsets: rowGroup.offsets,
+          sizes: rowGroup.sizes,
+          memberCount: rowGroup.memberCount,
+        })),
+      };
+    }
+    return undefined;
+  }
+
+  peekPromotableLaneWindow(
+    groupId: number,
+    rowGroupCount: number,
+    expectedChunkSize: number
+  ): RowGroupStorePromotedLaneWindow | undefined {
+    const group = this.getGroup(groupId);
+    for (let laneId = 0; laneId < group.lanes.length; laneId++) {
+      const lane = requireDefined(
+        group.lanes[laneId],
+        `missing lane ${laneId} for group ${groupId}`
+      );
+      if (!this.canDrainLaneWindow(lane, rowGroupCount, expectedChunkSize)) {
+        continue;
+      }
+
+      const rowGroups = lane.rowGroups.slice(0, rowGroupCount);
+      const tsChunks = lane.frozenTimestamps.slice(0, rowGroupCount);
+      const firstRowGroup = requireDefined(rowGroups[0], "missing promotable row group");
+      const memberCount = firstRowGroup.memberCount;
+      const windowSize = rowGroupCount * expectedChunkSize;
+
+      return {
+        groupId,
+        laneId,
+        rowGroupCount,
+        sampleCount: memberCount * windowSize,
+        memberSeriesIds: lane.members.slice(0, memberCount).map((member) => member.seriesId),
+        timestampChunks: tsChunks.map((chunk) => ({
+          timestamps: chunk.timestamps,
+          compressed: chunk.compressed,
+          minT: chunk.minT,
+          maxT: chunk.maxT,
+          count: chunk.count,
+        })),
+        rowGroups: rowGroups.map((rowGroup) => ({
+          valueBuffer: rowGroup.valueBuffer,
+          offsets: rowGroup.offsets,
+          sizes: rowGroup.sizes,
+          packedStats: rowGroup.packedStats,
+          memberCount: rowGroup.memberCount,
+        })),
+      };
+    }
+    return undefined;
+  }
+
+  commitCompactedLaneWindow(window: RowGroupStoreCommittedWindow): void {
+    const lane = this.getLane(window.groupId, window.laneId);
+    lane.rowGroups.splice(0, window.rowGroupCount);
+    lane.frozenTimestamps.splice(0, window.rowGroupCount);
+    for (const rowGroup of lane.rowGroups) {
+      rowGroup.tsChunkIndex -= window.rowGroupCount;
+    }
+    this._sampleCount = Math.max(this._sampleCount - window.sampleCount, 0);
+  }
+
+  appendCompactedWindow(
+    memberSeriesIds: readonly SeriesId[],
+    timestamps: BigInt64Array,
+    valuesByMember: readonly Float64Array[]
+  ): void {
+    if (memberSeriesIds.length === 0) {
+      throw new RangeError("appendCompactedWindow requires at least one member");
+    }
+    if (memberSeriesIds.length !== valuesByMember.length) {
+      throw new RangeError(
+        `appendCompactedWindow: memberSeriesIds.length (${memberSeriesIds.length}) !== ` +
+          `valuesByMember.length (${valuesByMember.length})`
+      );
+    }
+    if (timestamps.length !== this.chunkSize) {
+      throw new RangeError(
+        `appendCompactedWindow: expected ${this.chunkSize} timestamps, got ${timestamps.length}`
+      );
+    }
+
+    const { lane } = this.ensureCompactionLane(memberSeriesIds);
+
+    for (let i = 0; i < memberSeriesIds.length; i++) {
+      const values = requireDefined(valuesByMember[i], `missing compacted member values ${i}`);
+      if (values.length !== this.chunkSize) {
+        throw new RangeError(
+          `appendCompactedWindow: expected ${this.chunkSize} values for member ${i}, got ${values.length}`
+        );
+      }
+    }
+
+    let tsChunk: TimestampChunk;
+    if (this.tsCodec) {
+      tsChunk = {
+        compressed: this.tsCodec.encodeTimestamps(timestamps),
+        minT: requireDefined(timestamps[0], "missing first timestamp in compacted window"),
+        maxT: requireDefined(
+          timestamps[this.chunkSize - 1],
+          "missing last timestamp in compacted window"
+        ),
+        count: this.chunkSize,
+      };
+    } else {
+      tsChunk = {
+        timestamps: timestamps.slice(),
+        minT: requireDefined(timestamps[0], "missing first timestamp in compacted window"),
+        maxT: requireDefined(
+          timestamps[this.chunkSize - 1],
+          "missing last timestamp in compacted window"
+        ),
+        count: this.chunkSize,
+      };
+    }
+
+    const blobs: Uint8Array[] = [];
+    const allStats: ChunkStats[] = [];
+    const hasBatch = typeof this.valuesCodec.encodeBatchValuesWithStats === "function";
+    const hasWasmStats = typeof this.valuesCodec.encodeValuesWithStats === "function";
+
+    if (hasBatch) {
+      const BATCH_CAP = 32;
+      for (let bStart = 0; bStart < valuesByMember.length; bStart += BATCH_CAP) {
+        const bEnd = Math.min(bStart + BATCH_CAP, valuesByMember.length);
+        const arrays: Float64Array[] = [];
+        const encodeBatchValuesWithStats = requireDefined(
+          this.valuesCodec.encodeBatchValuesWithStats,
+          "missing batch values encoder"
+        );
+        for (let i = bStart; i < bEnd; i++) {
+          arrays.push(
+            requireDefined(valuesByMember[i], `missing compacted values for member ${i}`)
+          );
+        }
+        const results = encodeBatchValuesWithStats(arrays);
+        for (let i = 0; i < results.length; i++) {
+          const { compressed, stats } = requireDefined(results[i], `missing batch result ${i}`);
+          blobs.push(compressed);
+          allStats.push(stats);
+        }
+      }
+    } else {
+      for (let i = 0; i < valuesByMember.length; i++) {
+        const values = requireDefined(
+          valuesByMember[i],
+          `missing compacted values for member ${i}`
+        );
+        let compressed: Uint8Array;
+        let stats: ChunkStats;
+        if (hasWasmStats) {
+          const encodeValuesWithStats = requireDefined(
+            this.valuesCodec.encodeValuesWithStats,
+            "missing values-with-stats encoder"
+          );
+          const result = encodeValuesWithStats(values);
+          compressed = result.compressed;
+          stats = result.stats;
+        } else {
+          compressed = this.valuesCodec.encodeValues(values);
+          stats = computeStats(values);
+        }
+        blobs.push(compressed);
+        allStats.push(stats);
+      }
+    }
+
+    let totalBytes = 0;
+    for (const blob of blobs) totalBytes += blob.byteLength;
+    const valueBuffer = new Uint8Array(totalBytes);
+    const offsets = new Uint32Array(memberSeriesIds.length);
+    const sizes = new Uint32Array(memberSeriesIds.length);
+    const packedStats = new Float64Array(memberSeriesIds.length * PACKED_STATS_STRIDE);
+
+    let pos = 0;
+    for (let i = 0; i < memberSeriesIds.length; i++) {
+      const blob = requireDefined(blobs[i], `missing compacted blob ${i}`);
+      valueBuffer.set(blob, pos);
+      offsets[i] = pos;
+      sizes[i] = blob.byteLength;
+      pos += blob.byteLength;
+
+      const st = requireDefined(allStats[i], `missing compacted stats ${i}`);
+      const si = i * PACKED_STATS_STRIDE;
+      packedStats[si] = st.minV;
+      packedStats[si + 1] = st.maxV;
+      packedStats[si + 2] = st.sum;
+      packedStats[si + 3] = st.count;
+      packedStats[si + 4] = st.lastV;
+    }
+
+    const tsChunkIndex = lane.frozenTimestamps.length;
+    lane.frozenTimestamps.push(tsChunk);
+    lane.rowGroups.push({
+      valueBuffer,
+      offsets,
+      sizes,
+      packedStats,
+      tsChunkIndex,
+      memberCount: memberSeriesIds.length,
+    });
+    this._sampleCount += memberSeriesIds.length * this.chunkSize;
+  }
+
+  private ensureCompactionLane(memberSeriesIds: readonly SeriesId[]): { lane: GroupLane } {
+    const firstSeriesId = requireDefined(memberSeriesIds[0], "missing first compacted member id");
+    const firstState = this.getActiveState(firstSeriesId);
+    const groupId = firstState.series.groupId;
+    let canReuseLane = firstState.segment.hot.count === 0 && firstState.lane.hotCount === 0;
+    let lane = firstState.lane;
+    let laneId = firstState.segment.laneId;
+
+    if (lane.members.length !== memberSeriesIds.length) {
+      canReuseLane = false;
+    }
+
+    for (let i = 0; i < memberSeriesIds.length; i++) {
+      const seriesId = requireDefined(memberSeriesIds[i], `missing compacted member id ${i}`);
+      const state = this.getActiveState(seriesId);
+      if (state.series.groupId !== groupId) {
+        throw new RangeError(
+          `appendCompactedWindow members must share one group: series=${seriesId} group=${state.series.groupId} expectedGroup=${groupId}`
+        );
+      }
+      if (state.segment.hot.count !== 0) {
+        throw new RangeError(
+          `appendCompactedWindow requires empty member hot state for series ${seriesId}, got ${state.segment.hot.count}`
+        );
+      }
+      if (
+        state.segment.laneId !== laneId ||
+        state.segment.laneMemberIndex !== i ||
+        lane.members.length !== memberSeriesIds.length
+      ) {
+        canReuseLane = false;
+      }
+    }
+
+    if (canReuseLane) {
+      return { lane };
+    }
+
+    const group = this.getGroup(groupId);
+    lane = createLane();
+    group.lanes.push(lane);
+    laneId = group.lanes.length - 1;
+    for (let i = 0; i < memberSeriesIds.length; i++) {
+      const seriesId = requireDefined(memberSeriesIds[i], `missing compacted member id ${i}`);
+      this.attachSegmentToLane(seriesId, laneId, lane, true);
+    }
+    return { lane };
+  }
+
+  private canDrainLaneWindow(
+    lane: GroupLane,
+    rowGroupCount: number,
+    expectedChunkSize: number
+  ): boolean {
+    if (lane.rowGroups.length < rowGroupCount || lane.frozenTimestamps.length < rowGroupCount) {
+      return false;
+    }
+
+    const firstGroup = requireDefined(lane.rowGroups[0], "missing first compactable row group");
+    if (firstGroup.memberCount === 0) return false;
+
+    for (let i = 0; i < rowGroupCount; i++) {
+      const rowGroup = requireDefined(lane.rowGroups[i], `missing compactable row group ${i}`);
+      if (rowGroup.memberCount !== firstGroup.memberCount || rowGroup.tsChunkIndex !== i) {
+        return false;
+      }
+      const tsChunk = requireDefined(
+        lane.frozenTimestamps[i],
+        `missing compactable timestamp chunk ${i}`
+      );
+      if (tsChunk.count !== expectedChunkSize) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private attachInitialSegment(seriesId: SeriesId, groupId: number): void {
     const group = this.getGroup(groupId);
     let laneId = group.lanes.length - 1;
@@ -468,7 +950,7 @@ export class RowGroupStore implements StorageBackend {
       lane.hotCount > 0 ||
       lane.rowGroups.length > 0
     ) {
-      lane = createLane(this.chunkSize);
+      lane = createLane();
       group.lanes.push(lane);
       laneId = group.lanes.length - 1;
     }
@@ -485,7 +967,9 @@ export class RowGroupStore implements StorageBackend {
     const segment: LaneSegment = {
       laneId,
       laneMemberIndex: lane.members.length,
-      hot: { values: new Float64Array(this.chunkSize), count: 0 },
+      // Allocate hot write space lazily. Many segments, especially cold-tier
+      // compaction targets, may never receive any direct hot appends.
+      hot: { values: new Float64Array(0), count: 0 },
     };
     const segmentIndex = series.segments.length;
     series.segments.push(segment);
@@ -503,7 +987,7 @@ export class RowGroupStore implements StorageBackend {
   } {
     const series = requireDefined(this.allSeries[seriesId], `unknown series id ${seriesId}`);
     const group = this.getGroup(series.groupId);
-    const lane = createLane(this.chunkSize);
+    const lane = createLane();
     group.lanes.push(lane);
     const laneId = group.lanes.length - 1;
     const segment = this.attachSegmentToLane(seriesId, laneId, lane, true);
@@ -568,7 +1052,7 @@ export class RowGroupStore implements StorageBackend {
 
     const maxHotSamples = this.chunkSize * this.maxHotWindowsPerLane;
     if (state.segment.hot.values.length >= maxHotSamples) {
-      return this.rollSeriesToFreshLane(seriesId);
+      state = this.rollSeriesToFreshLane(seriesId);
     }
 
     const newSize = state.segment.hot.values.length + this.chunkSize;
@@ -693,7 +1177,7 @@ export class RowGroupStore implements StorageBackend {
       const valueBuffer = new Uint8Array(totalBytes);
       const offsets = new Uint32Array(numMembers);
       const sizes = new Uint32Array(numMembers);
-      const packedStats = new Float64Array(numMembers * 8);
+      const packedStats = new Float64Array(numMembers * PACKED_STATS_STRIDE);
 
       let pos = 0;
       for (let m = 0; m < numMembers; m++) {
@@ -704,15 +1188,12 @@ export class RowGroupStore implements StorageBackend {
         pos += blob.byteLength;
 
         const st = requireDefined(allStats[m], `missing stats ${m}`);
-        const si = m * 8;
+        const si = m * PACKED_STATS_STRIDE;
         packedStats[si] = st.minV;
         packedStats[si + 1] = st.maxV;
         packedStats[si + 2] = st.sum;
         packedStats[si + 3] = st.count;
-        packedStats[si + 4] = st.firstV;
-        packedStats[si + 5] = st.lastV;
-        packedStats[si + 6] = st.sumOfSquares;
-        packedStats[si + 7] = st.resetCount;
+        packedStats[si + 4] = st.lastV;
       }
 
       lane.rowGroups.push({

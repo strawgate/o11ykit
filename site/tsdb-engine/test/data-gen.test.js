@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { generateScenarioData, SCENARIOS, scenarioSeriesCount } from "../js/data-gen.js";
+import {
+  generateScenarioData,
+  SCENARIOS,
+  scenarioSampleCount,
+  scenarioSeriesCount,
+} from "../js/data-gen.js";
 
 describe("data-gen kubernetes scenario", () => {
   it("uses OpenTelemetry-style metric and label names", () => {
@@ -19,5 +24,12 @@ describe("data-gen kubernetes scenario", () => {
     expect(first.labels.has("k8s.namespace.name")).toBe(true);
     expect(first.labels.has("k8s.node.name")).toBe(true);
     expect(first.labels.has("k8s.pod.name")).toBe(true);
+  });
+
+  it("scales the kubernetes scenario to the expected series and sample totals", () => {
+    const scenario = SCENARIOS.find((entry) => entry.id === "kubernetes");
+    expect(scenario).toBeTruthy();
+    expect(scenarioSeriesCount(scenario)).toBe(468);
+    expect(scenarioSampleCount(scenario)).toBe(9_360_000);
   });
 });

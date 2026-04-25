@@ -31,16 +31,15 @@ import type {
 
 // ── Internal types ───────────────────────────────────────────────────
 
-// Stats field indices in packed Float64Array (8 fields per chunk).
+// Packed frozen stats keep only fields used by the current query fast paths.
 const S_MIN = 0;
 const S_MAX = 1;
 const S_SUM = 2;
 const S_COUNT = 3;
-const S_FIRST = 4;
-const S_LAST = 5;
-const S_SUMSQ = 6;
-const S_RESET = 7;
-const STATS_STRIDE = 8;
+const S_LAST = 4;
+const STATS_STRIDE = 5;
+const EMPTY_TIMESTAMPS = new BigInt64Array(0);
+const EMPTY_VALUES = new Float64Array(0);
 
 /** Columnar frozen storage — replaces per-chunk JS objects with packed arrays.
  *  Saves ~200 bytes of V8 object overhead per frozen chunk. */
@@ -49,7 +48,7 @@ interface FrozenColumns {
   blobs: Uint8Array[];
   /** Timestamp chunk indices, one per chunk. */
   tsIndices: Uint32Array;
-  /** Packed stats: 8 Float64 fields per chunk in a single Float64Array. */
+  /** Packed stats: min/max/sum/count/last for each chunk. */
   stats: Float64Array;
   /** Number of frozen chunks. */
   count: number;
@@ -86,32 +85,8 @@ function frozenPush(fc: FrozenColumns, blob: Uint8Array, tsIndex: number, stats:
   fc.stats[si + S_MAX] = stats.maxV;
   fc.stats[si + S_SUM] = stats.sum;
   fc.stats[si + S_COUNT] = stats.count;
-  fc.stats[si + S_FIRST] = stats.firstV;
   fc.stats[si + S_LAST] = stats.lastV;
-  fc.stats[si + S_SUMSQ] = stats.sumOfSquares;
-  fc.stats[si + S_RESET] = stats.resetCount;
   fc.count++;
-}
-
-function frozenGetStats(fc: FrozenColumns, i: number): ChunkStats {
-  const si = i * STATS_STRIDE;
-  const readStat = (offset: number): number => {
-    const value = fc.stats[si + offset];
-    if (value === undefined) {
-      throw new RangeError(`missing frozen column stats at index ${si + offset}`);
-    }
-    return value;
-  };
-  return {
-    minV: readStat(S_MIN),
-    maxV: readStat(S_MAX),
-    sum: readStat(S_SUM),
-    count: readStat(S_COUNT),
-    firstV: readStat(S_FIRST),
-    lastV: readStat(S_LAST),
-    sumOfSquares: readStat(S_SUMSQ),
-    resetCount: readStat(S_RESET),
-  };
 }
 
 interface HotValues {
@@ -414,16 +389,20 @@ export class ColumnStore implements StorageBackend {
         const cv = fc.blobs[ci]!;
 
         if (tsChunk.minT >= start && tsChunk.maxT <= end) {
-          const rc = this.rangeCodec;
-          // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-          const tc = tsChunk.compressed!;
+          const rangeCodec = this.rangeCodec;
+          const compressedTimestamps = tsChunk.compressed;
+          if (!compressedTimestamps) {
+            throw new RangeError("missing range codec data for full chunk decode");
+          }
           visit({
-            timestamps: new BigInt64Array(0),
-            values: new Float64Array(0),
-            stats: frozenGetStats(fc, ci),
+            timestamps: EMPTY_TIMESTAMPS,
+            values: EMPTY_VALUES,
+            statsPacked: fc.stats,
+            statsOffset: ci * STATS_STRIDE,
             chunkMinT: tsChunk.minT,
             chunkMaxT: tsChunk.maxT,
-            decode: () => rc.rangeDecodeValues(tc, cv, tsChunk.minT, tsChunk.maxT),
+            decode: () =>
+              rangeCodec.rangeDecodeValues(compressedTimestamps, cv, tsChunk.minT, tsChunk.maxT),
           });
           continue;
         }
@@ -445,7 +424,7 @@ export class ColumnStore implements StorageBackend {
         }
       }
     } else {
-      // ── Path B: Individual decode (batch decode amortized by caller if needed) ──
+      // ── Path B: Individual decode ──
       for (let ci = 0; ci < fc.count; ci++) {
         // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         const tsChunk = group.frozenTimestamps[fc.tsIndices[ci]!]!;
@@ -455,43 +434,39 @@ export class ColumnStore implements StorageBackend {
         const cv = fc.blobs[ci]!;
 
         if (tsChunk.minT >= start && tsChunk.maxT <= end) {
-          const vc = this.valuesCodec;
-          const tsc = this.tsCodec;
-          const tcc = tsChunk.compressed;
-          const part: TimeRange = {
-            timestamps: new BigInt64Array(0),
-            values: new Float64Array(0),
-            stats: frozenGetStats(fc, ci),
+          const decodeValuesView = this.valuesCodec.decodeValuesView;
+          visit({
+            timestamps: EMPTY_TIMESTAMPS,
+            values: EMPTY_VALUES,
+            statsPacked: fc.stats,
+            statsOffset: ci * STATS_STRIDE,
             chunkMinT: tsChunk.minT,
             chunkMaxT: tsChunk.maxT,
             decode: () => {
-              if (!tsChunk.timestamps && tsc) {
-                // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-                tsChunk.timestamps = tsc.decodeTimestamps(tcc!);
+              if (!tsChunk.timestamps && this.tsCodec && tsChunk.compressed) {
+                tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed);
               }
-              // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-              const ts = tsChunk.timestamps!;
-              const vs = vc.decodeValues(cv);
-              return { timestamps: ts, values: vs };
+              return {
+                // biome-ignore lint/style/noNonNullAssertion: materialized above when needed
+                timestamps: tsChunk.timestamps!,
+                values: this.valuesCodec.decodeValues(cv),
+              };
             },
-          };
-          if (typeof vc.decodeValuesView === "function") {
-            const decView = vc.decodeValuesView.bind(vc);
-            part.decodeView = () => {
-              if (!tsChunk.timestamps) {
-                if (!tsc || !tcc) {
-                  throw new RangeError("missing timestamp codec data for decodeView()");
+            ...(typeof decodeValuesView === "function"
+              ? {
+                  decodeView: () => {
+                    if (!tsChunk.timestamps && this.tsCodec && tsChunk.compressed) {
+                      tsChunk.timestamps = this.tsCodec.decodeTimestamps(tsChunk.compressed);
+                    }
+                    return {
+                      // biome-ignore lint/style/noNonNullAssertion: materialized above when needed
+                      timestamps: tsChunk.timestamps!,
+                      values: decodeValuesView.call(this.valuesCodec, cv),
+                    };
+                  },
                 }
-                tsChunk.timestamps = tsc.decodeTimestamps(tcc);
-              }
-              const timestamps = tsChunk.timestamps;
-              if (!timestamps) {
-                throw new RangeError("decodeView() did not materialize timestamps");
-              }
-              return { timestamps, values: decView(cv) };
-            };
-          }
-          visit(part);
+              : {}),
+          });
           continue;
         }
 
@@ -500,13 +475,29 @@ export class ColumnStore implements StorageBackend {
           // biome-ignore lint/style/noNonNullAssertion lint/suspicious/noAssignInExpressions: bounds-checked by construction
           (tsChunk.timestamps = this.tsCodec!.decodeTimestamps(tsChunk.compressed!));
 
-        const values = this.valuesCodec.decodeValues(cv);
         const lo = lowerBound(timestamps, start, 0, tsChunk.count);
         const hi = upperBound(timestamps, end, lo, tsChunk.count);
         if (hi > lo) {
+          const decodeValuesRange = this.valuesCodec.decodeValuesRange;
+          const decodeValuesRangeView = this.valuesCodec.decodeValuesRangeView;
+          const partialTimestamps = timestamps.subarray(lo, hi);
           visit({
-            timestamps: timestamps.slice(lo, hi),
-            values: values.slice(lo, hi),
+            timestamps: partialTimestamps,
+            values: EMPTY_VALUES,
+            decode: () => ({
+              timestamps: partialTimestamps,
+              values: decodeValuesRange
+                ? decodeValuesRange.call(this.valuesCodec, cv, lo, hi)
+                : this.valuesCodec.decodeValues(cv).subarray(lo, hi),
+            }),
+            ...(typeof decodeValuesRangeView === "function"
+              ? {
+                  decodeView: () => ({
+                    timestamps: partialTimestamps,
+                    values: decodeValuesRangeView.call(this.valuesCodec, cv, lo, hi),
+                  }),
+                }
+              : {}),
           });
         }
       }
@@ -569,7 +560,7 @@ export class ColumnStore implements StorageBackend {
       for (let i = 0; i < fc.count; i++) {
         // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
         bytes += fc.blobs[i]!.byteLength;
-        bytes += 68; // 8 stats fields × 8 bytes + 1 tsIndex × 4 bytes
+        bytes += STATS_STRIDE * 8 + 4; // packed stats + tsChunkIndex
       }
     }
     bytes += this.labelIndex.memoryBytes();
