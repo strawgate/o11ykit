@@ -150,6 +150,7 @@ export function parseMatrixPolicyInput(input: string | undefined): MatrixPolicy 
     const source = fromFile ? `file '${filePath}'` : "inline JSON";
     throw new Error(
       `Failed to parse matrix-policy from ${source}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 
