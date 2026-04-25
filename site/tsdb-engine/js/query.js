@@ -46,6 +46,11 @@ function resolveStep(step, start, end, maxPoints) {
 
   const bucketCount = BigInt(Math.max(1, maxPoints - 1));
   const derivedStep = (rangeNs + bucketCount - 1n) / bucketCount;
+
+  // If the derived step is less than 1ms, don't force a step (return undefined/raw)
+  // unless a specific large step was requested.
+  if (derivedStep < 1_000_000n && !step) return undefined;
+
   if (!step) return derivedStep;
   return step < derivedStep ? derivedStep : step;
 }

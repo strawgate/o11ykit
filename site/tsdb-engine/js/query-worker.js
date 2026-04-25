@@ -103,6 +103,23 @@ async function handleMessage(message) {
       self.postMessage(payload, resultTransferables(payload.result));
       return;
     }
+
+    case "append-live": {
+      for (const append of message.appends) {
+        store.appendBatch(
+          append.partitionId,
+          append.timestamps,
+          append.values,
+          append.labels ? new Map(append.labels) : null
+        );
+      }
+      self.postMessage({
+        type: "append-ack",
+        workerId: message.workerId,
+        sampleCount: store.sampleCount,
+      });
+      return;
+    }
   }
 }
 

@@ -356,7 +356,7 @@ describe("QueryBuilder — exec()", () => {
     const result = query().metric("gauge").range(0n, 2_000_000n).delta().exec(store).materialize();
 
     expect(result.series.length).toBeGreaterThan(0);
-    expect(Array.from(result.series[0]!.values).some((value) => value < 0)).toBe(true);
+    expect(Array.from(result.series[0]?.values ?? []).some((value) => value < 0)).toBe(true);
   });
 
   // ── Regex & negative matchers ────────────────────────────────────
@@ -467,7 +467,7 @@ describe("QueryBuilder — exec()", () => {
     const vals = result.series[0]!.values;
     expect(vals.length).toBeGreaterThan(0);
     // Median should be a real number (not NaN) for non-empty buckets
-    const nonNan = Array.from(vals).filter((v) => !Number.isNaN(v));
+    const nonNan = Array.from(vals ?? []).filter((v) => !Number.isNaN(v));
     expect(nonNan.length).toBeGreaterThan(0);
   });
 
@@ -483,7 +483,7 @@ describe("QueryBuilder — exec()", () => {
     expect(result.series.length).toBe(1);
     // biome-ignore lint/style/noNonNullAssertion: test code
     const vals = result.series[0]!.values;
-    const nonNan = Array.from(vals).filter((v) => !Number.isNaN(v));
+    const nonNan = Array.from(vals ?? []).filter((v) => !Number.isNaN(v));
     expect(nonNan.length).toBeGreaterThan(0);
   });
 

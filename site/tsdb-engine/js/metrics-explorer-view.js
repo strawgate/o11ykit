@@ -105,30 +105,43 @@ export function createMetricsExplorerController({
       return;
     }
 
-    overviewGrid.innerHTML = "";
+    const currentCards = overviewGrid.querySelectorAll(".metrics-overview-card");
     const renderQueue = [];
-    for (const { meta, execution } of cards) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "metrics-overview-card";
-      card.innerHTML = `
-        <div class="metrics-overview-head">
-          <div class="metrics-overview-title">${escapeHtml(meta.metric)}</div>
-          <div class="metrics-overview-meta">${meta.seriesCount.toLocaleString()} series · ${meta.counterLike ? "counter-style" : "gauge-style"}</div>
-        </div>
-        <div class="metrics-overview-chart">
-          <canvas width="1100" height="160" data-chart-height="160"></canvas>
-        </div>
-      `;
-      overviewGrid.appendChild(card);
-      renderQueue.push({
-        canvas: card.querySelector("canvas"),
-        series: execution.result.series,
+
+    // If we have the same number of metrics, just update the charts
+    if (currentCards.length === cards.length) {
+      cards.forEach(({ meta: _meta, execution }, index) => {
+        const card = currentCards[index];
+        renderQueue.push({
+          canvas: card.querySelector("canvas"),
+          series: execution.result.series,
+        });
       });
-      card.addEventListener("click", () => {
-        activeMetric = meta.metric;
-        renderGallery();
-      });
+    } else {
+      overviewGrid.innerHTML = "";
+      for (const { meta, execution } of cards) {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "metrics-overview-card";
+        card.innerHTML = `
+          <div class="metrics-overview-head">
+            <div class="metrics-overview-title">${escapeHtml(meta.metric)}</div>
+            <div class="metrics-overview-meta">${meta.seriesCount.toLocaleString()} series · ${meta.counterLike ? "counter-style" : "gauge-style"}</div>
+          </div>
+          <div class="metrics-overview-chart">
+            <canvas width="1100" height="160" data-chart-height="160"></canvas>
+          </div>
+        `;
+        overviewGrid.appendChild(card);
+        renderQueue.push({
+          canvas: card.querySelector("canvas"),
+          series: execution.result.series,
+        });
+        card.addEventListener("click", () => {
+          activeMetric = meta.metric;
+          renderGallery();
+        });
+      }
     }
 
     requestAnimationFrame(() => {
@@ -162,8 +175,8 @@ export function createMetricsExplorerController({
       <span>${meta.seriesCount.toLocaleString()} input series</span>
       <span>${Math.max(views.length - 1, 0).toLocaleString()} dimensions</span>
     `;
-    galleryGrid.innerHTML = "";
 
+    const currentCards = galleryGrid.querySelectorAll(".metrics-gallery-card");
     const maxPoints = estimateGridPointBudget(galleryGrid, 300, 140);
     const cards = buildGalleryCards(meta, false, maxPoints);
 
@@ -174,23 +187,34 @@ export function createMetricsExplorerController({
     }
 
     const renderQueue = [];
-    for (const { view, execution } of cards) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "metrics-gallery-card";
-      card.innerHTML = `
-        <div class="metrics-gallery-label">${escapeHtml(view.title)}</div>
-        <div class="metrics-gallery-chart">
-          <canvas width="1100" height="120" data-chart-height="120"></canvas>
-        </div>
-      `;
-
-      galleryGrid.appendChild(card);
-      renderQueue.push({
-        canvas: card.querySelector("canvas"),
-        series: execution.result.series,
+    if (currentCards.length === cards.length) {
+      cards.forEach(({ view: _view, execution }, index) => {
+        const card = currentCards[index];
+        renderQueue.push({
+          canvas: card.querySelector("canvas"),
+          series: execution.result.series,
+        });
       });
-      card.addEventListener("click", () => openQueryConfig(view.config));
+    } else {
+      galleryGrid.innerHTML = "";
+      for (const { view, execution } of cards) {
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "metrics-gallery-card";
+        card.innerHTML = `
+          <div class="metrics-gallery-label">${escapeHtml(view.title)}</div>
+          <div class="metrics-gallery-chart">
+            <canvas width="1100" height="120" data-chart-height="120"></canvas>
+          </div>
+        `;
+
+        galleryGrid.appendChild(card);
+        renderQueue.push({
+          canvas: card.querySelector("canvas"),
+          series: execution.result.series,
+        });
+        card.addEventListener("click", () => openQueryConfig(view.config));
+      }
     }
 
     requestAnimationFrame(() => {
@@ -218,6 +242,14 @@ export function createMetricsExplorerController({
     else renderOverview();
   }
 
+  function refresh() {
+    if (!populated) return;
+    overviewCache = null;
+    galleryCache = new Map();
+    if (activeMetric) renderGallery();
+    else renderOverview();
+  }
+
   return {
     get activeMetric() {
       return activeMetric;
@@ -228,5 +260,6 @@ export function createMetricsExplorerController({
     reset,
     render,
     handleResize,
+    refresh,
   };
 }
