@@ -6,6 +6,7 @@ import { RowGroupStore } from "./row-group-store.js";
 import type {
   Labels,
   RangeDecodeCodec,
+  SeriesAppend,
   SeriesId,
   StorageBackend,
   TimeRange,
@@ -82,6 +83,7 @@ export class TieredRowGroupStore implements StorageBackend {
   private readonly tsCodec: TimestampCodec | undefined;
   private readonly hotChunkSize: number;
   private readonly coldChunkSize: number;
+  private readonly maxSeriesPerLane: number;
   private readonly groupResolver: (labels: Labels) => number;
   private readonly labelIndex = new LabelIndex();
   private readonly hotIds: SeriesId[] = [];
@@ -98,8 +100,8 @@ export class TieredRowGroupStore implements StorageBackend {
 
   constructor(
     valuesCodec: ValuesCodec,
-    hotChunkSize = 80,
-    coldChunkSize = 640,
+    hotChunkSize = 60,
+    coldChunkSize = 600,
     groupResolver: (labels: Labels) => number = () => 0,
     maxSeriesPerLane = 32,
     name?: string,
@@ -129,6 +131,7 @@ export class TieredRowGroupStore implements StorageBackend {
 
     this.hotChunkSize = hotChunkSize;
     this.coldChunkSize = coldChunkSize;
+    this.maxSeriesPerLane = maxSeriesPerLane;
     this.valuesCodec = valuesCodec;
     this.tsCodec = tsCodec;
     this.groupResolver = groupResolver;
@@ -182,16 +185,106 @@ export class TieredRowGroupStore implements StorageBackend {
     return id;
   }
 
-  append(id: SeriesId, timestamp: bigint, value: number): void {
+  append(timestamps: BigInt64Array, series: readonly SeriesAppend[]): void;
+  append(id: SeriesId, timestamp: bigint, value: number): void;
+  append(
+    timestampsOrId: BigInt64Array | SeriesId,
+    seriesOrTimestamp: readonly SeriesAppend[] | bigint,
+    value?: number
+  ): void {
+    if (typeof timestampsOrId === "number") {
+      this.appendSample(timestampsOrId, seriesOrTimestamp as bigint, value as number);
+      return;
+    }
+
+    const series = seriesOrTimestamp as readonly SeriesAppend[];
+    const seenSeries = new Set<SeriesId>();
+    const byGroup = new Map<number, SeriesAppend[]>();
+    for (const item of series) {
+      if (seenSeries.has(item.id)) {
+        throw new RangeError(`append: duplicate series id ${item.id}`);
+      }
+      seenSeries.add(item.id);
+      if (item.values.length !== timestampsOrId.length) {
+        throw new RangeError(
+          `append: timestamps.length (${timestampsOrId.length}) !== values.length (${item.values.length})`
+        );
+      }
+      const groupId = this.requireGroupId(item.id);
+      let groupSeries = byGroup.get(groupId);
+      if (!groupSeries) {
+        groupSeries = [];
+        byGroup.set(groupId, groupSeries);
+      }
+      groupSeries.push(item);
+    }
+
+    for (const [groupId, groupSeries] of byGroup) {
+      this.appendGroupSharedTimestamps(groupId, timestampsOrId, groupSeries);
+    }
+  }
+
+  private appendSample(id: SeriesId, timestamp: bigint, value: number): void {
     this.hotStore.append(this.requireHotId(id), timestamp, value);
     this._sampleCount++;
     this.promoteReadyGroup(this.requireGroupId(id));
   }
 
   appendBatch(id: SeriesId, timestamps: BigInt64Array, values: Float64Array): void {
-    this.hotStore.appendBatch(this.requireHotId(id), timestamps, values);
-    this._sampleCount += timestamps.length;
-    this.promoteReadyGroup(this.requireGroupId(id));
+    this.append(timestamps, [{ id, values }]);
+  }
+
+  private appendGroupSharedTimestamps(
+    groupId: number,
+    timestamps: BigInt64Array,
+    series: readonly SeriesAppend[]
+  ): void {
+    // Only use the direct-cold fast path when none of the series in this
+    // group have pending hot samples. If there is hot residue the first
+    // cold-sized slice must finish the open hot window before bypassing it.
+    const canDirectCold = !this.hotStore.groupHasHotResidue(groupId);
+    const coldSamples = canDirectCold
+      ? Math.floor(timestamps.length / this.coldChunkSize) * this.coldChunkSize
+      : 0;
+    if (coldSamples > 0) {
+      for (let offset = 0; offset < coldSamples; offset += this.coldChunkSize) {
+        this._sampleCount += this.appendDirectColdWindow(
+          timestamps.subarray(offset, offset + this.coldChunkSize),
+          series,
+          offset
+        );
+      }
+    }
+
+    if (coldSamples < timestamps.length) {
+      const suffixTimestamps = timestamps.subarray(coldSamples);
+      const hotSeries = series.map((item) => ({
+        id: this.requireHotId(item.id),
+        values: item.values.subarray(coldSamples),
+      }));
+      this.hotStore.append(suffixTimestamps, hotSeries);
+      this._sampleCount += suffixTimestamps.length * series.length;
+      this.promoteReadyGroup(groupId);
+    }
+  }
+
+  private appendDirectColdWindow(
+    timestamps: BigInt64Array,
+    series: readonly SeriesAppend[],
+    valueOffset: number
+  ): number {
+    let appendedSamples = 0;
+    for (let start = 0; start < series.length; start += this.maxSeriesPerLane) {
+      const laneSeries = series.slice(start, start + this.maxSeriesPerLane);
+      const globalIds = laneSeries.map((item) => item.id);
+      const compactedIds = this.ensureCompactedIds(globalIds);
+      const valuesByMember = laneSeries.map((item) =>
+        item.values.subarray(valueOffset, valueOffset + this.coldChunkSize)
+      );
+      this.compactedStore.appendCompactedWindow(compactedIds, timestamps, valuesByMember);
+      appendedSamples += laneSeries.length * this.coldChunkSize;
+    }
+    return appendedSamples;
   }
 
   matchLabel(label: string, value: string): SeriesId[] {

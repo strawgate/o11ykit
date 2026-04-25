@@ -32,6 +32,24 @@ function requireDefined<T>(value: T | undefined, message: string): T {
   return value;
 }
 
+function sameBigInt64Array(a: BigInt64Array, b: BigInt64Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function timestampGroupKey(timestamps: BigInt64Array): string {
+  if (timestamps.length === 0) return "0";
+  return `${timestamps.length}:${timestamps[0]}:${timestamps[timestamps.length - 1]}`;
+}
+
+interface SharedTimestampAppendGroup {
+  timestamps: BigInt64Array;
+  series: Array<{ id: number; values: Float64Array }>;
+}
+
 function createValuesCodec(): ValuesCodec {
   return {
     name: "f64-plain",
@@ -248,7 +266,7 @@ export class O11yWorkerRuntime {
         case "ingest": {
           const labels = new Map(payload.labels);
           const seriesId = this.store.getOrCreateSeries(labels);
-          this.store.appendBatch(seriesId, payload.timestamps, payload.values);
+          this.store.append(payload.timestamps, [{ id: seriesId, values: payload.values }]);
           this.send(
             ok(
               id,
@@ -274,6 +292,8 @@ export class O11yWorkerRuntime {
           const msToNs = this.wasmCodecs?.msToNs;
           let totalSamples = 0;
           let ingestedSeries = 0;
+          const appendGroups: SharedTimestampAppendGroup[] = [];
+          const appendGroupsByKey = new Map<string, SharedTimestampAppendGroup[]>();
           for (let i = 0; i < count; i++) {
             const off = requireDefined(offsets[i * 2], `missing batch offset for series ${i}`);
             const len = requireDefined(offsets[i * 2 + 1], `missing batch length for series ${i}`);
@@ -308,9 +328,23 @@ export class O11yWorkerRuntime {
             }
 
             const vals = allValues.subarray(off, off + len);
-            this.store.appendBatch(seriesId, tsArr, vals);
+            const groupKey = timestampGroupKey(tsArr);
+            const candidates = appendGroupsByKey.get(groupKey) ?? [];
+            let appendGroup = candidates.find((group) =>
+              sameBigInt64Array(group.timestamps, tsArr)
+            );
+            if (appendGroup === undefined) {
+              appendGroup = { timestamps: tsArr, series: [] };
+              candidates.push(appendGroup);
+              appendGroupsByKey.set(groupKey, candidates);
+              appendGroups.push(appendGroup);
+            }
+            appendGroup.series.push({ id: seriesId, values: vals });
             totalSamples += len;
             ingestedSeries++;
+          }
+          for (const group of appendGroups) {
+            this.store.append(group.timestamps, group.series);
           }
           this.send(
             ok(

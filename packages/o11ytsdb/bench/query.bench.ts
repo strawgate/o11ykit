@@ -75,7 +75,7 @@ async function populateStore(store: StorageBackend): Promise<void> {
     labels.set("region", REGIONS[s % REGIONS.length]!);
     labels.set("shard", `s${s % 10}`);
     const id = store.getOrCreateSeries(labels);
-    store.appendBatch(id, sharedTs, makeValues(s));
+    store.append(sharedTs, [{ id, values: makeValues(s) }]);
   }
 }
 
