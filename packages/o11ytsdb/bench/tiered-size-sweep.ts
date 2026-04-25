@@ -16,8 +16,8 @@ import {
 
 const DEFAULT_ITERATIONS = 3;
 const SIZE_SCENARIOS = [
-  { name: "80to640", hotChunkSize: 80, coldChunkSize: 640 },
   { name: "60to600", hotChunkSize: 60, coldChunkSize: 600 },
+  { name: "80to640", hotChunkSize: 80, coldChunkSize: 640 },
 ] as const;
 const INTERVAL_SCENARIOS = [
   { name: "1dps", interval: 1_000n },

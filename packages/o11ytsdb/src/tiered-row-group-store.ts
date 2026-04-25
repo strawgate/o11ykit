@@ -98,8 +98,8 @@ export class TieredRowGroupStore implements StorageBackend {
 
   constructor(
     valuesCodec: ValuesCodec,
-    hotChunkSize = 80,
-    coldChunkSize = 640,
+    hotChunkSize = 60,
+    coldChunkSize = 600,
     groupResolver: (labels: Labels) => number = () => 0,
     maxSeriesPerLane = 32,
     name?: string,

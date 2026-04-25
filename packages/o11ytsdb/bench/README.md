@@ -13,15 +13,17 @@ These are the maintained scripts we expect to keep healthy through package scrip
 - `npm run bench:compaction -- [iterations]`
   Isolates the marginal cost of a hot-to-cold compaction-triggering ingest round.
 - `npm run bench:memory-curve -- [batchSize]`
-  Reports memory-over-time for current single-tier `640` versus tiered `80 -> 640`.
+  Reports memory-over-time for current single-tier `600` versus tiered `60 -> 600`.
 - `npm run bench:rowgroup-memory-audit -- [chunkSize]`
   Reports row-group memory composition for one chunk size.
 - `npm run bench:rowgroup-profile -- <queryName> [outDir] [iterations]`
   Captures CPU/heap profiles for one row-group query shape.
 - `npm run bench:tiered-cardinality-sweep`
-  Sweeps series cardinality and fill level to find the regimes where tiered `80 -> 640` might beat single-tier `640`.
+  Sweeps series cardinality and fill level to find the regimes where tiered `60 -> 600` might beat single-tier `600`.
 - `npm run bench:tiered-store-matrix -- [queryIterations] [compactionIterations] [memoryBatchSize]`
-  Runs the maintained one-shot comparison of current single-tier `640` versus tiered `80 -> 640` across ingest, post-ingest memory, post-query resident memory, memory curve, query matrix, and compaction cost.
+  Runs the maintained one-shot comparison of current single-tier `600` versus tiered `60 -> 600` across ingest, post-ingest memory, post-query resident memory, memory curve, query matrix, and compaction cost.
+- `npm run bench:tiered-size-sweep -- [queryIterations]`
+  Compares candidate tier sizes such as `60 -> 600` and `80 -> 640`, including query part fanout.
 - `npm run bench:tiered-rowgroup`
   Compares the current single-tier row-group store against the tiered hot/cold store.
 - `npm run bench:tiered-query-matrix -- [iterations]`
