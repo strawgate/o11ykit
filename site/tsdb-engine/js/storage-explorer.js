@@ -93,7 +93,7 @@ export function showChunkDetail(seriesInfo, chunkIndex, type, store, scroll = tr
   const title = $("#chunkDetailTitle");
   panel.style.display = "";
   if (title) title.style.display = "";
-  
+
   if (scroll) {
     panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }

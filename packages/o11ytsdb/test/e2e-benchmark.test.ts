@@ -368,9 +368,9 @@ describe("E2E Benchmark: codec comparison", { timeout: 120_000 }, () => {
       const cols = [cd.label];
       for (const k of kindNames) {
         const d = requireDefined(cd.byKind.get(k), `missing compression detail for ${k}`);
-        cols.push((d.rawBytes / d.compressedBytes).toFixed(2) + "x");
+        cols.push(`${(d.rawBytes / d.compressedBytes).toFixed(2)}x`);
       }
-      cols.push((cd.totalRaw / cd.totalCompressed).toFixed(2) + "x");
+      cols.push(`${(cd.totalRaw / cd.totalCompressed).toFixed(2)}x`);
       lines.push(padRowN(cols));
     }
 
@@ -391,10 +391,10 @@ describe("E2E Benchmark: codec comparison", { timeout: 120_000 }, () => {
 
 function padRow(...cols: string[]): string {
   const widths = [22, 18, 14, 20, 20];
-  return "  " + cols.map((c, i) => c.padEnd(widths[i] ?? 16)).join("  ");
+  return `  ${cols.map((c, i) => c.padEnd(widths[i] ?? 16)).join("  ")}`;
 }
 
 function padRowN(cols: string[]): string {
   const widths = [22, 12, 12, 12, 16, 10];
-  return "  " + cols.map((c, i) => c.padEnd(widths[i] ?? 12)).join("  ");
+  return `  ${cols.map((c, i) => c.padEnd(widths[i] ?? 12)).join("  ")}`;
 }

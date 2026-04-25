@@ -167,7 +167,7 @@ export function createDatasetController({
           const metrics = [...new Set(scenario.metrics.map((m) => m.name))];
 
           if (scenario.isLive) {
-            _activeScraperStop = startLiveBrowserScraper(store, scenario, (count, appends) => {
+            _activeScraperStop = startLiveBrowserScraper(store, scenario, (_count, appends) => {
               if (clickedCard) {
                 const doneEl = clickedCard.querySelector(".sc-done-stats");
                 if (doneEl) {
@@ -178,7 +178,7 @@ export function createDatasetController({
               }
               onLiveUpdate?.(store, scenario, appends);
             });
-            
+
             clickedCard.classList.remove("loading");
             clickedCard.classList.add("active", "loaded");
             onDataLoaded(store, metrics, 0, count, scenario.intervalMs);

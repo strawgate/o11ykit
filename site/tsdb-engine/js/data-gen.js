@@ -317,7 +317,8 @@ export const SCENARIOS = [
     name: "Live Browser Session",
     emoji: "🧭",
     isLive: true,
-    description: "Real-time telemetry from your own browser session: mouse coordinates, interaction counts, memory heap, and scroll depth.",
+    description:
+      "Real-time telemetry from your own browser session: mouse coordinates, interaction counts, memory heap, and scroll depth.",
     metrics: [
       { name: "browser_mouse_x", pattern: "live" },
       { name: "browser_mouse_y", pattern: "live" },
@@ -463,7 +464,7 @@ export function startLiveBrowserScraper(store, scenario, onUpdate) {
     const now = BigInt(Date.now()) * 1_000_000n;
     const ts = new BigInt64Array([now]);
 
-    const mem = (performance && performance.memory) || { usedJSHeapSize: 0 };
+    const mem = performance?.memory || { usedJSHeapSize: 0 };
     const conn = navigator.connection || { downlink: 0 };
 
     const dx = state.mouseX - state.lastMouseX;

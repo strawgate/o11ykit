@@ -62,20 +62,23 @@ function sampleSeriesForCanvas(series, maxSamples) {
   const cappedValues = new Float64Array(maxSamples);
   const lastIndex = timestamps.length - 1;
   let lastSourceIndex = -1;
+  let writeIdx = 0;
+
   for (let i = 0; i < maxSamples; i++) {
     const sourceIndex = Math.round((i * lastIndex) / Math.max(1, maxSamples - 1));
     if (sourceIndex > 0 && sourceIndex < lastIndex && sourceIndex === lastSourceIndex) {
       continue;
     }
-    cappedTimestamps[i] = timestamps[sourceIndex];
-    cappedValues[i] = values[sourceIndex];
+    cappedTimestamps[writeIdx] = timestamps[sourceIndex];
+    cappedValues[writeIdx] = values[sourceIndex];
+    writeIdx++;
     lastSourceIndex = sourceIndex;
   }
 
   return {
     ...series,
-    timestamps: cappedTimestamps,
-    values: cappedValues,
+    timestamps: cappedTimestamps.subarray(0, writeIdx),
+    values: cappedValues.subarray(0, writeIdx),
   };
 }
 
@@ -159,8 +162,8 @@ export function renderChart(canvas, seriesData, title, options = {}) {
     sampleSeriesForCanvas(series, maxSamplesPerSeries)
   );
 
-  if (!isFinite(minV)) minV = 0;
-  if (!isFinite(maxV)) maxV = 0;
+  if (!Number.isFinite(minV)) minV = 0;
+  if (!Number.isFinite(maxV)) maxV = 0;
 
   if (minV === maxV) {
     minV -= 1;
@@ -178,10 +181,15 @@ export function renderChart(canvas, seriesData, title, options = {}) {
   }
 
   const tRange = maxT - minT || 1n;
-  const tRangeNum = Number(tRange);
+  const _tRangeNum = Number(tRange);
   const vRange = maxV - minV || 1;
 
-  if (isNaN(minV) || isNaN(maxV) || !isFinite(minV) || !isFinite(maxV)) {
+  if (
+    Number.isNaN(minV) ||
+    Number.isNaN(maxV) ||
+    !Number.isFinite(minV) ||
+    !Number.isFinite(maxV)
+  ) {
     console.warn("Chart: Invalid value range", { minV, maxV, seriesCount: seriesData.length });
     return;
   }

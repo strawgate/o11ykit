@@ -551,7 +551,7 @@ function _updateStorageStats() {
   const memBytes = currentStore.memoryBytes();
   const rawBytes = totalPts * 16;
   const ratio = rawBytes / memBytes;
-  const ingestRate = totalPts / (_lastIngestTime / 1000);
+  const ingestRate = _lastIngestTime > 0 ? totalPts / (_lastIngestTime / 1000) : 0;
 
   setCountStat("statStoragePts", totalPts);
   setCountStat("statStorageSeries", currentStore.seriesCount);
@@ -759,13 +759,6 @@ async function runQuery(options = {}) {
     result = currentEngine.query(currentStore, queryOpts);
   }
 
-  console.log("Query Result:", {
-    scannedSeries: result.scannedSeries,
-    scannedSamples: result.scannedSamples,
-    outputSeriesCount: result.series.length,
-    firstSeriesSamples: result.series[0]?.timestamps?.length,
-  });
-
   const queryTime = performance.now() - t0;
 
   showSection("section-results");
@@ -853,7 +846,6 @@ function installResizeListener() {
 }
 installResizeListener();
 
-let _liveUpdateTimer = null;
 let _lastLiveRefresh = 0;
 const LIVE_REFRESH_THROTTLE_MS = 1000;
 
@@ -873,7 +865,7 @@ const datasetController = createDatasetController({
     _lastIngestTime = ingestTime;
     onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs);
   },
-  onLiveUpdate(store, scenario, appends) {
+  onLiveUpdate(store, _scenario, appends) {
     if (appends && queryWorkerPool) {
       queryWorkerPool.broadcastLiveAppend(store, appends);
     }
@@ -895,7 +887,7 @@ const datasetController = createDatasetController({
       _revealMetrics(false);
       metricsExplorer.refresh();
     }
-    
+
     const resultsSection = document.getElementById("section-results");
     if (_queryPopulated && resultsSection && !resultsSection.hidden) {
       runQuery({ scrollToResults: false });

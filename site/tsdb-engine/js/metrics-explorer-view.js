@@ -110,7 +110,7 @@ export function createMetricsExplorerController({
 
     // If we have the same number of metrics, just update the charts
     if (currentCards.length === cards.length) {
-      cards.forEach(({ meta, execution }, index) => {
+      cards.forEach(({ meta: _meta, execution }, index) => {
         const card = currentCards[index];
         renderQueue.push({
           canvas: card.querySelector("canvas"),
@@ -188,7 +188,7 @@ export function createMetricsExplorerController({
 
     const renderQueue = [];
     if (currentCards.length === cards.length) {
-      cards.forEach(({ view, execution }, index) => {
+      cards.forEach(({ view: _view, execution }, index) => {
         const card = currentCards[index];
         renderQueue.push({
           canvas: card.querySelector("canvas"),

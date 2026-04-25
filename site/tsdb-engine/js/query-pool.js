@@ -368,10 +368,10 @@ export class QueryWorkerPool {
     for (const [seriesId, data] of appendsBySeriesId.entries()) {
       const workerIdx = seriesId % workerCount;
       const partitionId = Math.floor(seriesId / workerCount);
-      
+
       // If this is a new series the worker doesn't know about yet, send metadata
       const labels = store.labels(seriesId);
-      
+
       workerAppends[workerIdx].push({
         partitionId,
         labels: labels ? [...labels.entries()] : null,
