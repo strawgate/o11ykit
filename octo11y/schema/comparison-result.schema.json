@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/strawgate/octo11y/schema/comparison-result.schema.json",
   "title": "Benchkit Comparison Result",
-  "description": "Output of compare() — per-benchmark per-metric comparison with regression detection.",
+  "description": "Output of compare() — per-lane per-metric comparison with regression detection and optional matrix completeness summary.",
   "type": "object",
   "required": ["entries", "hasRegression"],
   "properties": {
@@ -16,6 +16,9 @@
     "hasRegression": {
       "type": "boolean",
       "description": "True if any entry has status 'regressed'."
+    },
+    "matrix": {
+      "$ref": "#/$defs/comparisonMatrixSummary"
     },
     "warnings": {
       "type": "array",
@@ -32,7 +35,27 @@
       "properties": {
         "benchmark": {
           "type": "string",
-          "description": "Benchmark name."
+          "description": "Benchmark or scenario name."
+        },
+        "series": {
+          "type": "string",
+          "description": "Optional series value when the lane differs from the benchmark name."
+        },
+        "tags": {
+          "type": "object",
+          "description": "Lane tag attributes used to distinguish matrix variants.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "lane": {
+          "type": "string",
+          "description": "Human-readable lane label including scenario, series, and tags."
+        },
+        "laneClass": {
+          "type": "string",
+          "enum": ["required", "probe"],
+          "description": "Matrix lane classification when a matrix policy is applied."
         },
         "metric": {
           "type": "string",
@@ -63,6 +86,90 @@
           "type": "string",
           "enum": ["improved", "stable", "regressed"],
           "description": "Classification based on threshold test."
+        }
+      }
+    },
+    "comparisonMatrixLane": {
+      "type": "object",
+      "required": ["key", "label", "dimensions", "laneClass", "status"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "Stable key for the lane dimension tuple."
+        },
+        "label": {
+          "type": "string",
+          "description": "Human-readable lane label."
+        },
+        "dimensions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Normalized matrix dimension values for the lane."
+        },
+        "laneClass": {
+          "type": "string",
+          "enum": ["required", "probe"],
+          "description": "Matrix lane classification."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "missing"],
+          "description": "Lane result after completeness and regression evaluation."
+        }
+      }
+    },
+    "comparisonMatrixSummary": {
+      "type": "object",
+      "required": [
+        "expectedCount",
+        "observedCount",
+        "missingResultCount",
+        "requiredPassedCount",
+        "requiredFailedCount",
+        "probePassedCount",
+        "probeFailedCount",
+        "hasRequiredFailure",
+        "lanes"
+      ],
+      "properties": {
+        "expectedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "missingResultCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredPassedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requiredFailedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "probePassedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "probeFailedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hasRequiredFailure": {
+          "type": "boolean"
+        },
+        "lanes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/comparisonMatrixLane"
+          }
         }
       }
     }

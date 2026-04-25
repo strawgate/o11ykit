@@ -32,6 +32,11 @@ export type {
   RunDetailMetricSnapshot,
   RunDetailView,
   MetricSummaryEntry,
+  MatrixDimensionValue,
+  MatrixValueMatcher,
+  MatrixMatcherValue,
+  MatrixLaneMatcher,
+  MatrixPolicy,
 } from "./types.js";
 
 /** Parse benchmark output in any supported format (auto-detect, go, otlp, benchmark-action). */

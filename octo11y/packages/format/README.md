@@ -382,7 +382,9 @@ All types mirror the JSON schemas in [`schema/`](../../schema/README.md).
 
 ### `compareRuns(current, baseline[], config?)`
 
-Compare a current benchmark run against one or more baseline runs.
+Compare a current benchmark run against one or more baseline runs. Matching is
+lane-aware: `scenario`, `series`, and datapoint tags must all match before a
+metric is compared.
 
 ```ts
 import { compareRuns } from "@benchkit/format";
@@ -392,6 +394,35 @@ if (result.hasRegression) {
   console.log("Regressions detected!");
 }
 ```
+
+`config` accepts the normal percentage threshold plus an optional
+`matrixPolicy`:
+
+```ts
+const result = compareRuns(current, [baseline], {
+  test: "percentage",
+  threshold: 5,
+  matrixPolicy: {
+    dimensions: {
+      collector: ["otelcol", "vector"],
+      target_eps: [10, 1000, 10000, "max"],
+    },
+    required: [{ target_eps: { lte: 1000 } }],
+    probe: [{ target_eps: { gte: 10000 } }, { target_eps: "max" }],
+  },
+});
+
+console.log(result.matrix?.requiredFailedCount);
+console.log(result.matrix?.missingResultCount);
+```
+
+When `matrixPolicy` is present, `ComparisonResult.matrix` includes:
+
+- expected and observed lane counts
+- missing lane count
+- required/probe pass and fail counts
+- `hasRequiredFailure` for workflow gating
+- per-lane status entries (`passed`, `failed`, `missing`)
 
 ### `Sample`
 

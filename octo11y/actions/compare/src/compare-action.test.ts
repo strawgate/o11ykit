@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { parseCurrentRun, readBaselineRuns, runComparison } from "./compare-action.js";
+import { parseCurrentRun, parseMatrixPolicyInput, readBaselineRuns, runComparison } from "./compare-action.js";
 import { buildOtlpResult } from "@benchkit/format";
 import type { OtlpMetricsDocument } from "@octo11y/core";
 
@@ -188,6 +188,74 @@ describe("runComparison", () => {
       fs.rmSync(currentDir, { recursive: true });
     }
   });
+
+  it("computes matrix outputs from inline JSON policy", () => {
+    const runsDir = makeTmpDir();
+    const currentDir = makeTmpDir();
+    try {
+      writeOtlpResult(runsDir, "100-1.json", buildOtlpResult({
+        benchmarks: [
+          {
+            name: "BenchA",
+            tags: { collector: "otelcol", target_eps: "10" },
+            metrics: { ns_per_op: { value: 100, unit: "ns/op", direction: "smaller_is_better" } },
+          },
+          {
+            name: "BenchA",
+            tags: { collector: "otelcol", target_eps: "10000" },
+            metrics: { ns_per_op: { value: 150, unit: "ns/op", direction: "smaller_is_better" } },
+          },
+        ],
+        context: { sourceFormat: "go" },
+      }));
+      const currentFile = writeOtlpResult(currentDir, "current.json", buildOtlpResult({
+        benchmarks: [
+          {
+            name: "BenchA",
+            tags: { collector: "otelcol", target_eps: "10" },
+            metrics: { ns_per_op: { value: 103, unit: "ns/op", direction: "smaller_is_better" } },
+          },
+          {
+            name: "BenchA",
+            tags: { collector: "otelcol", target_eps: "10000" },
+            metrics: { ns_per_op: { value: 180, unit: "ns/op", direction: "smaller_is_better" } },
+          },
+        ],
+        context: { sourceFormat: "go" },
+      }));
+
+      const result = runComparison({
+        files: [currentFile],
+        format: "otlp",
+        runsDir,
+        baselineRuns: 5,
+        threshold: 5,
+        matrixPolicyInput: JSON.stringify({
+          dimensions: {
+            collector: ["otelcol"],
+            target_eps: [10, 10000, "max"],
+          },
+          required: [{ target_eps: { lte: 1000 } }],
+          probe: [{ target_eps: { gte: 10000 } }, { target_eps: "max" }],
+        }),
+      });
+
+      assert.equal(result.hasRegression, true);
+      assert.equal(result.hasRequiredFailure, false);
+      assert.equal(result.missingResultCount, 1);
+      assert.equal(result.requiredPassedCount, 1);
+      assert.equal(result.requiredFailedCount, 0);
+      assert.equal(result.probeFailedCount, 1);
+      assert.match(result.markdown, /### Matrix Summary/);
+
+      const matrix = JSON.parse(result.matrixSummaryJson) as { lanes: Array<{ label: string; status: string }> };
+      assert.equal(matrix.lanes.length, 3);
+      assert.equal(matrix.lanes.find((lane) => lane.label.includes("target_eps=max"))?.status, "missing");
+    } finally {
+      fs.rmSync(runsDir, { recursive: true });
+      fs.rmSync(currentDir, { recursive: true });
+    }
+  });
 });
 
 // ── Error path tests ────────────────────────────────────────────────
@@ -260,5 +328,67 @@ describe("runComparison — graceful degradation", () => {
     } finally {
       fs.rmSync(currentDir, { recursive: true });
     }
+  });
+});
+
+describe("parseMatrixPolicyInput", () => {
+  it("accepts a JSON file path", () => {
+    const dir = makeTmpDir();
+    try {
+      const file = path.join(dir, "matrix.json");
+      fs.writeFileSync(file, JSON.stringify({
+        dimensions: {
+          collector: ["otelcol"],
+          target_eps: [10],
+        },
+      }));
+
+      const policy = parseMatrixPolicyInput(file);
+      assert.deepEqual(policy, {
+        dimensions: {
+          collector: ["otelcol"],
+          target_eps: [10],
+        },
+      });
+    } finally {
+      fs.rmSync(dir, { recursive: true });
+    }
+  });
+
+  it("rejects malformed policy payloads", () => {
+    assert.throws(
+      () => parseMatrixPolicyInput(JSON.stringify({ required: [] })),
+      /dimensions must be an object/,
+    );
+  });
+
+  it("rejects non-array dimension values", () => {
+    assert.throws(
+      () => parseMatrixPolicyInput(JSON.stringify({
+        dimensions: {
+          collector: "otelcol",
+        },
+      })),
+      /dimensions\.collector must be an array/,
+    );
+  });
+
+  it("rejects malformed matcher lists", () => {
+    assert.throws(
+      () => parseMatrixPolicyInput(JSON.stringify({
+        dimensions: {
+          collector: ["otelcol"],
+        },
+        probe: { collector: "otelcol" },
+      })),
+      /probe must be an array of matcher objects/,
+    );
+  });
+
+  it("reports parse source for invalid JSON", () => {
+    assert.throws(
+      () => parseMatrixPolicyInput("{"),
+      /inline JSON/,
+    );
   });
 });
