@@ -48,6 +48,16 @@ async function main() {
   const intervalMs = 100; // Scrape 10 times a second for high-res time series
   console.log(`Scraping browser metrics every ${intervalMs}ms for ${durationSec}s...`);
 
+  function makePoint(timeUnixNano, value, attrs) {
+    return {
+      timeUnixNano,
+      asDouble: value,
+      attributes: Object.entries(attrs).map(([key, val]) => ({
+        key, value: { stringValue: String(val) }
+      }))
+    };
+  }
+
   for (let i = 0; i < (durationSec * 1000) / intervalMs; i++) {
     // Simulate user interaction
     if (i % 5 === 0) {
@@ -93,55 +103,45 @@ async function main() {
 
     const timeUnixNano = (BigInt(Math.floor(state.now)) * 1_000_000n).toString();
 
-    function makePoint(value, attrs) {
-      return {
-        timeUnixNano,
-        asDouble: value,
-        attributes: Object.entries(attrs).map(([key, val]) => ({
-          key, value: { stringValue: String(val) }
-        }))
-      };
-    }
-
     const metrics = [
       { name: "browser.mouse.pos", gauge: { dataPoints: [
-        makePoint(state.state.mouseX, { axis: "x" }),
-        makePoint(state.state.mouseY, { axis: "y" })
+        makePoint(timeUnixNano, state.state.mouseX, { axis: "x" }),
+        makePoint(timeUnixNano, state.state.mouseY, { axis: "y" })
       ] } },
       { name: "browser.scroll.offset", gauge: { dataPoints: [
-        makePoint(state.state.scrollX, { axis: "x" }),
-        makePoint(state.state.scrollY, { axis: "y" })
+        makePoint(timeUnixNano, state.state.scrollX, { axis: "x" }),
+        makePoint(timeUnixNano, state.state.scrollY, { axis: "y" })
       ] } },
       { name: "browser.interaction.clicks", gauge: { dataPoints: [
-        makePoint(state.state.clicks, {})
+        makePoint(timeUnixNano, state.state.clicks, {})
       ] } },
       { name: "browser.interaction.keypresses", gauge: { dataPoints: [
-        makePoint(state.state.keypresses, {})
+        makePoint(timeUnixNano, state.state.keypresses, {})
       ] } },
       { name: "browser.memory.heap", gauge: { dataPoints: [
-        makePoint(state.memory.used, { state: "used" }),
-        makePoint(state.memory.total, { state: "total" }),
-        makePoint(state.memory.limit, { state: "limit" })
+        makePoint(timeUnixNano, state.memory.used, { state: "used" }),
+        makePoint(timeUnixNano, state.memory.total, { state: "total" }),
+        makePoint(timeUnixNano, state.memory.limit, { state: "limit" })
       ] } },
       { name: "browser.network.online", gauge: { dataPoints: [
-        makePoint(state.network.online, {})
+        makePoint(timeUnixNano, state.network.online, {})
       ] } },
       { name: "browser.network.downlink", gauge: { dataPoints: [
-        makePoint(state.network.downlink, {})
+        makePoint(timeUnixNano, state.network.downlink, {})
       ] } },
       { name: "browser.resource.count", gauge: { dataPoints: [
-        makePoint(state.resources, {})
+        makePoint(timeUnixNano, state.resources, {})
       ] } },
       { name: "browser.window.size", gauge: { dataPoints: [
-        makePoint(state.env.width, { dim: "width" }),
-        makePoint(state.env.height, { dim: "height" })
+        makePoint(timeUnixNano, state.env.width, { dim: "width" }),
+        makePoint(timeUnixNano, state.env.height, { dim: "height" })
       ] } },
     ];
 
     if (state.nav.load > 0) {
       metrics.push({ name: "browser.navigation.load_time", gauge: { dataPoints: [
-        makePoint(state.nav.load, { type: "load" }),
-        makePoint(state.nav.dom, { type: "dom_content_loaded" })
+        makePoint(timeUnixNano, state.nav.load, { type: "load" }),
+        makePoint(timeUnixNano, state.nav.dom, { type: "dom_content_loaded" })
       ] } });
     }
 

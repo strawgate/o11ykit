@@ -197,6 +197,11 @@ class RawPartitionStore {
   }
 
   appendBatch(id, timestamps, values, labels = null) {
+    if (timestamps.length !== values.length) {
+      throw new Error(
+        `appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`
+      );
+    }
     let series = this._series[id];
     if (!series) {
       if (!labels) return;
@@ -313,6 +318,11 @@ class ChunkedPartitionStore {
   }
 
   appendBatch(id, timestamps, values, labels = null) {
+    if (timestamps.length !== values.length) {
+      throw new Error(
+        `appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`
+      );
+    }
     let series = this._series[id];
     if (!series) {
       if (!labels) return;
@@ -439,6 +449,11 @@ class ColumnPartitionStore {
   }
 
   appendBatch(id, timestamps, values, labels = null) {
+    if (timestamps.length !== values.length) {
+      throw new Error(
+        `appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`
+      );
+    }
     let series = this._series[id];
     if (!series) {
       if (!labels) return;

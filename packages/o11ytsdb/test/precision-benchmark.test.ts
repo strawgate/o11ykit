@@ -282,7 +282,8 @@ describe("precision auto-detect benchmark", () => {
     expect(result.values[0]).toBe(42);
     expect(result.values[1]).toBe(0);
     expect(result.values[2]).toBe(-7);
-    // 3.14159265 → quantized to 6dp → 3.141593
-    expect(result.values[3]).toBeCloseTo(Math.PI, 6);
+    // Math.PI → quantized to 6dp → 3.141593
+    const quantized = Math.round(Math.PI * 1e6) / 1e6;
+    expect(result.values[3]).toBe(quantized);
   });
 });
