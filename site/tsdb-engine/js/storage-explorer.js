@@ -83,8 +83,25 @@ let _activeChunkSelection = null;
 export function refreshActiveChunkDetail(store) {
   if (!_activeChunkSelection) return;
   const { seriesId, chunkIndex, type } = _activeChunkSelection;
+
+  // Guard against stale selections after a store swap
+  if (seriesId >= store.seriesCount) {
+    _activeChunkSelection = null;
+    return;
+  }
+
   const labels = store.labels(seriesId);
+  if (!labels) {
+    _activeChunkSelection = null;
+    return;
+  }
+
   const info = store.getChunkInfo(seriesId);
+  if (type === "frozen" && chunkIndex >= info.frozen.length) {
+    _activeChunkSelection = null;
+    return;
+  }
+
   showChunkDetail({ labels, info, id: seriesId }, chunkIndex, type, store, false);
 }
 

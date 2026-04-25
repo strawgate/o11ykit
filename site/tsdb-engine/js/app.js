@@ -208,6 +208,12 @@ async function _provisionQueryWorkers(store) {
 
 let _lastMonitorSummary = "";
 let _lastMonitorPhase = "";
+let _lastMonitorWorkersSignature = "";
+
+function _workerSampleSignature(workers) {
+  if (!workers || workers.length === 0) return "";
+  return workers.map((w) => `${w.id}:${w.sampleCount ?? 0}`).join(",");
+}
 
 function _renderQueryFabricMonitor(state) {
   const panelEl = document.getElementById("section-query-plan");
@@ -221,12 +227,14 @@ function _renderQueryFabricMonitor(state) {
 
   const summary = _executionSummaryText(state);
   const phase = state.phase;
+  const workersSignature = _workerSampleSignature(state.workers);
 
   // Skip full DOM rebuild if it's just a background live update (no change in phase or summary)
   // unless we're in 'running' phase where we want to see live worker progress.
   if (
     _lastMonitorSummary === summary &&
     _lastMonitorPhase === phase &&
+    _lastMonitorWorkersSignature === workersSignature &&
     phase !== "running" &&
     gridEl.innerHTML !== ""
   ) {
@@ -235,6 +243,7 @@ function _renderQueryFabricMonitor(state) {
 
   _lastMonitorSummary = summary;
   _lastMonitorPhase = phase;
+  _lastMonitorWorkersSignature = workersSignature;
 
   summaryEl.textContent = summary;
   statusEl.textContent = _executionStatusText(state);

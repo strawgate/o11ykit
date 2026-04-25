@@ -19,8 +19,12 @@ async function main() {
   const context = await browser.newContext();
   const page = await context.newPage();
 
-  // Navigate to an interesting site
-  await page.goto('https://en.wikipedia.org/wiki/Time_series');
+  // Use deterministic content to avoid flaky network-dependent benchmarks
+  await page.setContent(`<html><body>
+    <h1>Time Series</h1>
+    <p>Deterministic benchmark page for browser telemetry generation.</p>
+    <div style="height: 2000px">Scrollable content</div>
+  </body></html>`);
 
   await page.evaluate(() => {
     window.__scraperState = {
@@ -47,8 +51,12 @@ async function main() {
   for (let i = 0; i < (durationSec * 1000) / intervalMs; i++) {
     // Simulate user interaction
     if (i % 5 === 0) {
-      await page.mouse.move(Math.random() * 800, Math.random() * 600);
+      const x = Math.random() * 800;
+      const y = Math.random() * 600;
+      await page.mouse.move(x, y);
+      await page.mouse.click(x, y);
       await page.mouse.wheel(0, (Math.random() - 0.5) * 600);
+      await page.keyboard.press("ArrowDown");
     }
 
     try {

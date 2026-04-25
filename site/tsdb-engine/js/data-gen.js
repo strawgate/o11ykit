@@ -437,7 +437,7 @@ export function startLiveBrowserScraper(store, scenario, onUpdate) {
     lastMouseY: 0,
     clicks: 0,
     keypresses: 0,
-    scrollY: 0,
+    scrollY: window.scrollY,
   };
 
   const onMouseMove = (e) => {

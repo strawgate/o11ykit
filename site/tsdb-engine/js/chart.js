@@ -120,6 +120,15 @@ export function renderChart(canvas, seriesData, title, options = {}) {
   const w = Math.max(180, Math.min(availableWidth - horizontalInset, 1100));
   const h = Number(canvas.dataset.chartHeight) || (compact ? 220 : 380);
 
+  // Compute a lightweight y-data signature so cache invalidates when values change
+  let ySignature = 0;
+  for (const s of seriesData) {
+    const len = s.values.length;
+    if (len > 0) {
+      ySignature += s.values[0] + s.values[len - 1] + s.values[len >>> 1];
+    }
+  }
+
   // Cache check
   const lastState = canvasStateCache.get(canvas);
   if (
@@ -128,6 +137,7 @@ export function renderChart(canvas, seriesData, title, options = {}) {
     lastState.maxT === maxT &&
     lastState.seriesCount === seriesData.length &&
     lastState.totalSamplesCount === totalSamplesCount &&
+    lastState.ySignature === ySignature &&
     lastState.width === w &&
     lastState.height === h &&
     lastState.title === title
@@ -142,6 +152,7 @@ export function renderChart(canvas, seriesData, title, options = {}) {
       maxT,
       seriesCount: seriesData.length,
       totalSamplesCount,
+      ySignature,
       width: w,
       height: h,
       title,
@@ -413,7 +424,9 @@ function handleChartHover(e) {
     return;
   }
 
-  const mouseT = minT + ((mx - pad.left) / plotW) * tRange;
+  const _tRangeNum = Number(tRange);
+  const minTNum = Number(minT);
+  const mouseT = minTNum + ((mx - pad.left) / plotW) * _tRangeNum;
   const points = [];
 
   for (let si = 0; si < seriesData.length; si++) {

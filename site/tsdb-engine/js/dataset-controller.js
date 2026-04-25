@@ -167,6 +167,7 @@ export function createDatasetController({
           const metrics = [...new Set(scenario.metrics.map((m) => m.name))];
 
           if (scenario.isLive) {
+            const liveStartedAt = performance.now();
             _activeScraperStop = startLiveBrowserScraper(store, scenario, (_count, appends) => {
               if (clickedCard) {
                 const doneEl = clickedCard.querySelector(".sc-done-stats");
@@ -181,7 +182,13 @@ export function createDatasetController({
 
             clickedCard.classList.remove("loading");
             clickedCard.classList.add("active", "loaded");
-            onDataLoaded(store, metrics, 0, count, scenario.intervalMs);
+            onDataLoaded(
+              store,
+              metrics,
+              Math.max(1, performance.now() - liveStartedAt),
+              0,
+              scenario.intervalMs,
+            );
             return;
           }
 
@@ -222,6 +229,10 @@ export function createDatasetController({
   }
 
   function generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs) {
+    if (_activeScraperStop) {
+      _activeScraperStop();
+      _activeScraperStop = null;
+    }
     const store = createStore(backendType, chunkSize);
     const now = BigInt(Date.now()) * nsPerMs;
     const intervalNs = BigInt(intervalMs) * nsPerMs;
