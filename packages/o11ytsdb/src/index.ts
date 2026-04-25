@@ -4,7 +4,23 @@
  * Public API surface.
  */
 
+export type {
+  TsdbAdapterOptions,
+  TsdbLatestValueModel,
+  TsdbLatestValueRow,
+  TsdbLineSeries,
+  TsdbLineSeriesModel,
+  TsdbPoint,
+  TsdbTimestampUnit,
+  TsdbWideTableModel,
+  TsdbWideTableRow,
+} from "./adapters.js";
 // Worker isolation + transfer protocol
+export {
+  toTsdbLatestValueModel,
+  toTsdbLineSeriesModel,
+  toTsdbWideTableModel,
+} from "./adapters.js";
 export { BackpressureController } from "./backpressure.js";
 export type { DecodedChunk } from "./codec.js";
 // Codec — XOR-delta (Gorilla) compression

@@ -420,7 +420,7 @@ async function ingestScenario(store: StorageBackend, scenario: ScenarioSpec): Pr
         if (startPoint >= points) continue;
         const batchSize = Math.min(CHUNK_SIZE, points - startPoint);
         const { timestamps, values } = buildBatch(seriesIndex, startPoint, batchSize);
-        store.appendBatch(ids[seriesIndex]!, timestamps, values);
+        store.append(timestamps, [{ id: ids[seriesIndex]!, values }]);
         totalSamples += batchSize;
       }
     }
@@ -430,7 +430,7 @@ async function ingestScenario(store: StorageBackend, scenario: ScenarioSpec): Pr
   for (let seriesIndex = 0; seriesIndex < SERIES_COUNT; seriesIndex++) {
     const points = pointsBySeries[seriesIndex]!;
     const { timestamps, values } = buildBatch(seriesIndex, 0, points);
-    store.appendBatch(ids[seriesIndex]!, timestamps, values);
+    store.append(timestamps, [{ id: ids[seriesIndex]!, values }]);
     totalSamples += points;
   }
   return totalSamples;

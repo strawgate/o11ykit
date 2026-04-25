@@ -463,11 +463,9 @@ async function runChild(mode: string): Promise<void> {
           chunkVs[i] = pattern <= 5 ? Math.round(v * 1000) / 1000 : v;
         }
         seriesVals[s] = v;
-        store.appendBatch(
-          ids[s]!,
-          chunkTs.subarray(0, end),
-          chunkVs.subarray(0, end)
-        );
+        store.append(chunkTs.subarray(0, end), [
+          { id: ids[s]!, values: chunkVs.subarray(0, end) },
+        ]);
       }
       if (offset % (CHUNK_SIZE * 10) === 0) {
         log(`  [${mode}] offset ${offset}/${PTS_PER_SERIES}`);
@@ -490,7 +488,7 @@ async function runChild(mode: string): Promise<void> {
       }
       for (let offset = 0; offset < PTS_PER_SERIES; offset += CHUNK_SIZE) {
         const end = Math.min(offset + CHUNK_SIZE, PTS_PER_SERIES);
-        store.appendBatch(ids[s]!, ts.subarray(offset, end), vs.subarray(offset, end));
+        store.append(ts.subarray(offset, end), [{ id: ids[s]!, values: vs.subarray(offset, end) }]);
       }
       if ((s + 1) % 1000 === 0) {
         log(`  [${mode}] ${s + 1}/${NUM_SERIES}`);

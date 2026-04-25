@@ -278,7 +278,6 @@ describe("ScanEngine", () => {
         return 0;
       },
       append() {},
-      appendBatch() {},
       matchLabel(label, value) {
         return label === "__name__" && value === "broken" ? [0] : [];
       },
@@ -934,9 +933,6 @@ describe("ScanEngine", () => {
         throw new Error("not used in test");
       },
       append(): void {
-        throw new Error("not used in test");
-      },
-      appendBatch(): void {
         throw new Error("not used in test");
       },
       matchLabel(label: string, value: string): number[] {

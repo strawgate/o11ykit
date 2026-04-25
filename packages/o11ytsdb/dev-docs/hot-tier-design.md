@@ -68,9 +68,10 @@ Sweep results against the current codec/query path suggest:
 | `320` | `0.4486` | `17.561 ms` | `7.513 ms` | `2.548 ms` |
 | `640` | `0.3936` | `14.880 ms` | `10.725 ms` | `1.297 ms` |
 
-`80` is not attractive as a single-tier format, but it is attractive as a
-bounded hot remainder because its reservation cost is small and it compacts
-cleanly into `640` (`8 x 80 = 640`).
+`80` is not attractive as a single-tier format, but it proved useful as the
+first bounded-hot experiment. The follow-up size sweep selected `60 -> 600`
+because `60` samples aligns naturally with one-minute boundaries at 1 dps and
+one-hour boundaries at 1 dpm, while `600` keeps a simple 10:1 merge ratio.
 
 ## Proposed Shape
 
@@ -82,21 +83,21 @@ Separate the three roles explicitly:
 
 ### Recommended initial ladder
 
-- hot mutable + sealed hot: `80`
-- cold compacted: `640`
+- hot mutable + sealed hot: `60`
+- cold compacted: `600`
 
 Optional later rung:
 
-- warm compacted: `320`
+- warm compacted: `300`
 
-Initial implementation should skip `320` and prove `80 -> 640` first.
+Initial implementation should skip `300` and prove `60 -> 600` first.
 
 ## Why This Is Not Arbitrary Tiering
 
 The first implementation should stay deliberately narrow:
 
 - exactly two tiers
-- exactly one compaction rule: `8 x 80 -> 640`
+- exactly one compaction rule: `10 x 60 -> 600`
 - the same `RowGroupStore` representation on both sides
 
 We should not start with an arbitrary tier graph or policy engine.
@@ -109,7 +110,7 @@ Why:
 - it would blur whether the win came from tiering itself or from a more
   complex scheduler
 
-If `80 -> 640` proves itself on ingest, memory, and query cost, then we can
+If `60 -> 600` proves itself on ingest, memory, and query cost, then we can
 generalize later. Until then, the backend should be explicit hot/cold tiering
 with configurable sizes, not generic N-tier compaction.
 
@@ -120,9 +121,9 @@ The first backend implementation lives in
 
 It currently works by:
 
-1. ingesting into a hot `RowGroupStore` configured for `80`
+1. ingesting into a hot `RowGroupStore` configured for `60`
 2. compacting whole sealed hot lane windows into a cold `RowGroupStore`
-   configured for `640`
+   configured for `600`
 3. scanning cold parts first, then the hot remainder, so the query engine
    still sees one ordered stream
 
@@ -138,8 +139,8 @@ The hot tier stays row-group based. We do not introduce per-series microblocks.
 ```ts
 type HotLane = {
   active: MutableRowGroupFrame;
-  sealedHot: SealedRowGroupFrame[]; // size 80
-  cold: ColdRowGroup[];             // size 640
+  sealedHot: SealedRowGroupFrame[]; // size 60
+  cold: ColdRowGroup[];             // size 600
 };
 ```
 
@@ -149,7 +150,7 @@ Append-friendly builder, sized for cheap ingest.
 
 ```ts
 type MutableRowGroupFrame = {
-  sampleCapacity: 80;
+  sampleCapacity: 60;
   hotTimestamps: BigInt64Array;
   hotCount: number;
   members: LaneMember[];
@@ -166,11 +167,11 @@ Properties:
 
 ### SealedRowGroupFrame
 
-Hot immutable row-group frame, target size `80`.
+Hot immutable row-group frame, target size `60`.
 
 ```ts
 type SealedRowGroupFrame = {
-  count: 80;
+  count: 60;
   tsChunk: TimestampChunk;
   valueBuffer: Uint8Array;
   offsets: Uint32Array;
@@ -185,16 +186,16 @@ possible.
 
 ### ColdRowGroup
 
-Current long-lived compacted format, target size `640`.
+Current long-lived compacted format, target size `600`.
 
 This should remain the compaction target until a separate cold-format project
 proves a better alternative.
 
 ## Merge Rules
 
-### `80 -> 640`
+### `60 -> 600`
 
-Merge exactly `8` sealed-hot frames into one cold row group.
+Merge exactly `10` sealed-hot frames into one cold row group.
 
 Same compatibility rules.
 
@@ -208,16 +209,17 @@ The query engine should continue to see one logical stream of parts.
 
 For each series:
 
-1. cold `640` row groups
-2. sealed hot `80` frames
-3. active mutable `80` frame
+1. cold `600` row groups
+2. sealed hot `60` frames
+3. active mutable `60` frame
 
 All yielded in timestamp order through the existing `scanParts` contract.
 
 ### Query expectation
 
-- recent queries hit more `80` parts, but keep lower hot-memory cost
-- long queries hit mostly `640`
+- recent queries hit more `60` parts, but keep lower hot-memory cost and better
+  minute/hour boundary alignment
+- long queries hit mostly `600`
 - no new query API surface required
 
 ## Why This Is Better Than Raising Live `chunkSize`
@@ -242,7 +244,7 @@ reservation cost.
 The design is only worth it if:
 
 - total memory during ingest improves materially
-- final compacted bytes/sample stays close to current `640`
+- final compacted bytes/sample stays close to or better than current `600`
 - ingest throughput does not regress badly
 
 ## Required Benchmarks
@@ -250,8 +252,8 @@ The design is only worth it if:
 Any implementation must ship numbers for:
 
 1. ingest throughput
-   - current `640` single-tier
-   - `80 -> 640`
+   - current `600` single-tier
+   - `60 -> 600`
 
 2. memory over ingest progression
    - `50k`, `100k`, `250k`, `500k`, `750k`, `1M` samples
@@ -270,30 +272,23 @@ The maintained one-shot comparison now lives in:
 - `npm run bench:tiered-store-matrix -- [queryIterations] [compactionIterations] [memoryBatchSize]`
 - `npm run bench:tiered-cardinality-sweep`
 
-On the current implementation (`80 -> 640`) the memory story is now directionally
-good, but the ingest story is still bad.
+On the current implementation (`60 -> 600`) the memory story is now
+directionally good, but the ingest story is still bad.
 
-Representative run (`queryIterations=1`, `compactionIterations=1`,
-`memoryBatchSize=64`):
+Representative size-sweep run (`queryIterations=3`, batch size aligned to the
+hot size):
 
-| metric | current `640` | tiered `80 -> 640` |
+| metric | current `600` | tiered `60 -> 600` compacted |
 |---|---:|---:|
-| post-ingest bytes/sample | `0.4404` | `0.3014` |
-| post-query bytes/sample | `1.4234` | `1.2998` |
-| ingest time | `14.612 ms` | `66.065 ms` |
-| cold-only step-sum | `2.829 ms` | `2.184 ms` |
-| boundary/mixed step-sum | `0.100 ms` | `0.124 ms` |
-| hot-only step-sum | `0.157 ms` | `0.095 ms` |
+| post-ingest bytes/sample | `0.3983` | `0.2428` |
+| append time | `17.434 ms` | `60.874 ms` |
+| append + background drain | n/a | `82.397 ms` |
+| cold-only step-sum | `2.622 ms / 272 parts` | `3.151 ms / 272 parts` |
+| boundary/mixed step-sum | `0.182 ms / 32 parts` | `0.297 ms / 32 parts` |
+| hot-only step-sum | `0.121 ms / 64 parts` | `0.155 ms / 64 parts` |
 
-The maintained cardinality sweep shows the intended hot-tier effect very clearly
-once series count rises and many series remain partially hot. Representative
-rows after fixing lazy cold allocation:
-
-| scenario | current `640` bytes/sample | tiered `80 -> 640` bytes/sample |
-|---|---:|---:|
-| `128 x 80` | `74.55` | `4.4719` |
-| `512 x 320` | `18.2625` | `2.1844` |
-| `2048 x 640` | `1.2477` | `1.2477` |
+The maintained cardinality sweep now uses `60`, `300`, and `600` sample fill
+levels so the partial-hot cases line up with the selected ladder.
 
 ## Current Recommendation
 
@@ -302,12 +297,12 @@ Keep `TieredRowGroupStore` experimental for now.
 The design is now buying the memory reduction it was meant to buy, especially
 when a large fraction of the dataset is still resident in the hot tier. The
 remaining blocker is total ingest cost across append plus background catch-up.
-The `80 -> 640` rewrite no longer runs inline with every append, but it still
+The `60 -> 600` rewrite no longer runs inline with every append, but it still
 does decode/re-encode work that has to be paid by the background drain before
-the store reaches the compacted `640` layout. We should not make `80 -> 640`
+the store reaches the compacted `600` layout. We should not make `60 -> 600`
 the default storage path until the maintained benchmark matrix shows:
 
-- ingest close enough to single-tier `640`
+- ingest close enough to single-tier `600`
 - equal or better bytes/sample over ingest progression in the real dashboard
   workloads we care about
 - a clear mixed-query benefit, not just a cold-only win
@@ -317,16 +312,16 @@ That means the next engineering work should focus on:
 1. reducing promoted-tier publication and background compaction cost
 2. reducing hot+cold read/merge overhead for mixed queries where tiered still
    only breaks even
-3. only then reconsidering whether `80 -> 640` should become configurable or
+3. only then reconsidering whether `60 -> 600` should become configurable or
    default
 
 ## Open Questions
 
-1. Do we need the `320` rung?
+1. Do we need the `300` rung?
    Current evidence says no for V1.
 
-2. Should sealed `80` frames be compressed immediately, or kept raw until the
-   `640` merge?
+2. Should sealed `60` frames be compressed immediately, or kept raw until the
+   `600` merge?
    V1 should probably keep them compressed and benchmark before adding another
    staging representation.
 
@@ -334,9 +329,9 @@ That means the next engineering work should focus on:
 
 Build the smallest version that proves the idea:
 
-- hot: `80`
-- merge `8 x 80 -> 640`
+- hot: `60`
+- merge `10 x 60 -> 600`
 - same query surface
-- same row-group frozen format at `80` and `640`
+- same row-group frozen format at `60` and `600`
 
 If that does not clearly beat the current live-memory curve, stop there.

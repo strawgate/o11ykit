@@ -2,18 +2,18 @@
 
 ## Summary
 
-The current `TieredRowGroupStore(80 -> 640)` memory story is good, but ingest is still too expensive end-to-end because every promoted hot window must eventually be decoded and re-encoded by background compaction. Both the local compaction profile and the external systems research point to the same answer:
+The current `TieredRowGroupStore(60 -> 600)` memory story is good, but ingest is still too expensive end-to-end because every promoted hot window must eventually be decoded and re-encoded by background compaction. Both the local compaction profile and the external systems research point to the same answer:
 
 - keep writes on an append-only / immutable-promotion path
 - make larger / denser cold layouts a later background concern
 
-For `o11ytsdb`, the best next prototype is not a true in-place appendable `640` ALP chunk. It is a cold tier that can directly own sealed hot `80` row groups without decode+re-encode, then optionally repack those immutable units into `640` later.
+For `o11ytsdb`, the best next prototype is not a true in-place appendable `600` ALP chunk. It is a cold tier that can directly own sealed hot `60` row groups without decode+re-encode, then optionally repack those immutable units into `600` later.
 
 ## Local Findings
 
 ### Current compaction breakdown
 
-Direct instrumentation of the current compacting round (`32` series, `80 -> 640`) showed approximately:
+Direct instrumentation of the original compacting round (`32` series, `80 -> 640`) showed approximately:
 
 - total compacting round: `~2.59 ms`
 - `cold.appendCompactedWindow`: `~0.90 ms`
@@ -43,7 +43,7 @@ The remaining ingest tax is not a small control-flow bug. It comes from:
 
 1. decoding each promoted hot chunk
 2. copying samples into a fresh cold slab
-3. re-encoding the resulting `640`-sample cold chunk
+3. re-encoding the resulting `600`-sample cold chunk
 4. re-encoding timestamps for the cold chunk
 
 If we want a big ingest win, we need to stop doing one or more of those steps on the ingest path.
@@ -53,12 +53,12 @@ If we want a big ingest win, we need to stop doing one or more of those steps on
 The current promotion seam is:
 
 - writes freeze hot row groups and publish them as promoted parts without
-  decoding the sealed `80`-sample value blobs
+  decoding the sealed `60`-sample value blobs
 - [`TieredRowGroupStore.scanParts()`](../src/tiered-row-group-store.ts) merges
   compacted-store parts, promoted parts, and live hot parts into timestamp order
 - background compaction later drains promoted parts into the compacted
   [`RowGroupStore`](../src/row-group-store.ts) when enough promoted windows are
-  available for a `640`-sample chunk
+  available for a `600`-sample chunk
 - reads depend on:
   - ascending `scanParts()` order from [`StorageBackend`](../src/types.ts)
   - promoted parts that may be stats-only or lazy-decoded
@@ -98,7 +98,7 @@ Why it matters here:
 
 - immutable files are the unit of promotion
 - background compaction is where denser layout wins are taken
-- if compaction falls behind, writes stall, which is exactly the risk of synchronous `80 -> 640` repack
+- if compaction falls behind, writes stall, which is exactly the risk of synchronous `60 -> 600` repack
 
 Sources:
 
@@ -111,7 +111,7 @@ M3DB buffers and compresses in memory over a configured block size, then flushes
 
 Why it matters here:
 
-- this is the same `80` vs `640` tension we are seeing
+- this is the same small-hot vs larger-cold tension we are seeing
 - it reinforces that the hot compressed artifact should be a first-class unit
 - it suggests a write-optimized representation and a later denser representation should be separate concerns
 
@@ -141,7 +141,7 @@ Parquet and ORC both use immutable append units and rely on page / row-group ind
 
 Why it matters here:
 
-- a cold representation made of promoted `80` subparts can still be queryable if it carries enough per-subpart metadata
+- a cold representation made of promoted `60` subparts can still be queryable if it carries enough per-subpart metadata
 - we do not need immediate repack just to keep the query path viable
 
 Sources:
@@ -189,17 +189,17 @@ Sources:
 
 ## Ranked Repo-Local Design Options
 
-### 1. Direct promotion of sealed `80` parts into cold storage
+### 1. Direct promotion of sealed `60` parts into cold storage
 
 This is the cleanest first prototype.
 
 What changes:
 
-- replace the current synchronous `80 -> 640` decode/re-encode path
-- promote sealed hot `80` row groups directly into a cold-part index
+- replace the current synchronous `60 -> 600` decode/re-encode path
+- promote sealed hot `60` row groups directly into a cold-part index
 - query across:
   - hot remainder
-  - promoted `80` cold parts
+  - promoted `60` cold parts
 
 Why it is first:
 
@@ -210,27 +210,27 @@ Why it is first:
 
 Primary risk:
 
-- cold query fanout can grow a lot if promoted `80` parts stay around too long
+- cold query fanout can grow a lot if promoted `60` parts stay around too long
 
-### 2. Containerized `8 x 80` cold block without value re-encode
+### 2. Containerized `10 x 60` cold block without value re-encode
 
 This is the most balanced next design if plain promoted parts work but create too much cold-part overhead.
 
 What changes:
 
-- cold storage writes one logical container that holds up to `8` already-compressed `80` frames
+- cold storage writes one logical container that holds up to `10` already-compressed `60` frames
 - store:
   - frame directory
   - per-frame stats
   - frame offsets/sizes
   - maybe shared timestamp descriptors when cadence allows it
-- queries still operate on subframes, not on a fake single `640` codec chunk
+- queries still operate on subframes, not on a fake single `600` codec chunk
 
 Why it is attractive:
 
 - keeps ingest on a pure promotion path
 - reduces top-level object/part fanout
-- preserves the option of later true `640` repack
+- preserves the option of later true `600` repack
 
 Primary risk:
 
@@ -242,8 +242,8 @@ This is probably the best medium-term architecture.
 
 What changes:
 
-- synchronous path uses either direct promoted parts or `8 x 80` containers
-- background repack later produces a true denser `640` cold representation
+- synchronous path uses either direct promoted parts or `10 x 60` containers
+- background repack later produces a true denser `600` cold representation
 - queries merge:
   - repacked cold
   - promoted cold
@@ -258,13 +258,13 @@ Primary risk:
 
 - requires more state management and duplicate-avoidance bookkeeping
 
-### 4. Logical `640` block made of compressed pages plus a tiny mutable tail
+### 4. Logical `600` block made of compressed pages plus a tiny mutable tail
 
 This is the most plausible "appendable ALP-like" direction.
 
 What changes:
 
-- treat a logical `640` block as:
+- treat a logical `600` block as:
   - many immutable compressed pages, e.g. `16` or `32` samples each
   - one open tail
 - appends only touch the tail
@@ -272,7 +272,7 @@ What changes:
 
 Why it is attractive:
 
-- closest thing to appendable compressed accumulation without raw `640` residency
+- closest thing to appendable compressed accumulation without raw `600` residency
 - page-local stats and offsets make it queryable
 
 Primary risk:
@@ -301,7 +301,7 @@ Primary risk:
 
 ## Recommended Experiment Order
 
-### Experiment 1: direct promoted `80` parts
+### Experiment 1: direct promoted `60` parts
 
 Hypothesis:
 
@@ -317,7 +317,7 @@ Measure:
 - boundary / mixed hot+cold query latency
 - parts touched per query
 
-### Experiment 2: `8 x 80` cold container without value re-encode
+### Experiment 2: `10 x 60` cold container without value re-encode
 
 Hypothesis:
 
@@ -329,7 +329,7 @@ Measure:
 - metadata bytes/sample
 - frames touched per query
 
-### Experiment 3: background repack from promoted `80` to denser `640`
+### Experiment 3: background repack from promoted `60` to denser `600`
 
 Hypothesis:
 
@@ -346,12 +346,12 @@ Measure:
 
 Hypothesis:
 
-- a page-based logical `640` block can preserve much of the storage win without ever reserving raw `640` hot residency
+- a page-based logical `600` block can preserve much of the storage win without ever reserving raw `600` hot residency
 
 Measure:
 
 - append cost per sample
-- bytes/sample at fill levels `80`, `320`, `640`
+- bytes/sample at fill levels `60`, `300`, `600`
 - pages touched per query
 - encode/decode CPU
 
@@ -370,7 +370,7 @@ The cold tier should follow the VictoriaMetrics rule:
 
 ### 3. Keep repack off the ingest path
 
-Dense `640` cold layout is still desirable, but it should be background work.
+Dense `600` cold layout is still desirable, but it should be background work.
 
 ### 4. Use page / subpart metadata aggressively
 
@@ -394,11 +394,11 @@ ALP appears to be frame-oriented, not naturally append-oriented.
 
 ### Do not assume the first cold representation must already be the densest one
 
-That assumption is what created the current `80 -> 640` decode/re-encode tax.
+That assumption is what created the current `60 -> 600` decode/re-encode tax.
 
 ### Do not let promoted-part fanout grow without a merge policy
 
-If direct promoted `80`s are the first answer, they still need a later merge/repack story.
+If direct promoted `60`s are the first answer, they still need a later merge/repack story.
 
 ### Do not compromise atomicity
 
@@ -408,9 +408,9 @@ Any new cold representation still needs the same failure semantics we already ad
 
 The strongest recommendation from local profiling, repo-local design review, and external systems research is:
 
-1. **prototype direct promotion of sealed `80` row groups into cold storage without decode+re-encode**
-2. **if query/storage overhead is too high, move to a containerized `8 x 80` cold block**
-3. **treat true `640` repack as background work, not ingest work**
+1. **prototype direct promotion of sealed `60` row groups into cold storage without decode+re-encode**
+2. **if query/storage overhead is too high, move to a containerized `10 x 60` cold block**
+3. **treat true `600` repack as background work, not ingest work**
 4. **only explore a page-based appendable compressed block after those lower-risk experiments**
 
 If we want "appendable ALP," the realistic version is probably:

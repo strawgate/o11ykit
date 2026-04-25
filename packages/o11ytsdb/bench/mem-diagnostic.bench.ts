@@ -142,7 +142,7 @@ async function main(): Promise<void> {
 
       for (let offset = 0; offset < PTS_PER_SERIES; offset += CHUNK_SIZE) {
         const end = Math.min(offset + CHUNK_SIZE, PTS_PER_SERIES);
-        store.appendBatch(ids[ingested]!, ts.subarray(offset, end), vs.subarray(offset, end));
+        store.append(ts.subarray(offset, end), [{ id: ids[ingested]!, values: vs.subarray(offset, end) }]);
       }
       ingested++;
     }
