@@ -263,6 +263,63 @@ Any implementation must ship numbers for:
    - mixed hot+cold window
    - full-range query
 
+## Current Measured Status
+
+The maintained one-shot comparison now lives in:
+
+- `npm run bench:tiered-store-matrix -- [queryIterations] [compactionIterations] [memoryBatchSize]`
+- `npm run bench:tiered-cardinality-sweep`
+
+On the current implementation (`80 -> 640`) the memory story is now directionally
+good, but the ingest story is still bad.
+
+Representative run (`queryIterations=1`, `compactionIterations=1`,
+`memoryBatchSize=64`):
+
+| metric | current `640` | tiered `80 -> 640` |
+|---|---:|---:|
+| post-ingest bytes/sample | `0.4404` | `0.3014` |
+| post-query bytes/sample | `1.4234` | `1.2998` |
+| ingest time | `14.612 ms` | `66.065 ms` |
+| cold-only step-sum | `2.829 ms` | `2.184 ms` |
+| boundary/mixed step-sum | `0.100 ms` | `0.124 ms` |
+| hot-only step-sum | `0.157 ms` | `0.095 ms` |
+
+The maintained cardinality sweep shows the intended hot-tier effect very clearly
+once series count rises and many series remain partially hot. Representative
+rows after fixing lazy cold allocation:
+
+| scenario | current `640` bytes/sample | tiered `80 -> 640` bytes/sample |
+|---|---:|---:|
+| `128 x 80` | `74.55` | `4.4719` |
+| `512 x 320` | `18.2625` | `2.1844` |
+| `2048 x 640` | `1.2477` | `1.2477` |
+
+## Current Recommendation
+
+Keep `TieredRowGroupStore` experimental for now.
+
+The design is now buying the memory reduction it was meant to buy, especially
+when a large fraction of the dataset is still resident in the hot tier. The
+remaining blocker is total ingest cost across append plus background catch-up.
+The `80 -> 640` rewrite no longer runs inline with every append, but it still
+does decode/re-encode work that has to be paid by the background drain before
+the store reaches the compacted `640` layout. We should not make `80 -> 640`
+the default storage path until the maintained benchmark matrix shows:
+
+- ingest close enough to single-tier `640`
+- equal or better bytes/sample over ingest progression in the real dashboard
+  workloads we care about
+- a clear mixed-query benefit, not just a cold-only win
+
+That means the next engineering work should focus on:
+
+1. reducing promoted-tier publication and background compaction cost
+2. reducing hot+cold read/merge overhead for mixed queries where tiered still
+   only breaks even
+3. only then reconsidering whether `80 -> 640` should become configurable or
+   default
+
 ## Open Questions
 
 1. Do we need the `320` rung?

@@ -78,6 +78,18 @@ export interface RowGroupStoreCompactionChunk {
   memberCount: number;
 }
 
+export interface RowGroupStorePromotedTimestampChunk {
+  timestamps: BigInt64Array | undefined;
+  compressed: Uint8Array | undefined;
+  minT: bigint;
+  maxT: bigint;
+  count: number;
+}
+
+export interface RowGroupStorePromotedChunk extends RowGroupStoreCompactionChunk {
+  packedStats: Float64Array;
+}
+
 export interface RowGroupStoreLaneWindow {
   groupId: number;
   laneId: number;
@@ -88,13 +100,30 @@ export interface RowGroupStoreLaneWindow {
   rowGroups: RowGroupStoreCompactionChunk[];
 }
 
+export interface RowGroupStorePromotedLaneWindow {
+  groupId: number;
+  laneId: number;
+  rowGroupCount: number;
+  sampleCount: number;
+  memberSeriesIds: SeriesId[];
+  timestampChunks: RowGroupStorePromotedTimestampChunk[];
+  rowGroups: RowGroupStorePromotedChunk[];
+}
+
+type RowGroupStoreCommittedWindow = Pick<
+  RowGroupStoreLaneWindow,
+  "groupId" | "laneId" | "rowGroupCount" | "sampleCount"
+>;
+
 const EMPTY_TIMESTAMPS = new BigInt64Array(0);
 const EMPTY_VALUES = new Float64Array(0);
 const PACKED_STATS_STRIDE = 5;
 
-function createLane(chunkSize: number): GroupLane {
+function createLane(): GroupLane {
   return {
-    hotTimestamps: new BigInt64Array(chunkSize),
+    // Grow hot timestamp storage on first write. Many lanes, especially
+    // compaction-only cold lanes, never receive direct hot appends.
+    hotTimestamps: EMPTY_TIMESTAMPS,
     hotCount: 0,
     frozenTimestamps: [],
     members: [],
@@ -243,7 +272,7 @@ export class RowGroupStore implements StorageBackend {
     }
 
     while (this.groups.length <= groupId) {
-      this.groups.push({ lanes: [createLane(this.chunkSize)] });
+      this.groups.push({ lanes: [createLane()] });
     }
 
     const series: LaneSeries = {
@@ -631,7 +660,53 @@ export class RowGroupStore implements StorageBackend {
     return undefined;
   }
 
-  commitCompactedLaneWindow(window: RowGroupStoreLaneWindow): void {
+  peekPromotableLaneWindow(
+    groupId: number,
+    rowGroupCount: number,
+    expectedChunkSize: number
+  ): RowGroupStorePromotedLaneWindow | undefined {
+    const group = this.getGroup(groupId);
+    for (let laneId = 0; laneId < group.lanes.length; laneId++) {
+      const lane = requireDefined(
+        group.lanes[laneId],
+        `missing lane ${laneId} for group ${groupId}`
+      );
+      if (!this.canDrainLaneWindow(lane, rowGroupCount, expectedChunkSize)) {
+        continue;
+      }
+
+      const rowGroups = lane.rowGroups.slice(0, rowGroupCount);
+      const tsChunks = lane.frozenTimestamps.slice(0, rowGroupCount);
+      const firstRowGroup = requireDefined(rowGroups[0], "missing promotable row group");
+      const memberCount = firstRowGroup.memberCount;
+      const windowSize = rowGroupCount * expectedChunkSize;
+
+      return {
+        groupId,
+        laneId,
+        rowGroupCount,
+        sampleCount: memberCount * windowSize,
+        memberSeriesIds: lane.members.slice(0, memberCount).map((member) => member.seriesId),
+        timestampChunks: tsChunks.map((chunk) => ({
+          timestamps: chunk.timestamps,
+          compressed: chunk.compressed,
+          minT: chunk.minT,
+          maxT: chunk.maxT,
+          count: chunk.count,
+        })),
+        rowGroups: rowGroups.map((rowGroup) => ({
+          valueBuffer: rowGroup.valueBuffer,
+          offsets: rowGroup.offsets,
+          sizes: rowGroup.sizes,
+          packedStats: rowGroup.packedStats,
+          memberCount: rowGroup.memberCount,
+        })),
+      };
+    }
+    return undefined;
+  }
+
+  commitCompactedLaneWindow(window: RowGroupStoreCommittedWindow): void {
     const lane = this.getLane(window.groupId, window.laneId);
     lane.rowGroups.splice(0, window.rowGroupCount);
     lane.frozenTimestamps.splice(0, window.rowGroupCount);
@@ -822,7 +897,7 @@ export class RowGroupStore implements StorageBackend {
     }
 
     const group = this.getGroup(groupId);
-    lane = createLane(this.chunkSize);
+    lane = createLane();
     group.lanes.push(lane);
     laneId = group.lanes.length - 1;
     for (let i = 0; i < memberSeriesIds.length; i++) {
@@ -875,7 +950,7 @@ export class RowGroupStore implements StorageBackend {
       lane.hotCount > 0 ||
       lane.rowGroups.length > 0
     ) {
-      lane = createLane(this.chunkSize);
+      lane = createLane();
       group.lanes.push(lane);
       laneId = group.lanes.length - 1;
     }
@@ -892,7 +967,9 @@ export class RowGroupStore implements StorageBackend {
     const segment: LaneSegment = {
       laneId,
       laneMemberIndex: lane.members.length,
-      hot: { values: new Float64Array(this.chunkSize), count: 0 },
+      // Allocate hot write space lazily. Many segments, especially cold-tier
+      // compaction targets, may never receive any direct hot appends.
+      hot: { values: new Float64Array(0), count: 0 },
     };
     const segmentIndex = series.segments.length;
     series.segments.push(segment);
@@ -910,7 +987,7 @@ export class RowGroupStore implements StorageBackend {
   } {
     const series = requireDefined(this.allSeries[seriesId], `unknown series id ${seriesId}`);
     const group = this.getGroup(series.groupId);
-    const lane = createLane(this.chunkSize);
+    const lane = createLane();
     group.lanes.push(lane);
     const laneId = group.lanes.length - 1;
     const segment = this.attachSegmentToLane(seriesId, laneId, lane, true);
@@ -975,7 +1052,7 @@ export class RowGroupStore implements StorageBackend {
 
     const maxHotSamples = this.chunkSize * this.maxHotWindowsPerLane;
     if (state.segment.hot.values.length >= maxHotSamples) {
-      return this.rollSeriesToFreshLane(seriesId);
+      state = this.rollSeriesToFreshLane(seriesId);
     }
 
     const newSize = state.segment.hot.values.length + this.chunkSize;
