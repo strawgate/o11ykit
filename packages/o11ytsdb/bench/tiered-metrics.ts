@@ -164,6 +164,7 @@ export function measureTieredIngestCompare(codecs: WasmCodecs) {
   const warmTiered = makeTiered();
   ingestDataset(warmCurrent, createSeriesIds(warmCurrent, labels), dataset);
   ingestDataset(warmTiered, createSeriesIds(warmTiered, labels), dataset);
+  warmTiered.drainCompaction();
 
   const current = makeCurrent();
   const tiered = makeTiered();
@@ -296,7 +297,7 @@ export function measureTieredCompaction(codecs: WasmCodecs, iterations = DEFAULT
       hotChunkSize: HOT_SIZE,
       coldChunkSize: COLD_SIZE,
       primeBlocks: PRIME_BLOCKS,
-      compactedSamplesPerSeries: HOT_SIZE,
+      compactedSamplesPerSeries: COLD_SIZE,
     },
     timings: {
       tieredSteadyRound: summarizeTimings(tieredSteadySamples),

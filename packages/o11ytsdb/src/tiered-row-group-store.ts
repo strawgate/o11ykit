@@ -32,6 +32,16 @@ export type TieredRowGroupStoreOptions = {
   backgroundLanesPerRun?: number;
 };
 
+function normalizeLaneBudget(value: number, label: string): number {
+  if (value === Number.POSITIVE_INFINITY) {
+    return value;
+  }
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {
+    throw new RangeError(`${label} must be a positive integer or Infinity, got ${value}`);
+  }
+  return value;
+}
+
 function partStart(part: TimeRange): bigint {
   const cachedPart = part as TimeRangeWithStartCache;
   if (cachedPart._startCache !== undefined) {
@@ -126,7 +136,10 @@ export class TieredRowGroupStore implements StorageBackend {
       options.compactionScheduler === undefined
         ? defaultCompactionScheduler()
         : options.compactionScheduler;
-    this.backgroundLanesPerRun = Math.max(1, options.backgroundLanesPerRun ?? 1);
+    this.backgroundLanesPerRun = normalizeLaneBudget(
+      options.backgroundLanesPerRun ?? 1,
+      "backgroundLanesPerRun"
+    );
     this.hotStore = new RowGroupStore(
       valuesCodec,
       hotChunkSize,
@@ -247,11 +260,13 @@ export class TieredRowGroupStore implements StorageBackend {
   }
 
   drainCompaction(maxLanes: number = Number.POSITIVE_INFINITY): number {
+    maxLanes = normalizeLaneBudget(maxLanes, "maxLanes");
     if (this.compactionRunning) {
       return 0;
     }
     this.compactionRunning = true;
     let processed = 0;
+    const failedLanes: CompactionLane[] = [];
     try {
       while (this.pendingCompactionLanes.length > 0 && processed < maxLanes) {
         const lane = this.pendingCompactionLanes.shift();
@@ -259,11 +274,18 @@ export class TieredRowGroupStore implements StorageBackend {
           break;
         }
         this.pendingCompactionKeys.delete(compactionLaneKey(lane.groupId, lane.laneId));
-        this.compactPromotedLane(lane.groupId, lane.laneId);
+        try {
+          this.compactPromotedLane(lane.groupId, lane.laneId);
+        } catch {
+          failedLanes.push(lane);
+        }
         processed++;
       }
     } finally {
       this.compactionRunning = false;
+      for (const lane of failedLanes) {
+        this.enqueueCompactionLane(lane.groupId, lane.laneId);
+      }
     }
     if (this.pendingCompactionLanes.length > 0) {
       this.scheduleCompaction();
@@ -421,14 +443,14 @@ function compactionLaneKey(groupId: number, laneId: number): string {
 }
 
 function defaultCompactionScheduler(): CompactionScheduler | null {
-  if (typeof queueMicrotask === "function") {
-    return (task) => {
-      queueMicrotask(task);
-    };
-  }
   if (typeof setTimeout === "function") {
     return (task) => {
       setTimeout(task, 0);
+    };
+  }
+  if (typeof queueMicrotask === "function") {
+    return (task) => {
+      queueMicrotask(task);
     };
   }
   return null;

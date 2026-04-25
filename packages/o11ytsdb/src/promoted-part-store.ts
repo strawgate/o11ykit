@@ -16,6 +16,16 @@ const EMPTY_TIMESTAMPS = new BigInt64Array(0);
 const EMPTY_VALUES = new Float64Array(0);
 const PACKED_STATS_STRIDE = 5;
 
+/**
+ * TimeRange plus transient decode state for promoted immutable chunks.
+ *
+ * `decodeFullPromotedPart` expects `_timestampsRef`, `_compressedValues`, and
+ * `_valuesCodec`. `decodePartialPromotedPart` expects `_compressedValues`,
+ * `_valuesCodec`, `_lo`, and `_hi`. `decodeRangePromotedPart` expects
+ * `_compressedTimestamps`, `_compressedValues`, `_rangeCodec`, `_startT`, and
+ * `_endT`. These fields are populated when a part is emitted and are not
+ * cleared; current codecs are synchronous and run on the same JS thread.
+ */
 type LazyPromotedPart = TimeRange & {
   _timestampsRef?: BigInt64Array;
   _compressedValues?: Uint8Array;
@@ -87,11 +97,11 @@ function decodePartialPromotedPart(this: LazyPromotedPart): TimeRange {
   const lo = requireDefined(this._lo, "missing partial decode start");
   const hi = requireDefined(this._hi, "missing partial decode end");
   if (codec.decodeValuesRangeView) {
-    this.values = codec.decodeValuesRangeView.call(codec, compressedValues, lo, hi).slice();
+    this.values = codec.decodeValuesRangeView(compressedValues, lo, hi).slice();
     return this;
   }
   this.values = codec.decodeValuesRange
-    ? codec.decodeValuesRange.call(codec, compressedValues, lo, hi)
+    ? codec.decodeValuesRange(compressedValues, lo, hi)
     : codec.decodeValues(compressedValues).subarray(lo, hi);
   return this;
 }
@@ -288,6 +298,8 @@ export class PromotedPartStore {
       for (let i = lane.head; i < lane.pages.length; i++) {
         const page = requireDefined(lane.pages[i], `missing promoted page ${i}`);
         for (const timestampChunk of page.timestampChunks) {
+          // Report resident memory: after lazy decode, both compressed and
+          // decoded timestamp buffers may be retained for future reads.
           if (timestampChunk.compressed) {
             bytes += timestampChunk.compressed.byteLength;
           }

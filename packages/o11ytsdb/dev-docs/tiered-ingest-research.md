@@ -52,16 +52,16 @@ If we want a big ingest win, we need to stop doing one or more of those steps on
 
 The current promotion seam is:
 
-- [`TieredRowGroupStore.compactLane()`](/Users/billeaston/.codex/worktrees/9d53/o11ykit/packages/o11ytsdb/src/tiered-row-group-store.ts)
-  - reads a [`RowGroupStoreLaneWindow`](/Users/billeaston/.codex/worktrees/9d53/o11ykit/packages/o11ytsdb/src/row-group-store.ts)
+- [`TieredRowGroupStore.compactLane()`](../src/tiered-row-group-store.ts)
+  - reads a [`RowGroupStoreLaneWindow`](../src/row-group-store.ts)
   - decodes each sealed hot `80` value blob
   - copies into `memberCount x 640` slabs
-  - writes to [`RowGroupStore.appendCompactedWindow()`](/Users/billeaston/.codex/worktrees/9d53/o11ykit/packages/o11ytsdb/src/row-group-store.ts)
-- the cold tier today is just another [`RowGroupStore`](/Users/billeaston/.codex/worktrees/9d53/o11ykit/packages/o11ytsdb/src/row-group-store.ts)
+  - writes to [`RowGroupStore.appendCompactedWindow()`](../src/row-group-store.ts)
+- the cold tier today is just another [`RowGroupStore`](../src/row-group-store.ts)
 - reads depend on:
-  - ascending `scanParts()` order from [`StorageBackend`](/Users/billeaston/.codex/worktrees/9d53/o11ykit/packages/o11ytsdb/src/types.ts)
+  - ascending `scanParts()` order from [`StorageBackend`](../src/types.ts)
   - `TimeRange` parts that may be stats-only or lazy-decoded
-  - hot+cold merge in [`TieredRowGroupStore.scanParts()`](/Users/billeaston/.codex/worktrees/9d53/o11ykit/packages/o11ytsdb/src/tiered-row-group-store.ts)
+  - hot+cold merge in [`TieredRowGroupStore.scanParts()`](../src/tiered-row-group-store.ts)
 
 That means the lowest-risk design changes are the ones that preserve:
 
@@ -157,7 +157,7 @@ The important constraint is structural:
 - it chooses encoding parameters per frame
 - frame-global properties such as exponent choice, FoR range, and exception layout make true in-place append awkward
 
-In this repo, that is visible in the chunk-oriented [`ValuesCodec`](/Users/billeaston/.codex/worktrees/9d53/o11ykit/packages/o11ytsdb/src/types.ts), the batch encode/decode APIs in [`wasm-codecs.ts`](/Users/billeaston/.codex/worktrees/9d53/o11ykit/packages/o11ytsdb/src/wasm-codecs.ts), and the Rust ALP implementation’s frame-local metadata and exception layout.
+In this repo, that is visible in the chunk-oriented [`ValuesCodec`](../src/types.ts), the batch encode/decode APIs in [`wasm-codecs.ts`](../src/wasm-codecs.ts), and the Rust ALP implementation’s frame-local metadata and exception layout.
 
 The practical implication is:
 

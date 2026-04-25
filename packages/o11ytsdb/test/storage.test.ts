@@ -438,6 +438,28 @@ describe("RowGroupStore freeze behavior", () => {
 });
 
 describe("TieredRowGroupStore compaction", () => {
+  it("rejects invalid background compaction lane budgets", () => {
+    expect(
+      () =>
+        new TieredRowGroupStore(
+          tsValuesCodec,
+          4,
+          8,
+          () => 0,
+          2,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          { backgroundLanesPerRun: Number.NaN }
+        )
+    ).toThrow(/backgroundLanesPerRun/);
+
+    const store = new TieredRowGroupStore(tsValuesCodec, 4, 8, () => 0, 2);
+    expect(() => store.drainCompaction(0)).toThrow(/maxLanes/);
+  });
+
   it("creates compacted cold-tier series lazily when enough promoted windows accumulate", () => {
     const store = new TieredRowGroupStore(tsValuesCodec, 4, 8, () => 0, 2);
     const slowId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "slow" }));
@@ -687,5 +709,56 @@ describe("TieredRowGroupStore compaction", () => {
     const bData = store.read(bId, 0n, BigInt(Number.MAX_SAFE_INTEGER));
     expect(Array.from(bData.timestamps)).toEqual(Array.from(timestamps));
     expect(Array.from(bData.values)).toEqual(Array.from(bValues));
+  });
+
+  it("keeps failed compaction lanes retryable while promoted data remains readable", () => {
+    let failNextEncode = false;
+    const flakyCodec: ValuesCodec = {
+      name: "flaky-identity",
+      encodeValues(values: Float64Array): Uint8Array {
+        if (failNextEncode) {
+          failNextEncode = false;
+          throw new Error("transient encode failure");
+        }
+        return new Uint8Array(
+          values.buffer.slice(values.byteOffset, values.byteOffset + values.byteLength)
+        );
+      },
+      decodeValues(buf: Uint8Array): Float64Array {
+        return new Float64Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+      },
+    };
+    const store = new TieredRowGroupStore(flakyCodec, 4, 8, () => 0, 2);
+    const aId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "a" }));
+    const bId = store.getOrCreateSeries(makeLabels("tier_metric", { host: "b" }));
+
+    const timestamps = new BigInt64Array(8);
+    const aValues = new Float64Array(8);
+    const bValues = new Float64Array(8);
+    for (let i = 0; i < 8; i++) {
+      timestamps[i] = BigInt(i) * 1_000n;
+      aValues[i] = i;
+      bValues[i] = 100 + i;
+    }
+
+    store.appendBatch(aId, timestamps, aValues);
+    store.appendBatch(bId, timestamps, bValues);
+
+    failNextEncode = true;
+    expect(store.drainCompaction()).toBe(1);
+    const promotedStore = Reflect.get(store, "promotedStore");
+    const compactedStore = Reflect.get(store, "compactedStore");
+    expect(promotedStore.sampleCount).toBe(16);
+    expect(compactedStore.sampleCount).toBe(0);
+    expect(Array.from(store.read(aId, 0n, BigInt(Number.MAX_SAFE_INTEGER)).values)).toEqual(
+      Array.from(aValues)
+    );
+
+    expect(store.drainCompaction()).toBe(1);
+    expect(promotedStore.sampleCount).toBe(0);
+    expect(compactedStore.sampleCount).toBe(16);
+    expect(Array.from(store.read(bId, 0n, BigInt(Number.MAX_SAFE_INTEGER)).values)).toEqual(
+      Array.from(bValues)
+    );
   });
 });

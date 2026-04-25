@@ -296,9 +296,11 @@ Keep `TieredRowGroupStore` experimental for now.
 
 The design is now buying the memory reduction it was meant to buy, especially
 when a large fraction of the dataset is still resident in the hot tier. The
-remaining blocker is the current synchronous hot-to-cold compaction path, which
-is still too expensive on ingest. We should not make `80 -> 640` the default
-storage path until the maintained benchmark matrix shows:
+remaining blocker is total ingest cost across append plus background catch-up.
+The `80 -> 640` rewrite no longer runs inline with every append, but it still
+does decode/re-encode work that has to be paid by the background drain before
+the store reaches the compacted `640` layout. We should not make `80 -> 640`
+the default storage path until the maintained benchmark matrix shows:
 
 - ingest close enough to single-tier `640`
 - equal or better bytes/sample over ingest progression in the real dashboard
@@ -307,7 +309,7 @@ storage path until the maintained benchmark matrix shows:
 
 That means the next engineering work should focus on:
 
-1. reducing compaction cost on the ingest path
+1. reducing promoted-tier publication and background compaction cost
 2. reducing hot+cold read/merge overhead for mixed queries where tiered still
    only breaks even
 3. only then reconsidering whether `80 -> 640` should become configurable or

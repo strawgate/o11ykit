@@ -112,7 +112,9 @@ export function createCurrentStore(
     () => 0,
     resolved.maxSeriesPerLane,
     undefined,
-    codecs.tsCodec
+    codecs.tsCodec,
+    undefined,
+    undefined
   );
 }
 
@@ -128,7 +130,11 @@ export function createTieredStore(
     () => 0,
     resolved.maxSeriesPerLane,
     undefined,
-    codecs.tsCodec
+    codecs.tsCodec,
+    undefined,
+    undefined,
+    undefined,
+    { compactionScheduler: null }
   );
 }
 
