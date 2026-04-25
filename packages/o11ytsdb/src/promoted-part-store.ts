@@ -497,6 +497,9 @@ export class PromotedPartStore {
       return;
     }
 
+    // Cache decoded timestamps on the immutable promoted chunk. Current codecs
+    // are synchronous and run on the same JS thread, so readers cannot observe a
+    // partially populated timestamp buffer.
     if (!timestampChunk.timestamps && this.tsCodec && timestampChunk.compressed) {
       timestampChunk.timestamps = this.tsCodec.decodeTimestamps(timestampChunk.compressed);
     }
