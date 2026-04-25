@@ -45,7 +45,7 @@ function sampleSeriesForCanvas(series, maxSamples) {
 
     const chosen = [...new Set([start, minIdx, maxIdx, end - 1])].sort((a, b) => a - b);
     for (const idx of chosen) {
-      timestamps.push(Number(series.timestamps[idx]));
+      timestamps.push(BigInt(series.timestamps[idx]));
       values.push(series.values[idx]);
     }
   }
@@ -53,34 +53,58 @@ function sampleSeriesForCanvas(series, maxSamples) {
   if (timestamps.length <= maxSamples) {
     return {
       ...series,
-      timestamps,
-      values,
+      timestamps: new BigInt64Array(timestamps),
+      values: new Float64Array(values),
     };
   }
 
-  const cappedTimestamps = [];
-  const cappedValues = [];
+  const cappedTimestamps = new BigInt64Array(maxSamples);
+  const cappedValues = new Float64Array(maxSamples);
   const lastIndex = timestamps.length - 1;
   let lastSourceIndex = -1;
+  let writeIdx = 0;
+
   for (let i = 0; i < maxSamples; i++) {
     const sourceIndex = Math.round((i * lastIndex) / Math.max(1, maxSamples - 1));
     if (sourceIndex > 0 && sourceIndex < lastIndex && sourceIndex === lastSourceIndex) {
       continue;
     }
-    cappedTimestamps.push(timestamps[sourceIndex]);
-    cappedValues.push(values[sourceIndex]);
+    cappedTimestamps[writeIdx] = timestamps[sourceIndex];
+    cappedValues[writeIdx] = values[sourceIndex];
+    writeIdx++;
     lastSourceIndex = sourceIndex;
   }
 
   return {
     ...series,
-    timestamps: cappedTimestamps,
-    values: cappedValues,
+    timestamps: cappedTimestamps.subarray(0, writeIdx),
+    values: cappedValues.subarray(0, writeIdx),
   };
 }
 
+const canvasStateCache = new WeakMap();
+
 export function renderChart(canvas, seriesData, title, options = {}) {
   if (!canvas || !seriesData?.length) return;
+
+  // Calculate range to see if we even need to redraw
+  let minT = BigInt("9223372036854775807"),
+    maxT = -BigInt("9223372036854775808"),
+    minV = Infinity,
+    maxV = -Infinity;
+  let totalSamplesCount = 0;
+  for (const s of seriesData) {
+    totalSamplesCount += s.timestamps.length;
+    for (let i = 0; i < s.timestamps.length; i++) {
+      const t = BigInt(s.timestamps[i]);
+      const v = s.values[i];
+      if (t < minT) minT = t;
+      if (t > maxT) maxT = t;
+      if (v < minV) minV = v;
+      if (v > maxV) maxV = v;
+    }
+  }
+
   const {
     compact = false,
     showTitle = true,
@@ -89,11 +113,52 @@ export function renderChart(canvas, seriesData, title, options = {}) {
     showYAxisLabels = true,
     trackState = canvas?.id === "chartCanvas",
   } = options;
+
   const rect = canvas.parentElement.getBoundingClientRect();
   const availableWidth = Math.max(canvas.parentElement.clientWidth || 0, rect.width);
   const horizontalInset = compact ? 8 : 32;
   const w = Math.max(180, Math.min(availableWidth - horizontalInset, 1100));
   const h = Number(canvas.dataset.chartHeight) || (compact ? 220 : 380);
+
+  // Compute a lightweight y-data signature so cache invalidates when values change
+  let ySignature = 0;
+  for (const s of seriesData) {
+    const len = s.values.length;
+    if (len > 0) {
+      ySignature += s.values[0] + s.values[len - 1] + s.values[len >>> 1];
+    }
+  }
+
+  // Cache check
+  const lastState = canvasStateCache.get(canvas);
+  if (
+    lastState &&
+    lastState.minT === minT &&
+    lastState.maxT === maxT &&
+    lastState.seriesCount === seriesData.length &&
+    lastState.totalSamplesCount === totalSamplesCount &&
+    lastState.ySignature === ySignature &&
+    lastState.width === w &&
+    lastState.height === h &&
+    lastState.title === title
+  ) {
+    return;
+  }
+
+  // Don't cache if we're rendering into a zero-sized or tiny container
+  if (w > 0 && h > 0) {
+    canvasStateCache.set(canvas, {
+      minT,
+      maxT,
+      seriesCount: seriesData.length,
+      totalSamplesCount,
+      ySignature,
+      width: w,
+      height: h,
+      title,
+    });
+  }
+
   const ctx = setupCanvasDPR(canvas, w, h);
 
   const pad = compact
@@ -108,31 +173,37 @@ export function renderChart(canvas, seriesData, title, options = {}) {
     sampleSeriesForCanvas(series, maxSamplesPerSeries)
   );
 
-  let minT = Infinity,
-    maxT = -Infinity,
-    minV = Infinity,
-    maxV = -Infinity;
-  for (const s of seriesData) {
-    for (let i = 0; i < s.timestamps.length; i++) {
-      const t = Number(s.timestamps[i]);
-      const v = s.values[i];
-      if (t < minT) minT = t;
-      if (t > maxT) maxT = t;
-      if (v < minV) minV = v;
-      if (v > maxV) maxV = v;
-    }
-  }
+  if (!Number.isFinite(minV)) minV = 0;
+  if (!Number.isFinite(maxV)) maxV = 0;
 
   if (minV === maxV) {
     minV -= 1;
     maxV += 1;
   }
+
   const vPad = (maxV - minV) * 0.08;
   minV = minV >= 0 ? Math.max(0, minV - vPad) : minV - vPad;
   maxV += vPad;
 
-  const tRange = maxT - minT || 1;
+  // Final check to ensure we didn't collapse back to zero range
+  if (Math.abs(maxV - minV) < 0.0001) {
+    minV -= 1;
+    maxV += 1;
+  }
+
+  const tRange = maxT - minT || 1n;
+  const _tRangeNum = Number(tRange);
   const vRange = maxV - minV || 1;
+
+  if (
+    Number.isNaN(minV) ||
+    Number.isNaN(maxV) ||
+    !Number.isFinite(minV) ||
+    !Number.isFinite(maxV)
+  ) {
+    console.warn("Chart: Invalid value range", { minV, maxV, seriesCount: seriesData.length });
+    return;
+  }
 
   // Background
   ctx.fillStyle = "#ffffff";
@@ -179,8 +250,8 @@ export function renderChart(canvas, seriesData, title, options = {}) {
     ctx.textBaseline = "top";
     for (let i = 0; i <= xTicks; i++) {
       const x = pad.left + (plotW * i) / xTicks;
-      const tNs = minT + (i / xTicks) * tRange;
-      const tMs = tNs / 1_000_000;
+      const tNs = minT + (tRange * BigInt(i)) / BigInt(xTicks);
+      const tMs = Number(tNs / 1_000_000n);
       const d = new Date(tMs);
       ctx.fillText(
         d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
@@ -220,7 +291,12 @@ export function renderChart(canvas, seriesData, title, options = {}) {
     ctx.beginPath();
     let firstX, _firstY;
     for (let i = 0; i < s.timestamps.length; i++) {
-      const x = pad.left + ((Number(s.timestamps[i]) - minT) / tRange) * plotW;
+      const t = BigInt(s.timestamps[i]);
+      const x =
+        pad.left +
+        (tRange > 0n
+          ? Number(((t - minT) * BigInt(Math.floor(plotW))) / tRange)
+          : Math.floor(plotW / 2));
       const y = pad.top + ((maxV - s.values[i]) / vRange) * plotH;
       if (i === 0) {
         ctx.moveTo(x, y);
@@ -229,8 +305,12 @@ export function renderChart(canvas, seriesData, title, options = {}) {
       } else ctx.lineTo(x, y);
     }
     if (s.timestamps.length > 0) {
+      const lastT = BigInt(s.timestamps[s.timestamps.length - 1]);
       const lastX =
-        pad.left + ((Number(s.timestamps[s.timestamps.length - 1]) - minT) / tRange) * plotW;
+        pad.left +
+        (tRange > 0n
+          ? Number(((lastT - minT) * BigInt(Math.floor(plotW))) / tRange)
+          : Math.floor(plotW / 2));
       ctx.lineTo(lastX, pad.top + plotH);
       ctx.lineTo(firstX, pad.top + plotH);
       ctx.closePath();
@@ -241,7 +321,12 @@ export function renderChart(canvas, seriesData, title, options = {}) {
     // Line
     ctx.beginPath();
     for (let i = 0; i < s.timestamps.length; i++) {
-      const x = pad.left + ((Number(s.timestamps[i]) - minT) / tRange) * plotW;
+      const t = BigInt(s.timestamps[i]);
+      const x =
+        pad.left +
+        (tRange > 0n
+          ? Number(((t - minT) * BigInt(Math.floor(plotW))) / tRange)
+          : Math.floor(plotW / 2));
       const y = pad.top + ((maxV - s.values[i]) / vRange) * plotH;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
@@ -339,7 +424,9 @@ function handleChartHover(e) {
     return;
   }
 
-  const mouseT = minT + ((mx - pad.left) / plotW) * tRange;
+  const _tRangeNum = Number(tRange);
+  const minTNum = Number(minT);
+  const mouseT = minTNum + ((mx - pad.left) / plotW) * _tRangeNum;
   const points = [];
 
   for (let si = 0; si < seriesData.length; si++) {

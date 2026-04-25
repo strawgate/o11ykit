@@ -20,7 +20,7 @@ import {
   mergeReductionWorkerResults as _mergeReductionWorkerResults,
 } from "./query-merge.js";
 import { QueryWorkerPool, supportsParallelQuery } from "./query-pool.js";
-import { buildStorageExplorer } from "./storage-explorer.js";
+import { buildStorageExplorer, refreshActiveChunkDetail } from "./storage-explorer.js";
 import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
 import { autoSelectQueryStep, escapeHtml, formatNum } from "./utils.js";
 import { loadWasm, wasmReady } from "./wasm.js";
@@ -38,6 +38,7 @@ let _lastIngestTime = 0;
 let _storagePopulated = false;
 let _queryPopulated = false;
 let queryWorkerPool = null;
+window.queryWorkerPool = null;
 let _queryRunSeq = 0;
 
 const compactNumberFormatter = new Intl.NumberFormat("en-US", {
@@ -194,6 +195,7 @@ async function _provisionQueryWorkers(store) {
     queryWorkerPool = new QueryWorkerPool({
       onStateChange: _renderQueryFabricMonitor,
     });
+    window.queryWorkerPool = queryWorkerPool;
   }
 
   try {
@@ -202,6 +204,15 @@ async function _provisionQueryWorkers(store) {
     console.error("Failed to provision query workers", error);
     queryWorkerPool.markFallback("Worker pool failed to initialize");
   }
+}
+
+let _lastMonitorSummary = "";
+let _lastMonitorPhase = "";
+let _lastMonitorWorkersSignature = "";
+
+function _workerSampleSignature(workers) {
+  if (!workers || workers.length === 0) return "";
+  return workers.map((w) => `${w.id}:${w.sampleCount ?? 0}`).join(",");
 }
 
 function _renderQueryFabricMonitor(state) {
@@ -213,7 +224,28 @@ function _renderQueryFabricMonitor(state) {
   if (!panelEl || !summaryEl || !statusEl || !detailsEl || !gridEl) return;
 
   panelEl.hidden = false;
-  summaryEl.textContent = _executionSummaryText(state);
+
+  const summary = _executionSummaryText(state);
+  const phase = state.phase;
+  const workersSignature = _workerSampleSignature(state.workers);
+
+  // Skip full DOM rebuild if it's just a background live update (no change in phase or summary)
+  // unless we're in 'running' phase where we want to see live worker progress.
+  if (
+    _lastMonitorSummary === summary &&
+    _lastMonitorPhase === phase &&
+    _lastMonitorWorkersSignature === workersSignature &&
+    phase !== "running" &&
+    gridEl.innerHTML !== ""
+  ) {
+    return;
+  }
+
+  _lastMonitorSummary = summary;
+  _lastMonitorPhase = phase;
+  _lastMonitorWorkersSignature = workersSignature;
+
+  summaryEl.textContent = summary;
   statusEl.textContent = _executionStatusText(state);
   if (state.phase === "running") detailsEl.open = true;
 
@@ -504,51 +536,58 @@ const queryBuilder = createQueryBuilderController({
 
 // ── Fork in the Road ──────────────────────────────────────────────────
 
-function _revealStorage() {
+function _revealStorage(scroll = true) {
   if (!currentStore) return;
   if (!_storagePopulated) {
     _storagePopulated = true;
-    const totalPts = currentStore.sampleCount;
-    const memBytes = currentStore.memoryBytes();
-    const rawBytes = totalPts * 16;
-    const ratio = rawBytes / memBytes;
-    const ingestRate = totalPts / (_lastIngestTime / 1000);
-
-    setCountStat("statStoragePts", totalPts);
-    setCountStat("statStorageSeries", currentStore.seriesCount);
-    setStatText("statStorageMem", formatStorageBytes(memBytes));
-    setStatText("statStorageRatio", `${ratio.toFixed(1)}×`);
-    setStatText("statStorageIngestRate", `${formatNum(ingestRate)} pts/s`);
-
-    // Compute chunk stats for the merged stats row
-    let totalChunks = 0,
-      totalFrozen = 0;
-    for (let id = 0; id < currentStore.seriesCount; id++) {
-      const info = currentStore.getChunkInfo(id);
-      totalFrozen += info.frozen.length;
-      totalChunks += info.frozen.length + (info.hot.count > 0 ? 1 : 0);
-    }
-    setCountStat("statStorageChunks", totalChunks);
-    setCountStat("statStorageFrozen", totalFrozen);
-
+    _updateStorageStats();
     buildStorageExplorer(currentStore);
+  } else {
+    // Only update stats for live refresh, don't rebuild the entire explorer list
+    _updateStorageStats();
   }
   hideSection("section-metrics");
   hideSection("section-query");
   hideSection("section-query-plan");
   hideSection("section-results");
-  showSection("section-storage", true);
+  showSection("section-storage", scroll);
   _updateExploreNav("section-storage");
 }
 
-function _revealMetrics() {
+function _updateStorageStats() {
+  if (!currentStore) return;
+  const totalPts = currentStore.sampleCount;
+  const memBytes = currentStore.memoryBytes();
+  const rawBytes = totalPts * 16;
+  const ratio = rawBytes / memBytes;
+  const ingestRate = _lastIngestTime > 0 ? totalPts / (_lastIngestTime / 1000) : 0;
+
+  setCountStat("statStoragePts", totalPts);
+  setCountStat("statStorageSeries", currentStore.seriesCount);
+  setStatText("statStorageMem", formatStorageBytes(memBytes));
+  setStatText("statStorageRatio", `${ratio.toFixed(1)}×`);
+  setStatText("statStorageIngestRate", `${formatNum(ingestRate)} pts/s`);
+
+  // Compute chunk stats for the merged stats row
+  let totalChunks = 0,
+    totalFrozen = 0;
+  for (let id = 0; id < currentStore.seriesCount; id++) {
+    const info = currentStore.getChunkInfo(id);
+    totalFrozen += info.frozen.length;
+    totalChunks += info.frozen.length + (info.hot.count > 0 ? 1 : 0);
+  }
+  setCountStat("statStorageChunks", totalChunks);
+  setCountStat("statStorageFrozen", totalFrozen);
+}
+
+function _revealMetrics(scroll = true) {
   if (!currentStore) return;
   if (!metricsExplorer.isPopulated) metricsExplorer.render();
   hideSection("section-storage");
   hideSection("section-query");
   hideSection("section-query-plan");
   hideSection("section-results");
-  showSection("section-metrics", true);
+  showSection("section-metrics", scroll);
   _updateExploreNav("section-metrics");
 }
 
@@ -816,6 +855,9 @@ function installResizeListener() {
 }
 installResizeListener();
 
+let _lastLiveRefresh = 0;
+const LIVE_REFRESH_THROTTLE_MS = 1000;
+
 const datasetController = createDatasetController({
   createStore: _createStore,
   chunkSize: CHUNK_SIZE,
@@ -831,6 +873,34 @@ const datasetController = createDatasetController({
   onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs) {
     _lastIngestTime = ingestTime;
     onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs);
+  },
+  onLiveUpdate(store, _scenario, appends) {
+    if (appends && queryWorkerPool) {
+      queryWorkerPool.broadcastLiveAppend(store, appends);
+    }
+
+    // 1. Always update storage stats if visible (these are light)
+    const storageSection = document.getElementById("section-storage");
+    if (_storagePopulated && storageSection && !storageSection.hidden) {
+      _revealStorage(false);
+      refreshActiveChunkDetail(store);
+    }
+
+    // 2. Throttle heavier chart re-renders
+    const now = performance.now();
+    if (now - _lastLiveRefresh < LIVE_REFRESH_THROTTLE_MS) return;
+    _lastLiveRefresh = now;
+
+    const metricsSection = document.getElementById("section-metrics");
+    if (metricsExplorer.isPopulated && metricsSection && !metricsSection.hidden) {
+      _revealMetrics(false);
+      metricsExplorer.refresh();
+    }
+
+    const resultsSection = document.getElementById("section-results");
+    if (_queryPopulated && resultsSection && !resultsSection.hidden) {
+      runQuery({ scrollToResults: false });
+    }
   },
 });
 

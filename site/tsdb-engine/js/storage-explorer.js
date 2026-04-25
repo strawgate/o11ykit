@@ -78,12 +78,44 @@ function _decodeChunkData(chunk, isColumn) {
   return decodeChunk(chunk.compressed);
 }
 
-export function showChunkDetail(seriesInfo, chunkIndex, type, store) {
+let _activeChunkSelection = null;
+
+export function refreshActiveChunkDetail(store) {
+  if (!_activeChunkSelection) return;
+  const { seriesId, chunkIndex, type } = _activeChunkSelection;
+
+  // Guard against stale selections after a store swap
+  if (seriesId >= store.seriesCount) {
+    _activeChunkSelection = null;
+    return;
+  }
+
+  const labels = store.labels(seriesId);
+  if (!labels) {
+    _activeChunkSelection = null;
+    return;
+  }
+
+  const info = store.getChunkInfo(seriesId);
+  if (type === "frozen" && chunkIndex >= info.frozen.length) {
+    _activeChunkSelection = null;
+    return;
+  }
+
+  showChunkDetail({ labels, info, id: seriesId }, chunkIndex, type, store, false);
+}
+
+export function showChunkDetail(seriesInfo, chunkIndex, type, store, scroll = true) {
   const panel = $("#chunkDetailPanel");
   const title = $("#chunkDetailTitle");
   panel.style.display = "";
   if (title) title.style.display = "";
-  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  if (scroll) {
+    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  _activeChunkSelection = { seriesId: seriesInfo.id, chunkIndex, type };
 
   const metricName = escapeHtml(seriesInfo.labels.get("__name__") || "unknown");
   const labelStr = [...seriesInfo.labels]

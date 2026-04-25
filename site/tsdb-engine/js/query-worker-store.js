@@ -195,6 +195,32 @@ class RawPartitionStore {
   labels(id) {
     return this._labels[id];
   }
+
+  appendBatch(id, timestamps, values, labels = null) {
+    if (timestamps.length !== values.length) {
+      throw new Error(
+        `appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`
+      );
+    }
+    let series = this._series[id];
+    if (!series) {
+      if (!labels) return;
+      this._series[id] = { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+      this._labels[id] = labels;
+      collectPosting(this._postings, labels, id);
+      series = this._series[id];
+    }
+    const totalLen = series.timestamps.length + timestamps.length;
+    const newTimestamps = new BigInt64Array(totalLen);
+    const newValues = new Float64Array(totalLen);
+    newTimestamps.set(series.timestamps);
+    newTimestamps.set(timestamps, series.timestamps.length);
+    newValues.set(series.values);
+    newValues.set(values, series.values.length);
+    series.timestamps = newTimestamps;
+    series.values = newValues;
+    this._sampleCount += timestamps.length;
+  }
 }
 
 class ChunkedPartitionStore {
@@ -289,6 +315,41 @@ class ChunkedPartitionStore {
 
   labels(id) {
     return this._labels[id];
+  }
+
+  appendBatch(id, timestamps, values, labels = null) {
+    if (timestamps.length !== values.length) {
+      throw new Error(
+        `appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`
+      );
+    }
+    let series = this._series[id];
+    if (!series) {
+      if (!labels) return;
+      this._series[id] = { frozen: [], hot: null };
+      this._labels[id] = labels;
+      collectPosting(this._postings, labels, id);
+      series = this._series[id];
+    }
+    if (!series.hot) {
+      series.hot = {
+        count: values.length,
+        timestamps: timestamps.slice(0),
+        values: values.slice(0),
+      };
+    } else {
+      const totalLen = series.hot.count + values.length;
+      const newTs = new BigInt64Array(totalLen);
+      const newVs = new Float64Array(totalLen);
+      newTs.set(series.hot.timestamps.subarray(0, series.hot.count));
+      newTs.set(timestamps, series.hot.count);
+      newVs.set(series.hot.values.subarray(0, series.hot.count));
+      newVs.set(values, series.hot.count);
+      series.hot.timestamps = newTs;
+      series.hot.values = newVs;
+      series.hot.count = totalLen;
+    }
+    this._sampleCount += values.length;
   }
 }
 
@@ -385,6 +446,41 @@ class ColumnPartitionStore {
 
   labels(id) {
     return this._labels[id];
+  }
+
+  appendBatch(id, timestamps, values, labels = null) {
+    if (timestamps.length !== values.length) {
+      throw new Error(
+        `appendBatch: timestamps.length (${timestamps.length}) !== values.length (${values.length})`
+      );
+    }
+    let series = this._series[id];
+    if (!series) {
+      if (!labels) return;
+      this._series[id] = { frozen: [], hot: null };
+      this._labels[id] = labels;
+      collectPosting(this._postings, labels, id);
+      series = this._series[id];
+    }
+    if (!series.hot) {
+      series.hot = {
+        count: values.length,
+        timestamps: timestamps.slice(0),
+        values: values.slice(0),
+      };
+    } else {
+      const totalLen = series.hot.count + values.length;
+      const newTs = new BigInt64Array(totalLen);
+      const newVs = new Float64Array(totalLen);
+      newTs.set(series.hot.timestamps.subarray(0, series.hot.count));
+      newTs.set(timestamps, series.hot.count);
+      newVs.set(series.hot.values.subarray(0, series.hot.count));
+      newVs.set(values, series.hot.count);
+      series.hot.timestamps = newTs;
+      series.hot.values = newVs;
+      series.hot.count = totalLen;
+    }
+    this._sampleCount += values.length;
   }
 }
 
