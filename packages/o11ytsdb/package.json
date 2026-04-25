@@ -62,6 +62,7 @@
     "bench:tiered-size-sweep": "npm run bench:prepare && node dist-bench/tiered-size-sweep.js",
     "bench:tiered-rowgroup": "npm run bench:prepare && node dist-bench/tiered-rowgroup-compare.js",
     "bench:tiered-query-matrix": "npm run bench:prepare && node dist-bench/tiered-query-matrix.js",
+    "bench:generate-browser": "node bench/generate-browser-dataset.mjs",
     "bench:compare": "npm run bench -- --compare",
     "smoke": "npm run build && node bench/smoke.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"

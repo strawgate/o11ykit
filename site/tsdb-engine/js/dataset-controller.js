@@ -8,8 +8,9 @@ import {
   SCENARIOS,
   scenarioSampleCount,
   scenarioSeriesCount,
+  startLiveBrowserScraper,
 } from "./data-gen.js";
-import { escapeHtml } from "./utils.js";
+import { escapeHtml, formatBytes } from "./utils.js";
 
 function formatApproxBytes(bytes) {
   if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -60,6 +61,7 @@ export function createDatasetController({
   nsPerMs,
   onBeforeLoad,
   onDataLoaded,
+  onLiveUpdate,
 }) {
   function clearScenarioSelection() {
     document.querySelectorAll(".scenario-card").forEach((card) => {
@@ -89,6 +91,7 @@ export function createDatasetController({
       </div>
       <div class="sc-stats">${seriesCount.toLocaleString()} series · ${sampleCount.toLocaleString()} pts · ${interval} interval · ~${formatApproxBytes(approxBytes)} raw arrays</div>
       <div class="sc-loading-indicator"><span class="sc-spinner"></span><span class="sc-loading-text">Generating data…</span></div>
+      <div class="sc-done-stats"></div>
     </button>`;
     }).join("");
 
@@ -125,7 +128,14 @@ export function createDatasetController({
     });
   }
 
+  let _activeScraperStop = null;
+
   function loadScenario(scenario, clickedCard) {
+    if (_activeScraperStop) {
+      _activeScraperStop();
+      _activeScraperStop = null;
+    }
+
     const approxBytes = estimateScenarioArrayBytes(scenario);
     if (!confirmLargeScenarioLoad(scenario, approxBytes)) {
       clearScenarioSelection();
@@ -154,6 +164,34 @@ export function createDatasetController({
             );
           }
           const store = createStore(backendType, chunkSize);
+          const metrics = [...new Set(scenario.metrics.map((m) => m.name))];
+
+          if (scenario.isLive) {
+            const liveStartedAt = performance.now();
+            _activeScraperStop = startLiveBrowserScraper(store, scenario, (_count, appends) => {
+              if (clickedCard) {
+                const doneEl = clickedCard.querySelector(".sc-done-stats");
+                if (doneEl) {
+                  const totalPts = store.sampleCount;
+                  const memBytes = store.memoryBytes();
+                  doneEl.textContent = `Live: ${totalPts.toLocaleString()} pts · ${formatBytes(memBytes)}`;
+                }
+              }
+              onLiveUpdate?.(store, scenario, appends);
+            });
+
+            clickedCard.classList.remove("loading");
+            clickedCard.classList.add("active", "loaded");
+            onDataLoaded(
+              store,
+              metrics,
+              Math.max(1, performance.now() - liveStartedAt),
+              0,
+              scenario.intervalMs
+            );
+            return;
+          }
+
           const t0 = performance.now();
           const seriesData = generateScenarioData(scenario);
 
@@ -178,7 +216,6 @@ export function createDatasetController({
           }
 
           const ingestTime = performance.now() - t0;
-          const metrics = [...new Set(scenario.metrics.map((m) => m.name))];
           onDataLoaded(store, metrics, ingestTime, scenario.numPoints, scenario.intervalMs);
         } catch (err) {
           console.error("Failed to load scenario:", err);
@@ -192,6 +229,10 @@ export function createDatasetController({
   }
 
   function generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs) {
+    if (_activeScraperStop) {
+      _activeScraperStop();
+      _activeScraperStop = null;
+    }
     const store = createStore(backendType, chunkSize);
     const now = BigInt(Date.now()) * nsPerMs;
     const intervalNs = BigInt(intervalMs) * nsPerMs;

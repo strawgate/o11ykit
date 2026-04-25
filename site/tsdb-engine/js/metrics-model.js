@@ -71,6 +71,7 @@ export function suggestMetricStep(store, metric, ids = getMetricIds(store, metri
   const secondTimestamp = range.timestamps[1];
   if (firstTimestamp === undefined || secondTimestamp === undefined) return 60000;
   const intervalMs = Number(secondTimestamp - firstTimestamp) / 1_000_000;
+  if (intervalMs <= 250) return 0; // High-res live: use raw data (no step)
   if (intervalMs <= 1000) return 10000;
   if (intervalMs <= 15000) return 60000;
   if (intervalMs <= 60000) return 300000;
