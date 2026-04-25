@@ -39,9 +39,70 @@ export interface Sample {
 /** Comparison types — produced by compare(). */
 
 export type ComparisonStatus = "improved" | "stable" | "regressed";
+export type MatrixLaneClass = "required" | "probe";
+export type MatrixLaneStatus = "passed" | "failed" | "missing";
+export type MatrixDimensionValue = string | number | boolean;
+
+export interface MatrixValueMatcher {
+  eq?: MatrixDimensionValue;
+  in?: MatrixDimensionValue[];
+  notIn?: MatrixDimensionValue[];
+  lt?: number;
+  lte?: number;
+  gt?: number;
+  gte?: number;
+}
+
+export type MatrixMatcherValue =
+  | MatrixDimensionValue
+  | MatrixDimensionValue[]
+  | MatrixValueMatcher;
+
+export interface MatrixLaneMatcher {
+  [dimension: string]: MatrixMatcherValue;
+}
+
+/**
+ * Declares the expected matrix of benchmark lanes and how missing/failing
+ * lanes are classified.
+ *
+ * - Lanes **not** listed in `probe` are treated as `"required"` by default.
+ * - `required` only matters when it overlaps with `probe`; in that case the
+ *   `required` classification wins the overlap.
+ */
+export interface MatrixPolicy {
+  dimensions: Record<string, MatrixDimensionValue[]>;
+  excludes?: MatrixLaneMatcher[];
+  required?: MatrixLaneMatcher[];
+  probe?: MatrixLaneMatcher[];
+}
+
+export interface ComparisonMatrixLane {
+  key: string;
+  label: string;
+  dimensions: Record<string, string>;
+  laneClass: MatrixLaneClass;
+  status: MatrixLaneStatus;
+}
+
+export interface ComparisonMatrixSummary {
+  expectedCount: number;
+  observedCount: number;
+  missingResultCount: number;
+  requiredPassedCount: number;
+  requiredFailedCount: number;
+  probePassedCount: number;
+  probeFailedCount: number;
+  hasRequiredFailure: boolean;
+  lanes: ComparisonMatrixLane[];
+}
 
 export interface ComparisonEntry {
   benchmark: string;
+  series?: string;
+  tags?: Record<string, string>;
+  lane?: string;
+  laneClass?: MatrixLaneClass;
   metric: string;
   unit?: string;
   direction: "bigger_is_better" | "smaller_is_better";
@@ -54,6 +115,7 @@ export interface ComparisonEntry {
 export interface ComparisonResult {
   entries: ComparisonEntry[];
   hasRegression: boolean;
+  matrix?: ComparisonMatrixSummary;
   warnings?: string[];
 }
 
@@ -71,6 +133,10 @@ export interface FormatComparisonMarkdownOptions {
 export interface ThresholdConfig {
   test: "percentage";
   threshold: number;
+}
+
+export interface CompareConfig extends ThresholdConfig {
+  matrixPolicy?: MatrixPolicy;
 }
 
 /** View types — produced by the aggregate action for use by frontends. */
