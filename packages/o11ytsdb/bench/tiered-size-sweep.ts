@@ -28,7 +28,13 @@ type StoreMetrics = {
   sampleCount: number;
   memoryBytes: number;
   bytesPerSample: number;
-  query: Record<string, ReturnType<typeof summarizeTimings>>;
+  query: Record<
+    string,
+    ReturnType<typeof summarizeTimings> & {
+      partsTouched: number;
+      avgPartsPerSeries: number;
+    }
+  >;
 };
 
 function bytesPerSample(memoryBytes: number, sampleCount: number): number {
@@ -48,6 +54,9 @@ function queryWorkloads(config: TieredBenchConfig) {
   return [
     {
       name: "cold-step-sum",
+      series: "us" as const,
+      start: 0n,
+      end: coldEnd,
       run: (store: RowGroupStore | TieredRowGroupStore, engine: ScanEngine) => {
         engine.query(store, {
           metric: "cpu_usage",
@@ -61,6 +70,9 @@ function queryWorkloads(config: TieredBenchConfig) {
     },
     {
       name: "boundary-step-sum",
+      series: "us" as const,
+      start: boundaryStart,
+      end: totalEnd,
       run: (store: RowGroupStore | TieredRowGroupStore, engine: ScanEngine) => {
         engine.query(store, {
           metric: "cpu_usage",
@@ -74,6 +86,9 @@ function queryWorkloads(config: TieredBenchConfig) {
     },
     {
       name: "hot-step-sum",
+      series: "all" as const,
+      start: hotStart,
+      end: totalEnd,
       run: (store: RowGroupStore | TieredRowGroupStore, engine: ScanEngine) => {
         engine.query(store, {
           metric: "cpu_usage",
@@ -86,6 +101,9 @@ function queryWorkloads(config: TieredBenchConfig) {
     },
     {
       name: "full-range-count",
+      series: "us" as const,
+      start: 0n,
+      end: totalEnd,
       run: (store: RowGroupStore | TieredRowGroupStore, engine: ScanEngine) => {
         engine.query(store, {
           metric: "cpu_usage",
@@ -100,20 +118,52 @@ function queryWorkloads(config: TieredBenchConfig) {
   ];
 }
 
+function countPartsTouched(
+  store: RowGroupStore | TieredRowGroupStore,
+  ids: number[],
+  series: "all" | "us",
+  start: bigint,
+  end: bigint
+) {
+  const scanParts = store.scanParts;
+  if (!scanParts) {
+    return { partsTouched: 0, avgPartsPerSeries: 0 };
+  }
+  let touchedSeries = 0;
+  let partsTouched = 0;
+  for (let i = 0; i < ids.length; i++) {
+    if (series === "us" && i % 2 !== 0) {
+      continue;
+    }
+    touchedSeries++;
+    scanParts.call(store, ids[i]!, start, end, () => {
+      partsTouched++;
+    });
+  }
+  return {
+    partsTouched,
+    avgPartsPerSeries:
+      touchedSeries > 0 ? Number((partsTouched / touchedSeries).toFixed(2)) : 0,
+  };
+}
+
 function measureQueries(
   store: RowGroupStore | TieredRowGroupStore,
   config: TieredBenchConfig,
+  ids: number[],
   iterations: number
 ): StoreMetrics["query"] {
   const engine = new ScanEngine();
   const query: StoreMetrics["query"] = {};
   for (const workload of queryWorkloads(config)) {
     workload.run(store, engine);
-    query[workload.name] = summarizeTimings(
-      collectTimingSamples(iterations, () => {
-        workload.run(store, engine);
-      })
-    );
+    const timings = collectTimingSamples(iterations, () => {
+      workload.run(store, engine);
+    });
+    query[workload.name] = {
+      ...summarizeTimings(timings),
+      ...countPartsTouched(store, ids, workload.series, workload.start, workload.end),
+    };
   }
   return query;
 }
@@ -121,6 +171,7 @@ function measureQueries(
 function storeMetrics(
   store: RowGroupStore | TieredRowGroupStore,
   config: TieredBenchConfig,
+  ids: number[],
   iterations: number
 ): StoreMetrics {
   const memoryBytes = store.memoryBytes();
@@ -128,7 +179,7 @@ function storeMetrics(
     sampleCount: store.sampleCount,
     memoryBytes,
     bytesPerSample: bytesPerSample(memoryBytes, store.sampleCount),
-    query: measureQueries(store, config, iterations),
+    query: measureQueries(store, config, ids, iterations),
   };
 }
 
@@ -147,7 +198,7 @@ function measureScenario(codecs: WasmCodecs, config: TieredBenchConfig, iteratio
     ingestDataset(tiered, tieredIds, dataset, config.batchSize);
   });
 
-  const directPromoted = storeMetrics(tiered, config, iterations);
+  const directPromoted = storeMetrics(tiered, config, tieredIds, iterations);
   const directInternals = tieredStores(tiered);
   const directLayout = {
     hot: summarizeRowGroupLayout(directInternals.hotStore),
@@ -157,7 +208,7 @@ function measureScenario(codecs: WasmCodecs, config: TieredBenchConfig, iteratio
   const backgroundCompactionMs = timeMs(() => {
     tiered.drainCompaction();
   });
-  const compacted = storeMetrics(tiered, config, iterations);
+  const compacted = storeMetrics(tiered, config, tieredIds, iterations);
   const compactedInternals = tieredStores(tiered);
   const compactedLayout = {
     hot: summarizeRowGroupLayout(compactedInternals.hotStore),
@@ -178,7 +229,7 @@ function measureScenario(codecs: WasmCodecs, config: TieredBenchConfig, iteratio
     },
     current: {
       ingestMs: Number(currentIngestMs.toFixed(3)),
-      ...storeMetrics(current, config, iterations),
+      ...storeMetrics(current, config, currentIds, iterations),
       layout: summarizeRowGroupLayout(current),
     },
     tiered: {
