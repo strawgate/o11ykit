@@ -22,6 +22,7 @@ function ingestShared(
   dataset: readonly SeriesData[],
   batchSize: number
 ): void {
+  if (dataset.length === 0 || ids.length === 0) return;
   const pointsPerSeries = dataset[0]?.timestamps.length ?? 0;
   for (let off = 0; off < pointsPerSeries; off += batchSize) {
     const end = Math.min(off + batchSize, pointsPerSeries);

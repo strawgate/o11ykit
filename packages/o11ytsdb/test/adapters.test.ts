@@ -58,7 +58,7 @@ describe("native TSDB adapters", () => {
     ]);
   });
 
-  it("builds latest-value rows with custom labels and timestamp units", () => {
+  it("builds latest-value rows with custom labels", () => {
     const model = toTsdbLatestValueModel(result, {
       seriesLabel: (series) => series.labels.get("host") ?? "unknown",
     });
