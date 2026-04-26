@@ -5,7 +5,8 @@
 // Two schemes: plain FoR on sortable-u64 offsets, or delta-FoR on
 // zigzag-encoded deltas of sortable-u64 values.
 
-use crate::alp::{packed_safe_limit, sortable_u64_to_f64, ALP_EXC_U64, ALP_MAX_CHUNK};
+use crate::alp::ALP_EXC_U64;
+use o11y_codec_rt_alp::{packed_safe_limit, sortable_u64_to_f64, ALP_MAX_CHUNK};
 use o11y_codec_rt_core::{extract_packed, extract_packed_safe, BitReader};
 
 /// Decode exception values and patch them into val_out.

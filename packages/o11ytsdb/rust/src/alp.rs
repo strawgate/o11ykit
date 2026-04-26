@@ -21,91 +21,23 @@
 use core::sync::atomic::Ordering;
 
 use crate::alloc::ALP_EXC_MODE;
+use o11y_codec_rt_alp::{
+    alp_try, f64_to_sortable_u64, i64_range_u64, packed_safe_limit, ALP_HEADER_SIZE,
+    ALP_MAX_CHUNK, ALP_MAX_EXP, POW10,
+};
+#[cfg(test)]
+use o11y_codec_rt_alp::sortable_u64_to_f64;
 use o11y_codec_rt_core::{bits_needed, extract_packed, extract_packed_safe, BitReader, BitWriter};
 
-/// Compute the largest index `i` where `extract_packed(buf, i, bw)` is safe
-/// (i.e., `byte_pos + 8 <= buf.len()`). Returns 0 when buf is too small.
-#[inline(always)]
-pub(crate) fn packed_safe_limit(buf_len: usize, n: usize, bw: u8) -> usize {
-    if bw == 0 || buf_len < 8 {
-        return 0;
-    }
-    let max_byte = buf_len - 8;
-    // Largest i where (i * bw) / 8 <= max_byte.
-    let max_i = (max_byte * 8) / bw as usize;
-    max_i.min(n)
-}
-
-#[inline(always)]
-pub(crate) fn i64_range_u64(min_int: i64, max_int: i64) -> u64 {
-    if max_int >= min_int {
-        (max_int as i128 - min_int as i128) as u64
-    } else {
-        0
-    }
-}
-
-pub(crate) const ALP_HEADER_SIZE: usize = 14;
-pub(crate) const ALP_MAX_CHUNK: usize = 2048;
-pub(crate) const ALP_MAX_EXP: usize = 18;
-
-pub(crate) static POW10: [f64; 19] = [
-    1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
-    1e16, 1e17, 1e18,
-];
-
-/// Convert f64 to a sortable u64 representation.
-/// IEEE 754 is monotonic for positive floats; this extends to negatives
-/// by flipping bits so that u64 ordering matches f64 ordering.
-#[inline(always)]
-pub(crate) fn f64_to_sortable_u64(f: f64) -> u64 {
-    let bits = f.to_bits();
-    if bits & (1u64 << 63) != 0 {
-        !bits
-    } else {
-        bits ^ (1u64 << 63)
-    }
-}
-
-/// Convert sortable u64 back to f64. Inverse of f64_to_sortable_u64.
-#[inline(always)]
-pub(crate) fn sortable_u64_to_f64(u: u64) -> f64 {
-    let sign = u >> 63;
-    let mask = (sign << 63) | (sign.wrapping_sub(1));
-    f64::from_bits(u ^ mask)
-}
-
 // ── Static temp storage (avoids stack/heap allocation) ───────────────
+//
+// Process-global scratch buffers, used by the encode/decode paths. Lift
+// to the workspace crate is deferred until a refactor passes them in
+// explicitly.
 
 pub(crate) static mut ALP_INTS: [i64; ALP_MAX_CHUNK] = [0; ALP_MAX_CHUNK];
 static mut ALP_EXC: [u8; ALP_MAX_CHUNK] = [0; ALP_MAX_CHUNK];
 pub(crate) static mut ALP_EXC_U64: [u64; ALP_MAX_CHUNK] = [0; ALP_MAX_CHUNK];
-
-/// Check if a value round-trips through ALP encoding at exponent e.
-#[inline(always)]
-pub(crate) fn alp_try(val: f64, e: usize) -> Option<i64> {
-    if val.is_nan() || val.is_infinite() {
-        return None;
-    }
-    let scaled = val * POW10[e];
-    if scaled.abs() > 9.2e18 {
-        return None;
-    }
-    let int_val = if scaled >= 0.0 {
-        (scaled + 0.5) as i64
-    } else {
-        -(((-scaled) + 0.5) as i64)
-    };
-    let reconstructed = int_val as f64 / POW10[e];
-    // Compare bit patterns so +0.0 and -0.0 do not collapse to the same
-    // ALP representation — `==` would accept -0.0 and round-trip it as
-    // +0.0, silently losing the sign bit.
-    if reconstructed.to_bits() == val.to_bits() {
-        Some(int_val)
-    } else {
-        None
-    }
-}
 
 /// Sample values to find the best decimal exponent, using a cost model.
 pub(crate) fn alp_find_exponent(vals: &[f64]) -> u8 {
@@ -524,24 +456,9 @@ mod tests {
         assert_eq!(decoded[4], 2.0);
     }
 
-    #[test]
-    fn sortable_u64_roundtrip_and_ordering() {
-        let _g = crate::test_lock::LOCK.lock().unwrap();
-        let test_vals = [
-            0.0, -0.0, 1.0, -1.0, f64::MIN, f64::MAX,
-            f64::MIN_POSITIVE, f64::EPSILON, 1e-300, 1e300,
-        ];
-        for &v in &test_vals {
-            let back = sortable_u64_to_f64(f64_to_sortable_u64(v));
-            assert_eq!(v.to_bits(), back.to_bits(), "roundtrip failed for {v}");
-        }
-        // Ordering: sortable u64 should preserve f64 total order.
-        let ordered = [-100.0f64, -1.0, -0.001, 0.0, 0.001, 1.0, 100.0];
-        let su64s: std::vec::Vec<u64> = ordered.iter().map(|&v| f64_to_sortable_u64(v)).collect();
-        for i in 1..su64s.len() {
-            assert!(su64s[i] > su64s[i - 1], "ordering violated at {i}");
-        }
-    }
+    // sortable_u64 round-trip + ordering moved to the workspace crate
+    // (`o11y-codec-rt-alp`'s `sortable_roundtrip_finite_values` and
+    // `sortable_preserves_total_order` tests).
 
     #[test]
     fn alp_try_and_exponent() {
