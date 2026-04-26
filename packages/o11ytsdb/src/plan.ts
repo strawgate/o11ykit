@@ -22,7 +22,11 @@ export interface PlanMatcher {
 
 // ── Function types ───────────────────────────────────────────────────
 
-/** Per-series transform functions (applied before aggregation). */
+/**
+ * Per-series transform functions (applied before aggregation).
+ * Temporal transforms (rate, increase, irate, delta) require step alignment.
+ * Pointwise transforms (abs, ceil, floor, sqrt) are applied sample-by-sample.
+ */
 export type TransformFn =
   | "rate"
   | "increase"
@@ -32,6 +36,9 @@ export type TransformFn =
   | "ceil"
   | "floor"
   | "sqrt";
+
+/** Pointwise transform functions — applied per-sample, no step alignment needed. */
+export type PointwiseTransformFn = "abs" | "ceil" | "floor" | "sqrt";
 
 /** Pure aggregation functions (collapse series, not per-series transforms). */
 export type PlanAggFn =

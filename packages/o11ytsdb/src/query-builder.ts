@@ -137,10 +137,37 @@ export class QueryBuilder {
     });
   }
 
+  /** Apply ceil() — ceiling of each sample. */
+  ceil(): QueryBuilder {
+    return new QueryBuilder({
+      ...this.s,
+      transforms: [...this.s.transforms, "ceil"],
+    });
+  }
+
+  /** Apply floor() — floor of each sample. */
+  floor(): QueryBuilder {
+    return new QueryBuilder({
+      ...this.s,
+      transforms: [...this.s.transforms, "floor"],
+    });
+  }
+
+  /** Apply sqrt() — square root of each sample. */
+  sqrt(): QueryBuilder {
+    return new QueryBuilder({
+      ...this.s,
+      transforms: [...this.s.transforms, "sqrt"],
+    });
+  }
+
   // ── Step alignment ───────────────────────────────────────────────
 
   /** Set step-alignment interval (epoch ms as bigint). */
   step(interval: bigint): QueryBuilder {
+    if (interval <= 0n) {
+      throw new Error("step must be > 0");
+    }
     return new QueryBuilder({ ...this.s, step: interval });
   }
 
@@ -248,6 +275,10 @@ export class QueryBuilder {
 
     if (metric == null) throw new Error("query().metric() is required");
     if (start == null || end == null) throw new Error("query().range() is required");
+
+    if (step != null && agg == null && !isStepTransform(transforms.at(-1))) {
+      throw new Error("step() requires an aggregation or a step-aligned transform (rate, increase, irate, delta)");
+    }
 
     let node: PlanNode = { kind: "select", metric, matchers };
     node = { kind: "timeRange", input: node, start, end };
