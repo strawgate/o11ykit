@@ -18,7 +18,7 @@ use crate::alp::{
     ALP_HEADER_SIZE, ALP_MAX_CHUNK, POW10,
 };
 use o11y_codec_rt_core::BitReader;
-use crate::gorilla::compute_stats;
+use o11y_codec_rt_xor_delta::compute_stats;
 
 pub(crate) const DELTA_ALP_TAG: u8 = 0xDA;
 

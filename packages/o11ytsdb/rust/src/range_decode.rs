@@ -6,7 +6,7 @@
 
 use crate::alp::{ALP_INTS, ALP_MAX_CHUNK};
 use crate::delta_alp::decode_values_alp_range;
-use crate::timestamp::decode_timestamps_inner;
+use o11y_codec_rt_xor_delta::decode_timestamps as decode_timestamps_inner;
 
 /// Binary search: first index where ts_buf[i] >= target.
 #[inline]
