@@ -20,7 +20,7 @@ function buildStore(): { store: LogStore; resA: Resource; resB: Resource } {
   const resA: Resource = { attributes: [{ key: "service.name", value: "checkout" }] };
   const resB: Resource = { attributes: [{ key: "service.name", value: "payments" }] };
   const store = new LogStore({ rowsPerChunk: 4 });
-  // checkout: 8 records spanning t=1000-7000, mixed severities
+  // checkout: 7 records spanning t=1000-7000, mixed severities
   store.append(
     resA,
     scope,
