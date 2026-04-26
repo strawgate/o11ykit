@@ -26,4 +26,20 @@ describe("MemPostings", () => {
     p.add(3, new Map([["env", "dev"]]));
     expect(p.matchRegex("env", /^prod-/)).toEqual([1, 2]);
   });
+
+  it("union merges sorted postings", () => {
+    const p = new MemPostings();
+    expect(p.union([1, 3, 5], [2, 3, 6])).toEqual([1, 2, 3, 5, 6]);
+  });
+
+  it("union handles overlapping elements", () => {
+    const p = new MemPostings();
+    expect(p.union([1, 2, 3], [2, 3, 4])).toEqual([1, 2, 3, 4]);
+  });
+
+  it("union handles empty arrays", () => {
+    const p = new MemPostings();
+    expect(p.union([], [1, 2])).toEqual([1, 2]);
+    expect(p.union([1, 2], [])).toEqual([1, 2]);
+  });
 });

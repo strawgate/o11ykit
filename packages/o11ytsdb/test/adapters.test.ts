@@ -96,4 +96,42 @@ describe("native TSDB adapters", () => {
 
     expect(() => toTsdbLineSeriesModel(bad)).toThrow(/mismatched/);
   });
+
+  it("converts timestamps from seconds when timestampUnit is seconds", () => {
+    const resultSec: QueryResult = {
+      scannedSeries: 1,
+      scannedSamples: 2,
+      series: [
+        {
+          labels: labels([["__name__", "cpu"]]),
+          timestamps: new BigInt64Array([1n, 2n]),
+          values: new Float64Array([10, 20]),
+        },
+      ],
+    };
+    const model = toTsdbLineSeriesModel(resultSec, { timestampUnit: "seconds" });
+    expect(model.series[0]?.points).toEqual([
+      { t: 1000, v: 10 },
+      { t: 2000, v: 20 },
+    ]);
+  });
+
+  it("converts timestamps from milliseconds when timestampUnit is milliseconds", () => {
+    const resultMs: QueryResult = {
+      scannedSeries: 1,
+      scannedSamples: 2,
+      series: [
+        {
+          labels: labels([["__name__", "cpu"]]),
+          timestamps: new BigInt64Array([1000n, 2000n]),
+          values: new Float64Array([10, 20]),
+        },
+      ],
+    };
+    const model = toTsdbLineSeriesModel(resultMs, { timestampUnit: "milliseconds" });
+    expect(model.series[0]?.points).toEqual([
+      { t: 1000, v: 10 },
+      { t: 2000, v: 20 },
+    ]);
+  });
 });
