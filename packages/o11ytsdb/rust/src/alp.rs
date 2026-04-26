@@ -21,7 +21,7 @@
 use core::sync::atomic::Ordering;
 
 use crate::alloc::ALP_EXC_MODE;
-use crate::bitio::{bits_needed, extract_packed, extract_packed_safe, BitReader, BitWriter};
+use o11y_codec_rt_core::{bits_needed, extract_packed, extract_packed_safe, BitReader, BitWriter};
 
 /// Compute the largest index `i` where `extract_packed(buf, i, bw)` is safe
 /// (i.e., `byte_pos + 8 <= buf.len()`). Returns 0 when buf is too small.

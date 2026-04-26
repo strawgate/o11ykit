@@ -7,6 +7,9 @@ examples/*/dist/
 packages/*/dist/
 packages/*/dist-bench/
 
+# Cargo build artifacts.
+packages/**/target/
+
 *.tsbuildinfo
 packages/*/.tsbuildinfo
 *.tgz

@@ -1,13 +1,20 @@
-// ── Bit I/O: BitWriter, BitReader, zigzag, bit-packing helpers ──────
-//
-// Foundation for all codecs. Provides:
-//   - BitWriter: variable-width bit packing with byte-aligned fast paths
-//   - BitReader: variable-width bit unpacking with fast u64-load path
-//   - Zigzag encoding for signed→unsigned representation
-//   - bits_needed: minimum bits to represent a u64 value
-//   - extract_packed / extract_packed_safe: random-access into bit-packed arrays
+//! o11y-codec-rt-core — bit I/O, zigzag, bit-width helpers.
+//!
+//! Foundation for every codec in the workspace. Provides:
+//!   - `BitWriter` / `BitReader`: variable-width bit packing with
+//!     byte-aligned fast paths and a single-`u64`-load fast read.
+//!   - `zigzag_encode` / `zigzag_decode`: signed → unsigned mapping.
+//!   - `bits_needed(v)`: minimum bit width for `v`.
+//!   - `extract_packed` / `extract_packed_safe`: random-access reads
+//!     into a bit-packed array.
+//!
+//! No std, no allocator. Each consumer crate brings its own.
 
-pub(crate) struct BitWriter<'a> {
+#![cfg_attr(not(test), no_std)]
+
+// ── Bit Writer ───────────────────────────────────────────────────────
+
+pub struct BitWriter<'a> {
     pub buf: &'a mut [u8],
     pub byte_pos: usize,
     pub bit_pos: u8, // 0-7, bits consumed in current byte
@@ -117,7 +124,7 @@ impl<'a> BitWriter<'a> {
 
 // ── Bit Reader ───────────────────────────────────────────────────────
 
-pub(crate) struct BitReader<'a> {
+pub struct BitReader<'a> {
     pub buf: &'a [u8],
     pub byte_pos: usize,
     pub bit_pos: u8,
@@ -204,19 +211,19 @@ impl<'a> BitReader<'a> {
 // ── Zigzag encoding ──────────────────────────────────────────────────
 
 #[inline(always)]
-pub(crate) fn zigzag_encode(v: i64) -> u64 {
+pub fn zigzag_encode(v: i64) -> u64 {
     ((v << 1) ^ (v >> 63)) as u64
 }
 
 #[inline(always)]
-pub(crate) fn zigzag_decode(v: u64) -> i64 {
+pub fn zigzag_decode(v: u64) -> i64 {
     ((v >> 1) as i64) ^ (-((v & 1) as i64))
 }
 
 // ── Bit-width helpers ────────────────────────────────────────────────
 
 #[inline(always)]
-pub(crate) fn bits_needed(val: u64) -> u8 {
+pub fn bits_needed(val: u64) -> u8 {
     if val == 0 {
         return 0;
     }
@@ -227,7 +234,7 @@ pub(crate) fn bits_needed(val: u64) -> u8 {
 /// from a packed byte buffer. No sequential state — each call is independent.
 /// Requires: bw ≤ 57 and buf has ≥ 8 bytes past the start of each value.
 #[inline(always)]
-pub(crate) fn extract_packed(buf: &[u8], i: usize, bw: u8) -> u64 {
+pub fn extract_packed(buf: &[u8], i: usize, bw: u8) -> u64 {
     let bit_offset = i * bw as usize;
     let byte_pos = bit_offset >> 3;
     let bit_pos = (bit_offset & 7) as u8;
@@ -239,7 +246,7 @@ pub(crate) fn extract_packed(buf: &[u8], i: usize, bw: u8) -> u64 {
 
 /// Same as extract_packed but safe near end-of-buffer: pads with zeros.
 #[inline(always)]
-pub(crate) fn extract_packed_safe(buf: &[u8], i: usize, bw: u8) -> u64 {
+pub fn extract_packed_safe(buf: &[u8], i: usize, bw: u8) -> u64 {
     let bit_offset = i * bw as usize;
     let byte_pos = bit_offset >> 3;
     let bit_pos = (bit_offset & 7) as u8;
@@ -254,7 +261,6 @@ pub(crate) fn extract_packed_safe(buf: &[u8], i: usize, bw: u8) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    extern crate std;
     use super::*;
 
     // ── BitWriter tests ──────────────────────────────────────────────

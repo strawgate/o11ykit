@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = ["core"]
+
+# Shared codec runtime for o11ykit engines. Each engine's binding crate
+# (packages/o11ytsdb/rust, packages/o11ylogsdb/rust, …) depends on the
+# subset of crates here it actually needs and ships its own thin
+# extern "C" wrapper as a cdylib. This workspace itself does not
+# produce a wasm artifact — the binding crates do.
+#
+# Rationale (PLAN.md §"WASM Binary Strategy"): one wasm artifact per
+# engine, never a mega-binary. Tree-shaking via per-crate compilation,
+# independent versioning, failure isolation.
+
+[workspace.package]
+edition = "2021"
+license = "UNLICENSED"
+publish = false
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
+[profile.release]
+opt-level = "z"      # Optimize for size
+lto = true           # Link-time optimization
+codegen-units = 1    # Single codegen unit for best optimization
+strip = true         # Strip debug info
+panic = "abort"      # No unwinding — smaller binary

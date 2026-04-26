@@ -6,7 +6,7 @@
 // zigzag-encoded deltas of sortable-u64 values.
 
 use crate::alp::{packed_safe_limit, sortable_u64_to_f64, ALP_EXC_U64, ALP_MAX_CHUNK};
-use crate::bitio::{extract_packed, extract_packed_safe, BitReader};
+use o11y_codec_rt_core::{extract_packed, extract_packed_safe, BitReader};
 
 /// Decode exception values and patch them into val_out.
 pub(crate) fn decode_exceptions(
