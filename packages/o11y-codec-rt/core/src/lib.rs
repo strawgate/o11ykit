@@ -153,6 +153,12 @@ impl<'a> BitReader<'a> {
 
     #[inline(always)]
     pub fn read_bits(&mut self, count: u8) -> u64 {
+        // Mirrors `BitWriter::write_bits`: count == 0 is a no-op.
+        // Without this guard, `>> (64 - 0)` triggers shift-overflow UB
+        // on a u64 (panic in debug, silent garbage in release).
+        if count == 0 {
+            return 0;
+        }
         // Fast path: load a single u64 and extract bits with 2 shifts.
         // Works for count ≤ 57 (max bit_pos=7 + count=57 = 64 bits in one u64).
         if count <= 57 && self.byte_pos + 8 <= self.buf.len() {
@@ -235,6 +241,10 @@ pub fn bits_needed(val: u64) -> u8 {
 /// Requires: bw ≤ 57 and buf has ≥ 8 bytes past the start of each value.
 #[inline(always)]
 pub fn extract_packed(buf: &[u8], i: usize, bw: u8) -> u64 {
+    // Guard against shift-overflow UB at bw=0 (`>> 64` on a u64).
+    if bw == 0 {
+        return 0;
+    }
     let bit_offset = i * bw as usize;
     let byte_pos = bit_offset >> 3;
     let bit_pos = (bit_offset & 7) as u8;
@@ -247,6 +257,9 @@ pub fn extract_packed(buf: &[u8], i: usize, bw: u8) -> u64 {
 /// Same as extract_packed but safe near end-of-buffer: pads with zeros.
 #[inline(always)]
 pub fn extract_packed_safe(buf: &[u8], i: usize, bw: u8) -> u64 {
+    if bw == 0 {
+        return 0;
+    }
     let bit_offset = i * bw as usize;
     let byte_pos = bit_offset >> 3;
     let bit_pos = (bit_offset & 7) as u8;
@@ -489,6 +502,36 @@ mod tests {
             let got = extract_packed_safe(&buf, i, bw);
             assert_eq!(got, expected, "extract_packed_safe index={i}");
         }
+    }
+
+    // ── Zero-width contract ──────────────────────────────────────────
+    //
+    // `BitWriter::write_bits` already early-returns on count==0, but
+    // the readers used to crash (shift-overflow `>> 64`). These tests
+    // pin the contract: count/bw=0 is a no-op that yields 0.
+
+    #[test]
+    fn read_bits_zero_width_returns_zero_no_advance() {
+        let buf = [0xFFu8; 4];
+        let mut r = BitReader::new(&buf);
+        let got = r.read_bits(0);
+        assert_eq!(got, 0);
+        // Cursor must not have moved.
+        assert_eq!(r.byte_pos, 0);
+        assert_eq!(r.bit_pos, 0);
+        // Next read still works.
+        assert_eq!(r.read_bits(8), 0xFF);
+    }
+
+    #[test]
+    fn extract_packed_zero_width_returns_zero() {
+        let buf = [0xFFu8; 16];
+        assert_eq!(extract_packed(&buf, 0, 0), 0);
+        assert_eq!(extract_packed(&buf, 5, 0), 0);
+        assert_eq!(extract_packed_safe(&buf, 0, 0), 0);
+        // extract_packed_safe must not panic on an empty buffer either.
+        let empty: [u8; 0] = [];
+        assert_eq!(extract_packed_safe(&empty, 0, 0), 0);
     }
 
     #[test]

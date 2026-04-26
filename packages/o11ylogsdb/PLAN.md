@@ -299,13 +299,15 @@ size/perf parity verification.
 | Encode/decode throughput | within ±2% of pre-migration |
 | Cross-validation tests | bit-exact on all 10 existing vectors |
 
-The `core/` extraction PR carried a **+211 byte raw / +284 byte gz**
-delta on `o11ytsdb-rust.wasm` (0.01% raw, 1.6% gz). Cause: the bit-I/O
-primitives moved from a `pub(crate)` internal module to a `pub`
-cross-crate boundary; even with `lto = "fat"` the compiler keeps a
-small amount of cross-crate metadata. The architectural payoff (one
-shared codec crate `o11ylogsdb` and `o11ytsdb` both depend on)
-outweighs the ~1.6% gz cost.
+The `core/` extraction PR carried a **+316 byte raw / +270 byte gz**
+delta on `o11ytsdb-rust.wasm` (0.015% raw, 1.5% gz). Cause: the
+bit-I/O primitives moved from a `pub(crate)` internal module to a
+`pub` cross-crate boundary; even with `lto = "fat"` the compiler
+keeps a small amount of cross-crate metadata, plus the public API
+gained zero-width guards on `read_bits` / `extract_packed*` so
+out-of-crate callers can't trigger shift-overflow UB. The
+architectural payoff (one shared codec crate `o11ylogsdb` and
+`o11ytsdb` both depend on) outweighs the ~1.5% gz cost.
 
 ### M1: FSST + Bit I/O Extensions
 
