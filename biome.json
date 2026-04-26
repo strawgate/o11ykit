@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.11/schema.json",
   "files": {
     "includes": [
       "**",
@@ -11,6 +11,11 @@
       "!**/playwright-report",
       "!**/test-results",
       "!**/target",
+      "!.worktrees",
+      "!.claude/worktrees",
+      "!.playwright-cli",
+      "!.playwright-mcp",
+      "!examples/demo/src/browser-scraper.ts",
       "!octo11y",
       "!packages/o11ytsdb/bench",
       "!research"
