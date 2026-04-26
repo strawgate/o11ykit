@@ -18,6 +18,21 @@ describe("binary-search", () => {
       const arr = new BigInt64Array([5n, 7n, 9n]);
       expect(lowerBound(arr, 1n, 0, 3)).toBe(0);
     });
+
+    it("finds lower bound with duplicates", () => {
+      const arr = new BigInt64Array([1n, 3n, 3n, 3n, 5n]);
+      expect(lowerBound(arr, 3n, 0, 5)).toBe(1);
+    });
+
+    it("respects windowed range", () => {
+      const arr = new BigInt64Array([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n]);
+      expect(lowerBound(arr, 5n, 2, 6)).toBe(4);
+    });
+
+    it("returns hi when target is past windowed range", () => {
+      const arr = new BigInt64Array([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n]);
+      expect(lowerBound(arr, 9n, 2, 6)).toBe(6);
+    });
   });
 
   describe("upperBound", () => {
@@ -29,6 +44,21 @@ describe("binary-search", () => {
     it("returns hi when target equals last element", () => {
       const arr = new BigInt64Array([1n, 3n, 5n]);
       expect(upperBound(arr, 5n, 0, 3)).toBe(3);
+    });
+
+    it("finds upper bound with duplicates", () => {
+      const arr = new BigInt64Array([1n, 3n, 3n, 3n, 5n]);
+      expect(upperBound(arr, 3n, 0, 5)).toBe(4);
+    });
+
+    it("respects windowed range", () => {
+      const arr = new BigInt64Array([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n]);
+      expect(upperBound(arr, 5n, 2, 6)).toBe(5);
+    });
+
+    it("returns hi when target is past windowed range", () => {
+      const arr = new BigInt64Array([1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n]);
+      expect(upperBound(arr, 9n, 2, 6)).toBe(6);
     });
   });
 });
