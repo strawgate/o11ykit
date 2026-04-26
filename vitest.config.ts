@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["packages/*/test/**/*.test.ts"],
+    include: ["packages/*/test/**/*.test.ts", "site/**/*.test.js"],
     exclude: [
       "packages/o11ytsdb/test/ingest.test.ts", // Broken: uses visitMetricPointsRaw which API changed in @otlpkit/otlpjson
       "packages/o11ytsdb/test/e2e-benchmark.test.ts", // Requires WASM binaries not in repo
