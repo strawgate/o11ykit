@@ -7,7 +7,9 @@ use crate::alp::alp_encode_inner;
 use crate::delta_alp::{
     decode_values_alp_inner, delta_alp_encode_inner, is_delta_alp_candidate,
 };
-use crate::gorilla::{compute_stats, decode_values_inner, encode_values_inner};
+use o11y_codec_rt_xor_delta::{
+    compute_stats, decode_values as decode_values_inner, encode_values as encode_values_inner,
+};
 
 // ── Batch XOR encode ─────────────────────────────────────────────────
 

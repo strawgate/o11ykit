@@ -18,7 +18,7 @@
 use crate::alp::{alp_try, f64_to_sortable_u64, i64_range_u64, packed_safe_limit, sortable_u64_to_f64};
 use o11y_codec_rt_core::{bits_needed, zigzag_decode, zigzag_encode, BitReader, BitWriter};
 use crate::delta_alp::is_delta_alp_candidate;
-use crate::gorilla::compute_stats;
+use o11y_codec_rt_xor_delta::compute_stats;
 
 // ── Bug Fix #1: write_bits(_, 0) was shift-overflow UB ──────────────
 
