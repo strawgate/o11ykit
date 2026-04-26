@@ -12,10 +12,12 @@ export default defineConfig({
       enabled: true,
       provider: "v8",
       reporter: ["text", "html"],
+      // TODO: re-enable coverage for adapters, otlpjson, query, views packages
+      // once their test suites are more complete
       include: ["packages/o11ytsdb/src/**/*.ts"],
       exclude: [
-        "packages/o11ytsdb/src/ingest.ts", // Broken: API mismatch with @otlpkit/otlpjson
-        "packages/o11ytsdb/src/wasm-codecs.ts", // Requires WASM binaries
+        "packages/o11ytsdb/src/ingest.ts", // TODO(#178): Broken: API mismatch with @otlpkit/otlpjson
+        "packages/o11ytsdb/src/wasm-codecs.ts", // TODO(#179): Requires WASM binaries not in repo
         "packages/o11ytsdb/src/chunked-store.ts", // Dead code: 0% coverage, not in public API
         "packages/o11ytsdb/src/column-store.ts", // Dead code: 0% coverage, not in public API
       ],

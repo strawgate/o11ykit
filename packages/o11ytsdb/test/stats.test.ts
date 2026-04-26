@@ -29,6 +29,6 @@ describe("computeStats", () => {
     expect(stats.firstV).toBe(5);
     expect(stats.lastV).toBe(4);
     expect(stats.sumOfSquares).toBe(118); // 5^2 + 3^2 + 2^2 + 8^2 + 4^2 = 25 + 9 + 4 + 64 + 16
-    expect(stats.resetCount).toBe(3); // 3 < 5 (reset), 2 < 3 (reset), 8 < 2 (false), 4 < 8 (reset)
+    expect(stats.resetCount).toBe(3); // 3 < 5 (reset), 2 < 3 (reset), 8 > 2 (no reset), 4 < 8 (reset)
   });
 });
