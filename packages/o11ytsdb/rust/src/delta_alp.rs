@@ -13,10 +13,8 @@
 // (decode_values_alp_inner, encodeValuesALP*, decodeValuesALP)
 // since they must know about both regular ALP and delta-ALP.
 
-use crate::alp::{
-    alp_decode_regular, alp_encode_inner, sortable_u64_to_f64, ALP_EXC_U64,
-    ALP_HEADER_SIZE, ALP_MAX_CHUNK, POW10,
-};
+use crate::alp::{alp_decode_regular, alp_encode_inner, ALP_EXC_U64};
+use o11y_codec_rt_alp::{sortable_u64_to_f64, ALP_HEADER_SIZE, ALP_MAX_CHUNK, POW10};
 use o11y_codec_rt_core::BitReader;
 use o11y_codec_rt_xor_delta::compute_stats;
 
@@ -208,7 +206,7 @@ pub(crate) fn decode_values_alp_range(
 
     let e = input[pos] as usize;
     pos += 1;
-    if e > crate::alp::ALP_MAX_EXP {
+    if e > o11y_codec_rt_alp::ALP_MAX_EXP {
         return 0;
     }
     let bw = input[pos];
