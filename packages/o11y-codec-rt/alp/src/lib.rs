@@ -648,10 +648,12 @@ pub fn is_delta_alp_candidate(vals: &[f64], reset_count: u32) -> bool {
 // ── Delta-ALP encode/decode ──────────────────────────────────────────
 
 /// Encode values using delta-before-ALP. Returns bytes written, or 0
-/// on failure.
+/// on failure. Minimum output is 9 bytes (tag + base f64) plus
+/// `ALP_HEADER_SIZE` for the inner ALP block — reject smaller buffers
+/// up front instead of trapping inside the writer.
 pub fn delta_alp_encode(vals: &[f64], out: &mut [u8], delta_for_exceptions: bool) -> usize {
     let n = vals.len();
-    if n < 2 || n > ALP_MAX_CHUNK {
+    if n < 2 || n > ALP_MAX_CHUNK || out.len() < 9 + ALP_HEADER_SIZE {
         return 0;
     }
 
@@ -679,21 +681,25 @@ pub fn delta_alp_encode(vals: &[f64], out: &mut [u8], delta_for_exceptions: bool
 
 /// Decode a delta-ALP blob. Input must start with `DELTA_ALP_TAG`.
 fn delta_alp_decode(input: &[u8], val_out: &mut [f64]) -> usize {
-    if input.len() < 23 || input[0] != DELTA_ALP_TAG {
+    if input.len() < 23 || input[0] != DELTA_ALP_TAG || val_out.is_empty() {
         return 0;
     }
 
     let mut base_bytes = [0u8; 8];
     base_bytes.copy_from_slice(&input[1..9]);
     let base = f64::from_bits(u64::from_be_bytes(base_bytes));
-    val_out[0] = base;
 
     let mut deltas_buf = [0.0f64; ALP_MAX_CHUNK];
     let delta_count = alp_decode_regular(&input[9..], &mut deltas_buf);
-    if delta_count == 0 {
+    // A valid delta-ALP frame always encodes at least one delta, and the
+    // total sample count is `delta_count + 1`. Reject if the caller's
+    // output buffer can't hold all of them — partial decode is a
+    // footgun for callers expecting "n samples or zero".
+    if delta_count == 0 || delta_count + 1 > val_out.len() {
         return 0;
     }
 
+    val_out[0] = base;
     let mut acc = base;
     for i in 0..delta_count {
         acc += deltas_buf[i];
@@ -1275,6 +1281,37 @@ mod tests {
         for i in 0..10 {
             assert_eq!(out[i], vals[10 + i], "range mismatch at {i}");
         }
+    }
+
+    #[test]
+    fn delta_alp_decode_rejects_undersized_output() {
+        // Encode 640 values, then attempt to decode into a too-small buffer.
+        let vals: std::vec::Vec<f64> = (0..640).map(|i| (i * 100) as f64).collect();
+        let mut buf = [0u8; 65536];
+        let written = delta_alp_encode(&vals, &mut buf, false);
+        assert!(written > 0);
+        // 100 < 640: must return 0, not panic.
+        let mut tiny = [0f64; 100];
+        let count = decode_values_alp(&buf[..written], &mut tiny);
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn delta_alp_decode_rejects_empty_output() {
+        let vals: std::vec::Vec<f64> = (0..10).map(|i| (i * 10) as f64).collect();
+        let mut buf = [0u8; 1024];
+        let written = delta_alp_encode(&vals, &mut buf, false);
+        assert!(written > 0);
+        let mut empty: [f64; 0] = [];
+        let count = decode_values_alp(&buf[..written], &mut empty);
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn delta_alp_encode_tiny_output_buffer_returns_zero() {
+        // Header is tag(1) + base_f64(8) + ALP_HEADER_SIZE(14) = 23 bytes.
+        let mut buf = [0u8; 22];
+        assert_eq!(delta_alp_encode(&[0.0, 1.0], &mut buf, false), 0);
     }
 
     #[test]
