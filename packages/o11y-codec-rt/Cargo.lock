@@ -5,10 +5,3 @@ version = 4
 [[package]]
 name = "o11y-codec-rt-core"
 version = "0.0.1"
-
-[[package]]
-name = "o11ytsdb-wasm"
-version = "0.0.1"
-dependencies = [
- "o11y-codec-rt-core",
-]

@@ -7,7 +7,7 @@
 //   1110 + 12b → |dod| ≤ 2047  (zigzag ≤ 4095)
 //   1111 + 64b → all other values
 
-use crate::bitio::{BitReader, BitWriter, zigzag_decode, zigzag_encode};
+use o11y_codec_rt_core::{BitReader, BitWriter, zigzag_decode, zigzag_encode};
 
 /// Encode timestamps only using delta-of-delta encoding.
 /// Layout: 16-bit count + 64-bit first timestamp + delta-of-delta bitstream.
