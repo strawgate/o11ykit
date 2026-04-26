@@ -4,9 +4,7 @@
 // and returns only the matching range. ALP's fixed-width bit-packing
 // enables random access — we skip decoding values outside the range.
 
-use crate::alp::ALP_INTS;
-use o11y_codec_rt_alp::ALP_MAX_CHUNK;
-use crate::delta_alp::decode_values_alp_range;
+use o11y_codec_rt_alp::{decode_values_alp_range, ALP_MAX_CHUNK};
 use o11y_codec_rt_xor_delta::decode_timestamps as decode_timestamps_inner;
 
 /// Binary search: first index where ts_buf[i] >= target.
@@ -55,7 +53,9 @@ pub extern "C" fn rangeDecodeALP(
     max_out: u32,
 ) -> u32 {
     let ts_input = unsafe { core::slice::from_raw_parts(ts_ptr, ts_len as usize) };
-    let ts_buf = unsafe { &mut ALP_INTS[..ALP_MAX_CHUNK] };
+    // Stack-local timestamp buffer: 16 KB, fine on the wasm32 1 MB stack.
+    let mut ts_buf_arr = [0i64; ALP_MAX_CHUNK];
+    let ts_buf = &mut ts_buf_arr[..];
     let ts_count = decode_timestamps_inner(ts_input, ts_buf);
     if ts_count == 0 {
         return 0;
@@ -100,7 +100,10 @@ pub extern "C" fn rangeDecodeALP(
 mod tests {
     extern crate std;
     use super::*;
-    use crate::alp::alp_encode_inner;
+    use o11y_codec_rt_alp::alp_encode;
+    fn alp_encode_inner(vals: &[f64], out: &mut [u8]) -> usize {
+        alp_encode(vals, out, false)
+    }
     use crate::timestamp::encodeTimestamps;
 
     #[test]

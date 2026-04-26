@@ -5,17 +5,17 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# ALP (Adaptive Lossless floating-Point) primitives. Currently exports
-# the pure stateless utilities and constants that ALP encode/decode
-# share (POW10 lookup, sortable u64 mapping, packed-array safe-index
-# math, scalar candidate test). The encode/decode bodies remain in the
-# o11ytsdb binding crate for now because they manipulate process-global
-# scratch buffers; future work lifts that state out and moves the bodies
-# here.
+# ALP (Adaptive Lossless floating-Point) and Delta-ALP codec.
+# Pure-Rust slice API. Scratch buffers used during encode/decode are
+# stack-allocated; on wasm32 (1 MB default stack) the worst-case
+# ~50 KB residency is safe.
 #
 # Reference: Afroozeh et al., SIGMOD 2024 (ALP).
 
 [lib]
+
+[dependencies]
+o11y-codec-rt-core = { path = "../core" }
 
 [lints]
 workspace = true
