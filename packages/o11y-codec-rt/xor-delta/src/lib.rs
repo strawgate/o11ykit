@@ -19,12 +19,16 @@ use o11y_codec_rt_core::{BitReader, BitWriter, zigzag_decode, zigzag_encode};
 /// Encode timestamps + values into a compressed chunk.
 /// Layout: 16-bit count, 64-bit first ts, 64-bit first value, then
 /// interleaved DoD timestamps + XOR values.
+///
+/// Header is 18 bytes (16-bit count + 64-bit ts0 + 64-bit val0). The
+/// caller must supply at least that much output capacity.
 pub fn encode_chunk(ts: &[i64], vals: &[f64], out: &mut [u8]) -> usize {
     let n = ts.len();
     debug_assert_eq!(n, vals.len());
     // Count is serialized as a 16-bit header field — reject larger inputs
-    // so decode cannot reconstruct a truncated length.
-    if n == 0 || n > u16::MAX as usize {
+    // so decode cannot reconstruct a truncated length. Reject too-small
+    // output buffers up front so BitWriter doesn't panic on the header.
+    if n == 0 || n > u16::MAX as usize || out.len() < 18 {
         return 0;
     }
 
@@ -154,9 +158,12 @@ pub fn decode_chunk(input: &[u8], ts_out: &mut [i64], val_out: &mut [f64]) -> us
 
 /// Encode values only (no timestamps) using XOR encoding.
 /// Layout: 16-bit count + 64-bit first value + XOR-encoded subsequent values.
+///
+/// Header is 10 bytes (16-bit count + 64-bit val0). The caller must
+/// supply at least that much output capacity.
 pub fn encode_values(vals: &[f64], out: &mut [u8]) -> usize {
     let n = vals.len();
-    if n == 0 || n > u16::MAX as usize {
+    if n == 0 || n > u16::MAX as usize || out.len() < 10 {
         return 0;
     }
 
@@ -631,6 +638,22 @@ mod tests {
     fn ts_tiny_output_buffer_returns_zero() {
         let mut buf = [0u8; 9];
         assert_eq!(encode_timestamps(&[1000], &mut buf), 0);
+    }
+
+    // ── Minimum-buffer contract (parity across encoders) ─────────────
+
+    #[test]
+    fn encode_chunk_tiny_output_buffer_returns_zero() {
+        // Header is 18 bytes: 16-bit count + 64-bit ts0 + 64-bit val0.
+        let mut buf = [0u8; 17];
+        assert_eq!(encode_chunk(&[1], &[1.0], &mut buf), 0);
+    }
+
+    #[test]
+    fn encode_values_tiny_output_buffer_returns_zero() {
+        // Header is 10 bytes: 16-bit count + 64-bit val0.
+        let mut buf = [0u8; 9];
+        assert_eq!(encode_values(&[1.0], &mut buf), 0);
     }
 
     // ── Block stats ──────────────────────────────────────────────────
