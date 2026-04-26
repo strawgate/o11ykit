@@ -10,7 +10,7 @@
  * spanId, eventName, dropped count, flags, observedTimeUnixNano,
  * non-string bodies).
  *
- * The thesis Experiment H exposed:
+ * The thesis measurement exposed:
  *
  *   ZSTD-19 over an NDJSON-shaped record stream can't beat ZSTD-19
  *   over plain text bodies. The repetitive `{"$tpl":N,"$v":[…]}`
@@ -71,7 +71,7 @@ export interface ColumnarDrainPolicyConfig extends ColumnarPolicyConfig {
 // ── Wire-meta shape (JSON, lives in chunk header `codecMeta`) ────────
 //
 // We keep this small on purpose. The chunk header is uncompressed
-// bytes-on-the-wire, and Experiment H showed ~0.5 B/log can be lost
+// bytes-on-the-wire, and measurement showed ~0.5 B/log can be lost
 // to the header alone when the per-chunk template dictionary lives
 // here. So we move the dictionary *into* the compressed payload (see
 // the schema below) and leave only a single byte of meta in the
@@ -87,7 +87,7 @@ interface ColumnarChunkMeta {
 // ── Helpers: varint ──────────────────────────────────────────────────
 //
 // Growable single-buffer writer. See codec-typed.ts ByteBuf for the
-// rationale (Experiment X CPU profile, 2026-04-26).
+// rationale (CPU profile, 2026-04-26).
 class ByteBuf {
   private buf: Uint8Array;
   private view: DataView;
@@ -255,7 +255,7 @@ class ByteCursor {
  *
  * The per-chunk template dictionary lives *inside* the payload, not
  * in the chunk's JSON header. That keeps the uncompressed-header tax
- * (Experiment H's overhead #2) at zero.
+ * (the layout overhead #2) at zero.
  */
 function encode(
   records: readonly LogRecord[],

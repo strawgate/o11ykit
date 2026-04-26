@@ -1,5 +1,5 @@
 /**
- * Minimal Roaring32 implementation for Experiment S.
+ * Minimal Roaring32 implementation for the substring-search bench.
  *
  * Tests Husky's design: per-chunk per-token-hash Roaring postings —
  * keyed by `hash(token) % 64K`, value is a bitmap of row indices that

@@ -1,7 +1,7 @@
 /**
  * multi-stream — sustained-ingest at scale across many streams.
  *
- * Sustained-ingest (Experiment Y) tested 1 stream × 500K records.
+ * Sustained-ingest  tested 1 stream × 500K records.
  * Real production ingest is 10s-100s of streams (one per service
  * instance) interleaved into the same engine. This bench measures
  * what happens when the engine sees 100 streams × 5K records each.
@@ -22,7 +22,7 @@
  *   - peak heap, peak arrayBuffers, peak rss
  *   - drain template count (validates per-stream Drain isolation)
  *
- * The PLAN's per-stream-chunking claim (Experiment E) said this
+ * The PLAN's per-stream-chunking claim  said this
  * shape produces 1.13-1.28× compression vs cross-stream interleaved.
  * That was at 2K-sample scale; this bench validates at 500K records.
  */

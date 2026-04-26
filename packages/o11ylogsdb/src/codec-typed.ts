@@ -3,7 +3,7 @@
  *
  * Extends `ColumnarDrainPolicy` with **per-(template, slot) value-
  * distribution-aware codec dispatch** for variable-position values.
- * Experiment Q showed that on HDFS, slots whose values are all of
+ * measurement showed that on HDFS, slots whose values are all of
  * shape `blk_<int>` cost 9.80 B/log when stored as length-prefixed
  * UTF-8 + ZSTD-19, vs **8.13 B/log** stored as raw 8-byte LE i64
  * + ZSTD-19 (a 17 % saving, near the 60-bit entropy floor).
@@ -186,7 +186,7 @@ interface TypedColumnarChunkMeta {
   v: 3;
   drain: true;
   // slot_types live in the compressed payload, not the uncompressed
-  // chunk-header codecMeta — Experiment I showed ~0.5 B/log of
+  // chunk-header codecMeta — measurement showed ~0.5 B/log of
   // overhead can be lost to the header. Keep meta minimal here.
 }
 
@@ -195,9 +195,9 @@ interface TypedColumnarChunkMeta {
 // Growable single-buffer writer. The previous implementation pushed a
 // fresh Uint8Array per call (pushByte → 1-byte alloc, pushVarint →
 // up-to-5-byte alloc) into a chunks list, then concat'd them in
-// finish(). On OpenStack-2k that pattern showed up as ~5% of total
-// CPU in the profile (Experiment X, 2026-04-26): pushVarint 1.1%,
-// finish 0.7%, plus GC pressure from tens of thousands of micro-allocs.
+// finish(). On OpenStack-2k that pattern showed up as ~5% of total CPU
+// (pushVarint 1.1%, finish 0.7%) plus GC pressure from tens of
+// thousands of micro-allocs.
 //
 // This version writes into a single Uint8Array, growing 2× when full.
 // Each push is one bounds check + one or a few byte writes. finish()
@@ -495,7 +495,7 @@ function hexNibble(ch: number): number {
 
 /** Format 16 bytes as canonical lowercase UUID — 8-4-4-4-12. */
 function bytesToUuid(b: Uint8Array): string {
-  // Direct concat. CPU profile (Experiment Z): bytesToUuid was 11.4 %
+  // Direct concat. CPU profile : bytesToUuid was 11.4 %
   // of decode self-time on OpenStack 500K-record stores because
   // each call did 16 array.push pairs + 4 dash inserts + a join.
   return (
@@ -923,7 +923,7 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
   // flat arrays so the per-record decode passes can do one array
   // load per slot instead of a Map.get with a string key.
   //
-  // CPU profile evidence (Experiment Z, 2026-04-26): the previous
+  // CPU profile evidence (2026-04-26 CPU profile): the previous
   // `typeOf(tplId, slot)` helper that did `slotTypes.get(`${tplId}/${slot}`)`
   // showed up at 12.6 %–17.1 % of decode CPU on Apache / OpenStack
   // 500K-record stores. Each call allocated a fresh template-literal
@@ -1156,7 +1156,7 @@ function reconstruct(template: readonly string[], vars: readonly string[]): stri
   // Hot-path: inline string concat with a single-pass loop. The
   // earlier version built `string[]` and called `join(" ")`, which
   // allocates an intermediate array per record (CPU profile
-  // Experiment Z showed reconstruct at ~20% of decode self-time on
+  // measurement showed reconstruct at ~20% of decode self-time on
   // OpenStack 500K-record stores).
   //
   // V8 can optimize repeated `+=` better than `out.push(...)`+`join`

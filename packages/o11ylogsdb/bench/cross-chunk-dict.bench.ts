@@ -1,5 +1,5 @@
 /**
- * Cross-chunk shared ZSTD dictionary benchmark — Experiment M.
+ * Cross-chunk shared ZSTD dictionary benchmark.
  *
  * Validation question: can a per-stream ZSTD dictionary, built from
  * the *raw bytes* of chunk 0, be reused across subsequent chunks to

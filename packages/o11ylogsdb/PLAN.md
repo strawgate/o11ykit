@@ -40,7 +40,7 @@ latency at the cost of 20% more bytes/log gets rejected.
 
 This is the matrix that determines whether we hit 20×. Numbers are
 amortized B/log on a representative chunk of 1024 logs from a typical
-mixed-source workload **per Experiment D**: ~61% templated text, ~39%
+mixed-source workload **from measurements**: ~61% templated text, ~39%
 KVList (structured-JSON), <1% free-text.
 
 | Column | Codec | B/log |
@@ -63,14 +63,14 @@ KVList (structured-JSON), <1% free-text.
 | **Grand total** | | **~17.1 B/log** |
 
 That is **~24× over raw OTLP/JSON** on a KVList-heavy workload
-(Experiment G validated the KVList budget at ~5 B/log per body once
+(measurement validated the KVList budget at ~5 B/log per body once
 high-cardinality identifier columns are routed to a BF16+raw-bytes
 path; lower-cardinality KVList bodies hit the original 1.4 B/log
 target). On templated-text-heavy workloads, the
 aggregate drops to ~12 B/log → 35–60×. The 20× hard floor holds across
 both shapes; KVList-heavy workloads are tighter.
 
-**Per-corpus targets validated by Experiment A** (Drain+ZSTD-19 alone,
+**Per-corpus targets validated by measurement** (Drain+ZSTD-19 alone,
 before our typed-column stack):
 
 | Corpus | Drain+ZSTD-19 floor (B/log) | ratio vs OTLP/JSON |
@@ -87,7 +87,7 @@ these floors. Per-corpus B/log gates in M4 are set against this table.
 The four high-impact techniques carrying most of the win:
 
 1. **Drain template extraction** as a *structure* primitive (not a
-   compression primitive — Experiment A shows Drain only adds 1–8%
+   compression primitive — the public log corpus measurements show Drain only adds 1–8%
    compression over plain ZSTD-19 on text). What Drain buys is
    **random-access decode and predicate pushdown** on the body
    column, which whole-archive compression schemes don't provide.
@@ -101,12 +101,12 @@ The four high-impact techniques carrying most of the win:
    scan.
 3. **FSST** for residual strings (variable values, attribute values).
    ~2–3× over raw on short strings; <8 KB symbol table; SIMD decode.
-   Experiment B measured **4.93 GB/s decode in WASM** — 5× over the
+   measurement showed **4.93 GB/s decode in WASM** — 5× over the
    ~1 GB/s target.
 4. **ALP / Delta-ALP** on numeric attribute columns — already shipping
    in `o11ytsdb`.
 
-Experiments A and C **invalidated** "trained ZSTD dictionaries per
+Measurements **invalidated** "trained ZSTD dictionaries per
 stream" as a useful technique on log corpora at our chunk
 granularity — the 16 KB-trained ZSTD-19 dict ties or *loses* on 5 of
 5 text corpora and 3 of 4 string corpora. Removed from M5 and from
@@ -214,7 +214,7 @@ M0 deliverable: extract `xor-delta`, `alp`, and `fastlanes-bp` from
 
 ### WASM size budget
 
-Revised from initial PLAN draft after Experiment B re-measured the
+Revised from initial PLAN draft after re-measuring the
 shipped artifacts and built the candidate codec crates. Original
 budget was based on a stale "1.5 KB gzipped" o11ytsdb number that was
 the M1-only baseline; the current shipped binary is 18 KB gzipped.
@@ -227,7 +227,7 @@ the M1-only baseline; the current shipped binary is 18 KB gzipped.
 
 Per-engine budget enforced in CI. Overshooting blocks merge.
 
-Experiment B validated:
+Measurements validated:
 
 - `wasm-opt -Oz` and `wasm-strip` are **no-ops** on top of Cargo's
   size profile (`opt-level=z`, `lto=true`, `codegen-units=1`,

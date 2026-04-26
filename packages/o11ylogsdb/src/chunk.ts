@@ -202,6 +202,17 @@ export function readRecords(
   return decoded;
 }
 
+/**
+ * Wire size of a chunk without materializing the full byte buffer —
+ * the header JSON is encoded just to measure its length, but the
+ * payload bytes (the dominant cost) are not copied. Used by `stats()`
+ * to count storage cheaply.
+ */
+export function chunkWireSize(chunk: Chunk): number {
+  const headerJson = new TextEncoder().encode(JSON.stringify(chunk.header));
+  return MAGIC_BYTES.length + 1 + 4 + headerJson.length + chunk.payload.length;
+}
+
 /** Serialize a chunk to the wire format. */
 export function serializeChunk(chunk: Chunk): Uint8Array {
   const headerJson = new TextEncoder().encode(JSON.stringify(chunk.header));

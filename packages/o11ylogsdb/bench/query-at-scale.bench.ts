@@ -8,7 +8,7 @@
  * Build phase: ingest 500K records of each (Apache, OpenStack) using
  * TypedColumnarDrainPolicy at body-codec z19 (the worst case for
  * decode time). Apache + OpenStack are the throughput extremes from
- * Experiment Y, so they bound the query-latency space.
+ * the CPU profile, so they bound the query-latency space.
  *
  * Query phase: 7 representative queries per store, profiled via the
  * profile-harness for timing percentiles + heap delta.

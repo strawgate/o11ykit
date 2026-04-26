@@ -1,6 +1,6 @@
 /**
  * Minimal Bloom filter and Binary Fuse 8 implementations in pure TS,
- * sized for the ngram-bloom bench (Experiment R).
+ * sized for the ngram-bloom bench .
  *
  * Hashing: we use a 64-bit splitmix-style mixer over Math.imul-friendly
  * 32-bit halves. BigInt is used only at the boundary for binary-fuse

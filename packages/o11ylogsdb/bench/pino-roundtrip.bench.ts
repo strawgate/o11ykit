@@ -1,5 +1,5 @@
 /**
- * Pino-shaped KVList corpus roundtrip benchmark — Experiment G.
+ * Pino-shaped KVList corpus roundtrip benchmark.
  *
  * Loads the synthetic Pino corpus at
  * `bench/corpora/synthetic/pino_5k.ndjson` (5 000 OTLP-shaped

@@ -1,5 +1,5 @@
 /**
- * hierarchical-drain — Experiment L: Drain on KVList sub-fields.
+ * hierarchical-drain — Drain on KVList sub-fields.
  *
  * When an OTLP body is a KVList (Pino, zap, slog), the *outer* body is
  * structured but the *inner* leaf strings (`msg`, `req.url`,

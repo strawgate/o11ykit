@@ -31,7 +31,7 @@ export class StreamRegistry {
    *
    * CPU profile evidence: stream.ts:111 (sortDeep) + stream.ts:108
    * (sortedJson) consumed ~2.7% of total ingest CPU on OpenStack-2k
-   * before this fast path landed (Experiment W, 2026-04-26).
+   * before this fast path landed (2026-04-26 CPU profile).
    */
   private byResourceRef: WeakMap<Resource, Map<InstrumentationScope, StreamId>> = new WeakMap();
 

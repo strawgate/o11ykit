@@ -1,16 +1,16 @@
 /**
  * engine-typed — applies M4 per-template variable typing through the
  * actual engine (LogStore + TypedColumnarDrainPolicy). Validates
- * Experiment Q's prediction that auto-detecting `blk_int` and
+ * the prediction that auto-detecting `blk_int` and
  * `signed_int` slot shapes turns 22.5 → ~19 B/log on HDFS without
  * lossy techniques.
  *
  * Compares:
- *   - engine_columnar_z19         (Experiment U baseline; no typing)
+ *   - engine_columnar_z19         (baseline; no typing)
  *   - engine_typed_z19            (this experiment; per-slot typing)
  *
  * Both at body-codec z19 for apples-to-apples; tier strategy from
- * Experiment T is orthogonal and tested separately.
+ * this codec choice is orthogonal and tested separately.
  *
  * Round-trip is verified for content + count.
  */

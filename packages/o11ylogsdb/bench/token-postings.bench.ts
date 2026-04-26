@@ -1,16 +1,16 @@
 /**
- * token-postings — Experiment S.
+ * token-postings.
  *
  * Validates Husky's per-token-hash Roaring postings design: at
  * chunk-close, build `Map<hash(token) % 64K, Roaring(row_indices)>`,
  * so that `body contains "timeout" AND severity ≥ WARN` is a Roaring
  * AND of two pre-computed bitmaps with no row decode for rejected
  * rows. Compares storage cost and substring-search recall vs the
- * trigram Bloom rejected by Experiment R (2.59 B/log, refuted at the
+ * trigram Bloom rejected by measurement (2.59 B/log, refuted at the
  * <1 B/log threshold).
  *
  * Configurations:
- *   - `bloom_n3`         — trigram Bloom from Experiment R (baseline).
+ *   - `bloom_n3`         — trigram Bloom baseline.
  *   - `postings_n3`      — trigram Roaring postings, modulus 64 K.
  *   - `postings_token`   — token Roaring postings (Husky's design).
  *

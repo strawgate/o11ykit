@@ -1,5 +1,5 @@
 /**
- * Lossy archive compression benchmark — Experiment O.
+ * Lossy archive compression benchmark.
  *
  * For each Loghub-2k corpus, applies progressively more aggressive
  * *lossy* normalizations to the raw text and measures ZSTD-19 output

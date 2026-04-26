@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate a synthetic Pino-shaped KVList corpus for Experiment G.
+Generate a synthetic Pino-shaped KVList corpus for KVList round-trip benches.
 
 Produces 5,000 OTLP-shaped LogRecords whose `body` field is a
 Pino-style JSON object (KVList). Distribution is plausible and
@@ -13,7 +13,7 @@ already exists with non-zero size.
 
 This corpus baselines the body/KVList row in PLAN.md's storage budget
 (target: 1.4 B/log via recursive flatten → per-key columns). Real
-OTLP traffic has ~39% KVList bodies per Experiment D, but no committed
+OTLP traffic has ~39% KVList bodies per the body-shape survey, but no committed
 KVList corpus existed prior to this experiment.
 
 Usage:

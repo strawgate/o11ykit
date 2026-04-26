@@ -273,7 +273,7 @@ export class Drain implements TemplateExtractor {
 
 /** Whitespace tokenizer — matches `str.split_whitespace()`. */
 export function tokenize(line: string): string[] {
-  // Manual whitespace tokenizer — Experiment X CPU profile (2026-04-26)
+  // Manual whitespace tokenizer — CPU profile (2026-04-26)
   // showed line.split(/\s+/).filter(...) at ~1.5 % of total ingest CPU
   // because regex-engine setup + an extra filter pass costs more than
   // a hand-rolled scan for short log lines. This produces identical

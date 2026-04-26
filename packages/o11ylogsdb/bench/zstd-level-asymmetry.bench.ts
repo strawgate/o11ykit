@@ -1,6 +1,5 @@
 /**
- * zstd-level-asymmetry — Experiment T (per-research/production-engine-techniques.md
- * proposal). Tests whether running the body column at a lower ZSTD
+ * zstd-level-asymmetry — tests whether running the body column at a lower ZSTD
  * level (faster encode) hurts ratio meaningfully when the surrounding
  * column-frame structure (timestamps, severities, kinds, template
  * dict) stays at level 19.

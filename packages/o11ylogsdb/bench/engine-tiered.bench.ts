@@ -1,5 +1,5 @@
 /**
- * engine-tiered — Experiment U. Validates Experiment T's tiered
+ * engine-tiered. Validates the tiered
  * codec recommendation through the *actual* engine (LogStore +
  * ColumnarDrainPolicy), not a 3-column microbench.
  *

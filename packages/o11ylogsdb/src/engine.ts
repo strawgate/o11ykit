@@ -11,14 +11,14 @@
  *
  *   - M0: ALP / Delta-ALP / FastLanes BP for numeric columns
  *   - M1: FSST + binary fuse + Roaring-lite
- *   - M2: in-house Drain template extractor (validated in Experiment F)
+ *   - M2: in-house Drain template extractor
  *
  * Experiments configure the engine by passing a custom registry +
  * classifier + policy and re-running the bench.
  */
 
 import type { ChunkPolicy } from "./chunk.js";
-import { ChunkBuilder, DefaultChunkPolicy, readRecords, serializeChunk } from "./chunk.js";
+import { ChunkBuilder, chunkWireSize, DefaultChunkPolicy, readRecords } from "./chunk.js";
 import type { BodyClassifier } from "./classify.js";
 import { defaultClassifier } from "./classify.js";
 import type { CodecRegistry } from "./codec.js";
@@ -152,7 +152,7 @@ export class LogStore {
       chunks += chunkList.length;
       for (const c of chunkList) {
         totalLogs += c.header.nLogs;
-        totalBytes += serializeChunk(c).length;
+        totalBytes += chunkWireSize(c);
       }
     }
     return {

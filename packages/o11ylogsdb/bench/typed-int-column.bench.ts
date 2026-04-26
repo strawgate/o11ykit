@@ -1,14 +1,14 @@
 /**
  * typed-int-column — validates whether typed integer encoding for
  * the per-template `blk_<int>` columns in HDFS actually beats the
- * raw-string-as-ZSTD path measured in Experiment P.
+ * raw-string-as-ZSTD path measured in the CPU profile.
  *
  * Method: for the HDFS-2k corpus, find every template variable slot
  * whose values all match `blk_-?\d+` (the HDFS block-ID shape).
  * For each such slot, compare four codec paths:
  *
  *   1. raw_string_zstd-19   — concatenate raw string values, ZSTD-19.
- *      Reference baseline (matches Experiment P numbers).
+ *      Reference baseline (baseline).
  *   2. int64_le_zstd-19     — parse each value as i64, write raw 8-byte
  *      LE per row, ZSTD-19.
  *   3. delta_varint_zstd-19 — first int64 raw, then signed deltas as

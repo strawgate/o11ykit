@@ -1,5 +1,5 @@
 /**
- * per-stream-drain — Experiment J: Per-stream Drain isolation impact.
+ * per-stream-drain — Per-stream Drain isolation impact.
  *
  * Validation question: how much does sharing one Drain instance across
  * all streams cost vs giving each stream its own Drain?

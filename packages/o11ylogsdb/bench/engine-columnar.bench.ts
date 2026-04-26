@@ -1,10 +1,10 @@
 /**
- * engine-columnar — Experiment I: M4 columnar binary body codec.
+ * engine-columnar — M4 columnar binary body codec.
  *
  * Same setup as `engine-drain.bench.ts`, but exercises three policies:
  *
  *   - `engine_default_zstd-19`   (baseline; NDJSON envelope + ZSTD-19)
- *   - `engine_drain_zstd-19`     (NDJSON Drain — Experiment H; should
+ *   - `engine_drain_zstd-19`     (NDJSON Drain — the NDJSON Drain refutation; should
  *                                  reproduce its 5–35% loss vs default)
  *   - `engine_columnar_zstd-19`  (NEW: columnar binary payload, Drain
  *                                  templates, ZSTD-19)

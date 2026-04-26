@@ -1,5 +1,5 @@
 /**
- * ngram-bloom — Experiment R.
+ * ngram-bloom.
  *
  * Validates the PLAN.md M6 stance that "per-chunk binary fuse filtering
  * covers 95 % of substring search needs at a fraction of the cost"
