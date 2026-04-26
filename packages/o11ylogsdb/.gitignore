@@ -1,0 +1,7 @@
+dist/
+dist-bench/
+.tsbuildinfo
+wasm/*.wasm
+rust/target/
+bench/results/
+bench/corpora/loghub-full/

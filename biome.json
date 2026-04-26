@@ -4,6 +4,7 @@
     "includes": [
       "**",
       "!**/dist",
+      "!**/dist-bench",
       "!**/lib",
       "!**/coverage",
       "!**/node_modules",
@@ -47,6 +48,21 @@
         "rules": {
           "correctness": {
             "noInnerDeclarations": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/o11ylogsdb/src/codec-*.ts",
+        "packages/o11ylogsdb/src/chunk.ts",
+        "packages/o11ylogsdb/src/drain.ts",
+        "packages/o11ylogsdb/bench/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
           }
         }
       }

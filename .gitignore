@@ -5,6 +5,7 @@ dist/
 .site/
 examples/*/dist/
 packages/*/dist/
+packages/*/dist-bench/
 
 *.tsbuildinfo
 packages/*/.tsbuildinfo
