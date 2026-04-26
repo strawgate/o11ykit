@@ -42,4 +42,21 @@ describe("Interner", () => {
     // Existing strings still resolve fine
     expect(interner.resolve(interner.intern("key_0"))).toBe("key_0");
   });
+
+  it("throws on resolve with invalid id", () => {
+    const interner = new Interner();
+    interner.intern("hello");
+    expect(() => interner.resolve(999)).toThrow("invalid intern id");
+  });
+
+  it("reports correct size", () => {
+    const interner = new Interner();
+    expect(interner.size).toBe(0);
+    interner.intern("a");
+    expect(interner.size).toBe(1);
+    interner.intern("b");
+    expect(interner.size).toBe(2);
+    interner.intern("a"); // dedup
+    expect(interner.size).toBe(2);
+  });
 });

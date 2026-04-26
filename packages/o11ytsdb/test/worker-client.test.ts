@@ -260,6 +260,38 @@ describe("WorkerClient", () => {
 
       await expect(client.ingestBatch(pending)).rejects.toThrow("batch fail");
     });
+
+    it("throws on timestamp/value length mismatch", async () => {
+      mock.autoRespond({ ok: true, type: "batch-ingest", seriesCount: 1, totalSamples: 1 });
+
+      const pending = new Map<
+        number,
+        { labels: Map<string, string>; timestamps: number[]; values: number[] }
+      >();
+      pending.set(1, {
+        labels: new Map([["k", "v"]]),
+        timestamps: [1, 2],
+        values: [10], // length mismatch
+      });
+
+      await expect(client.ingestBatch(pending)).rejects.toThrow("Timestamp/value length mismatch");
+    });
+
+    it("throws on unexpected response type", async () => {
+      mock.autoRespond({ ok: true, type: "init", backend: "test" }); // wrong type
+
+      const pending = new Map<
+        number,
+        { labels: Map<string, string>; timestamps: number[]; values: number[] }
+      >();
+      pending.set(1, {
+        labels: new Map([["k", "v"]]),
+        timestamps: [1],
+        values: [10],
+      });
+
+      await expect(client.ingestBatch(pending)).rejects.toThrow("Unexpected response type");
+    });
   });
 
   // ── query() ───────────────────────────────────────────────────
