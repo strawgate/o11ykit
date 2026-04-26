@@ -26,3 +26,4 @@ panic = "abort"      # No unwinding — smaller binary
 # and other primitives this crate (and o11ylogsdb's binding crate)
 # both consume. No other deps; we still go bare-metal for size.
 o11y-codec-rt-core = { path = "../../o11y-codec-rt/core" }
+o11y-codec-rt-xor-delta = { path = "../../o11y-codec-rt/xor-delta" }

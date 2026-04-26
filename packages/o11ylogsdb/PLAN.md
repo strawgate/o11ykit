@@ -274,22 +274,23 @@ Extract shared codecs from `packages/o11ytsdb/rust/` into the new
 `packages/o11y-codec-rt/` workspace. Reduce `o11ytsdb/rust/` to a thin
 binding crate.
 
-**Status: in progress.** Workspace scaffolded with `core/` crate (bit
-I/O primitives) extracted; `o11ytsdb/rust/` depends on it. Follow-up
-work: extract `xor-delta` (gorilla + timestamp), `alp` (alp +
-delta_alp + alp_exc), `fastlanes-bp`. Each as a separate PR with
-size/perf parity verification.
+**Status: in progress.** `core/` (bit I/O primitives) and `xor-delta/`
+(Gorilla codec) extracted; `o11ytsdb/rust/`'s `gorilla.rs` and
+`timestamp.rs` reduced to thin extern "C" shims. Follow-up: extract
+`alp` (alp + delta_alp + alp_exc), `fastlanes-bp`.
 
 **Deliverables:**
 - `packages/o11y-codec-rt/Cargo.toml` — workspace manifest. ✅
 - `packages/o11y-codec-rt/core/` — `BitWriter`, `BitReader`, zigzag,
   bit-width helpers, packed-array extraction. `#![no_std]`. ✅
-- `packages/o11y-codec-rt/{xor-delta,alp,fastlanes-bp}/` — lifted from
-  `o11ytsdb/rust/src/`. *(pending)*
-- `packages/o11ytsdb/rust/Cargo.toml` updated to depend on workspace
-  crates. *(partial — depends on `core` only so far)*
-- `packages/o11ytsdb/rust/src/lib.rs` rewritten as a thin `extern "C"`
-  binding layer. *(pending)*
+- `packages/o11y-codec-rt/xor-delta/` — combined chunk encode/decode,
+  values-only, timestamps-only, block stats. Pure-Rust slice API. ✅
+- `packages/o11y-codec-rt/{alp,fastlanes-bp}/` — pending.
+- `packages/o11ytsdb/rust/Cargo.toml` depends on `core` + `xor-delta`. ✅
+- `packages/o11ytsdb/rust/src/{gorilla.rs,timestamp.rs}` reduced to
+  thin extern "C" wrappers around the workspace crate. ✅
+- `packages/o11ytsdb/rust/src/lib.rs` further reduced to a binding
+  layer once `alp` and `fastlanes-bp` extract. *(pending)*
 
 **Benchmark gate:** Each migration PR verifies size + perf parity.
 
@@ -299,15 +300,21 @@ size/perf parity verification.
 | Encode/decode throughput | within ±2% of pre-migration |
 | Cross-validation tests | bit-exact on all 10 existing vectors |
 
-The `core/` extraction PR carried a **+316 byte raw / +270 byte gz**
-delta on `o11ytsdb-rust.wasm` (0.015% raw, 1.5% gz). Cause: the
-bit-I/O primitives moved from a `pub(crate)` internal module to a
-`pub` cross-crate boundary; even with `lto = "fat"` the compiler
-keeps a small amount of cross-crate metadata, plus the public API
-gained zero-width guards on `read_bits` / `extract_packed*` so
-out-of-crate callers can't trigger shift-overflow UB. The
-architectural payoff (one shared codec crate `o11ylogsdb` and
-`o11ytsdb` both depend on) outweighs the ~1.5% gz cost.
+Cumulative size delta on `o11ytsdb-rust.wasm`:
+
+| Step | Raw | Gz | Cumulative raw | Cumulative gz |
+|------|-----|----|---------------:|--------------:|
+| Pre-M0 baseline | 2,143,340 | 18,144 | — | — |
+| `core/` extraction | +316 | +270 | +0.015% | +1.49% |
+| `xor-delta/` extraction | -120 | -2 | +0.009% | +1.48% |
+
+The `xor-delta/` extraction slightly *shrunk* the binary because the
+4-tier delta-of-delta prefix coder lifted into shared helpers
+(`write_dod` / `read_dod`) consolidates code that used to be
+duplicated between `gorilla.rs` and `timestamp.rs`. The architectural
+payoff (one shared codec crate `o11ylogsdb` and `o11ytsdb` both
+depend on) was already worth the ~1.5% gz cost from `core/`; xor-
+delta makes that negligible.
 
 ### M1: FSST + Bit I/O Extensions
 
