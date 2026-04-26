@@ -27,11 +27,7 @@ export type TransformFn =
   | "rate"
   | "increase"
   | "irate"
-  | "delta"
-  | "abs"
-  | "ceil"
-  | "floor"
-  | "sqrt";
+  | "delta";
 
 /** Pure aggregation functions (collapse series, not per-series transforms). */
 export type PlanAggFn =

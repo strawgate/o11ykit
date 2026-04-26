@@ -134,28 +134,19 @@ describe("QueryBuilder — plan compilation", () => {
   });
 
   it("compiles multiple transforms in order", () => {
-    const plan = query().metric("cpu").range(0n, 100n).abs().rate().plan();
+    const plan = query().metric("cpu").range(0n, 100n).rate().delta().plan();
 
-    // Outermost transform is the last one added (rate)
+    // Outermost transform is the last one added (delta)
     expect(plan.kind).toBe("transform");
     const outer = plan as Extract<PlanNode, { kind: "transform" }>;
-    expect(outer.fn).toBe("rate");
+    expect(outer.fn).toBe("delta");
 
-    // Inner transform is abs
+    // Inner transform is rate
     expect(outer.input.kind).toBe("transform");
     const inner = outer.input as Extract<PlanNode, { kind: "transform" }>;
-    expect(inner.fn).toBe("abs");
+    expect(inner.fn).toBe("rate");
 
     expect(inner.input.kind).toBe("timeRange");
-  });
-
-  it("does not treat abs() as a step-derived aggregate", () => {
-    const plan = query().metric("cpu").range(0n, 100n).abs().step(60_000n).plan();
-
-    expect(plan.kind).toBe("transform");
-    const transform = plan as Extract<PlanNode, { kind: "transform" }>;
-    expect(transform.fn).toBe("abs");
-    expect(transform.input.kind).toBe("timeRange");
   });
 
   it("is immutable — each method returns a new builder", () => {
