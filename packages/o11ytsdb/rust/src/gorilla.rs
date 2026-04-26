@@ -6,7 +6,7 @@
 //
 // Reference: Pelkonen et al., VLDB 2015.
 
-use crate::bitio::{BitReader, BitWriter, zigzag_decode, zigzag_encode};
+use o11y_codec_rt_core::{BitReader, BitWriter, zigzag_decode, zigzag_encode};
 
 // ── Combined chunk encode/decode ─────────────────────────────────────
 

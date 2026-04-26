@@ -1,0 +1,16 @@
+[package]
+name = "o11y-codec-rt-core"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Lowest-level codec primitives shared by every o11ykit engine. No
+# extern "C" surface, no_std, no allocator beyond what the host's
+# `alloc` crate provides. Every codec crate in this workspace pulls
+# from `core` for BitWriter / BitReader / zigzag / bits_needed.
+
+[lib]
+
+[lints]
+workspace = true

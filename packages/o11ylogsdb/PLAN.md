@@ -274,26 +274,40 @@ Extract shared codecs from `packages/o11ytsdb/rust/` into the new
 `packages/o11y-codec-rt/` workspace. Reduce `o11ytsdb/rust/` to a thin
 binding crate.
 
-**Deliverables:**
-- `packages/o11y-codec-rt/Cargo.toml` — workspace manifest.
-- `packages/o11y-codec-rt/core/` — `BitWriter`, `BitReader`, dictionary
-  builder. `#![no_std]`.
-- `packages/o11y-codec-rt/{xor-delta,alp,fastlanes-bp}/` — lifted from
-  `o11ytsdb/rust/src/`.
-- `packages/o11ytsdb/rust/Cargo.toml` updated to depend on workspace
-  crates.
-- `packages/o11ytsdb/rust/src/lib.rs` rewritten as a thin `extern "C"`
-  binding layer.
-- CI: `o11ytsdb-rust.wasm` byte-size diff ≤ +0% and benchmarks on
-  `bench/results/` show no regression.
+**Status: in progress.** Workspace scaffolded with `core/` crate (bit
+I/O primitives) extracted; `o11ytsdb/rust/` depends on it. Follow-up
+work: extract `xor-delta` (gorilla + timestamp), `alp` (alp +
+delta_alp + alp_exc), `fastlanes-bp`. Each as a separate PR with
+size/perf parity verification.
 
-**Benchmark gate:**
+**Deliverables:**
+- `packages/o11y-codec-rt/Cargo.toml` — workspace manifest. ✅
+- `packages/o11y-codec-rt/core/` — `BitWriter`, `BitReader`, zigzag,
+  bit-width helpers, packed-array extraction. `#![no_std]`. ✅
+- `packages/o11y-codec-rt/{xor-delta,alp,fastlanes-bp}/` — lifted from
+  `o11ytsdb/rust/src/`. *(pending)*
+- `packages/o11ytsdb/rust/Cargo.toml` updated to depend on workspace
+  crates. *(partial — depends on `core` only so far)*
+- `packages/o11ytsdb/rust/src/lib.rs` rewritten as a thin `extern "C"`
+  binding layer. *(pending)*
+
+**Benchmark gate:** Each migration PR verifies size + perf parity.
 
 | Metric | Target |
 |---|---|
 | `o11ytsdb-rust.wasm` size delta | ≤ 0 bytes |
 | Encode/decode throughput | within ±2% of pre-migration |
 | Cross-validation tests | bit-exact on all 10 existing vectors |
+
+The `core/` extraction PR carried a **+316 byte raw / +270 byte gz**
+delta on `o11ytsdb-rust.wasm` (0.015% raw, 1.5% gz). Cause: the
+bit-I/O primitives moved from a `pub(crate)` internal module to a
+`pub` cross-crate boundary; even with `lto = "fat"` the compiler
+keeps a small amount of cross-crate metadata, plus the public API
+gained zero-width guards on `read_bits` / `extract_packed*` so
+out-of-crate callers can't trigger shift-overflow UB. The
+architectural payoff (one shared codec crate `o11ylogsdb` and
+`o11ytsdb` both depend on) outweighs the ~1.5% gz cost.
 
 ### M1: FSST + Bit I/O Extensions
 

@@ -17,7 +17,7 @@ use crate::alp::{
     alp_decode_regular, alp_encode_inner, sortable_u64_to_f64, ALP_EXC_U64,
     ALP_HEADER_SIZE, ALP_MAX_CHUNK, POW10,
 };
-use crate::bitio::BitReader;
+use o11y_codec_rt_core::BitReader;
 use crate::gorilla::compute_stats;
 
 pub(crate) const DELTA_ALP_TAG: u8 = 0xDA;

@@ -54,7 +54,6 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 
 // ── Modules ──────────────────────────────────────────────────────────
 
-mod bitio;
 mod alloc;
 mod gorilla;
 mod timestamp;
