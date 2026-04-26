@@ -3,13 +3,18 @@
 // Eliminates N JS↔WASM boundary crossings when freezing/thawing
 // groups of co-scraped series in one call.
 
-use crate::alp::alp_encode_inner;
-use crate::delta_alp::{
-    decode_values_alp_inner, delta_alp_encode_inner, is_delta_alp_candidate,
+use core::sync::atomic::Ordering;
+
+use crate::alloc::ALP_EXC_MODE;
+use o11y_codec_rt_alp::{
+    alp_encode, decode_values_alp, delta_alp_encode, is_delta_alp_candidate,
 };
-use o11y_codec_rt_xor_delta::{
-    compute_stats, decode_values as decode_values_inner, encode_values as encode_values_inner,
-};
+use o11y_codec_rt_xor_delta::{compute_stats, decode_values, encode_values};
+
+#[inline(always)]
+fn delta_for_exceptions() -> bool {
+    ALP_EXC_MODE.load(Ordering::Relaxed) == 1
+}
 
 // ── Batch XOR encode ─────────────────────────────────────────────────
 
@@ -46,7 +51,7 @@ pub extern "C" fn encodeBatchValuesWithStats(
 
         offsets[a] = total_out as u32;
         let remaining = &mut out[total_out..];
-        let bytes_written = encode_values_inner(vals, remaining);
+        let bytes_written = encode_values(vals, remaining);
         // An inner return of 0 (capacity exhausted / invalid input) is a
         // batch failure — don't keep appending bogus offsets past the buffer.
         if bytes_written == 0 {
@@ -94,12 +99,12 @@ pub extern "C" fn encodeBatchValuesALPWithStats(
         let remaining = &mut out[total_out..];
 
         let bytes_written = if is_delta_alp_candidate(vals, reset_count) {
-            let delta_size = delta_alp_encode_inner(vals, remaining);
+            let delta_size = delta_alp_encode(vals, remaining, delta_for_exceptions());
             if delta_size > 0 {
                 let plain_start = delta_size;
                 let cap_left = remaining.len() - plain_start;
                 if cap_left > 0 {
-                    let plain_size = alp_encode_inner(vals, &mut remaining[plain_start..]);
+                    let plain_size = alp_encode(vals, &mut remaining[plain_start..], delta_for_exceptions());
                     if plain_size > 0 && plain_size < delta_size {
                         remaining.copy_within(plain_start..plain_start + plain_size, 0);
                         plain_size
@@ -110,10 +115,10 @@ pub extern "C" fn encodeBatchValuesALPWithStats(
                     delta_size
                 }
             } else {
-                alp_encode_inner(vals, remaining)
+                alp_encode(vals, remaining, delta_for_exceptions())
             }
         } else {
-            alp_encode_inner(vals, remaining)
+            alp_encode(vals, remaining, delta_for_exceptions())
         };
 
         if bytes_written == 0 {
@@ -154,7 +159,7 @@ pub extern "C" fn decodeBatchValues(
         let val_out = unsafe { core::slice::from_raw_parts_mut(out_ptr.add(a * cs), cs) };
         // Propagate truncated / malformed blobs so callers don't read
         // stale data from out_ptr as if it were successfully decoded.
-        let decoded = decode_values_inner(blob, val_out);
+        let decoded = decode_values(blob, val_out);
         if decoded != cs {
             return 0;
         }
@@ -187,7 +192,7 @@ pub extern "C" fn decodeBatchValuesALP(
             core::slice::from_raw_parts(blobs_base.add(offsets[a] as usize), sizes[a] as usize)
         };
         let val_out = unsafe { core::slice::from_raw_parts_mut(out_ptr.add(a * cs), cs) };
-        let decoded = decode_values_alp_inner(blob, val_out);
+        let decoded = decode_values_alp(blob, val_out);
         if decoded != cs {
             return 0;
         }

@@ -274,12 +274,12 @@ Extract shared codecs from `packages/o11ytsdb/rust/` into the new
 `packages/o11y-codec-rt/` workspace. Reduce `o11ytsdb/rust/` to a thin
 binding crate.
 
-**Status: in progress.** `core/`, `xor-delta/`, and `alp/` (utilities
-only) extracted. `o11ytsdb/rust/`'s `gorilla.rs` and `timestamp.rs`
-reduced to thin extern "C" shims. ALP encode/decode bodies still live
-in `o11ytsdb/rust/src/{alp,delta_alp,alp_exc}.rs` because they
-manipulate process-global scratch buffers; the lift requires passing
-those buffers in explicitly and is queued as separate work.
+**Status: complete.** `core/`, `xor-delta/`, and full `alp/`
+(including encode/decode bodies) extracted. `o11ytsdb/rust/`'s
+`gorilla.rs`, `timestamp.rs`, and `delta_alp.rs` are thin extern "C"
+shims; `alp.rs` and `alp_exc.rs` are deleted (pure logic moved).
+`fastlanes-bp` is not a separate extraction — bit-packing primitives
+already live in `core/` (`extract_packed`, `BitWriter::write_bits`).
 
 **Deliverables:**
 - `packages/o11y-codec-rt/Cargo.toml` — workspace manifest. ✅
@@ -287,15 +287,17 @@ those buffers in explicitly and is queued as separate work.
   bit-width helpers, packed-array extraction. `#![no_std]`. ✅
 - `packages/o11y-codec-rt/xor-delta/` — combined chunk encode/decode,
   values-only, timestamps-only, block stats. Pure-Rust slice API. ✅
-- `packages/o11y-codec-rt/alp/` — pure utilities and constants:
-  `f64_to_sortable_u64`, `sortable_u64_to_f64`, `i64_range_u64`,
-  `packed_safe_limit`, `alp_try`, `POW10`, `ALP_HEADER_SIZE`,
-  `ALP_MAX_CHUNK`, `ALP_MAX_EXP`. ✅ Encode/decode bodies pending.
-- `packages/o11y-codec-rt/fastlanes-bp/` — pending.
+- `packages/o11y-codec-rt/alp/` — full ALP / Delta-ALP codec:
+  utilities, constants, `alp_encode`, `alp_decode_regular`,
+  `alp_find_exponent`, `decode_exceptions`, `delta_alp_encode`,
+  `delta_alp_decode_range`, `decode_values_alp`, dispatcher.
+  Scratch buffers stack-allocated (worst case ~50 KB on the wasm32
+  1 MB stack). ✅
 - `packages/o11ytsdb/rust/Cargo.toml` depends on `core` + `xor-delta`
   + `alp`. ✅
-- `packages/o11ytsdb/rust/src/lib.rs` reduced to a binding layer
-  once ALP encode/decode and `fastlanes-bp` extract. *(pending)*
+- `packages/o11ytsdb/rust/src/{gorilla,timestamp,delta_alp}.rs` reduced
+  to thin extern "C" shims around the workspace crates. ✅
+- `packages/o11ytsdb/rust/src/{alp,alp_exc}.rs` deleted. ✅
 
 **Benchmark gate:** Each migration PR verifies size + perf parity.
 
@@ -313,6 +315,7 @@ Cumulative size delta on `o11ytsdb-rust.wasm`:
 | `core/` extraction | +316 | +270 | +0.015% | +1.49% |
 | `xor-delta/` extraction | -120 | -2 | +0.009% | +1.48% |
 | `alp/` utilities extraction | 0 | -21 | +0.010% | +1.37% |
+| `alp/` body extraction | 0 | +20 | +0.010% | +1.46% |
 
 The `xor-delta/` extraction slightly *shrunk* the binary because the
 4-tier delta-of-delta prefix coder lifted into shared helpers

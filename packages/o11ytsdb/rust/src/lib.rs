@@ -57,13 +57,11 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 mod alloc;
 mod gorilla;
 mod timestamp;
-mod alp;
 mod delta_alp;
 mod batch;
 mod range_decode;
 mod interner;
 mod simd;
-mod alp_exc;
 
 #[cfg(kani)]
 mod verification;
