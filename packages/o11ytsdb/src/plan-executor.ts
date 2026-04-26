@@ -142,10 +142,22 @@ function resolveAggFn(
     return { agg, transform };
   }
 
-  throw new Error(
-    `Transform '${transforms.join(" → ")}' is not yet supported by the executor. ` +
-      `Supported: rate(), increase(), irate(), delta() (with optional subsequent aggregation).`
-  );
+  // Pointwise transforms (abs, ceil, floor, sqrt) are handled separately in query.ts.
+  // For now, reject compound pointwise transforms and compound temporal + pointwise.
+  if (transforms.length > 1) {
+    throw new Error(
+      `Transform '${transforms.join(" → ")}' is not yet supported by the executor. ` +
+        `Supported: rate(), increase(), irate(), delta() (with optional subsequent aggregation).`
+    );
+  }
+
+  // Single pointwise transform without aggregation
+  if (agg == null) {
+    return { agg: undefined, transform: transforms[0] as TransformOp };
+  }
+
+  // Pointwise transform with aggregation: pass through, query.ts handles post-processing
+  return { agg, transform: transforms[0] as TransformOp };
 }
 
 // ── Public API ───────────────────────────────────────────────────────

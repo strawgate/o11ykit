@@ -77,6 +77,42 @@ describe("QueryBuilder — plan compilation", () => {
     expect(t.input.kind).toBe("timeRange");
   });
 
+  it("compiles abs() as a TransformNode", () => {
+    const plan = query().metric("cpu").range(0n, 100n).abs().plan();
+
+    expect(plan.kind).toBe("transform");
+    const t = plan as Extract<PlanNode, { kind: "transform" }>;
+    expect(t.fn).toBe("abs");
+    expect(t.input.kind).toBe("timeRange");
+  });
+
+  it("compiles ceil() as a TransformNode", () => {
+    const plan = query().metric("cpu").range(0n, 100n).ceil().plan();
+
+    expect(plan.kind).toBe("transform");
+    const t = plan as Extract<PlanNode, { kind: "transform" }>;
+    expect(t.fn).toBe("ceil");
+    expect(t.input.kind).toBe("timeRange");
+  });
+
+  it("compiles floor() as a TransformNode", () => {
+    const plan = query().metric("cpu").range(0n, 100n).floor().plan();
+
+    expect(plan.kind).toBe("transform");
+    const t = plan as Extract<PlanNode, { kind: "transform" }>;
+    expect(t.fn).toBe("floor");
+    expect(t.input.kind).toBe("timeRange");
+  });
+
+  it("compiles sqrt() as a TransformNode", () => {
+    const plan = query().metric("cpu").range(0n, 100n).sqrt().plan();
+
+    expect(plan.kind).toBe("transform");
+    const t = plan as Extract<PlanNode, { kind: "transform" }>;
+    expect(t.fn).toBe("sqrt");
+    expect(t.input.kind).toBe("timeRange");
+  });
+
   it("compiles step + sumBy as an AggregateNode", () => {
     const plan = query().metric("cpu").range(0n, 100n).step(60_000n).sumBy("host").plan();
 
@@ -178,6 +214,20 @@ describe("QueryBuilder — plan compilation", () => {
 
   it("throws when range is missing", () => {
     expect(() => query().metric("cpu").plan()).toThrow("range() is required");
+  });
+
+  it("throws when step is 0n", () => {
+    expect(() => query().metric("cpu").range(0n, 100n).step(0n).plan()).toThrow("step must be > 0");
+  });
+
+  it("throws when step is negative", () => {
+    expect(() => query().metric("cpu").range(0n, 100n).step(-60_000n).plan()).toThrow("step must be > 0");
+  });
+
+  it("throws when step is used without aggregation or step transform", () => {
+    expect(() => query().metric("cpu").range(0n, 100n).step(60_000n).plan()).toThrow(
+      "step() requires an aggregation or a step-aligned transform"
+    );
   });
 });
 

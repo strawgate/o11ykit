@@ -129,6 +129,38 @@ export class QueryBuilder {
     });
   }
 
+  /** Apply abs() — absolute value of each sample. */
+  abs(): QueryBuilder {
+    return new QueryBuilder({
+      ...this.s,
+      transforms: [...this.s.transforms, "abs"],
+    });
+  }
+
+  /** Apply ceil() — ceiling of each sample. */
+  ceil(): QueryBuilder {
+    return new QueryBuilder({
+      ...this.s,
+      transforms: [...this.s.transforms, "ceil"],
+    });
+  }
+
+  /** Apply floor() — floor of each sample. */
+  floor(): QueryBuilder {
+    return new QueryBuilder({
+      ...this.s,
+      transforms: [...this.s.transforms, "floor"],
+    });
+  }
+
+  /** Apply sqrt() — square root of each sample. */
+  sqrt(): QueryBuilder {
+    return new QueryBuilder({
+      ...this.s,
+      transforms: [...this.s.transforms, "sqrt"],
+    });
+  }
+
   // ── Step alignment ───────────────────────────────────────────────
 
   /** Set step-alignment interval (epoch ms as bigint). */
