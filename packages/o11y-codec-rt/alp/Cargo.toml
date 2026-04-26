@@ -1,0 +1,21 @@
+[package]
+name = "o11y-codec-rt-alp"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# ALP (Adaptive Lossless floating-Point) primitives. Currently exports
+# the pure stateless utilities and constants that ALP encode/decode
+# share (POW10 lookup, sortable u64 mapping, packed-array safe-index
+# math, scalar candidate test). The encode/decode bodies remain in the
+# o11ytsdb binding crate for now because they manipulate process-global
+# scratch buffers; future work lifts that state out and moves the bodies
+# here.
+#
+# Reference: Afroozeh et al., SIGMOD 2024 (ALP).
+
+[lib]
+
+[lints]
+workspace = true

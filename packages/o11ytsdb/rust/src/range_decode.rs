@@ -4,7 +4,8 @@
 // and returns only the matching range. ALP's fixed-width bit-packing
 // enables random access — we skip decoding values outside the range.
 
-use crate::alp::{ALP_INTS, ALP_MAX_CHUNK};
+use crate::alp::ALP_INTS;
+use o11y_codec_rt_alp::ALP_MAX_CHUNK;
 use crate::delta_alp::decode_values_alp_range;
 use o11y_codec_rt_xor_delta::decode_timestamps as decode_timestamps_inner;
 
