@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>o11ytracesdb — Browser-Native Distributed Traces Database</title>
+    <meta
+      name="description"
+      content="Interactive demo for o11ytracesdb: a browser-native traces database with columnar compression, bloom filter acceleration, structural queries, and real-time trace exploration."
+    />
+    <meta name="theme-color" content="#f8fafb" />
+    <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
+    <base href="/o11ykit/tracesdb-engine/" />
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="modulepreload" href="js/app.js" />
+  </head>
+  <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <div class="ambient" aria-hidden="true"></div>
+    <main id="main-content" class="page">
+
+      <!-- ─── Top Bar ─────────────────────────────────────────── -->
+      <header class="topbar panel">
+        <a class="brand" href="/o11ykit/"><img class="brand-mark" src="/o11ykit/logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
+        <nav class="topnav" aria-label="Primary">
+          <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
+          <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+          <a href="/o11ykit/tracesdb-engine/" aria-current="page">TracesDB</a>
+          <a href="/o11ykit/octo11y/">Octo11y</a>
+          <a href="/o11ykit/benchkit/">Benchkit</a>
+          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </header>
+
+      <!-- ─── Hero ────────────────────────────────────────────── -->
+      <section class="hero panel">
+        <p class="eyebrow">o11ytracesdb engine</p>
+        <h1>A distributed traces database<br/>that runs in your browser.</h1>
+        <p class="lede">
+          Generate realistic distributed traces, explore how they are stored with
+          columnar compression, run structural queries with TraceQL-inspired operators,
+          and visualize trace waterfalls — all without leaving the browser.
+        </p>
+        <div class="hero-actions">
+          <a class="cta cta-primary" href="#section-dataset">Launch Live Demo ↓</a>
+          <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ytracesdb" target="_blank" rel="noreferrer">
+            Browse Source
+          </a>
+        </div>
+      </section>
+
+      <!-- ─── Architecture Overview ───────────────────────────── -->
+      <section class="panel" id="section-arch">
+        <h2>How It Works</h2>
+        <p class="section-intro">
+          o11ytracesdb stores OpenTelemetry spans in a columnar layout optimized for the browser.
+          Bloom filters accelerate trace ID lookups. Nested set encoding enables O(1) structural queries.
+          Dictionary encoding compresses repeated span names and attribute keys.
+        </p>
+        <div class="pipeline" aria-label="Data flow">
+          <div class="pipeline-stage accent-otlp">
+            <strong>Ingest</strong>
+            <span>OTLP spans</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-tsdb">
+            <strong>Encode</strong>
+            <span>Columnar codec</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-octo">
+            <strong>Store</strong>
+            <span>Chunks + bloom</span>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage accent-bench">
+            <strong>Query</strong>
+            <span>Structural DSL</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── Section 1: Dataset ──────────────────────────────── -->
+      <section class="panel" id="section-dataset">
+        <h2>Load a Dataset</h2>
+        <p class="section-intro">
+          Choose a trace scenario to generate. Each creates realistic distributed traces
+          with multiple services, varying depths, and configurable error rates.
+        </p>
+
+        <div class="scenario-grid" id="scenarioGrid"></div>
+
+        <div class="controls-row">
+          <button class="btn btn-primary" id="btnGenerate" disabled>Generate Traces</button>
+          <span id="generateStatus" style="font-size:13px;color:var(--ink-muted)"></span>
+        </div>
+
+        <div class="stat-row" id="ingestStats" hidden>
+          <div class="stat-badge">
+            <span class="stat-value" id="statTraces">—</span>
+            <span class="stat-label">Traces</span>
+          </div>
+          <div class="stat-badge">
+            <span class="stat-value" id="statSpans">—</span>
+            <span class="stat-label">Spans</span>
+          </div>
+          <div class="stat-badge">
+            <span class="stat-value" id="statServices">—</span>
+            <span class="stat-label">Services</span>
+          </div>
+          <div class="stat-badge">
+            <span class="stat-value" id="statIngestTime">—</span>
+            <span class="stat-label">Ingest Time</span>
+          </div>
+          <div class="stat-badge">
+            <span class="stat-value" id="statCompression">—</span>
+            <span class="stat-label">Compression</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── Section 2: Storage Explorer ─────────────────────── -->
+      <section class="panel" id="section-storage" hidden>
+        <h2>Storage Explorer</h2>
+        <p class="section-intro">
+          Inspect how traces are stored: chunks, bloom filter stats, compression ratios,
+          and bytes per span.
+        </p>
+        <div class="storage-grid" id="storageGrid"></div>
+      </section>
+
+      <!-- ─── Section 3: Query Builder ────────────────────────── -->
+      <section class="panel" id="section-query" hidden>
+        <h2>Query Traces</h2>
+        <p class="section-intro">
+          Build queries with attribute predicates, structural operators, and trace-level intrinsics.
+          Results appear instantly — everything runs in-browser.
+        </p>
+
+        <div class="query-panel" id="queryPanel">
+          <div class="filter-row">
+            <label for="qService">Service</label>
+            <select id="qService"><option value="">Any</option></select>
+          </div>
+          <div class="filter-row">
+            <label for="qSpanName">Span Name</label>
+            <input id="qSpanName" type="text" placeholder="e.g. POST /api/* (regex)" />
+          </div>
+          <div class="filter-row">
+            <label for="qStatus">Status</label>
+            <select id="qStatus">
+              <option value="">Any</option>
+              <option value="0">Unset</option>
+              <option value="1">OK</option>
+              <option value="2">Error</option>
+            </select>
+          </div>
+          <div class="filter-row">
+            <label for="qDurMin">Duration ≥</label>
+            <input id="qDurMin" type="number" placeholder="ms" style="width:100px" />
+            <label for="qDurMax" style="min-width:auto">≤</label>
+            <input id="qDurMax" type="number" placeholder="ms" style="width:100px" />
+          </div>
+          <div class="filter-row">
+            <label for="qAttrKey">Attribute</label>
+            <input id="qAttrKey" type="text" placeholder="key" style="width:120px" />
+            <select id="qAttrOp" style="width:80px">
+              <option value="eq">=</option>
+              <option value="neq">≠</option>
+              <option value="gt">&gt;</option>
+              <option value="gte">≥</option>
+              <option value="lt">&lt;</option>
+              <option value="lte">≤</option>
+              <option value="contains">contains</option>
+              <option value="regex">regex</option>
+              <option value="exists">exists</option>
+            </select>
+            <input id="qAttrVal" type="text" placeholder="value" style="width:140px" />
+          </div>
+          <div class="filter-row">
+            <label for="qSort">Sort By</label>
+            <select id="qSort">
+              <option value="startTime">Start Time</option>
+              <option value="duration">Duration</option>
+              <option value="spanCount">Span Count</option>
+            </select>
+            <select id="qSortDir">
+              <option value="desc">Descending</option>
+              <option value="asc">Ascending</option>
+            </select>
+            <label for="qLimit" style="min-width:auto">Limit</label>
+            <input id="qLimit" type="number" value="50" style="width:70px" />
+          </div>
+        </div>
+
+        <div class="controls-row" style="margin-top:12px">
+          <button class="btn btn-primary" id="btnQuery" disabled>Run Query</button>
+          <span id="queryStatus" style="font-size:13px;color:var(--ink-muted)"></span>
+        </div>
+      </section>
+
+      <!-- ─── Section 4: Results ──────────────────────────────── -->
+      <section class="panel" id="section-results" hidden>
+        <h2>Query Results</h2>
+        <div class="stat-row" id="queryStats"></div>
+
+        <!-- Aggregation summary -->
+        <div class="agg-grid" id="aggGrid" hidden></div>
+
+        <!-- Results table -->
+        <div style="overflow-x:auto">
+          <table class="results-table" id="resultsTable">
+            <thead>
+              <tr>
+                <th>Trace ID</th>
+                <th>Root Service</th>
+                <th>Root Operation</th>
+                <th>Spans</th>
+                <th style="text-align:right">Duration</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ─── Section 5: Trace Waterfall ──────────────────────── -->
+      <section class="panel" id="section-waterfall" hidden>
+        <h2>Trace Waterfall</h2>
+        <p class="section-intro" id="waterfallIntro">
+          Click a trace above to view its waterfall.
+        </p>
+
+        <div class="waterfall-container" id="waterfallContainer">
+          <div class="waterfall-empty">Select a trace to visualize</div>
+        </div>
+        <div class="waterfall-legend" id="waterfallLegend" hidden></div>
+
+        <!-- Span detail -->
+        <div class="span-detail" id="spanDetail"></div>
+      </section>
+
+      <!-- ─── Footer ──────────────────────────────────────────── -->
+      <footer class="panel" style="text-align:center; padding:16px; font-size:13px; color:var(--ink-muted)">
+        o11ytracesdb · Part of <a href="/o11ykit/" style="color:var(--traces)">o11ykit</a> ·
+        <a href="https://github.com/strawgate/o11ykit" style="color:var(--traces)">GitHub</a>
+      </footer>
+
+    </main>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

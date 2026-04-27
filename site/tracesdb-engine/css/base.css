@@ -1,0 +1,400 @@
+/* ─── TracesDB Engine — CSS Variable Palette ─────────────────────── */
+
+:root {
+  /* Trace accent color (warm orange-red, distinct from tsdb purple) */
+  --traces: #e85d1a;
+  --traces-light: #ff8a50;
+  --traces-dim: rgba(232, 93, 26, 0.15);
+
+  /* Service colors for waterfall */
+  --svc-0: #3b82f6;
+  --svc-1: #10b981;
+  --svc-2: #f59e0b;
+  --svc-3: #ef4444;
+  --svc-4: #8b5cf6;
+  --svc-5: #06b6d4;
+  --svc-6: #ec4899;
+  --svc-7: #84cc16;
+
+  /* Status colors */
+  --status-ok: #10b981;
+  --status-error: #ef4444;
+  --status-unset: #94a3b8;
+
+  /* Dark panels (waterfall, storage explorer) */
+  --dark-bg: #0a1929;
+  --dark-bg-alt: #0d2137;
+  --dark-text: #e2e8f0;
+  --dark-text-muted: #94a3b8;
+  --dark-accent: #60a5fa;
+
+  /* Z-index scale */
+  --z-tooltip: 50;
+  --z-modal: 100;
+}
+
+/* ─── Section intro ──────────────────────────────────────────────── */
+.section-intro {
+  margin: 0 0 18px;
+  color: var(--ink-soft);
+  max-width: 72ch;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* ─── Stat badges ────────────────────────────────────────────────── */
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.stat-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 18px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 100px;
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--traces);
+}
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
+/* ─── Scenario cards ─────────────────────────────────────────────── */
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.scenario-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.scenario-card:hover {
+  border-color: var(--traces);
+  box-shadow: 0 4px 16px rgba(232, 93, 26, 0.1);
+}
+
+.scenario-card.active {
+  border-color: var(--traces);
+  box-shadow: 0 0 0 2px var(--traces-dim);
+}
+
+.scenario-card h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.scenario-card p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.scenario-card .scenario-meta {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  font-family: var(--mono);
+}
+
+/* ─── Controls ───────────────────────────────────────────────────── */
+.controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-strong);
+  font-family: var(--sans);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn:hover { border-color: var(--traces); }
+
+.btn-primary {
+  background: var(--traces);
+  color: white;
+  border-color: var(--traces);
+}
+
+.btn-primary:hover {
+  background: var(--traces-light);
+  border-color: var(--traces-light);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Waterfall ──────────────────────────────────────────────────── */
+.waterfall-container {
+  background: var(--dark-bg);
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.06);
+  min-height: 200px;
+  position: relative;
+}
+
+.waterfall-container canvas {
+  display: block;
+  width: 100%;
+}
+
+.waterfall-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  color: var(--dark-text-muted);
+  font-size: 14px;
+}
+
+.waterfall-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--dark-bg-alt);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 12px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--dark-text-muted);
+}
+
+.legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+/* ─── Span detail panel ──────────────────────────────────────────── */
+.span-detail {
+  background: var(--dark-bg-alt);
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,0.06);
+  display: none;
+  color: var(--dark-text);
+  font-size: 13px;
+}
+
+.span-detail.visible { display: block; }
+
+.span-detail h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: var(--dark-accent);
+}
+
+.span-detail table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.span-detail td {
+  padding: 3px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.span-detail td:first-child {
+  color: var(--dark-text-muted);
+  width: 140px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* ─── Query builder UI ───────────────────────────────────────────── */
+.query-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.filter-row label {
+  font-size: 13px;
+  color: var(--ink-soft);
+  min-width: 80px;
+}
+
+.filter-row input,
+.filter-row select {
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-strong);
+}
+
+.filter-row input:focus,
+.filter-row select:focus {
+  outline: none;
+  border-color: var(--traces);
+  box-shadow: 0 0 0 2px var(--traces-dim);
+}
+
+/* ─── Results table ──────────────────────────────────────────────── */
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.results-table th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--line);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-muted);
+}
+
+.results-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.results-table tr {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.results-table tr:hover {
+  background: var(--traces-dim);
+}
+
+.results-table tr.selected {
+  background: rgba(232, 93, 26, 0.08);
+}
+
+.trace-id-cell {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--traces);
+}
+
+.duration-cell {
+  font-family: var(--mono);
+  text-align: right;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+
+.status-dot.ok { background: var(--status-ok); }
+.status-dot.error { background: var(--status-error); }
+.status-dot.unset { background: var(--status-unset); }
+
+/* ─── Storage stats ──────────────────────────────────────────────── */
+.storage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.storage-stat {
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.storage-stat .stat-value {
+  font-size: 20px;
+}
+
+/* ─── Aggregation results ────────────────────────────────────────── */
+.agg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.agg-card {
+  padding: 10px 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.agg-card .agg-value {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--traces);
+}
+
+.agg-card .agg-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
+/* ─── Responsive ─────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .scenario-grid { grid-template-columns: 1fr; }
+  .storage-grid { grid-template-columns: 1fr 1fr; }
+  .stat-row { flex-direction: column; }
+  .filter-row { flex-direction: column; align-items: stretch; }
+  .filter-row label { min-width: auto; }
+}
