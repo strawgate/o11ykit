@@ -13,9 +13,12 @@
 // Types
 export type {
   AnyValue,
+  AttributeOp,
+  AttributePredicate,
   InstrumentationScope,
   KeyValue,
   Resource,
+  SortOrder,
   SpanEvent,
   SpanLink,
   SpanNode,
@@ -23,8 +26,10 @@ export type {
   StreamId,
   StreamKey,
   Trace,
+  TraceIntrinsics,
   TraceQueryOpts,
   TraceQueryResult,
+  TraceSortField,
 } from "./types.js";
 export { SpanKind, StatusCode } from "./types.js";
 
@@ -44,6 +49,9 @@ export { createBloomFilter, bloomMayContain, bloomToBase64, bloomFromBase64 } fr
 
 // Query
 export { assembleTrace, buildSpanTree, criticalPath, queryTraces, isAncestorOf, isDescendantOf, isSiblingOf, nestedSetDepth } from "./query.js";
+
+// Query builder
+export { TraceQuery } from "./query-builder.js";
 
 // Cross-signal correlation
 export {

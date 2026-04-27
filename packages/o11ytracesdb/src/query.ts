@@ -16,11 +16,13 @@ import { bloomFromBase64, bloomMayContain } from "./bloom.js";
 import type { TraceStore } from "./engine.js";
 import type {
   AnyValue,
+  AttributePredicate,
   KeyValue,
   SpanNode,
   SpanRecord,
   StatusCode,
   Trace,
+  TraceIntrinsics,
   TraceQueryOpts,
   TraceQueryResult,
 } from "./types.js";
@@ -50,12 +52,18 @@ function hexFromBytes(bytes: Uint8Array): string {
  * and Map grouping — uses direct byte comparison for ~10× speedup.
  */
 export function queryTraces(store: TraceStore, opts: TraceQueryOpts): TraceQueryResult {
+  const t0 = performance.now();
+
   // Fast path: trace_id-only query — avoid all hex/Map overhead
   if (opts.traceId !== undefined && isTraceIdOnlyQuery(opts)) {
-    return queryByTraceIdFast(store, opts.traceId);
+    const result = queryByTraceIdFast(store, opts.traceId);
+    const queryTimeMs = performance.now() - t0;
+    return { ...result, totalTraces: result.traces.length, queryTimeMs };
   }
 
-  return queryTracesGeneral(store, opts);
+  const result = queryTracesGeneral(store, opts);
+  const queryTimeMs = performance.now() - t0;
+  return { ...result, queryTimeMs };
 }
 
 /**
@@ -72,7 +80,13 @@ function isTraceIdOnlyQuery(opts: TraceQueryOpts): boolean {
     opts.statusCode === undefined &&
     opts.minDurationNanos === undefined &&
     opts.maxDurationNanos === undefined &&
-    opts.attributes === undefined
+    opts.attributes === undefined &&
+    opts.spanNameRegex === undefined &&
+    opts.attributePredicates === undefined &&
+    opts.traceFilter === undefined &&
+    opts.sortBy === undefined &&
+    opts.sortOrder === undefined &&
+    opts.offset === undefined
   );
 }
 
@@ -111,7 +125,7 @@ function queryByTraceIdFast(store: TraceStore, traceId: Uint8Array): TraceQueryR
   }
 
   if (matchingSpans.length === 0) {
-    return { traces: [], chunksScanned, chunksPruned, spansExamined };
+    return { traces: [], chunksScanned, chunksPruned, spansExamined, totalTraces: 0, queryTimeMs: 0 };
   }
 
   // Assemble the single trace
@@ -130,7 +144,7 @@ function queryByTraceIdFast(store: TraceStore, traceId: Uint8Array): TraceQueryR
     durationNanos: maxEnd - first.startTimeUnixNano,
   };
 
-  return { traces: [trace], chunksScanned, chunksPruned, spansExamined };
+  return { traces: [trace], chunksScanned, chunksPruned, spansExamined, totalTraces: 1, queryTimeMs: 0 };
 }
 
 /**
@@ -195,19 +209,42 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
     });
   }
 
-  // Sort traces by start time (most recent first) — safe bigint comparison
+  // Phase 3: Apply trace-level filters
+  if (opts.traceFilter !== undefined) {
+    traces = traces.filter((t) => matchesTraceIntrinsics(t, opts.traceFilter!));
+  }
+
+  // Sort traces
+  const sortField = opts.sortBy ?? "startTime";
+  const sortDir = opts.sortOrder ?? "desc";
   traces.sort((a, b) => {
-    const aStart = a.spans[0]!.startTimeUnixNano;
-    const bStart = b.spans[0]!.startTimeUnixNano;
-    return bStart > aStart ? 1 : bStart < aStart ? -1 : 0;
+    let cmp: number;
+    if (sortField === "duration") {
+      cmp = a.durationNanos > b.durationNanos ? 1 : a.durationNanos < b.durationNanos ? -1 : 0;
+    } else if (sortField === "spanCount") {
+      cmp = a.spans.length - b.spans.length;
+    } else {
+      // startTime
+      const aStart = a.spans[0]!.startTimeUnixNano;
+      const bStart = b.spans[0]!.startTimeUnixNano;
+      cmp = aStart > bStart ? 1 : aStart < bStart ? -1 : 0;
+    }
+    return sortDir === "asc" ? cmp : -cmp;
   });
+
+  const totalTraces = traces.length;
+
+  // Apply offset
+  if (opts.offset !== undefined && opts.offset > 0) {
+    traces = traces.slice(opts.offset);
+  }
 
   // Apply limit
   if (opts.limit !== undefined && traces.length > opts.limit) {
     traces = traces.slice(0, opts.limit);
   }
 
-  return { traces, chunksScanned, chunksPruned, spansExamined };
+  return { traces, chunksScanned, chunksPruned, spansExamined, totalTraces, queryTimeMs: 0 };
 }
 
 // ─── Trace assembly (by ID) ──────────────────────────────────────────
@@ -390,6 +427,7 @@ function matchesSpan(
 
   if (opts.traceId !== undefined && !bytesEqual(span.traceId, opts.traceId)) return false;
   if (opts.spanName !== undefined && span.name !== opts.spanName) return false;
+  if (opts.spanNameRegex !== undefined && !opts.spanNameRegex.test(span.name)) return false;
   if (opts.kind !== undefined && span.kind !== opts.kind) return false;
   if (opts.statusCode !== undefined && span.statusCode !== opts.statusCode) return false;
 
@@ -405,6 +443,115 @@ function matchesSpan(
     for (const pred of opts.attributes) {
       const attr = span.attributes.find((a) => a.key === pred.key);
       if (!attr || !anyValueEquals(attr.value, pred.value)) return false;
+    }
+  }
+
+  if (opts.attributePredicates !== undefined) {
+    for (const pred of opts.attributePredicates) {
+      if (!matchesAttributePredicate(span, pred)) return false;
+    }
+  }
+
+  return true;
+}
+
+// ─── Attribute predicate matching ────────────────────────────────────
+
+/** Extract a comparable numeric value from an AnyValue (number or bigint). */
+function toComparable(v: AnyValue): number | bigint | string | null {
+  if (typeof v === "number") return v;
+  if (typeof v === "bigint") return v;
+  if (typeof v === "string") return v;
+  return null;
+}
+
+/**
+ * Evaluate a rich attribute predicate against a span.
+ * Handles all AttributeOp values.
+ */
+function matchesAttributePredicate(span: SpanRecord, pred: AttributePredicate): boolean {
+  const attr = span.attributes.find((a) => a.key === pred.key);
+
+  if (pred.op === "exists") return attr !== undefined;
+  if (pred.op === "notExists") return attr === undefined;
+
+  if (attr === undefined) return false;
+  const attrVal = attr.value;
+
+  switch (pred.op) {
+    case "eq":
+      return anyValueEquals(attrVal, pred.value as AnyValue);
+
+    case "neq":
+      return !anyValueEquals(attrVal, pred.value as AnyValue);
+
+    case "gt":
+    case "gte":
+    case "lt":
+    case "lte": {
+      const a = toComparable(attrVal);
+      const b = toComparable(pred.value as AnyValue);
+      if (a === null || b === null) return false;
+      if (typeof a !== typeof b) return false;
+      switch (pred.op) {
+        case "gt": return a > b;
+        case "gte": return a >= b;
+        case "lt": return a < b;
+        case "lte": return a <= b;
+      }
+      break;
+    }
+
+    case "regex": {
+      if (typeof attrVal !== "string" || typeof pred.value !== "string") return false;
+      const re = new RegExp(pred.value);
+      return re.test(attrVal);
+    }
+
+    case "contains": {
+      if (typeof attrVal !== "string" || typeof pred.value !== "string") return false;
+      return attrVal.includes(pred.value);
+    }
+
+    case "startsWith": {
+      if (typeof attrVal !== "string" || typeof pred.value !== "string") return false;
+      return attrVal.startsWith(pred.value);
+    }
+
+    case "in": {
+      if (!Array.isArray(pred.value)) return false;
+      return (pred.value as AnyValue[]).some((v) => anyValueEquals(attrVal, v));
+    }
+  }
+
+  return false;
+}
+
+// ─── Trace-level intrinsics matching ─────────────────────────────────
+
+/** Check if an assembled trace matches trace-level filter predicates. */
+function matchesTraceIntrinsics(trace: Trace, filter: TraceIntrinsics): boolean {
+  if (filter.minDurationNanos !== undefined && trace.durationNanos < filter.minDurationNanos) return false;
+  if (filter.maxDurationNanos !== undefined && trace.durationNanos > filter.maxDurationNanos) return false;
+
+  if (filter.minSpanCount !== undefined && trace.spans.length < filter.minSpanCount) return false;
+  if (filter.maxSpanCount !== undefined && trace.spans.length > filter.maxSpanCount) return false;
+
+  if (filter.rootServiceName !== undefined) {
+    // Root service name check requires correlating with resource — match against root span name attribute as proxy
+    // In practice, rootServiceName is checked against the root span's resource.service.name
+    // Since assembled traces don't carry resource, we skip if no root span
+    if (trace.rootSpan === undefined) return false;
+    const svcAttr = trace.rootSpan.attributes.find((a) => a.key === "service.name");
+    if (!svcAttr || svcAttr.value !== filter.rootServiceName) return false;
+  }
+
+  if (filter.rootSpanName !== undefined) {
+    if (trace.rootSpan === undefined) return false;
+    if (typeof filter.rootSpanName === "string") {
+      if (trace.rootSpan.name !== filter.rootSpanName) return false;
+    } else {
+      if (!filter.rootSpanName.test(trace.rootSpan.name)) return false;
     }
   }
 

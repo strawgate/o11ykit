@@ -157,6 +157,59 @@ export interface SpanNode {
   depth: number;
 }
 
+// ─── Attribute Predicate ─────────────────────────────────────────────
+
+/** Comparison operators for attribute predicates. */
+export type AttributeOp =
+  | "eq" | "neq"
+  | "gt" | "gte" | "lt" | "lte"
+  | "regex" | "contains" | "startsWith"
+  | "exists" | "notExists"
+  | "in";
+
+/**
+ * A predicate on a span attribute. Supports rich comparison operators
+ * inspired by TraceQL (Grafana Tempo) and Honeycomb query builder.
+ *
+ * Examples:
+ *   { key: "http.status_code", op: "gte", value: 400 }
+ *   { key: "http.method", op: "in", value: ["GET", "POST"] }
+ *   { key: "error", op: "exists" }
+ *   { key: "http.url", op: "regex", value: ".*\\/api\\/.*" }
+ */
+export interface AttributePredicate {
+  key: string;
+  op: AttributeOp;
+  /** Value to compare against. Not needed for exists/notExists. */
+  value?: AnyValue | AnyValue[];
+}
+
+// ─── Trace-level intrinsics ──────────────────────────────────────────
+
+/** Trace-level filter predicates (evaluated after trace assembly). */
+export interface TraceIntrinsics {
+  /** Minimum trace duration (max end - min start). */
+  minDurationNanos?: bigint;
+  /** Maximum trace duration. */
+  maxDurationNanos?: bigint;
+  /** Root span service name must match. */
+  rootServiceName?: string;
+  /** Root span name (operation) must match (string or RegExp). */
+  rootSpanName?: string | RegExp;
+  /** Minimum number of spans in the trace. */
+  minSpanCount?: number;
+  /** Maximum number of spans in the trace. */
+  maxSpanCount?: number;
+}
+
+// ─── Sort and pagination ─────────────────────────────────────────────
+
+/** Fields available for sorting query results. */
+export type TraceSortField = "startTime" | "duration" | "spanCount";
+
+/** Sort direction. */
+export type SortOrder = "asc" | "desc";
+
 /** Query options for trace search. */
 export interface TraceQueryOpts {
   /** Find spans/traces within this time window. */
@@ -180,6 +233,18 @@ export interface TraceQueryOpts {
   attributes?: { key: string; value: AnyValue }[];
   /** Maximum number of traces to return. */
   limit?: number;
+  /** Span name regex/pattern match (alternative to exact spanName). */
+  spanNameRegex?: RegExp;
+  /** Rich attribute predicates with comparison operators. */
+  attributePredicates?: AttributePredicate[];
+  /** Trace-level filters (evaluated after trace assembly). */
+  traceFilter?: TraceIntrinsics;
+  /** Sort field (default: startTime). */
+  sortBy?: TraceSortField;
+  /** Sort direction (default: desc). */
+  sortOrder?: SortOrder;
+  /** Offset for pagination (skip first N traces). */
+  offset?: number;
 }
 
 /** Result of a trace query. */
@@ -192,4 +257,8 @@ export interface TraceQueryResult {
   chunksPruned: number;
   /** Total spans examined. */
   spansExamined: number;
+  /** Total number of matching traces (before offset/limit). */
+  totalTraces: number;
+  /** Query execution time in milliseconds. */
+  queryTimeMs: number;
 }
