@@ -1,0 +1,18 @@
+[package]
+name = "o11y-codec-rt-drain"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Streaming log template extractor (Drain — He et al., ICWS 2017).
+# In-house port; no FFI dependencies and no_std-buildable for
+# wasm32-unknown-unknown. Pure-Rust API; the WASM extern "C" surface
+# lives in each consuming engine's binding crate.
+
+[lib]
+
+[dependencies]
+
+[lints]
+workspace = true
