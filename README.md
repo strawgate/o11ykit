@@ -1,11 +1,16 @@
 # o11ykit
 
-`o11ykit` is a monorepo for OTLP-driven tooling.
+> *SQLite for observability in the browser.*
+
+`o11ykit` is a monorepo for browser-native observability tooling — OTLP parsing,
+columnar compression databases, and cross-signal correlation entirely client-side.
 
 Top-level projects:
 
 - `@otlpkit/*` (root `packages/*`): OTLP parsing/query/view/adapters for browser dashboards and app diagnostics.
 - `o11ytsdb` (root `packages/o11ytsdb`): browser-native time-series database for OpenTelemetry data with WASM-accelerated codecs.
+- `o11ylogsdb` (root `packages/o11ylogsdb`): browser-native logs database for OpenTelemetry data with Drain template extraction and FSST compression.
+- `o11ytracesdb` (root `packages/o11ytracesdb`): browser-native traces database for OpenTelemetry span data with 10-section columnar codec, bloom filter chunk pruning, and nested set structural queries.
 - `octo11y` (`/octo11y`): GitHub Actions-driven metrics pipeline and UI packages.
 - `benchkit` (`/octo11y`): benchmark-focused packages/actions layered on octo11y.
 
@@ -19,6 +24,16 @@ The root project currently hosts the `@otlpkit/*` JavaScript libraries:
 And the `o11ytsdb` time-series database:
 
 - `o11ytsdb`: XOR-delta (Gorilla) codec with TypeScript, Zig→WASM, and Rust→WASM implementations; chunked and columnar storage backends; baseline query engine. See [`packages/o11ytsdb/README.md`](./packages/o11ytsdb/README.md) for benchmarks and status.
+
+And the `o11ylogsdb` logs database:
+
+- `o11ylogsdb`: Drain template extraction + FSST + columnar codec; streaming query executor with chunk-level pruning. See [`packages/o11ylogsdb/README.md`](./packages/o11ylogsdb/README.md) for milestones and status.
+
+And the `o11ytracesdb` traces database:
+
+- `o11ytracesdb`: 10-section columnar codec, BF8 bloom filter chunk pruning, nested set structural queries, delta-of-delta timestamps, dictionary encoding — ~50 B/span (10–40× vs raw OTLP JSON). See [`packages/o11ytracesdb/README.md`](./packages/o11ytracesdb/README.md) for architecture and benchmarks.
+
+Together, these three databases form **browser-native observability storage** — *SQLite for observability in the browser* — enabling zero-latency cross-signal correlation without server round-trips.
 
 The root project currently hosts this GitHub Action:
 

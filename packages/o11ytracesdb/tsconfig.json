@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./.tsbuildinfo",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "references": [{ "path": "../stardb" }],
+  "include": ["src/**/*.ts"]
+}

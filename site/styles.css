@@ -167,6 +167,59 @@ body {
   line-height: 1.5;
 }
 
+/* ─── Hero stats row ───────────────────────────────────────────────── */
+.hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  margin-top: 20px;
+  padding: 18px 22px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.05), rgba(18, 89, 224, 0.05));
+  border: 1px solid rgba(124, 58, 237, 0.1);
+  border-radius: 14px;
+}
+
+.hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hero-stat-value {
+  font-family: var(--mono);
+  font-size: clamp(22px, 3vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.hero-stat-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ─── Signal subtitle ──────────────────────────────────────────────── */
+.signal-subtitle {
+  margin: 2px 0 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+}
+
+/* ─── Accent colors for logs and traces signals ────────────────────── */
+.accent-logs {
+  border-left: 4px solid var(--octo);
+}
+.accent-traces {
+  border-left: 4px solid var(--bench);
+}
+
 .hero-actions {
   margin-top: 16px;
   display: flex;
