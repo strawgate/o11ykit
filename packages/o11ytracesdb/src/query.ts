@@ -514,8 +514,12 @@ function matchesAttributePredicate(span: SpanRecord, pred: AttributePredicate): 
 
     case "regex": {
       if (typeof attrVal !== "string" || typeof pred.value !== "string") return false;
-      const re = new RegExp(pred.value);
-      return re.test(attrVal);
+      try {
+        const re = pred._compiledRegex ?? (pred._compiledRegex = new RegExp(pred.value));
+        return re.test(attrVal);
+      } catch {
+        return false;
+      }
     }
 
     case "contains": {
@@ -649,9 +653,7 @@ function checkRelation(
       if (a.parentSpanId !== undefined && b.parentSpanId !== undefined) {
         return bytesEqual(a.parentSpanId, b.parentSpanId);
       }
-      if (a.parentSpanId === undefined && b.parentSpanId === undefined) {
-        return true;
-      }
+      // Root spans (no parent) are not considered siblings
       return false;
   }
 }

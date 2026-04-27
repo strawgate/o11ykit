@@ -182,6 +182,8 @@ export interface AttributePredicate {
   op: AttributeOp;
   /** Value to compare against. Not needed for exists/notExists. */
   value?: AnyValue | AnyValue[];
+  /** @internal Cached compiled regex for op === "regex". */
+  _compiledRegex?: RegExp;
 }
 
 // ─── Trace-level intrinsics ──────────────────────────────────────────

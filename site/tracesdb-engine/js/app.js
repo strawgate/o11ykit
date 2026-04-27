@@ -105,19 +105,19 @@ async function generateTraces() {
     store.flush();
   } else {
     // Mock store for static serving
-    store = { _spans: generatedData.spans, stats() { return { totalSpans: generatedData.spans.length, totalChunks: Math.ceil(generatedData.spans.length / 128), totalBytes: generatedData.spans.length * 80 }; } };
+    store = { _spans: generatedData.spans, stats() { return { sealedSpans: generatedData.spans.length, chunks: Math.ceil(generatedData.spans.length / 128), payloadBytes: generatedData.spans.length * 80 }; } };
   }
   const ingestTime = performance.now() - t1;
 
   // Show stats
   const stats = store.stats();
   $("#statTraces").textContent = formatNum(generatedData.traceCount);
-  $("#statSpans").textContent = formatNum(stats.totalSpans);
+  $("#statSpans").textContent = formatNum(stats.sealedSpans);
   $("#statServices").textContent = String(generatedData.serviceCount);
   $("#statIngestTime").textContent = formatDurationMs(ingestTime);
 
   const rawSize = generatedData.spans.length * 120; // rough estimate
-  const ratio = stats.totalBytes > 0 ? (rawSize / stats.totalBytes).toFixed(1) + "×" : "—";
+  const ratio = stats.payloadBytes > 0 ? (rawSize / stats.payloadBytes).toFixed(1) + "×" : "—";
   $("#statCompression").textContent = ratio;
 
   $("#ingestStats").hidden = false;
@@ -137,11 +137,11 @@ function showStorageExplorer(stats) {
 
   const grid = $("#storageGrid");
   const items = [
-    { label: "Total Chunks", value: formatNum(stats.totalChunks) },
-    { label: "Total Spans", value: formatNum(stats.totalSpans) },
-    { label: "Stored Bytes", value: formatBytes(stats.totalBytes) },
-    { label: "Bytes/Span", value: stats.totalSpans > 0 ? `${(stats.totalBytes / stats.totalSpans).toFixed(1)} B` : "—" },
-    { label: "Bloom Filters", value: formatNum(stats.totalChunks) },
+    { label: "Total Chunks", value: formatNum(stats.chunks) },
+    { label: "Total Spans", value: formatNum(stats.sealedSpans) },
+    { label: "Stored Bytes", value: formatBytes(stats.payloadBytes) },
+    { label: "Bytes/Span", value: stats.sealedSpans > 0 ? `${(stats.payloadBytes / stats.sealedSpans).toFixed(1)} B` : "—" },
+    { label: "Bloom Filters", value: formatNum(stats.chunks) },
     { label: "Unique Services", value: String(generatedData.serviceCount) },
   ];
 
@@ -190,17 +190,25 @@ function runQuery() {
   if (attrKey) {
     const pred = { key: attrKey, op: attrOp };
     if (attrOp !== "exists" && attrOp !== "notExists") {
-      pred.value = attrVal;
+      // Coerce to number if the value is numeric (for comparison operators)
+      const numVal = Number(attrVal);
+      pred.value = !isNaN(numVal) && attrVal.trim() !== "" ? numVal : attrVal;
     }
     attributePredicates.push(pred);
   }
 
+  let spanNameRegex;
+  if (spanNameRaw) {
+    try { spanNameRegex = new RegExp(spanNameRaw); }
+    catch { status.textContent = "⚠ Invalid regex in span name filter"; return; }
+  }
+
   const opts = {
     ...(service ? { serviceName: service } : {}),
-    ...(spanNameRaw ? { spanNameRegex: new RegExp(spanNameRaw) } : {}),
+    ...(spanNameRegex ? { spanNameRegex } : {}),
     ...(statusCode !== undefined ? { statusCode } : {}),
-    ...(durMin ? { durationMin: durMin } : {}),
-    ...(durMax ? { durationMax: durMax } : {}),
+    ...(durMin ? { minDurationNanos: durMin } : {}),
+    ...(durMax ? { maxDurationNanos: durMax } : {}),
     ...(attributePredicates.length > 0 ? { attributePredicates } : {}),
     sortBy,
     sortOrder,
