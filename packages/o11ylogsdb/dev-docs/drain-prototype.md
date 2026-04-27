@@ -1,8 +1,10 @@
-# M2 Drain prototype
+# M2 Drain — graduated
 
-The Drain template extractor is the M2 deliverable. A working prototype
-exists; this doc covers what it is, where it lives, and what's left for
-graduation into the shared codec workspace.
+The Drain template extractor lives at
+[`packages/o11y-codec-rt/drain/`](../../o11y-codec-rt/drain/) as a
+shared workspace crate. Pure Rust, `#![no_std]` with `extern crate
+alloc`, no FFI dependencies. Each consuming engine supplies its own
+`extern "C"` wrappers.
 
 ## What Drain does
 
@@ -14,54 +16,66 @@ is `(template_id, vars[])`.
 
 The algorithm is published; we ship a custom port because:
 
-- The available Rust crate links a C regex library (`oniguruma`) that
-  doesn't build for `wasm32-unknown-unknown` without a C sysroot. The
-  C dependency is the masker — pre-tokenizer regexes that erase numeric
-  and IP-address noise. Replacing it with a 200-LoC pure-Rust masker
-  removes the build issue.
+- The available Rust crate of the algorithm links a C regex library
+  that doesn't build for `wasm32-unknown-unknown` without a C sysroot.
+  The C dependency is the masker (pre-tokenizer regexes that erase
+  numeric and IP-address noise). Replacing it with a 200-LoC pure-Rust
+  masker removes the build issue.
 - The Python reference is the canonical source of truth in the
   literature. We cross-validate against it (ARI = 1.0 on five public
-  Loghub corpora) so any future questions about correctness resolve to
+  log corpora) so any future questions about correctness resolve to
   "do we still match the Python reference?".
 
 ## Status
 
-| Property                  | Status                                                  |
-|---------------------------|---------------------------------------------------------|
-| TS port                   | Shipped at `../src/drain.ts` and integrated via         |
-|                           | `DrainChunkPolicy`, `ColumnarDrainPolicy`,              |
-|                           | `TypedColumnarDrainPolicy`                              |
-| Rust port                 | Working at `../rust-prototype/drain/` (pre-graduation)  |
-| Cross-validation          | TS ≡ Rust ≡ Python reference (ARI = 1.0 on 5 corpora)   |
-| Native throughput (Rust)  | 0.9–3.3 M logs/s                                        |
-| WASM size                 | 6.7 KB gz                                               |
-| Masker (number / IP)      | Implemented pure-Rust; no `oniguruma`                   |
-| Persistable state         | Not yet — M3 concern                                    |
-| `LogParser` trait         | Not yet — M2 graduation                                 |
+| Property                  | Status                                                    |
+|---------------------------|-----------------------------------------------------------|
+| TS port                   | Shipped at `../src/drain.ts`, integrated via              |
+|                           | `DrainChunkPolicy`, `ColumnarDrainPolicy`,                |
+|                           | `TypedColumnarDrainPolicy`                                |
+| Rust port (workspace)     | `packages/o11y-codec-rt/drain/`                           |
+| Cross-validation          | TS ≡ Rust ≡ published Python reference (ARI = 1.0 on 5)   |
+| Native throughput (Rust)  | 0.9–3.3 M logs/s (measured on the prototype build)        |
+| WASM size                 | Prototype binding measured 6.7 KB gz; the new binding     |
+|                           | crate at `packages/o11ylogsdb/rust/` is not yet wired up  |
+| Masker (number / IP)      | Pure-Rust scaffolding ready; *no instructions installed   |
+|                           | by default* — host installs masking explicitly            |
+| Persistable state         | *Pending* — M3 concern, but the API accommodates it       |
+| `LogParser` trait         | *Pending* — currently a concrete `Drain` struct           |
 
 ## Configuration
 
-Default depth 4, similarity threshold 0.4, max children per node 100.
-Tuned to match the Python reference's defaults so cross-validation
-holds. Configurable via `DrainConfig`.
+Default `depth = 4`, `sim_th = 0.4`, `max_children = 100`,
+`parametrize_numeric_tokens = true`. Tuned to match the Python
+reference's defaults so cross-validation holds. Configurable via
+`Config`:
 
-## Graduation work for M2
+```rust
+use o11y_codec_rt_drain::{Config, Drain};
 
-The prototype is at `../rust-prototype/drain/`. M2 ships when:
+let mut d = Drain::new(Config::default());
+let cluster_id = d.add_line("user 42 logged in");
+```
 
-1. The crate moves to `packages/o11y-codec-rt/drain/` in the shared
-   codec workspace.
-2. A `LogParser` trait wraps Drain so future template extractors can
-   slot in without touching the engine.
-3. Persistable state lands: snapshot/restore for the per-stream Drain
-   tree so chunk-close → chunk-open round-trips don't lose template
+## What's pending
+
+The graduation lifted the pure logic and removed the prototype's
+WASM scaffolding. Outstanding items, in priority order:
+
+1. **Build a real `o11ylogsdb-rust.wasm`.** When the engine wants
+   the Rust fast path, create `packages/o11ylogsdb/rust/` with a
+   thin binding crate (panic_handler, bump allocator, `extern "C"`
+   exports) that depends on `o11y-codec-rt-drain` and re-exports the
+   parser via the C ABI. The previous prototype's scaffolding is in
+   git history if a starting template helps.
+2. **`LogParser` trait** so future template extractors (LogPunk,
+   XDrain, etc.) can slot in without touching the engine.
+3. **Persistable state.** Snapshot/restore the prefix tree + cluster
+   list so chunk-close → chunk-open round-trips don't lose template
    IDs.
-4. The masker layer becomes pluggable from the host (TS or Rust),
-   matching how `BodyClassifier` plugs in at the engine level.
-
-The graduation does not need new validation runs — the cross-validation
-protocol is already in place via TS ↔ Rust bit-identical cluster
-sequences.
+4. **Configurable masker.** Number / IP / hex prefix patterns called
+   from the host, matching how `BodyClassifier` plugs in at the
+   engine level.
 
 ## Why one port per language
 

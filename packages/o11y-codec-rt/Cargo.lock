@@ -14,6 +14,10 @@ name = "o11y-codec-rt-core"
 version = "0.0.1"
 
 [[package]]
+name = "o11y-codec-rt-drain"
+version = "0.0.1"
+
+[[package]]
 name = "o11y-codec-rt-interner"
 version = "0.0.1"
 
