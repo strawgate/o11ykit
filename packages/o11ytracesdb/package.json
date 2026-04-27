@@ -1,7 +1,7 @@
 {
   "name": "o11ytracesdb",
   "version": "0.0.0",
-  "description": "Browser-native traces database for OpenTelemetry data.",
+  "description": "Browser-native traces database for OpenTelemetry span data — SQLite for traces in the browser.",
   "license": "UNLICENSED",
   "private": true,
   "engines": {
@@ -12,9 +12,14 @@
     "otlp",
     "traces",
     "spans",
+    "distributed-tracing",
     "compression",
+    "columnar",
     "browser",
-    "columnar"
+    "embedded-database",
+    "observability",
+    "bloom-filter",
+    "nested-set"
   ],
   "type": "module",
   "sideEffects": false,

@@ -12,7 +12,7 @@ Part of the **o11ykit** suite — browser-native databases for metrics, traces, 
 | **o11ytracesdb** | **Traces** | **Dictionary + nested set + bloom filter** |
 
 **Status:** production-ready core. 10-section columnar codec, ingest, query,
-trace assembly, structural queries — 66 passing tests, comprehensive benchmarks.
+trace assembly, structural queries — 80 passing tests, comprehensive benchmarks.
 
 ## Why
 
@@ -168,6 +168,35 @@ isDescendantOf(child, parent);  // true
 isSiblingOf(child, child2);     // true if same parent
 ```
 
+## Cross-Signal Correlation
+
+The "holy grail" of browser-native observability: zero-latency cross-signal
+correlation without server round-trips.
+
+```typescript
+import {
+  traceTimeWindow,
+  deriveREDMetrics,
+  computeServiceGraph,
+  extractTraceIds,
+} from "o11ytracesdb";
+
+// Get time window from a trace → query metrics/logs in that window
+const window = traceTimeWindow(trace, 5_000_000_000n); // ±5s padding
+// Pass window.startNano/endNano to o11ytsdb or o11ylogsdb queries
+
+// Derive RED metrics from spans → feed into o11ytsdb
+const redMetrics = deriveREDMetrics(spans, 60_000_000_000n, "api-gateway");
+// redMetrics[0]: { rate: 150, errors: 3, errorRate: 0.02, duration: { p50, p95, p99 } }
+
+// Compute service graph from inter-service spans
+const edges = computeServiceGraph(allSpans);
+// edges: [{ source: "frontend", target: "api", callCount: 500, errorCount: 2 }]
+
+// Extract trace IDs for log correlation
+const traceIds = extractTraceIds(spans); // hex strings for o11ylogsdb queries
+```
+
 ## Roadmap
 
 | Feature | Status |
@@ -183,9 +212,9 @@ isSiblingOf(child, child2);     // true if same parent
 | Merged-interval self-time | ✅ Done |
 | Critical path computation | ✅ Done |
 | Nested set encoding | ✅ Done |
+| Cross-signal correlation (RED, service graph) | ✅ Done |
 | Dedicated attribute columns | 🔜 Planned |
 | WASM-accelerated codec | 🔜 Planned |
 | ZSTD compression layer | 🔜 Planned |
 | IndexedDB persistence | 🔜 Planned |
 | TTL / eviction | 🔜 Planned |
-| RED metrics derivation → o11ytsdb | 🔜 Planned |
