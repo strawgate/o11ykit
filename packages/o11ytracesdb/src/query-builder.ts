@@ -26,7 +26,10 @@ import type {
   AttributePredicate,
   SortOrder,
   SpanKind,
+  SpanPredicate,
   StatusCode,
+  StructuralPredicate,
+  StructuralRelation,
   TraceIntrinsics,
   TraceQueryOpts,
   TraceQueryResult,
@@ -56,6 +59,7 @@ export class TraceQuery {
   private _opts: TraceQueryOpts = {};
   private _predicates: AttributePredicate[] = [];
   private _traceFilter: TraceIntrinsics = {};
+  private _structural: StructuralPredicate[] = [];
 
   /** Create a new builder instance. */
   static where(): TraceQuery {
@@ -165,6 +169,44 @@ export class TraceQuery {
     return this;
   }
 
+  // ─── Structural queries ──────────────────────────────────────────
+
+  /**
+   * Require trace to have a span matching `left` with a descendant matching `right`.
+   * Equivalent to TraceQL: `{ left } >> { right }`
+   */
+  hasDescendant(left: SpanPredicate, right: SpanPredicate): this {
+    this._structural.push({ relation: "descendant", left, right });
+    return this;
+  }
+
+  /**
+   * Require trace to have a span matching `left` with an ancestor matching `right`.
+   * Equivalent to TraceQL: `{ left } << { right }`
+   */
+  hasAncestor(left: SpanPredicate, right: SpanPredicate): this {
+    this._structural.push({ relation: "ancestor", left, right });
+    return this;
+  }
+
+  /**
+   * Require trace to have a span matching `left` with a direct child matching `right`.
+   * Equivalent to TraceQL: `{ left } > { right }`
+   */
+  hasChild(left: SpanPredicate, right: SpanPredicate): this {
+    this._structural.push({ relation: "child", left, right });
+    return this;
+  }
+
+  /**
+   * Require trace to have a span matching `left` with a sibling matching `right`.
+   * Equivalent to TraceQL: `{ left } ~ { right }`
+   */
+  hasSibling(left: SpanPredicate, right: SpanPredicate): this {
+    this._structural.push({ relation: "sibling", left, right });
+    return this;
+  }
+
   /** Sort results by field and direction. */
   sortBy(field: TraceSortField, order?: SortOrder): this {
     this._opts.sortBy = field;
@@ -198,6 +240,7 @@ export class TraceQuery {
       ...this._opts,
       ...(this._predicates.length > 0 ? { attributePredicates: [...this._predicates] } : {}),
       ...(hasTraceFilter ? { traceFilter: { ...this._traceFilter } } : {}),
+      ...(this._structural.length > 0 ? { structuralPredicates: [...this._structural] } : {}),
     };
   }
 

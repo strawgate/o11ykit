@@ -19,8 +19,10 @@ import type {
   AttributePredicate,
   KeyValue,
   SpanNode,
+  SpanPredicate,
   SpanRecord,
   StatusCode,
+  StructuralPredicate,
   Trace,
   TraceIntrinsics,
   TraceQueryOpts,
@@ -84,6 +86,7 @@ function isTraceIdOnlyQuery(opts: TraceQueryOpts): boolean {
     opts.spanNameRegex === undefined &&
     opts.attributePredicates === undefined &&
     opts.traceFilter === undefined &&
+    opts.structuralPredicates === undefined &&
     opts.sortBy === undefined &&
     opts.sortOrder === undefined &&
     opts.offset === undefined
@@ -212,6 +215,13 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
   // Phase 3: Apply trace-level filters
   if (opts.traceFilter !== undefined) {
     traces = traces.filter((t) => matchesTraceIntrinsics(t, opts.traceFilter!));
+  }
+
+  // Phase 4: Apply structural predicates
+  if (opts.structuralPredicates !== undefined && opts.structuralPredicates.length > 0) {
+    traces = traces.filter((t) =>
+      opts.structuralPredicates!.every((pred) => matchesStructuralPredicate(t.spans, pred)),
+    );
   }
 
   // Sort traces
@@ -556,6 +566,107 @@ function matchesTraceIntrinsics(trace: Trace, filter: TraceIntrinsics): boolean 
   }
 
   return true;
+}
+
+// ─── Structural predicate matching ───────────────────────────────────
+
+/**
+ * Check if a span matches a SpanPredicate (used inside structural queries).
+ * All specified fields must match (AND).
+ */
+function matchesSpanPredicate(span: SpanRecord, pred: SpanPredicate): boolean {
+  if (pred.spanName !== undefined && span.name !== pred.spanName) return false;
+  if (pred.spanNameRegex !== undefined && !pred.spanNameRegex.test(span.name)) return false;
+  if (pred.statusCode !== undefined && span.statusCode !== pred.statusCode) return false;
+  if (pred.kind !== undefined && span.kind !== pred.kind) return false;
+  if (pred.attributes !== undefined) {
+    for (const attrPred of pred.attributes) {
+      if (!matchesAttributePredicate(span, attrPred)) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Check if a trace's spans satisfy a structural predicate.
+ * Uses nested set encoding for O(1) relationship checks.
+ */
+function matchesStructuralPredicate(
+  spans: readonly SpanRecord[],
+  pred: StructuralPredicate,
+): boolean {
+  const leftSpans = spans.filter((s) => matchesSpanPredicate(s, pred.left));
+  const rightSpans = spans.filter((s) => matchesSpanPredicate(s, pred.right));
+
+  if (leftSpans.length === 0 || rightSpans.length === 0) return false;
+
+  const spanByHex = new Map<string, SpanRecord>();
+  for (const s of spans) spanByHex.set(hexFromBytes(s.spanId), s);
+
+  for (const a of leftSpans) {
+    for (const b of rightSpans) {
+      if (a === b) continue;
+      if (checkRelation(a, b, pred.relation, spanByHex)) return true;
+    }
+  }
+  return false;
+}
+
+function checkRelation(
+  a: SpanRecord,
+  b: SpanRecord,
+  relation: StructuralPredicate["relation"],
+  spanByHex: Map<string, SpanRecord>,
+): boolean {
+  switch (relation) {
+    case "descendant":
+      if (a.nestedSetLeft !== undefined && a.nestedSetRight !== undefined &&
+          b.nestedSetLeft !== undefined && b.nestedSetRight !== undefined) {
+        return a.nestedSetLeft < b.nestedSetLeft && b.nestedSetRight < a.nestedSetRight;
+      }
+      return isDescendantByParent(b, a, spanByHex);
+
+    case "ancestor":
+      if (a.nestedSetLeft !== undefined && a.nestedSetRight !== undefined &&
+          b.nestedSetLeft !== undefined && b.nestedSetRight !== undefined) {
+        return b.nestedSetLeft < a.nestedSetLeft && a.nestedSetRight < b.nestedSetRight;
+      }
+      return isDescendantByParent(a, b, spanByHex);
+
+    case "child":
+      if (b.parentSpanId !== undefined) {
+        return bytesEqual(b.parentSpanId, a.spanId);
+      }
+      return false;
+
+    case "parent":
+      if (a.parentSpanId !== undefined) {
+        return bytesEqual(a.parentSpanId, b.spanId);
+      }
+      return false;
+
+    case "sibling":
+      if (a.parentSpanId !== undefined && b.parentSpanId !== undefined) {
+        return bytesEqual(a.parentSpanId, b.parentSpanId);
+      }
+      if (a.parentSpanId === undefined && b.parentSpanId === undefined) {
+        return true;
+      }
+      return false;
+  }
+}
+
+function isDescendantByParent(
+  descendant: SpanRecord,
+  ancestor: SpanRecord,
+  spanByHex: Map<string, SpanRecord>,
+): boolean {
+  let current: SpanRecord | undefined = descendant;
+  while (current?.parentSpanId !== undefined) {
+    if (bytesEqual(current.parentSpanId, ancestor.spanId)) return true;
+    current = spanByHex.get(hexFromBytes(current.parentSpanId));
+  }
+  return false;
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────

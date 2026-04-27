@@ -22,9 +22,12 @@ export type {
   SpanEvent,
   SpanLink,
   SpanNode,
+  SpanPredicate,
   SpanRecord,
   StreamId,
   StreamKey,
+  StructuralPredicate,
+  StructuralRelation,
   Trace,
   TraceIntrinsics,
   TraceQueryOpts,
@@ -52,6 +55,10 @@ export { assembleTrace, buildSpanTree, criticalPath, queryTraces, isAncestorOf, 
 
 // Query builder
 export { TraceQuery } from "./query-builder.js";
+
+// Aggregation pipeline
+export { aggregateTraces, aggregateSpans } from "./aggregate.js";
+export type { AggregationSpec, AggregationResult, AggregationGroup, AggregationPipelineResult } from "./aggregate.js";
 
 // Cross-signal correlation
 export {

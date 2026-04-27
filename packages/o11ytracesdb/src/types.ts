@@ -202,6 +202,48 @@ export interface TraceIntrinsics {
   maxSpanCount?: number;
 }
 
+// ─── Structural query predicates ─────────────────────────────────────
+
+/** Structural relationship type (inspired by TraceQL structural operators). */
+export type StructuralRelation =
+  | "descendant"   // >> : B is a descendant of A
+  | "ancestor"     // << : B is an ancestor of A
+  | "child"        // >  : B is a direct child of A
+  | "parent"       // <  : B is a direct parent of A
+  | "sibling";     // ~  : A and B share the same parent
+
+/**
+ * A structural predicate: "trace must contain span A (matching left)
+ * with a structural relationship to span B (matching right)."
+ *
+ * Uses nested set encoding for O(1) relationship checks.
+ *
+ * Example (TraceQL equivalent: `{ name = "frontend" } >> { status = error }`):
+ * ```ts
+ * { relation: "descendant", left: { spanName: "frontend" }, right: { statusCode: 2 } }
+ * ```
+ */
+export interface StructuralPredicate {
+  relation: StructuralRelation;
+  /** Predicate for the "A" side (left of the operator). */
+  left: SpanPredicate;
+  /** Predicate for the "B" side (right of the operator). */
+  right: SpanPredicate;
+}
+
+/**
+ * A predicate matching individual spans (used inside structural queries).
+ * All specified fields must match (AND).
+ */
+export interface SpanPredicate {
+  spanName?: string;
+  spanNameRegex?: RegExp;
+  statusCode?: StatusCode;
+  kind?: SpanKind;
+  /** Attribute predicates. */
+  attributes?: AttributePredicate[];
+}
+
 // ─── Sort and pagination ─────────────────────────────────────────────
 
 /** Fields available for sorting query results. */
@@ -239,6 +281,8 @@ export interface TraceQueryOpts {
   attributePredicates?: AttributePredicate[];
   /** Trace-level filters (evaluated after trace assembly). */
   traceFilter?: TraceIntrinsics;
+  /** Structural predicates (evaluated post-assembly using nested set encoding). */
+  structuralPredicates?: StructuralPredicate[];
   /** Sort field (default: startTime). */
   sortBy?: TraceSortField;
   /** Sort direction (default: desc). */
