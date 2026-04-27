@@ -35,7 +35,7 @@
     "access": "public"
   },
   "dependencies": {
-    "stardb": "*"
+    "stardb": "0.0.0"
   },
   "scripts": {
     "build": "tsc -b",
