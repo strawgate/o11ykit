@@ -152,7 +152,8 @@ export class TraceStore {
   private evict(): void {
     const now = Date.now();
     while (this.chunkOrder.length > 0) {
-      const oldest = this.chunkOrder[0]!;
+      const oldest = this.chunkOrder[0];
+      if (!oldest) break;
       const overBytes = this.totalPayloadBytes > this.maxPayloadBytes;
       const overCount = this.chunkOrder.length > this.maxChunks;
       const overTTL = now - oldest.sealedAt > this.ttlMs;

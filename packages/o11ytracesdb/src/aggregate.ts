@@ -96,10 +96,10 @@ function extractGroupKey(item: Trace | SpanRecord, field: string): string {
   if (isTrace(item)) {
     switch (field) {
       case "rootService": {
-        const root = item.rootSpan;
-        if (!root) return "<no root>";
-        const svc = root.attributes.find((a: KeyValue) => a.key === "service.name");
-        return svc ? String(svc.value) : "<unknown>";
+        const svc =
+          item.rootResource?.attributes.find((a: KeyValue) => a.key === "service.name") ??
+          item.rootSpan?.attributes.find((a: KeyValue) => a.key === "service.name");
+        return svc ? String(svc.value) : item.rootSpan ? "<unknown>" : "<no root>";
       }
       case "rootName":
         return item.rootSpan?.name ?? "<no root>";
@@ -137,15 +137,21 @@ function computeAvg(values: number[]): number {
 
 function computeMin(values: number[]): number {
   if (values.length === 0) return 0;
-  let min = values[0]!;
-  for (let i = 1; i < values.length; i++) if (values[i]! < min) min = values[i]!;
+  let min = values[0] ?? 0;
+  for (let i = 1; i < values.length; i++) {
+    const v = values[i];
+    if (v !== undefined && v < min) min = v;
+  }
   return min;
 }
 
 function computeMax(values: number[]): number {
   if (values.length === 0) return 0;
-  let max = values[0]!;
-  for (let i = 1; i < values.length; i++) if (values[i]! > max) max = values[i]!;
+  let max = values[0] ?? 0;
+  for (let i = 1; i < values.length; i++) {
+    const v = values[i];
+    if (v !== undefined && v > max) max = v;
+  }
   return max;
 }
 
@@ -159,7 +165,7 @@ function computePercentile(values: number[], p: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
-  return sorted[Math.max(0, idx)]!;
+  return sorted[Math.max(0, idx)] ?? 0;
 }
 
 // ─── Aggregation specs ───────────────────────────────────────────────
@@ -310,7 +316,11 @@ function aggregateGrouped(
     const keyParts = key.split("\0");
     const groupKey: Record<string, string> = {};
     for (let i = 0; i < groupBy.length; i++) {
-      groupKey[groupBy[i]!] = keyParts[i]!;
+      const gk = groupBy[i];
+      const kp = keyParts[i];
+      if (gk !== undefined && kp !== undefined) {
+        groupKey[gk] = kp;
+      }
     }
 
     const flatResult = aggregateFlat(groupItems, specs, groupItems.length);

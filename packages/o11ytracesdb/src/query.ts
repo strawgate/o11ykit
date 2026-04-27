@@ -39,7 +39,11 @@ for (let i = 0; i < 256; i++) HEX_LUT[i] = i.toString(16).padStart(2, "0");
 
 function hexFromBytes(bytes: Uint8Array): string {
   let hex = "";
-  for (let i = 0; i < bytes.length; i++) hex += HEX_LUT[bytes[i]!]!;
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i];
+    if (b === undefined) continue;
+    hex += HEX_LUT[b] ?? "";
+  }
   return hex;
 }
 
@@ -133,11 +137,13 @@ function queryByTraceIdFast(store: TraceStore, traceId: Uint8Array): TraceQueryR
 
     // Direct byte comparison — no hex allocation
     for (let i = 0; i < spans.length; i++) {
+      const span = spans[i];
+      if (!span) continue;
       spansExamined++;
-      if (bytesEqual(spans[i]!.traceId, traceId)) {
-        matchingSpans.push(spans[i]!);
+      if (bytesEqual(span.traceId, traceId)) {
+        matchingSpans.push(span);
         // Record resource for root spans
-        if (spans[i]!.parentSpanId === undefined) {
+        if (span.parentSpanId === undefined) {
           rootResource = resource;
         }
       }
@@ -158,10 +164,13 @@ function queryByTraceIdFast(store: TraceStore, traceId: Uint8Array): TraceQueryR
   // Assemble the single trace
   matchingSpans.sort(compareBigint);
   const rootSpan = matchingSpans.find((s) => s.parentSpanId === undefined);
-  const first = matchingSpans[0]!;
+  const first = matchingSpans[0];
+  if (!first) throw new Error("unreachable: matchingSpans is non-empty");
   let maxEnd = first.endTimeUnixNano;
   for (let i = 1; i < matchingSpans.length; i++) {
-    if (matchingSpans[i]!.endTimeUnixNano > maxEnd) maxEnd = matchingSpans[i]!.endTimeUnixNano;
+    const s = matchingSpans[i];
+    if (!s) continue;
+    if (s.endTimeUnixNano > maxEnd) maxEnd = s.endTimeUnixNano;
   }
 
   const trace: Trace = {
@@ -268,11 +277,14 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
     spans.sort(compareBigint);
     const rootSpan = spans.find((s) => s.parentSpanId === undefined);
     const rootResource = rootResourceByTrace.get(traceHex);
-    const first = spans[0]!;
+    const first = spans[0];
+    if (!first) continue;
     const minStart = first.startTimeUnixNano;
     let maxEnd = first.endTimeUnixNano;
     for (let i = 1; i < spans.length; i++) {
-      if (spans[i]!.endTimeUnixNano > maxEnd) maxEnd = spans[i]!.endTimeUnixNano;
+      const s = spans[i];
+      if (!s) continue;
+      if (s.endTimeUnixNano > maxEnd) maxEnd = s.endTimeUnixNano;
     }
     traces.push({
       traceId: first.traceId,
@@ -285,14 +297,14 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
 
   // Phase 3: Apply trace-level filters
   if (opts.traceFilter !== undefined) {
-    traces = traces.filter((t) => matchesTraceIntrinsics(t, opts.traceFilter!));
+    const filter = opts.traceFilter;
+    traces = traces.filter((t) => matchesTraceIntrinsics(t, filter));
   }
 
   // Phase 4: Apply structural predicates
   if (opts.structuralPredicates !== undefined && opts.structuralPredicates.length > 0) {
-    traces = traces.filter((t) =>
-      opts.structuralPredicates!.every((pred) => matchesStructuralPredicate(t.spans, pred))
-    );
+    const preds = opts.structuralPredicates;
+    traces = traces.filter((t) => preds.every((pred) => matchesStructuralPredicate(t.spans, pred)));
   }
 
   // Sort traces
@@ -306,8 +318,8 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
       cmp = a.spans.length - b.spans.length;
     } else {
       // startTime
-      const aStart = a.spans[0]!.startTimeUnixNano;
-      const bStart = b.spans[0]!.startTimeUnixNano;
+      const aStart = a.spans[0]?.startTimeUnixNano ?? 0n;
+      const bStart = b.spans[0]?.startTimeUnixNano ?? 0n;
       cmp = aStart > bStart ? 1 : aStart < bStart ? -1 : 0;
     }
     return sortDir === "asc" ? cmp : -cmp;
@@ -359,7 +371,8 @@ export function buildSpanTree(spans: readonly SpanRecord[]): SpanNode[] {
   // Link parent → child
   for (const span of spans) {
     const id = hexFromBytes(span.spanId);
-    const node = nodes.get(id)!;
+    const node = nodes.get(id);
+    if (!node) continue;
     if (span.parentSpanId !== undefined) {
       const parentId = hexFromBytes(span.parentSpanId);
       const parentNode = nodes.get(parentId);
@@ -406,21 +419,25 @@ export function buildSpanTree(spans: readonly SpanRecord[]): SpanNode[] {
     let childCoverage = 0n;
     if (intervals.length > 0) {
       intervals.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
-      let mergedStart = intervals[0]!.start;
-      let mergedEnd = intervals[0]!.end;
-      for (let i = 1; i < intervals.length; i++) {
-        const iv = intervals[i]!;
-        if (iv.start <= mergedEnd) {
-          // Overlapping — extend
-          if (iv.end > mergedEnd) mergedEnd = iv.end;
-        } else {
-          // Gap — flush previous interval
-          childCoverage += mergedEnd - mergedStart;
-          mergedStart = iv.start;
-          mergedEnd = iv.end;
+      const firstIv = intervals[0];
+      if (firstIv) {
+        let mergedStart = firstIv.start;
+        let mergedEnd = firstIv.end;
+        for (let i = 1; i < intervals.length; i++) {
+          const iv = intervals[i];
+          if (!iv) continue;
+          if (iv.start <= mergedEnd) {
+            // Overlapping — extend
+            if (iv.end > mergedEnd) mergedEnd = iv.end;
+          } else {
+            // Gap — flush previous interval
+            childCoverage += mergedEnd - mergedStart;
+            mergedStart = iv.start;
+            mergedEnd = iv.end;
+          }
         }
+        childCoverage += mergedEnd - mergedStart;
       }
-      childCoverage += mergedEnd - mergedStart;
     }
 
     node.selfTimeNanos = node.span.durationNanos - childCoverage;
@@ -452,10 +469,13 @@ export function criticalPath(roots: SpanNode[]): SpanNode[] {
   let current = root;
 
   while (current.children.length > 0) {
-    let latest = current.children[0]!;
+    let latest = current.children[0];
+    if (!latest) break;
     for (let i = 1; i < current.children.length; i++) {
-      if (current.children[i]!.span.endTimeUnixNano > latest.span.endTimeUnixNano) {
-        latest = current.children[i]!;
+      const child = current.children[i];
+      if (!child) continue;
+      if (child.span.endTimeUnixNano > latest.span.endTimeUnixNano) {
+        latest = child;
       }
     }
     path.push(latest);
@@ -515,7 +535,10 @@ function matchesSpan(
 
   if (opts.traceId !== undefined && !bytesEqual(span.traceId, opts.traceId)) return false;
   if (opts.spanName !== undefined && span.name !== opts.spanName) return false;
-  if (opts.spanNameRegex !== undefined && !opts.spanNameRegex.test(span.name)) return false;
+  if (opts.spanNameRegex !== undefined) {
+    opts.spanNameRegex.lastIndex = 0;
+    if (!opts.spanNameRegex.test(span.name)) return false;
+  }
   if (opts.kind !== undefined && span.kind !== opts.kind) return false;
   if (opts.statusCode !== undefined && span.statusCode !== opts.statusCode) return false;
 
@@ -598,12 +621,14 @@ function matchesAttributePredicate(span: SpanRecord, pred: AttributePredicate): 
 
     case "regex": {
       if (typeof attrVal !== "string" || typeof pred.value !== "string") return false;
+      if (pred.value.length > 1000) return false;
       try {
         let re = regexCache.get(pred);
         if (!re) {
-          re = new RegExp(pred.value);
+          re = new RegExp(pred.value, "u");
           regexCache.set(pred, re);
         }
+        re.lastIndex = 0;
         return re.test(attrVal);
       } catch {
         return false;
@@ -657,6 +682,7 @@ function matchesTraceIntrinsics(trace: Trace, filter: TraceIntrinsics): boolean 
     if (typeof filter.rootSpanName === "string") {
       if (trace.rootSpan.name !== filter.rootSpanName) return false;
     } else {
+      filter.rootSpanName.lastIndex = 0;
       if (!filter.rootSpanName.test(trace.rootSpan.name)) return false;
     }
   }
@@ -672,7 +698,10 @@ function matchesTraceIntrinsics(trace: Trace, filter: TraceIntrinsics): boolean 
  */
 function matchesSpanPredicate(span: SpanRecord, pred: SpanPredicate): boolean {
   if (pred.spanName !== undefined && span.name !== pred.spanName) return false;
-  if (pred.spanNameRegex !== undefined && !pred.spanNameRegex.test(span.name)) return false;
+  if (pred.spanNameRegex !== undefined) {
+    pred.spanNameRegex.lastIndex = 0;
+    if (!pred.spanNameRegex.test(span.name)) return false;
+  }
   if (pred.statusCode !== undefined && span.statusCode !== pred.statusCode) return false;
   if (pred.kind !== undefined && span.kind !== pred.kind) return false;
   if (pred.attributes !== undefined) {
@@ -763,10 +792,14 @@ function isDescendantByParent(
   ancestor: SpanRecord,
   spanByHex: Map<string, SpanRecord>
 ): boolean {
+  const visited = new Set<string>();
   let current: SpanRecord | undefined = descendant;
   while (current?.parentSpanId !== undefined) {
+    const parentHex = hexFromBytes(current.parentSpanId);
+    if (visited.has(parentHex)) return false;
     if (bytesEqual(current.parentSpanId, ancestor.spanId)) return true;
-    current = spanByHex.get(hexFromBytes(current.parentSpanId));
+    visited.add(parentHex);
+    current = spanByHex.get(parentHex);
   }
   return false;
 }
@@ -799,7 +832,10 @@ function anyValueEquals(a: AnyValue, b: AnyValue): boolean {
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
     for (let i = 0; i < a.length; i++) {
-      if (!anyValueEquals(a[i]!, b[i]!)) return false;
+      const aItem = a[i];
+      const bItem = b[i];
+      if (aItem === undefined || bItem === undefined) return false;
+      if (!anyValueEquals(aItem, bItem)) return false;
     }
     return true;
   }
@@ -808,7 +844,9 @@ function anyValueEquals(a: AnyValue, b: AnyValue): boolean {
     const bObj = b as Record<string, AnyValue>;
     if (aEntries.length !== Object.keys(bObj).length) return false;
     for (const [k, v] of aEntries) {
-      if (!anyValueEquals(v, bObj[k]!)) return false;
+      const bVal = bObj[k];
+      if (bVal === undefined) return false;
+      if (!anyValueEquals(v, bVal)) return false;
     }
     return true;
   }

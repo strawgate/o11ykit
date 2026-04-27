@@ -33,7 +33,7 @@ Embedded, serverless, single-process — like SQLite, but for distributed traces
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────┐
 │              TraceStore (engine.ts)              │
 │  append() → ChunkBuilder → sealed Chunk         │
@@ -116,7 +116,7 @@ Encode/decode throughput scales linearly: 10K spans at 119/104 ops/s.
    attributes, events, or links.
 
 5. **Event delta timestamps** — events stored as `timeUnixNano - spanStart`.
-   Reduces varint from ~10 bytes to ~2-3 bytes per event.
+   Reduces varint size from ~10 bytes to ~2–3 bytes per event.
 
 6. **Dictionary encoding** — 4 separate frequency-sorted dictionaries:
    span names, attribute keys, short attribute values, status messages.

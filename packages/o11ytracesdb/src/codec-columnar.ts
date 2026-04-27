@@ -137,7 +137,10 @@ export class ByteReader {
   }
 
   readU8(): number {
-    return this.buf[this.pos++]!;
+    const v = this.buf[this.pos];
+    if (v === undefined) throw new RangeError("o11ytracesdb: unexpected end of buffer");
+    this.pos++;
+    return v;
   }
 
   readU16(): number {
@@ -163,7 +166,10 @@ export class ByteReader {
     let shift = 0n;
     let byte: number;
     do {
-      byte = this.buf[this.pos++]!;
+      const nextByte = this.buf[this.pos];
+      if (nextByte === undefined) throw new RangeError("o11ytracesdb: unexpected end of buffer");
+      this.pos++;
+      byte = nextByte;
       result |= BigInt(byte & 0x7f) << shift;
       shift += 7n;
     } while (byte & 0x80);
@@ -176,7 +182,10 @@ export class ByteReader {
     let shift = 0;
     let byte: number;
     do {
-      byte = this.buf[this.pos++]!;
+      const nextByte = this.buf[this.pos];
+      if (nextByte === undefined) throw new RangeError("o11ytracesdb: unexpected end of buffer");
+      this.pos++;
+      byte = nextByte;
       result |= (byte & 0x7f) << shift;
       shift += 7;
     } while (byte & 0x80);
@@ -221,7 +230,10 @@ function buildDictWithIndex(values: Iterable<string>): DictWithIndex {
     .sort((a, b) => b[1] - a[1]) // most frequent first
     .map(([value]) => value);
   const index = new Map<string, number>();
-  for (let i = 0; i < dict.length; i++) index.set(dict[i]!, i);
+  for (let i = 0; i < dict.length; i++) {
+    const val = dict[i];
+    if (val !== undefined) index.set(val, i);
+  }
   return { dict, index };
 }
 
@@ -330,8 +342,25 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       const nullBitmapLen = Math.ceil(n / 8);
       const nullBitmap = new Uint8Array(nullBitmapLen);
       for (let i = 0; i < n; i++) {
-        if (spans[i]!.parentSpanId !== undefined) {
-          nullBitmap[i >>> 3]! |= 1 << (i & 7);
+        const s = spans[i];
+        if (!s) continue;
+        if (s.traceId.length !== 16) {
+          throw new RangeError(
+            `o11ytracesdb: span[${i}] traceId must be 16 bytes, got ${s.traceId.length}`
+          );
+        }
+        if (s.spanId.length !== 8) {
+          throw new RangeError(
+            `o11ytracesdb: span[${i}] spanId must be 8 bytes, got ${s.spanId.length}`
+          );
+        }
+        if (s.parentSpanId !== undefined && s.parentSpanId.length !== 8) {
+          throw new RangeError(
+            `o11ytracesdb: span[${i}] parentSpanId must be 8 bytes, got ${s.parentSpanId.length}`
+          );
+        }
+        if (s.parentSpanId !== undefined) {
+          nullBitmap[i >>> 3] |= 1 << (i & 7);
         }
       }
       out.writeBytes(nullBitmap);
@@ -348,7 +377,12 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       const off = out.reserveSectionLength();
       out.writeUvarint(names.dict.length);
       for (const name of names.dict) out.writeString(name);
-      for (const s of spans) out.writeU16(names.index.get(s.name)!);
+      for (const s of spans) {
+        const nameIdx = names.index.get(s.name);
+        if (nameIdx === undefined)
+          throw new RangeError(`o11ytracesdb: unknown span name "${s.name}"`);
+        out.writeU16(nameIdx);
+      }
       out.patchSectionLength(off);
     }
 
@@ -386,7 +420,10 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       for (const s of spans) {
         out.writeUvarint(s.attributes.length);
         for (const attr of s.attributes) {
-          out.writeU16(keys.index.get(attr.key)!);
+          const keyIdx = keys.index.get(attr.key);
+          if (keyIdx === undefined)
+            throw new RangeError(`o11ytracesdb: unknown attribute key "${attr.key}"`);
+          out.writeU16(keyIdx);
           encodeAnyValue(out, attr.value, vals.index);
         }
       }
@@ -397,7 +434,8 @@ export class ColumnarTracePolicy implements ChunkPolicy {
     {
       const off = out.reserveSectionLength();
       for (let idx = 0; idx < n; idx++) {
-        const s = spans[idx]!;
+        const s = spans[idx];
+        if (!s) continue;
         out.writeUvarint(s.events.length);
         for (const evt of s.events) {
           // Store as delta from span start for better compression
@@ -497,15 +535,17 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       for (let i = 0; i < n; i++) {
         const startDoD = tsSection.readVarint();
         const startDelta = prevStartDelta + startDoD;
-        startTimes[i] = prevStart + startDelta;
+        const st = prevStart + startDelta;
+        startTimes[i] = st;
         prevStartDelta = startDelta;
-        prevStart = startTimes[i]!;
+        prevStart = st;
 
         const endDoD = tsSection.readVarint();
         const endDelta = prevEndDelta + endDoD;
-        endTimes[i] = prevEnd + endDelta;
+        const et = prevEnd + endDelta;
+        endTimes[i] = et;
         prevEndDelta = endDelta;
-        prevEnd = endTimes[i]!;
+        prevEnd = et;
       }
     }
 
@@ -526,7 +566,8 @@ export class ColumnarTracePolicy implements ChunkPolicy {
     for (let i = 0; i < n; i++) traceIds[i] = idSection.readBytes(16).slice();
     for (let i = 0; i < n; i++) spanIds[i] = idSection.readBytes(8).slice();
     for (let i = 0; i < n; i++) {
-      if (nullBitmap[i >>> 3]! & (1 << (i & 7))) {
+      const bitmapByte = nullBitmap[i >>> 3];
+      if (bitmapByte !== undefined && bitmapByte & (1 << (i & 7))) {
         parentSpanIds[i] = idSection.readBytes(8).slice();
       }
     }
@@ -537,7 +578,10 @@ export class ColumnarTracePolicy implements ChunkPolicy {
     const localNameDict: string[] = new Array(dictLen);
     for (let i = 0; i < dictLen; i++) localNameDict[i] = nameSection.readString();
     const nameIndices: string[] = new Array(n);
-    for (let i = 0; i < n; i++) nameIndices[i] = localNameDict[nameSection.readU16()]!;
+    for (let i = 0; i < n; i++) {
+      const nameIdx = nameSection.readU16();
+      nameIndices[i] = localNameDict[nameIdx] ?? "";
+    }
 
     // Section 4: Kind
     const kindSection = new ByteReader(reader.readSection());
@@ -572,7 +616,7 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       for (let j = 0; j < attrCount; j++) {
         const keyIdx = attrSection.readU16();
         const value = decodeAnyValue(attrSection, localValDict);
-        attrs[j] = { key: localKeyDict[keyIdx]!, value };
+        attrs[j] = { key: localKeyDict[keyIdx] ?? "", value };
       }
       allAttrs[i] = attrs;
     }
@@ -585,7 +629,7 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       const events: SpanEvent[] = new Array(evtCount);
       for (let j = 0; j < evtCount; j++) {
         const timeDelta = evtSection.readVarint();
-        const timeUnixNano = startTimes[i]! + timeDelta;
+        const timeUnixNano = (startTimes[i] ?? 0n) + timeDelta;
         const name = evtSection.readString();
         const attrCount = evtSection.readUvarint();
         const attributes: KeyValue[] = new Array(attrCount);
@@ -659,18 +703,26 @@ export class ColumnarTracePolicy implements ChunkPolicy {
         }
         // Per-event dropped attributes
         for (let i = 0; i < n; i++) {
-          for (let j = 0; j < allEvents[i]!.length; j++) {
+          const events = allEvents[i];
+          if (!events) continue;
+          for (let j = 0; j < events.length; j++) {
             const edac = optSection.readUvarint();
-            if (edac > 0) allEvents[i]![j]!.droppedAttributesCount = edac;
+            const evt = events[j];
+            if (evt && edac > 0) evt.droppedAttributesCount = edac;
           }
         }
         // Per-link optional fields
         for (let i = 0; i < n; i++) {
-          for (let j = 0; j < allLinks[i]!.length; j++) {
+          const links = allLinks[i];
+          if (!links) continue;
+          for (let j = 0; j < links.length; j++) {
             const lts = optSection.readString();
-            if (lts.length > 0) allLinks[i]![j]!.traceState = lts;
-            const ldac = optSection.readUvarint();
-            if (ldac > 0) allLinks[i]![j]!.droppedAttributesCount = ldac;
+            const lnk = links[j];
+            if (lnk) {
+              if (lts.length > 0) lnk.traceState = lts;
+              const ldac = optSection.readUvarint();
+              if (ldac > 0) lnk.droppedAttributesCount = ldac;
+            }
           }
         }
       } catch {
@@ -682,30 +734,56 @@ export class ColumnarTracePolicy implements ChunkPolicy {
     for (let i = 0; i < n; i++) {
       const parentId = parentSpanIds[i];
       const statusMsg = statusMessages[i];
-      const nsLeft = nestedSetLefts[i]!;
-      const nsRight = nestedSetRights[i]!;
-      const nsParent = nestedSetParents[i]!;
+      const nsLeft = nestedSetLefts[i] ?? 0;
+      const nsRight = nestedSetRights[i] ?? 0;
+      const nsParent = nestedSetParents[i] ?? 0;
       const traceState = optTraceStates[i];
       const dac = optDroppedAttrCounts[i];
       const dec = optDroppedEvtCounts[i];
       const dlc = optDroppedLinkCounts[i];
+      const tId = traceIds[i];
+      const sId = spanIds[i];
+      const name = nameIndices[i];
+      const kind = kinds[i];
+      const st = startTimes[i];
+      const et = endTimes[i];
+      const dur = durations[i];
+      const sc = statusCodes[i];
+      const attrs = allAttrs[i];
+      const evts = allEvents[i];
+      const lnks = allLinks[i];
+      if (
+        !tId ||
+        !sId ||
+        name === undefined ||
+        kind === undefined ||
+        st === undefined ||
+        et === undefined ||
+        dur === undefined ||
+        sc === undefined ||
+        !attrs ||
+        !evts ||
+        !lnks
+      ) {
+        throw new RangeError(`o11ytracesdb: incomplete span data at index ${i}`);
+      }
       spans[i] = {
-        traceId: traceIds[i]!,
-        spanId: spanIds[i]!,
+        traceId: tId,
+        spanId: sId,
         ...(parentId !== undefined ? { parentSpanId: parentId } : {}),
         ...(traceState !== undefined ? { traceState } : {}),
-        name: nameIndices[i]!,
-        kind: kinds[i]! as SpanRecord["kind"],
-        startTimeUnixNano: startTimes[i]!,
-        endTimeUnixNano: endTimes[i]!,
-        durationNanos: durations[i]!,
-        statusCode: statusCodes[i]! as StatusCode,
+        name,
+        kind: kind as SpanRecord["kind"],
+        startTimeUnixNano: st,
+        endTimeUnixNano: et,
+        durationNanos: dur,
+        statusCode: sc as StatusCode,
         ...(statusMsg !== undefined ? { statusMessage: statusMsg } : {}),
-        attributes: allAttrs[i]!,
+        attributes: attrs,
         ...(dac !== undefined ? { droppedAttributesCount: dac } : {}),
-        events: allEvents[i]!,
+        events: evts,
         ...(dec !== undefined ? { droppedEventsCount: dec } : {}),
-        links: allLinks[i]!,
+        links: lnks,
         ...(dlc !== undefined ? { droppedLinksCount: dlc } : {}),
         ...(nsLeft !== 0 ? { nestedSetLeft: nsLeft } : {}),
         ...(nsRight !== 0 ? { nestedSetRight: nsRight } : {}),
@@ -750,7 +828,8 @@ export class ColumnarTracePolicy implements ChunkPolicy {
     for (let i = 0; i < n; i++) traceIds[i] = new Uint8Array(idSection.readBytes(16));
     for (let i = 0; i < n; i++) spanIds[i] = new Uint8Array(idSection.readBytes(8));
     for (let i = 0; i < n; i++) {
-      if (nullBitmap[i >>> 3]! & (1 << (i & 7))) {
+      const bitmapByte = nullBitmap[i >>> 3];
+      if (bitmapByte !== undefined && bitmapByte & (1 << (i & 7))) {
         parentSpanIds[i] = new Uint8Array(idSection.readBytes(8));
       }
     }
@@ -819,7 +898,7 @@ function decodeAnyValue(reader: ByteReader, valDict: string[]): AnyValue {
     case ValueTag.NULL:
       return null;
     case ValueTag.STRING_DICT:
-      return valDict[reader.readU16()]!;
+      return valDict[reader.readU16()] ?? "";
     case ValueTag.STRING_RAW:
       return reader.readString();
     case ValueTag.INT:

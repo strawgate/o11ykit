@@ -109,7 +109,6 @@ export function renderWaterfall(canvas, trace, opts = {}) {
   sizeCanvas();
 
   const ctx = canvas.getContext("2d");
-  ctx.scale(dpr, dpr);
 
   let barAreaWidth = canvasWidth - LABEL_WIDTH - PADDING * 2;
 

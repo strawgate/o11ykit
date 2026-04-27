@@ -160,8 +160,8 @@ export class ChunkBuilder {
     computeNestedSets(spans);
 
     // Compute zone maps
-    let minTime = spans[0]!.startTimeUnixNano;
-    let maxTime = spans[0]!.endTimeUnixNano;
+    let minTime = spans[0]?.startTimeUnixNano ?? 0n;
+    let maxTime = spans[0]?.endTimeUnixNano ?? 0n;
     let hasError = false;
     const nameSet = new Set<string>();
 
@@ -291,7 +291,9 @@ function compareBigintField(a: SpanRecord, b: SpanRecord): number {
 function bytesToHex(bytes: Uint8Array): string {
   let hex = "";
   for (let i = 0; i < bytes.length; i++) {
-    hex += ((bytes[i]! >> 4) & 0xf).toString(16) + (bytes[i]! & 0xf).toString(16);
+    const b = bytes[i];
+    if (b === undefined) continue;
+    hex += ((b >> 4) & 0xf).toString(16) + (b & 0xf).toString(16);
   }
   return hex;
 }

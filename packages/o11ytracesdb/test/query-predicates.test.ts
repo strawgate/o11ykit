@@ -40,11 +40,24 @@ function span(overrides: Partial<SpanRecord> & { traceId: Uint8Array; name: stri
 
 function buildStore(spans: SpanRecord[]): TraceStore {
   const store = new TraceStore({ chunkSize: 256 });
-  const resource = { attributes: [{ key: "service.name", value: "test-svc" }] };
+  const resourceA = { attributes: [{ key: "service.name", value: "other-svc" }] };
+  const resourceBC = { attributes: [{ key: "service.name", value: "test-svc" }] };
   const scope = { name: "test", version: "1.0" };
-  store.append(resource, scope, spans);
+  // Split spans by trace so we can assign different resources
+  const spansA = spans.filter((s) => bytesEqual(s.traceId, TRACE_A));
+  const spansBC = spans.filter((s) => !bytesEqual(s.traceId, TRACE_A));
+  if (spansA.length > 0) store.append(resourceA, scope, spansA);
+  if (spansBC.length > 0) store.append(resourceBC, scope, spansBC);
   store.flush();
   return store;
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 // ─── Test data ───────────────────────────────────────────────────────

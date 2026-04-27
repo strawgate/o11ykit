@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { TraceStore } from "../src/engine.js";
 import type { InstrumentationScope, Resource, SpanRecord } from "../src/types.js";
 import { SpanKind, StatusCode } from "../src/types.js";
@@ -73,37 +73,47 @@ describe("TraceStore eviction", () => {
   });
 
   it("evicts expired chunks by TTL", async () => {
-    const store = new TraceStore({ chunkSize: 10, ttlMs: 50 });
+    vi.useFakeTimers();
+    try {
+      const store = new TraceStore({ chunkSize: 10, ttlMs: 50 });
 
-    // Insert first batch
-    store.append(resource, scope, makeSpans(10));
-    store.flush();
+      // Insert first batch
+      store.append(resource, scope, makeSpans(10));
+      store.flush();
 
-    // Wait for TTL to expire
-    await new Promise((resolve) => setTimeout(resolve, 60));
+      // Advance past TTL
+      await vi.advanceTimersByTimeAsync(60);
 
-    // Insert second batch — should trigger eviction of first
-    store.append(resource, scope, makeSpans(10));
-    store.flush();
+      // Insert second batch — should trigger eviction of first
+      store.append(resource, scope, makeSpans(10));
+      store.flush();
 
-    const stats = store.stats();
-    expect(stats.chunks).toBe(1); // only the new chunk remains
-    expect(stats.evictedChunks).toBe(1);
-    expect(stats.evictedSpans).toBe(10);
+      const stats = store.stats();
+      expect(stats.chunks).toBe(1); // only the new chunk remains
+      expect(stats.evictedChunks).toBe(1);
+      expect(stats.evictedSpans).toBe(10);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("TTL eviction occurs on reads", async () => {
-    const store = new TraceStore({ chunkSize: 10, ttlMs: 50 });
-    store.append(resource, scope, makeSpans(10));
-    store.flush();
-    expect(store.stats().chunks).toBe(1);
+    vi.useFakeTimers();
+    try {
+      const store = new TraceStore({ chunkSize: 10, ttlMs: 50 });
+      store.append(resource, scope, makeSpans(10));
+      store.flush();
+      expect(store.stats().chunks).toBe(1);
 
-    await new Promise((r) => setTimeout(r, 60));
+      await vi.advanceTimersByTimeAsync(60);
 
-    // Reading should trigger eviction even without new writes
-    const stats = store.stats();
-    expect(stats.chunks).toBe(0);
-    expect(stats.evictedChunks).toBe(1);
+      // Reading should trigger eviction even without new writes
+      const stats = store.stats();
+      expect(stats.chunks).toBe(0);
+      expect(stats.evictedChunks).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("cleans up empty streams after full eviction", () => {

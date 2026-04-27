@@ -69,7 +69,7 @@
       }
     },
     {
-      "includes": ["packages/o11ytracesdb/src/**", "packages/o11ytracesdb/test/**"],
+      "includes": ["packages/o11ytracesdb/test/**"],
       "linter": {
         "rules": {
           "style": {

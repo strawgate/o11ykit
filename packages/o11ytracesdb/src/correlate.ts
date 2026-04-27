@@ -37,8 +37,10 @@ export function traceTimeWindow(trace: Trace, paddingNanos = 0n): TimeWindow {
   if (trace.spans.length === 0) {
     return { startNano: 0n, endNano: 0n };
   }
-  let min = trace.spans[0]!.startTimeUnixNano;
-  let max = trace.spans[0]!.endTimeUnixNano;
+  const first = trace.spans[0];
+  if (!first) return { startNano: 0n, endNano: 0n };
+  let min = first.startTimeUnixNano;
+  let max = first.endTimeUnixNano;
   for (const span of trace.spans) {
     if (span.startTimeUnixNano < min) min = span.startTimeUnixNano;
     if (span.endTimeUnixNano > max) max = span.endTimeUnixNano;
@@ -107,6 +109,9 @@ export function deriveREDMetrics(
   bucketSizeNanos = 60_000_000_000n, // 1 minute
   serviceName = "unknown"
 ): REDMetrics[] {
+  if (bucketSizeNanos <= 0n) {
+    throw new Error("bucketSizeNanos must be a positive bigint");
+  }
   // Group by (operation, bucket) using a composite key with null separator
   // (safe against any characters in span names)
   const groups = new Map<
@@ -133,6 +138,8 @@ export function deriveREDMetrics(
       .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     const errors = group.spans.filter((s) => s.statusCode === StatusCode.ERROR).length;
     const sum = durations.reduce((acc, d) => acc + d, 0n);
+    const firstDur = durations[0] ?? 0n;
+    const lastDur = durations[durations.length - 1] ?? 0n;
 
     results.push({
       serviceName,
@@ -142,8 +149,8 @@ export function deriveREDMetrics(
       errors,
       errorRate: group.spans.length > 0 ? errors / group.spans.length : 0,
       duration: {
-        min: durations[0]!,
-        max: durations[durations.length - 1]!,
+        min: firstDur,
+        max: lastDur,
         sum,
         count: durations.length,
         p50: percentile(durations, 0.5),
@@ -162,7 +169,7 @@ export function deriveREDMetrics(
 function percentile(sorted: bigint[], p: number): bigint {
   if (sorted.length === 0) return 0n;
   const idx = Math.ceil(p * sorted.length) - 1;
-  return sorted[Math.max(0, idx)]!;
+  return sorted[Math.max(0, idx)] ?? 0n;
 }
 
 // ─── Service Graph ───────────────────────────────────────────────────
@@ -188,8 +195,10 @@ export interface ServiceGraphEdge {
  * Identifies CLIENT→SERVER pairs that represent inter-service calls.
  *
  * @param spans - All spans (typically from multiple traces)
- * @param getServiceName - Function to extract service name from a span
- *   (default: looks for "service.name" attribute)
+ * @param getServiceName - Custom function to extract service name from a span.
+ *   The default implementation checks span attributes; for OTLP resource-level
+ *   service.name, callers should provide a function that maps spans to their
+ *   resource's service.name attribute.
  * @returns Array of service graph edges
  */
 export function computeServiceGraph(
@@ -203,7 +212,7 @@ export function computeServiceGraph(
   for (const span of spans) {
     if (span.kind !== 2) continue; // SERVER only
     if (!span.parentSpanId) continue;
-    const parentHex = bytesToHex(span.parentSpanId);
+    const parentHex = `${bytesToHex(span.traceId)}:${bytesToHex(span.parentSpanId)}`;
     let children = serverChildrenByParent.get(parentHex);
     if (!children) {
       children = [];
@@ -220,7 +229,7 @@ export function computeServiceGraph(
     const source = svcName(span);
     if (!source) continue;
 
-    const myId = bytesToHex(span.spanId);
+    const myId = `${bytesToHex(span.traceId)}:${bytesToHex(span.spanId)}`;
     const children = serverChildrenByParent.get(myId);
     if (!children) continue;
 
@@ -264,7 +273,9 @@ function defaultServiceName(span: SpanRecord, resource?: Resource): string | und
 function bytesToHex(bytes: Uint8Array): string {
   let hex = "";
   for (let i = 0; i < bytes.length; i++) {
-    hex += (bytes[i]! >> 4).toString(16) + (bytes[i]! & 0xf).toString(16);
+    const b = bytes[i];
+    if (b === undefined) continue;
+    hex += (b >> 4).toString(16) + (b & 0xf).toString(16);
   }
   return hex;
 }

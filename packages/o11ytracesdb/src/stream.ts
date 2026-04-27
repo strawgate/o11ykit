@@ -31,7 +31,13 @@ export class StreamRegistry {
     const refScopeMap = this.byResourceRef.get(resource);
     if (refScopeMap !== undefined) {
       const refId = refScopeMap.get(scope);
-      if (refId !== undefined) return refId;
+      if (refId !== undefined) {
+        // Validate the cached id still exists (could be stale after eviction)
+        if (this.byId.has(refId)) return refId;
+        // Stale entry — remove it
+        refScopeMap.delete(scope);
+        if (refScopeMap.size === 0) this.byResourceRef.delete(resource);
+      }
     }
     const h = hashStream(resource, scope);
     const bucket = this.byHash.get(h) ?? [];

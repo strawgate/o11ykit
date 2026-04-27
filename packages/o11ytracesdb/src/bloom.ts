@@ -37,7 +37,7 @@ export function createBloomFilter(traceIds: Uint8Array[], bitsPerElement = 10): 
     for (let i = 0; i < k; i++) {
       const bit = ((h1 + i * h2) >>> 0) % effectiveBits;
       const byteIdx = bit >>> 3;
-      filter[byteIdx] = filter[byteIdx]! | (1 << (bit & 7));
+      filter[byteIdx] = (filter[byteIdx] ?? 0) | (1 << (bit & 7));
     }
   }
 
@@ -56,7 +56,8 @@ export function bloomMayContain(filter: Uint8Array, traceId: Uint8Array): boolea
   const [h1, h2] = dualHash(traceId);
   for (let i = 0; i < k; i++) {
     const bit = ((h1 + i * h2) >>> 0) % nBits;
-    if (!(filter[bit >>> 3]! & (1 << (bit & 7)))) return false;
+    const bitmapByte = filter[bit >>> 3];
+    if (bitmapByte === undefined || !(bitmapByte & (1 << (bit & 7)))) return false;
   }
   return true;
 }
@@ -67,7 +68,7 @@ export function bloomMayContain(filter: Uint8Array, traceId: Uint8Array): boolea
 export function bloomToBase64(filter: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < filter.length; i++) {
-    binary += String.fromCharCode(filter[i]!);
+    binary += String.fromCharCode(filter[i] ?? 0);
   }
   return btoa(binary);
 }
@@ -90,7 +91,7 @@ export function bloomFromBase64(b64: string): Uint8Array {
 function fnv1a32(data: Uint8Array): number {
   let hash = 0x811c9dc5;
   for (let i = 0; i < data.length; i++) {
-    hash ^= data[i]!;
+    hash ^= data[i] ?? 0;
     hash = Math.imul(hash, 0x01000193);
   }
   return hash >>> 0;
@@ -100,7 +101,7 @@ function fnv1a32(data: Uint8Array): number {
 function murmur32(data: Uint8Array): number {
   let h = 0x9747b28c;
   for (let i = 0; i < data.length; i++) {
-    h ^= data[i]!;
+    h ^= data[i] ?? 0;
     h = Math.imul(h, 0xcc9e2d51);
     h = (h << 15) | (h >>> 17);
     h = Math.imul(h, 0x1b873593);
@@ -125,7 +126,9 @@ function dualHash(traceId: Uint8Array): [number, number] {
 function bufToHex(buf: Uint8Array): string {
   let hex = "";
   for (let i = 0; i < buf.length; i++) {
-    hex += ((buf[i]! >> 4) & 0xf).toString(16) + (buf[i]! & 0xf).toString(16);
+    const b = buf[i];
+    if (b === undefined) continue;
+    hex += ((b >> 4) & 0xf).toString(16) + (b & 0xf).toString(16);
   }
   return hex;
 }

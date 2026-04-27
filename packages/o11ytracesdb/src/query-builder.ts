@@ -107,7 +107,8 @@ export class TraceQuery {
   /** Filter by status code (accepts string name or numeric value). */
   status(code: "unset" | "ok" | "error" | StatusCode): this {
     if (typeof code === "string") {
-      this._opts.statusCode = STATUS_MAP[code]!;
+      const mapped = STATUS_MAP[code];
+      if (mapped !== undefined) this._opts.statusCode = mapped;
     } else {
       this._opts.statusCode = code;
     }
@@ -117,7 +118,8 @@ export class TraceQuery {
   /** Filter by span kind (accepts string name or numeric value). */
   kind(k: "internal" | "server" | "client" | "producer" | "consumer" | SpanKind): this {
     if (typeof k === "string") {
-      this._opts.kind = KIND_MAP[k]!;
+      const mapped = KIND_MAP[k];
+      if (mapped !== undefined) this._opts.kind = mapped;
     } else {
       this._opts.kind = k;
     }
