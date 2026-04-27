@@ -140,6 +140,59 @@
   line-height: 1.5;
 }
 
+/* ─── Problem Section ──────────────────────────────────────────────── */
+.problem-section {
+  text-align: center;
+}
+
+.problem-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  max-width: 820px;
+  margin: 0 auto 20px;
+}
+
+.problem-card {
+  padding: 20px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  text-align: left;
+}
+
+.problem-icon {
+  font-size: 24px;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.problem-card h3 {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: var(--ink);
+}
+
+.problem-card p {
+  font-size: 13px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.problem-solution {
+  font-size: 15px;
+  color: var(--ink-soft);
+  max-width: 62ch;
+  margin: 0 auto;
+  line-height: 1.5;
+  padding: 14px 18px;
+  background: var(--traces-soft);
+  border: 1px solid var(--traces);
+  border-radius: 10px;
+}
+
 /* ─── Scenario Grid ──────────────────────────────────────────────── */
 .scenario-grid {
   display: grid;

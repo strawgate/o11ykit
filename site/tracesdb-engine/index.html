@@ -110,6 +110,32 @@
         </p>
       </section>
 
+      <!-- ─── The Problem ──────────────────────────────────────── -->
+      <section class="panel problem-section" id="section-problem">
+        <h2>The Problem</h2>
+        <div class="problem-grid">
+          <div class="problem-card">
+            <span class="problem-icon">🔄</span>
+            <h3>Every click round-trips</h3>
+            <p>Existing observability UIs re-fetch data from the server on every pan, zoom, and filter. Click an exemplar? That's a network call to Tempo. Drill into a trace? Another call.</p>
+          </div>
+          <div class="problem-card">
+            <span class="problem-icon">💥</span>
+            <h3>Browsers crash at scale</h3>
+            <p>JS object overhead of 30–50 bytes per data point means dashboards routinely OOM. Kibana and Grafana both struggle with large trace datasets in the browser.</p>
+          </div>
+          <div class="problem-card">
+            <span class="problem-icon">🔗</span>
+            <h3>Cross-signal is 3+ hops</h3>
+            <p>Correlating a metric spike → traces → logs requires 3+ sequential API calls with server-side credentials. What should be instant takes seconds.</p>
+          </div>
+        </div>
+        <p class="problem-solution">
+          <strong>The fix:</strong> store spans in columnar typed arrays at &lt;30 bytes each, index with bloom filters and nested sets,
+          and query locally. Metric spike → correlated traces → filtered logs in one frame. Demo it yourself below ↓
+        </p>
+      </section>
+
       <!-- ═══════════════════════════════════════════════════════ -->
       <!-- Section 1: Dataset (scenario grid)                      -->
       <!-- ═══════════════════════════════════════════════════════ -->
