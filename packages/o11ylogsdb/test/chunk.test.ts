@@ -1,5 +1,5 @@
+import { defaultRegistry } from "stardb";
 import { describe, expect, it } from "vitest";
-
 import {
   CHUNK_VERSION,
   ChunkBuilder,
@@ -10,7 +10,6 @@ import {
   readRecords,
   serializeChunk,
 } from "../src/chunk.js";
-import { defaultRegistry } from "../src/codec-baseline.js";
 import type { InstrumentationScope, LogRecord, Resource } from "../src/types.js";
 
 const resource: Resource = { attributes: [{ key: "service.name", value: "test" }] };

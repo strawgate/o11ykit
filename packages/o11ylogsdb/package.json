@@ -34,6 +34,9 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "stardb": "0.0.0"
+  },
   "scripts": {
     "build": "tsc -b",
     "build:rust": "cd rust && cargo build --release --target wasm32-unknown-unknown && cp target/wasm32-unknown-unknown/release/o11ylogsdb_wasm.wasm ../wasm/o11ylogsdb-rust.wasm",

@@ -90,8 +90,19 @@ export const lengthPrefixStringCodec: StringCodec = {
     const out: string[] = [];
     let cursor = 0;
     while (cursor < input.length) {
+      // Codec input may come from on-disk / network state. Validate
+      // boundaries so truncation throws a descriptive error rather than
+      // an opaque DataView RangeError.
+      if (cursor + 4 > input.length) {
+        throw new RangeError(`length-prefix: truncated length prefix at offset ${cursor}`);
+      }
       const len = view.getUint32(cursor, true);
       cursor += 4;
+      if (cursor + len > input.length) {
+        throw new RangeError(
+          `length-prefix: truncated string payload at offset ${cursor} (need ${len} bytes, have ${input.length - cursor})`
+        );
+      }
       out.push(dec.decode(input.subarray(cursor, cursor + len)));
       cursor += len;
     }
@@ -117,6 +128,9 @@ export const rawInt64Codec: IntCodec = {
     return out;
   },
   decode(input) {
+    if (input.length % 8 !== 0) {
+      throw new RangeError(`raw-i64-le: input length ${input.length} is not a multiple of 8`);
+    }
     const n = input.length / 8;
     const out = new BigInt64Array(n);
     const view = new DataView(input.buffer, input.byteOffset, input.byteLength);

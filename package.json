@@ -15,11 +15,11 @@
   ],
   "scripts": {
     "build": "npm run build:packages && npm run build:octo-packages && npm run build:examples && npm run build:actions",
-    "build:packages": "tsc -b packages/otlpjson packages/query packages/views packages/adapters packages/o11ytsdb packages/o11ylogsdb --force",
+    "build:packages": "tsc -b packages/otlpjson packages/query packages/views packages/adapters packages/o11ytsdb packages/stardb packages/o11ylogsdb --force",
     "build:octo-packages": "npm run build --workspace=@octo11y/core && npm run build --workspace=@benchkit/format && npm run build --workspace=@benchkit/chart && npm run build --workspace=@benchkit/adapters",
     "build:examples": "npm run build --workspace @otlpkit/example-chartjs && npm run build --workspace @otlpkit/example-echarts && npm run build --workspace @otlpkit/example-recharts && npm run build --workspace @otlpkit/example-uplot && npm run build --workspace @otlpkit/example-demo",
     "typecheck": "npm run typecheck:packages && npm run typecheck:octo-packages && npm run typecheck:examples && npm run typecheck:actions && npm run typecheck:site",
-    "typecheck:packages": "tsc -b packages/otlpjson packages/query packages/views packages/adapters packages/o11ytsdb packages/o11ylogsdb --pretty false --force",
+    "typecheck:packages": "tsc -b packages/otlpjson packages/query packages/views packages/adapters packages/o11ytsdb packages/stardb packages/o11ylogsdb --pretty false --force",
     "typecheck:octo-packages": "npm run build --workspace=@octo11y/core && npm run build --workspace=@benchkit/format && npm run lint --workspace=@octo11y/core && npm run lint --workspace=@benchkit/format && npm run lint --workspace=@benchkit/chart && npm run lint --workspace=@benchkit/adapters",
     "typecheck:examples": "npm run typecheck --workspace @otlpkit/example-chartjs && npm run typecheck --workspace @otlpkit/example-echarts && npm run typecheck --workspace @otlpkit/example-recharts && npm run typecheck --workspace @otlpkit/example-uplot && npm run typecheck --workspace @otlpkit/example-demo",
     "build:actions": "npm run build --workspace @o11ykit/action-parse-results",

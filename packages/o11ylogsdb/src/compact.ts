@@ -24,8 +24,8 @@
  *     future M0/M1 world).
  */
 
+import type { CodecRegistry } from "stardb";
 import type { Chunk } from "./chunk.js";
-import type { CodecRegistry } from "./codec.js";
 
 export interface CompactStats {
   inputBytes: number;
