@@ -42,6 +42,9 @@ export class TraceStore {
   private readonly chunkSize: number;
   private readonly policy: ChunkPolicy;
 
+  /** LRU decode cache — avoids re-decoding sealed chunks on repeated queries. */
+  private decodeCache = new WeakMap<Chunk, SpanRecord[]>();
+
   constructor(opts: TraceStoreOpts = {}) {
     this.chunkSize = opts.chunkSize ?? 1024;
     this.policy = opts.policy ?? new ColumnarTracePolicy();
@@ -54,10 +57,15 @@ export class TraceStore {
 
   /**
    * Decode a chunk's payload using the store's configured policy.
-   * This is the canonical way to decode chunks — avoids hardcoding a codec.
+   * Results are cached — subsequent calls with the same chunk return
+   * the cached SpanRecord[] without re-decoding.
    */
   decodeChunk(chunk: Chunk): SpanRecord[] {
-    return this.policy.decodePayload(chunk.payload, chunk.header.nSpans, chunk.header.codecMeta);
+    let spans = this.decodeCache.get(chunk);
+    if (spans !== undefined) return spans;
+    spans = this.policy.decodePayload(chunk.payload, chunk.header.nSpans, chunk.header.codecMeta);
+    this.decodeCache.set(chunk, spans);
+    return spans;
   }
 
   /**

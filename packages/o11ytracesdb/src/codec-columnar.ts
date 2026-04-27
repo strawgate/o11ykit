@@ -459,18 +459,18 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       durations[i] = durSection.readVarint();
     }
 
-    // Section 2: IDs
+    // Section 2: IDs (zero-copy: use slice() for owned copies without retaining parent buffer)
     const idSection = new ByteReader(reader.readSection());
     const nullBitmapLen = Math.ceil(n / 8);
     const nullBitmap = idSection.readBytes(nullBitmapLen);
     const traceIds: Uint8Array[] = new Array(n);
     const spanIds: Uint8Array[] = new Array(n);
     const parentSpanIds: (Uint8Array | undefined)[] = new Array(n);
-    for (let i = 0; i < n; i++) traceIds[i] = new Uint8Array(idSection.readBytes(16));
-    for (let i = 0; i < n; i++) spanIds[i] = new Uint8Array(idSection.readBytes(8));
+    for (let i = 0; i < n; i++) traceIds[i] = idSection.readBytes(16).slice();
+    for (let i = 0; i < n; i++) spanIds[i] = idSection.readBytes(8).slice();
     for (let i = 0; i < n; i++) {
       if (nullBitmap[i >>> 3]! & (1 << (i & 7))) {
-        parentSpanIds[i] = new Uint8Array(idSection.readBytes(8));
+        parentSpanIds[i] = idSection.readBytes(8).slice();
       }
     }
 
@@ -549,8 +549,8 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       const linkCount = linkSection.readUvarint();
       const links: SpanLink[] = new Array(linkCount);
       for (let j = 0; j < linkCount; j++) {
-        const traceId = new Uint8Array(linkSection.readBytes(16));
-        const spanId = new Uint8Array(linkSection.readBytes(8));
+        const traceId = linkSection.readBytes(16).slice();
+        const spanId = linkSection.readBytes(8).slice();
         const attrCount = linkSection.readUvarint();
         const attributes: KeyValue[] = new Array(attrCount);
         for (let k = 0; k < attrCount; k++) {
