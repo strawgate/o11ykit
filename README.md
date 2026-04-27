@@ -1,6 +1,9 @@
 # o11ykit
 
-`o11ykit` is a monorepo for OTLP-driven tooling.
+> *SQLite for observability in the browser.*
+
+`o11ykit` is a monorepo for browser-native observability tooling — OTLP parsing,
+columnar compression databases, and cross-signal correlation entirely client-side.
 
 Top-level projects:
 
