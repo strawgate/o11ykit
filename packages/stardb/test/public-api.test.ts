@@ -18,34 +18,28 @@ import type {
 } from "../src/index.js";
 import * as stardb from "../src/index.js";
 
+// Single source of truth for every runtime symbol the package promises.
+// Adding or removing one without updating this list fails both tests below.
+const RUNTIME_EXPORTS = [
+  "CodecRegistry",
+  "defaultRegistry",
+  "GzipCodec",
+  "lengthPrefixStringCodec",
+  "rawCodec",
+  "rawInt64Codec",
+  "ZstdCodec",
+] as const;
+
 describe("stardb public API", () => {
   it("exports every documented runtime symbol", () => {
-    const expected = [
-      "CodecRegistry",
-      "defaultRegistry",
-      "GzipCodec",
-      "lengthPrefixStringCodec",
-      "rawCodec",
-      "rawInt64Codec",
-      "ZstdCodec",
-    ] as const;
-    for (const name of expected) {
+    for (const name of RUNTIME_EXPORTS) {
       expect(stardb, `missing export: ${name}`).toHaveProperty(name);
     }
   });
 
   it("does not leak unintentional symbols", () => {
-    const allowed = new Set([
-      "CodecRegistry",
-      "defaultRegistry",
-      "GzipCodec",
-      "lengthPrefixStringCodec",
-      "rawCodec",
-      "rawInt64Codec",
-      "ZstdCodec",
-    ]);
-    const actual = Object.keys(stardb).sort();
-    const unexpected = actual.filter((k) => !allowed.has(k));
+    const allowed = new Set<string>(RUNTIME_EXPORTS);
+    const unexpected = Object.keys(stardb).filter((k) => !allowed.has(k));
     expect(unexpected, `unexpected exports: ${unexpected.join(", ")}`).toEqual([]);
   });
 

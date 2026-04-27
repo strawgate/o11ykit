@@ -8,7 +8,7 @@
  * StreamKey) are specific to the logs engine.
  */
 
-export type {
+import type {
   AnyValue,
   InstrumentationScope,
   KeyValue,
@@ -17,7 +17,7 @@ export type {
   StreamId,
 } from "stardb";
 
-import type { AnyValue, InstrumentationScope, KeyValue, Resource, SeverityText } from "stardb";
+export type { AnyValue, InstrumentationScope, KeyValue, Resource, SeverityText, StreamId };
 
 /** Internal LogRecord shape — one row in a chunk. */
 export interface LogRecord {
