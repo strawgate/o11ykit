@@ -1,10 +1,9 @@
 import { bench, describe } from "vitest";
 import { ColumnarTracePolicy } from "../src/codec-columnar.js";
-import { ChunkBuilder } from "../src/chunk.js";
 import { TraceStore } from "../src/engine.js";
-import { queryTraces, buildSpanTree, criticalPath } from "../src/query.js";
+import { buildSpanTree, criticalPath, queryTraces } from "../src/query.js";
 import type { SpanRecord } from "../src/types.js";
-import { SpanKind, StatusCode } from "../src/types.js";
+import { StatusCode } from "../src/types.js";
 
 // ─── Span generators ─────────────────────────────────────────────────
 
@@ -28,9 +27,16 @@ const OPERATIONS = [
 ];
 
 const ATTR_KEYS = [
-  "http.method", "http.status_code", "http.url", "http.route",
-  "db.system", "db.statement", "rpc.service", "net.peer.name",
-  "messaging.system", "service.name",
+  "http.method",
+  "http.status_code",
+  "http.url",
+  "http.route",
+  "db.system",
+  "db.statement",
+  "rpc.service",
+  "net.peer.name",
+  "messaging.system",
+  "service.name",
 ];
 
 function makeRealisticSpan(traceId: Uint8Array, parentId?: Uint8Array, idx = 0): SpanRecord {
@@ -40,7 +46,7 @@ function makeRealisticSpan(traceId: Uint8Array, parentId?: Uint8Array, idx = 0):
   const attrCount = 2 + Math.floor(Math.random() * 4);
   const attributes = Array.from({ length: attrCount }, (_, j) => ({
     key: ATTR_KEYS[(idx + j) % ATTR_KEYS.length]!,
-    value: j === 0 ? "GET" : j === 1 ? BigInt(200 + idx % 5) : `value-${idx}-${j}`,
+    value: j === 0 ? "GET" : j === 1 ? BigInt(200 + (idx % 5)) : `value-${idx}-${j}`,
   }));
 
   return {
@@ -55,11 +61,16 @@ function makeRealisticSpan(traceId: Uint8Array, parentId?: Uint8Array, idx = 0):
     statusCode: idx % 20 === 0 ? StatusCode.ERROR : StatusCode.OK,
     ...(idx % 20 === 0 ? { statusMessage: "connection timeout" } : {}),
     attributes,
-    events: idx % 10 === 0 ? [{
-      timeUnixNano: start + 500_000n,
-      name: "exception",
-      attributes: [{ key: "exception.type", value: "TimeoutError" }],
-    }] : [],
+    events:
+      idx % 10 === 0
+        ? [
+            {
+              timeUnixNano: start + 500_000n,
+              name: "exception",
+              attributes: [{ key: "exception.type", value: "TimeoutError" }],
+            },
+          ]
+        : [],
     links: [],
   };
 }
@@ -146,7 +157,7 @@ describe("ingest + query", () => {
   queryStore.append(
     { attributes: [{ key: "service.name", value: "bench-svc" }] },
     { name: "bench", version: "1.0.0" },
-    spans1K,
+    spans1K
   );
   queryStore.flush();
   // Warm decode cache

@@ -29,7 +29,6 @@ import type {
   SpanPredicate,
   StatusCode,
   StructuralPredicate,
-  StructuralRelation,
   TraceIntrinsics,
   TraceQueryOpts,
   TraceQueryResult,

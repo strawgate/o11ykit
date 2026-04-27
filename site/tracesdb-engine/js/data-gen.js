@@ -20,12 +20,22 @@
  */
 
 const SERVICES = {
-  gateway: { ops: ["GET /api/users", "POST /api/orders", "GET /api/products", "PUT /api/cart", "DELETE /api/session"] },
+  gateway: {
+    ops: [
+      "GET /api/users",
+      "POST /api/orders",
+      "GET /api/products",
+      "PUT /api/cart",
+      "DELETE /api/session",
+    ],
+  },
   auth: { ops: ["validate-token", "refresh-token", "check-permissions", "decode-jwt"] },
   users: { ops: ["get-user-by-id", "list-users", "update-profile", "create-user"] },
   orders: { ops: ["create-order", "get-order", "list-orders", "cancel-order", "process-payment"] },
   products: { ops: ["get-product", "search-products", "update-inventory", "get-recommendations"] },
-  database: { ops: ["SELECT users", "SELECT orders", "INSERT orders", "UPDATE products", "SELECT products"] },
+  database: {
+    ops: ["SELECT users", "SELECT orders", "INSERT orders", "UPDATE products", "SELECT products"],
+  },
   cache: { ops: ["redis.get", "redis.set", "redis.mget", "redis.del", "redis.expire"] },
   queue: { ops: ["publish-event", "consume-event", "ack-message", "nack-message"] },
   notification: { ops: ["send-email", "send-push", "send-sms", "template-render"] },
@@ -74,16 +84,27 @@ function generateTrace(services, depth, width, errorRate, baseTime) {
       spanId,
       parentSpanId: parentId || undefined,
       name: opName,
-      kind: currentDepth === 0 ? 1 : (currentDepth === depth ? 3 : 0),
+      kind: currentDepth === 0 ? 1 : currentDepth === depth ? 3 : 0,
       startTimeUnixNano: startNs,
       endTimeUnixNano: startNs + durationNs,
       durationNanos: durationNs,
       statusCode: hasError ? 2 : 1,
       attributes: [
         { key: "service.name", value: serviceName },
-        { key: "http.method", value: opName.startsWith("GET") ? "GET" : opName.startsWith("POST") ? "POST" : "INTERNAL" },
+        {
+          key: "http.method",
+          value: opName.startsWith("GET") ? "GET" : opName.startsWith("POST") ? "POST" : "INTERNAL",
+        },
       ],
-      events: hasError ? [{ name: "exception", timeUnixNano: startNs + durationNs / 2n, attributes: [{ key: "exception.message", value: "Connection timeout" }] }] : [],
+      events: hasError
+        ? [
+            {
+              name: "exception",
+              timeUnixNano: startNs + durationNs / 2n,
+              attributes: [{ key: "exception.message", value: "Connection timeout" }],
+            },
+          ]
+        : [],
       links: [],
     };
 
@@ -100,14 +121,16 @@ function generateTrace(services, depth, width, errorRate, baseTime) {
       let childStart = startNs + BigInt(Math.round(randBetween(1, 5) * 1_000_000));
 
       for (let i = 0; i < childCount; i++) {
-        const childService = pick(serviceNames.filter(s => s !== serviceName));
+        const childService = pick(serviceNames.filter((s) => s !== serviceName));
         makeSpan(childService, spanId, currentDepth + 1, childStart);
         childStart += BigInt(Math.round(randBetween(5, 30) * 1_000_000));
       }
     }
   }
 
-  const rootService = pick(serviceNames.filter(s => s === "gateway" || serviceNames.indexOf(s) < 3));
+  const rootService = pick(
+    serviceNames.filter((s) => s === "gateway" || serviceNames.indexOf(s) < 3)
+  );
   makeSpan(rootService, null, 0, baseTime);
   return spans;
 }
@@ -122,7 +145,14 @@ export const SCENARIOS = [
     description: "50 traces across 6 services with 3-level depth. Typical web API traffic.",
     meta: "50 traces · ~250 spans · 6 services",
     generate() {
-      const svcs = { gateway: SERVICES.gateway, auth: SERVICES.auth, users: SERVICES.users, orders: SERVICES.orders, database: SERVICES.database, cache: SERVICES.cache };
+      const svcs = {
+        gateway: SERVICES.gateway,
+        auth: SERVICES.auth,
+        users: SERVICES.users,
+        orders: SERVICES.orders,
+        database: SERVICES.database,
+        cache: SERVICES.cache,
+      };
       const spans = [];
       const baseTime = BigInt(Date.now()) * 1_000_000n;
       for (let i = 0; i < 50; i++) {
@@ -138,7 +168,16 @@ export const SCENARIOS = [
     description: "20 traces with wide fan-out (5-7 children per span). Simulates scatter-gather.",
     meta: "20 traces · ~600 spans · 8 services",
     generate() {
-      const svcs = { gateway: SERVICES.gateway, users: SERVICES.users, products: SERVICES.products, search: SERVICES.search, cache: SERVICES.cache, database: SERVICES.database, queue: SERVICES.queue, notification: SERVICES.notification };
+      const svcs = {
+        gateway: SERVICES.gateway,
+        users: SERVICES.users,
+        products: SERVICES.products,
+        search: SERVICES.search,
+        cache: SERVICES.cache,
+        database: SERVICES.database,
+        queue: SERVICES.queue,
+        notification: SERVICES.notification,
+      };
       const spans = [];
       const baseTime = BigInt(Date.now()) * 1_000_000n;
       for (let i = 0; i < 20; i++) {
@@ -151,10 +190,17 @@ export const SCENARIOS = [
   {
     id: "error-cascade",
     name: "Error Cascade",
-    description: "30 traces with high error rate (25%). Database failures propagate up the call chain.",
+    description:
+      "30 traces with high error rate (25%). Database failures propagate up the call chain.",
     meta: "30 traces · ~180 spans · 5 services",
     generate() {
-      const svcs = { gateway: SERVICES.gateway, orders: SERVICES.orders, database: SERVICES.database, cache: SERVICES.cache, queue: SERVICES.queue };
+      const svcs = {
+        gateway: SERVICES.gateway,
+        orders: SERVICES.orders,
+        database: SERVICES.database,
+        cache: SERVICES.cache,
+        queue: SERVICES.queue,
+      };
       const spans = [];
       const baseTime = BigInt(Date.now()) * 1_000_000n;
       for (let i = 0; i < 30; i++) {
@@ -167,7 +213,8 @@ export const SCENARIOS = [
   {
     id: "deep-stack",
     name: "Deep Stack",
-    description: "15 traces with deep call chains (5-6 levels). Simulates complex middleware pipelines.",
+    description:
+      "15 traces with deep call chains (5-6 levels). Simulates complex middleware pipelines.",
     meta: "15 traces · ~300 spans · 10 services",
     generate() {
       const svcs = SERVICES;

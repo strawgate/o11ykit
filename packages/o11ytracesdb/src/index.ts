@@ -10,6 +10,50 @@
  *   o11ytsdb (metrics) → o11ylogsdb (logs) → o11ytracesdb (traces)
  */
 
+export type {
+  AggregationGroup,
+  AggregationPipelineResult,
+  AggregationResult,
+  AggregationSpec,
+} from "./aggregate.js";
+// Aggregation pipeline
+export { aggregateSpans, aggregateTraces } from "./aggregate.js";
+// Bloom filter
+export { bloomFromBase64, bloomMayContain, bloomToBase64, createBloomFilter } from "./bloom.js";
+export type { Chunk, ChunkHeader, ChunkPolicy } from "./chunk.js";
+
+// Chunk format
+export { ChunkBuilder, deserializeChunk, serializeChunk } from "./chunk.js";
+// Codec
+export { ColumnarTracePolicy } from "./codec-columnar.js";
+export type { REDMetrics, ServiceGraphEdge, TimeWindow } from "./correlate.js";
+// Cross-signal correlation
+export {
+  computeServiceGraph,
+  deriveREDMetrics,
+  extractServiceNames,
+  extractTraceIds,
+  spanTimeWindow,
+  traceTimeWindow,
+} from "./correlate.js";
+export type { TraceStoreOpts, TraceStoreStats } from "./engine.js";
+// Engine
+export { TraceStore } from "./engine.js";
+// Query
+export {
+  assembleTrace,
+  buildSpanTree,
+  criticalPath,
+  isAncestorOf,
+  isDescendantOf,
+  isSiblingOf,
+  nestedSetDepth,
+  queryTraces,
+} from "./query.js";
+// Query builder
+export { TraceQuery } from "./query-builder.js";
+// Stream registry
+export { StreamRegistry } from "./stream.js";
 // Types
 export type {
   AnyValue,
@@ -35,41 +79,3 @@ export type {
   TraceSortField,
 } from "./types.js";
 export { SpanKind, StatusCode } from "./types.js";
-
-// Engine
-export { TraceStore } from "./engine.js";
-export type { TraceStoreOpts, TraceStoreStats } from "./engine.js";
-
-// Chunk format
-export { ChunkBuilder, deserializeChunk, serializeChunk } from "./chunk.js";
-export type { Chunk, ChunkHeader, ChunkPolicy } from "./chunk.js";
-
-// Codec
-export { ColumnarTracePolicy } from "./codec-columnar.js";
-
-// Bloom filter
-export { createBloomFilter, bloomMayContain, bloomToBase64, bloomFromBase64 } from "./bloom.js";
-
-// Query
-export { assembleTrace, buildSpanTree, criticalPath, queryTraces, isAncestorOf, isDescendantOf, isSiblingOf, nestedSetDepth } from "./query.js";
-
-// Query builder
-export { TraceQuery } from "./query-builder.js";
-
-// Aggregation pipeline
-export { aggregateTraces, aggregateSpans } from "./aggregate.js";
-export type { AggregationSpec, AggregationResult, AggregationGroup, AggregationPipelineResult } from "./aggregate.js";
-
-// Cross-signal correlation
-export {
-  traceTimeWindow,
-  spanTimeWindow,
-  deriveREDMetrics,
-  computeServiceGraph,
-  extractTraceIds,
-  extractServiceNames,
-} from "./correlate.js";
-export type { TimeWindow, REDMetrics, ServiceGraphEdge } from "./correlate.js";
-
-// Stream registry
-export { StreamRegistry } from "./stream.js";

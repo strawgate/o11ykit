@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { ChunkBuilder, serializeChunk, deserializeChunk } from "../src/chunk.js";
+import { describe, expect, it } from "vitest";
+import { ChunkBuilder, deserializeChunk, serializeChunk } from "../src/chunk.js";
 import { ColumnarTracePolicy } from "../src/codec-columnar.js";
 import { TraceStore } from "../src/engine.js";
-import { queryTraces, buildSpanTree } from "../src/query.js";
+import { buildSpanTree, queryTraces } from "../src/query.js";
 import type { SpanRecord } from "../src/types.js";
 import { SpanKind, StatusCode } from "../src/types.js";
 
@@ -52,7 +52,11 @@ describe("Chunk wire format (serialize/deserialize)", () => {
     expect(decoded.payload.length).toBe(chunk.payload.length);
 
     // Verify payload decodes correctly
-    const decodedSpans = policy.decodePayload(decoded.payload, decoded.header.nSpans, decoded.header.codecMeta);
+    const decodedSpans = policy.decodePayload(
+      decoded.payload,
+      decoded.header.nSpans,
+      decoded.header.codecMeta
+    );
     expect(decodedSpans.length).toBe(10);
   });
 
@@ -68,7 +72,10 @@ describe("Chunk wire format (serialize/deserialize)", () => {
 
   it("validates schema version", () => {
     const buf = new Uint8Array(20);
-    buf[0] = 0x4f; buf[1] = 0x54; buf[2] = 0x44; buf[3] = 0x42; // OTDB
+    buf[0] = 0x4f;
+    buf[1] = 0x54;
+    buf[2] = 0x44;
+    buf[3] = 0x42; // OTDB
     buf[4] = 99; // bad version
     expect(() => deserializeChunk(buf)).toThrow("unsupported schema version");
   });
@@ -161,9 +168,7 @@ describe("Edge cases", () => {
   });
 
   it("handles all SpanKind values", () => {
-    const spans = [0, 1, 2, 3, 4, 5].map((kind) =>
-      makeSpan({ kind: kind as SpanRecord["kind"] }),
-    );
+    const spans = [0, 1, 2, 3, 4, 5].map((kind) => makeSpan({ kind: kind as SpanRecord["kind"] }));
     const { payload, meta } = policy.encodePayload(spans);
     const decoded = policy.decodePayload(payload, spans.length, meta);
     for (let i = 0; i < spans.length; i++) {
@@ -198,9 +203,32 @@ describe("Query correctness", () => {
     const rootId = randomBytes(8);
     const base = 1700000000000000000n;
     const spans: SpanRecord[] = [
-      makeSpan({ traceId, spanId: rootId, name: "root", startTimeUnixNano: base, endTimeUnixNano: base + 100n, durationNanos: 100n }),
-      makeSpan({ traceId, spanId: randomBytes(8), parentSpanId: rootId, name: "child-a", startTimeUnixNano: base + 10n, endTimeUnixNano: base + 50n, durationNanos: 40n }),
-      makeSpan({ traceId, spanId: randomBytes(8), parentSpanId: rootId, name: "child-b", startTimeUnixNano: base + 20n, endTimeUnixNano: base + 80n, durationNanos: 60n }),
+      makeSpan({
+        traceId,
+        spanId: rootId,
+        name: "root",
+        startTimeUnixNano: base,
+        endTimeUnixNano: base + 100n,
+        durationNanos: 100n,
+      }),
+      makeSpan({
+        traceId,
+        spanId: randomBytes(8),
+        parentSpanId: rootId,
+        name: "child-a",
+        startTimeUnixNano: base + 10n,
+        endTimeUnixNano: base + 50n,
+        durationNanos: 40n,
+      }),
+      makeSpan({
+        traceId,
+        spanId: randomBytes(8),
+        parentSpanId: rootId,
+        name: "child-b",
+        startTimeUnixNano: base + 20n,
+        endTimeUnixNano: base + 80n,
+        durationNanos: 60n,
+      }),
     ];
 
     store.append(resource, scope, spans);
@@ -222,11 +250,21 @@ describe("Query correctness", () => {
 
     // Old spans (will be in their own chunk)
     const oldSpans = Array.from({ length: 4 }, (_, i) =>
-      makeSpan({ traceId: randomBytes(16), startTimeUnixNano: oldBase + BigInt(i), endTimeUnixNano: oldBase + BigInt(i) + 10n, durationNanos: 10n }),
+      makeSpan({
+        traceId: randomBytes(16),
+        startTimeUnixNano: oldBase + BigInt(i),
+        endTimeUnixNano: oldBase + BigInt(i) + 10n,
+        durationNanos: 10n,
+      })
     );
     // New spans (will be in their own chunk)
     const newSpans = Array.from({ length: 4 }, (_, i) =>
-      makeSpan({ traceId: randomBytes(16), startTimeUnixNano: newBase + BigInt(i), endTimeUnixNano: newBase + BigInt(i) + 10n, durationNanos: 10n }),
+      makeSpan({
+        traceId: randomBytes(16),
+        startTimeUnixNano: newBase + BigInt(i),
+        endTimeUnixNano: newBase + BigInt(i) + 10n,
+        durationNanos: 10n,
+      })
     );
 
     store.append(resource, scope, oldSpans);
@@ -250,8 +288,20 @@ describe("Query correctness", () => {
 
     const base = 1700000000000000000n;
     const spans = [
-      makeSpan({ traceId: randomBytes(16), name: "fast", durationNanos: 10n, startTimeUnixNano: base, endTimeUnixNano: base + 10n }),
-      makeSpan({ traceId: randomBytes(16), name: "slow", durationNanos: 1000n, startTimeUnixNano: base, endTimeUnixNano: base + 1000n }),
+      makeSpan({
+        traceId: randomBytes(16),
+        name: "fast",
+        durationNanos: 10n,
+        startTimeUnixNano: base,
+        endTimeUnixNano: base + 10n,
+      }),
+      makeSpan({
+        traceId: randomBytes(16),
+        name: "slow",
+        durationNanos: 1000n,
+        startTimeUnixNano: base,
+        endTimeUnixNano: base + 1000n,
+      }),
     ];
 
     store.append(resource, scope, spans);
@@ -272,9 +322,32 @@ describe("Self-time computation", () => {
     const base = 1700000000000000000n;
 
     const spans: SpanRecord[] = [
-      makeSpan({ traceId, spanId: rootId, name: "root", startTimeUnixNano: base, endTimeUnixNano: base + 100n, durationNanos: 100n }),
-      makeSpan({ traceId, spanId: randomBytes(8), parentSpanId: rootId, name: "a", startTimeUnixNano: base + 10n, endTimeUnixNano: base + 30n, durationNanos: 20n }),
-      makeSpan({ traceId, spanId: randomBytes(8), parentSpanId: rootId, name: "b", startTimeUnixNano: base + 50n, endTimeUnixNano: base + 70n, durationNanos: 20n }),
+      makeSpan({
+        traceId,
+        spanId: rootId,
+        name: "root",
+        startTimeUnixNano: base,
+        endTimeUnixNano: base + 100n,
+        durationNanos: 100n,
+      }),
+      makeSpan({
+        traceId,
+        spanId: randomBytes(8),
+        parentSpanId: rootId,
+        name: "a",
+        startTimeUnixNano: base + 10n,
+        endTimeUnixNano: base + 30n,
+        durationNanos: 20n,
+      }),
+      makeSpan({
+        traceId,
+        spanId: randomBytes(8),
+        parentSpanId: rootId,
+        name: "b",
+        startTimeUnixNano: base + 50n,
+        endTimeUnixNano: base + 70n,
+        durationNanos: 20n,
+      }),
     ];
 
     const roots = buildSpanTree(spans);
@@ -288,9 +361,32 @@ describe("Self-time computation", () => {
     const base = 1700000000000000000n;
 
     const spans: SpanRecord[] = [
-      makeSpan({ traceId, spanId: rootId, name: "root", startTimeUnixNano: base, endTimeUnixNano: base + 100n, durationNanos: 100n }),
-      makeSpan({ traceId, spanId: randomBytes(8), parentSpanId: rootId, name: "a", startTimeUnixNano: base + 10n, endTimeUnixNano: base + 60n, durationNanos: 50n }),
-      makeSpan({ traceId, spanId: randomBytes(8), parentSpanId: rootId, name: "b", startTimeUnixNano: base + 40n, endTimeUnixNano: base + 80n, durationNanos: 40n }),
+      makeSpan({
+        traceId,
+        spanId: rootId,
+        name: "root",
+        startTimeUnixNano: base,
+        endTimeUnixNano: base + 100n,
+        durationNanos: 100n,
+      }),
+      makeSpan({
+        traceId,
+        spanId: randomBytes(8),
+        parentSpanId: rootId,
+        name: "a",
+        startTimeUnixNano: base + 10n,
+        endTimeUnixNano: base + 60n,
+        durationNanos: 50n,
+      }),
+      makeSpan({
+        traceId,
+        spanId: randomBytes(8),
+        parentSpanId: rootId,
+        name: "b",
+        startTimeUnixNano: base + 40n,
+        endTimeUnixNano: base + 80n,
+        durationNanos: 40n,
+      }),
     ];
 
     const roots = buildSpanTree(spans);
@@ -305,9 +401,32 @@ describe("Self-time computation", () => {
     const base = 1700000000000000000n;
 
     const spans: SpanRecord[] = [
-      makeSpan({ traceId, spanId: rootId, name: "root", startTimeUnixNano: base, endTimeUnixNano: base + 100n, durationNanos: 100n }),
-      makeSpan({ traceId, spanId: randomBytes(8), parentSpanId: rootId, name: "outer", startTimeUnixNano: base + 10n, endTimeUnixNano: base + 90n, durationNanos: 80n }),
-      makeSpan({ traceId, spanId: randomBytes(8), parentSpanId: rootId, name: "inner", startTimeUnixNano: base + 20n, endTimeUnixNano: base + 50n, durationNanos: 30n }),
+      makeSpan({
+        traceId,
+        spanId: rootId,
+        name: "root",
+        startTimeUnixNano: base,
+        endTimeUnixNano: base + 100n,
+        durationNanos: 100n,
+      }),
+      makeSpan({
+        traceId,
+        spanId: randomBytes(8),
+        parentSpanId: rootId,
+        name: "outer",
+        startTimeUnixNano: base + 10n,
+        endTimeUnixNano: base + 90n,
+        durationNanos: 80n,
+      }),
+      makeSpan({
+        traceId,
+        spanId: randomBytes(8),
+        parentSpanId: rootId,
+        name: "inner",
+        startTimeUnixNano: base + 20n,
+        endTimeUnixNano: base + 50n,
+        durationNanos: 30n,
+      }),
     ];
 
     const roots = buildSpanTree(spans);

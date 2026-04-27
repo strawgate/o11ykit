@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { ColumnarTracePolicy } from "../src/codec-columnar.js";
+import { describe, expect, it } from "vitest";
 import { ChunkBuilder } from "../src/chunk.js";
+import { ColumnarTracePolicy } from "../src/codec-columnar.js";
 import { isAncestorOf, isDescendantOf, isSiblingOf, nestedSetDepth } from "../src/query.js";
 import type { SpanRecord } from "../src/types.js";
 import { SpanKind, StatusCode } from "../src/types.js";
@@ -11,7 +11,7 @@ function fixedBytes(n: number, fill: number): Uint8Array {
   return new Uint8Array(n).fill(fill);
 }
 
-const TRACE_A = fixedBytes(16, 0xAA);
+const TRACE_A = fixedBytes(16, 0xaa);
 
 function makeSpan(opts: {
   spanId: number;
@@ -49,7 +49,12 @@ describe("Nested set encoding", () => {
   //   └── child-b (0x04)
   const root = makeSpan({ spanId: 0x01, name: "root" });
   const childA = makeSpan({ spanId: 0x02, parentSpanId: 0x01, name: "child-a", startOffset: 1n });
-  const grandchild = makeSpan({ spanId: 0x03, parentSpanId: 0x02, name: "grandchild", startOffset: 2n });
+  const grandchild = makeSpan({
+    spanId: 0x03,
+    parentSpanId: 0x02,
+    name: "grandchild",
+    startOffset: 2n,
+  });
   const childB = makeSpan({ spanId: 0x04, parentSpanId: 0x01, name: "child-b", startOffset: 3n });
 
   function buildChunkWithNestedSets(spans: SpanRecord[]): SpanRecord[] {
@@ -66,10 +71,10 @@ describe("Nested set encoding", () => {
     const decoded = buildChunkWithNestedSets([root, childA, grandchild, childB]);
 
     // Find spans by name
-    const dRoot = decoded.find(s => s.name === "root")!;
-    const dChildA = decoded.find(s => s.name === "child-a")!;
-    const dGrandchild = decoded.find(s => s.name === "grandchild")!;
-    const dChildB = decoded.find(s => s.name === "child-b")!;
+    const dRoot = decoded.find((s) => s.name === "root")!;
+    const dChildA = decoded.find((s) => s.name === "child-a")!;
+    const dGrandchild = decoded.find((s) => s.name === "grandchild")!;
+    const dChildB = decoded.find((s) => s.name === "child-b")!;
 
     // Root should enclose all others
     expect(dRoot.nestedSetLeft).toBeDefined();
@@ -99,14 +104,16 @@ describe("Nested set encoding", () => {
     const root2 = makeSpan({ spanId: 0x05, name: "root2", startOffset: 100n });
     const decoded = buildChunkWithNestedSets([root, childA, root2]);
 
-    const dRoot = decoded.find(s => s.name === "root")!;
-    const dRoot2 = decoded.find(s => s.name === "root2")!;
+    const dRoot = decoded.find((s) => s.name === "root")!;
+    const dRoot2 = decoded.find((s) => s.name === "root2")!;
 
     // Both are roots - neither encloses the other
-    const r1encloses2 = dRoot.nestedSetLeft! < dRoot2.nestedSetLeft! &&
-                         dRoot.nestedSetRight! > dRoot2.nestedSetRight!;
-    const r2encloses1 = dRoot2.nestedSetLeft! < dRoot.nestedSetLeft! &&
-                         dRoot2.nestedSetRight! > dRoot.nestedSetRight!;
+    const r1encloses2 =
+      dRoot.nestedSetLeft! < dRoot2.nestedSetLeft! &&
+      dRoot.nestedSetRight! > dRoot2.nestedSetRight!;
+    const r2encloses1 =
+      dRoot2.nestedSetLeft! < dRoot.nestedSetLeft! &&
+      dRoot2.nestedSetRight! > dRoot.nestedSetRight!;
     expect(r1encloses2).toBe(false);
     expect(r2encloses1).toBe(false);
   });
@@ -240,7 +247,7 @@ describe("Structural queries (nested set model)", () => {
   describe("cross-trace safety", () => {
     it("isAncestorOf returns false for spans from different traces with overlapping numbers", () => {
       // Trace A root: [1,8], Trace B inner: [2,3] — would be false positive without traceId check
-      const TRACE_B = fixedBytes(16, 0xBB);
+      const TRACE_B = fixedBytes(16, 0xbb);
       const traceARoot: SpanRecord = {
         ...root,
         traceId: TRACE_A,
@@ -259,7 +266,7 @@ describe("Structural queries (nested set model)", () => {
     });
 
     it("isSiblingOf returns false for spans from different traces", () => {
-      const TRACE_B = fixedBytes(16, 0xBB);
+      const TRACE_B = fixedBytes(16, 0xbb);
       const spanA: SpanRecord = { ...childA, traceId: TRACE_A };
       const spanB: SpanRecord = { ...childB, traceId: TRACE_B };
       expect(isSiblingOf(spanA, spanB)).toBe(false);

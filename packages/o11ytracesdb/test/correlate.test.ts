@@ -1,11 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  traceTimeWindow,
-  spanTimeWindow,
-  deriveREDMetrics,
   computeServiceGraph,
-  extractTraceIds,
+  deriveREDMetrics,
   extractServiceNames,
+  extractTraceIds,
+  spanTimeWindow,
+  traceTimeWindow,
 } from "../src/correlate.js";
 import type { SpanRecord, Trace } from "../src/types.js";
 import { SpanKind, StatusCode } from "../src/types.js";
@@ -30,7 +30,7 @@ function makeSpan(opts: {
   const start = opts.start ?? 1700000000000000000n;
   const dur = opts.duration ?? 50_000_000n;
   return {
-    traceId: fixedBytes(16, opts.traceId ?? 0xAA),
+    traceId: fixedBytes(16, opts.traceId ?? 0xaa),
     spanId: fixedBytes(8, opts.spanId ?? 0x01),
     ...(opts.parentSpanId !== undefined ? { parentSpanId: fixedBytes(8, opts.parentSpanId) } : {}),
     name: opts.name ?? "test-op",
@@ -39,9 +39,7 @@ function makeSpan(opts: {
     endTimeUnixNano: start + dur,
     durationNanos: dur,
     statusCode: (opts.status ?? StatusCode.OK) as SpanRecord["statusCode"],
-    attributes: opts.serviceName
-      ? [{ key: "service.name", value: opts.serviceName }]
-      : [],
+    attributes: opts.serviceName ? [{ key: "service.name", value: opts.serviceName }] : [],
     events: [],
     links: [],
   };
@@ -57,7 +55,7 @@ describe("Time window extraction", () => {
       makeSpan({ start: 900n, duration: 50n }),
     ];
     const trace: Trace = {
-      traceId: fixedBytes(16, 0xAA),
+      traceId: fixedBytes(16, 0xaa),
       spans,
       durationNanos: 350n,
     };
@@ -70,7 +68,7 @@ describe("Time window extraction", () => {
   it("applies padding to time window", () => {
     const spans = [makeSpan({ start: 1000n, duration: 100n })];
     const trace: Trace = {
-      traceId: fixedBytes(16, 0xAA),
+      traceId: fixedBytes(16, 0xaa),
       spans,
       durationNanos: 100n,
     };
@@ -95,8 +93,18 @@ describe("RED metrics derivation", () => {
     const baseTime = 1700000000000000000n;
     const spans = [
       makeSpan({ name: "GET /api", start: baseTime, duration: 10_000_000n, status: StatusCode.OK }),
-      makeSpan({ name: "GET /api", start: baseTime + 1_000_000n, duration: 20_000_000n, status: StatusCode.OK }),
-      makeSpan({ name: "GET /api", start: baseTime + 2_000_000n, duration: 100_000_000n, status: StatusCode.ERROR }),
+      makeSpan({
+        name: "GET /api",
+        start: baseTime + 1_000_000n,
+        duration: 20_000_000n,
+        status: StatusCode.OK,
+      }),
+      makeSpan({
+        name: "GET /api",
+        start: baseTime + 2_000_000n,
+        duration: 100_000_000n,
+        status: StatusCode.ERROR,
+      }),
     ];
 
     const metrics = deriveREDMetrics(spans, 60_000_000_000n, "api-gateway");
@@ -123,8 +131,8 @@ describe("RED metrics derivation", () => {
 
     const metrics = deriveREDMetrics(spans);
     expect(metrics.length).toBe(2);
-    const getMetrics = metrics.find(m => m.operationName === "GET /users")!;
-    const postMetrics = metrics.find(m => m.operationName === "POST /users")!;
+    const getMetrics = metrics.find((m) => m.operationName === "GET /users")!;
+    const postMetrics = metrics.find((m) => m.operationName === "POST /users")!;
     expect(getMetrics.rate).toBe(2);
     expect(postMetrics.rate).toBe(1);
   });
@@ -133,7 +141,11 @@ describe("RED metrics derivation", () => {
     const baseTime = 1700000000000000000n;
     // Create 100 spans with durations 1ms, 2ms, ..., 100ms
     const spans = Array.from({ length: 100 }, (_, i) =>
-      makeSpan({ name: "op", start: baseTime + BigInt(i) * 1000n, duration: BigInt(i + 1) * 1_000_000n })
+      makeSpan({
+        name: "op",
+        start: baseTime + BigInt(i) * 1000n,
+        duration: BigInt(i + 1) * 1_000_000n,
+      })
     );
 
     const metrics = deriveREDMetrics(spans);
@@ -153,7 +165,7 @@ describe("Service graph", () => {
     const clientSpan = makeSpan({
       spanId: 0x01,
       kind: SpanKind.CLIENT,
-      parentSpanId: 0xFF, // some parent
+      parentSpanId: 0xff, // some parent
       name: "call-backend",
       serviceName: "frontend",
     });
@@ -175,21 +187,25 @@ describe("Service graph", () => {
   it("aggregates multiple calls into edge weight", () => {
     const spans: SpanRecord[] = [];
     for (let i = 0; i < 5; i++) {
-      spans.push(makeSpan({
-        spanId: i * 2 + 1,
-        kind: SpanKind.CLIENT,
-        parentSpanId: 0xFF,
-        name: "call",
-        serviceName: "svc-a",
-      }));
-      spans.push(makeSpan({
-        spanId: i * 2 + 2,
-        kind: SpanKind.SERVER,
-        parentSpanId: i * 2 + 1,
-        name: "handle",
-        serviceName: "svc-b",
-        status: i === 4 ? StatusCode.ERROR : StatusCode.OK,
-      }));
+      spans.push(
+        makeSpan({
+          spanId: i * 2 + 1,
+          kind: SpanKind.CLIENT,
+          parentSpanId: 0xff,
+          name: "call",
+          serviceName: "svc-a",
+        })
+      );
+      spans.push(
+        makeSpan({
+          spanId: i * 2 + 2,
+          kind: SpanKind.SERVER,
+          parentSpanId: i * 2 + 1,
+          name: "handle",
+          serviceName: "svc-b",
+          status: i === 4 ? StatusCode.ERROR : StatusCode.OK,
+        })
+      );
     }
 
     const edges = computeServiceGraph(spans);
@@ -204,9 +220,9 @@ describe("Service graph", () => {
 describe("Correlation helpers", () => {
   it("extracts unique trace IDs as hex", () => {
     const spans = [
-      makeSpan({ traceId: 0xAA }),
-      makeSpan({ traceId: 0xBB }),
-      makeSpan({ traceId: 0xAA }), // duplicate
+      makeSpan({ traceId: 0xaa }),
+      makeSpan({ traceId: 0xbb }),
+      makeSpan({ traceId: 0xaa }), // duplicate
     ];
 
     const ids = extractTraceIds(spans);

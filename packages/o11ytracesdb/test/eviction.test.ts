@@ -1,8 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { TraceStore } from "../src/engine.js";
-import type { SpanRecord } from "../src/types.js";
+import type { InstrumentationScope, Resource, SpanRecord } from "../src/types.js";
 import { SpanKind, StatusCode } from "../src/types.js";
-import type { InstrumentationScope, Resource } from "../src/types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
@@ -73,7 +72,7 @@ describe("TraceStore eviction", () => {
     store.flush();
 
     // Wait for TTL to expire
-    await new Promise(resolve => setTimeout(resolve, 60));
+    await new Promise((resolve) => setTimeout(resolve, 60));
 
     // Insert second batch — should trigger eviction of first
     store.append(resource, scope, makeSpans(10));

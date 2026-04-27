@@ -8,13 +8,7 @@
  * to the traces engine.
  */
 
-import type {
-  AnyValue,
-  InstrumentationScope,
-  KeyValue,
-  Resource,
-  StreamId,
-} from "stardb";
+import type { AnyValue, InstrumentationScope, KeyValue, Resource, StreamId } from "stardb";
 
 export type { AnyValue, InstrumentationScope, KeyValue, Resource, StreamId };
 
@@ -161,10 +155,17 @@ export interface SpanNode {
 
 /** Comparison operators for attribute predicates. */
 export type AttributeOp =
-  | "eq" | "neq"
-  | "gt" | "gte" | "lt" | "lte"
-  | "regex" | "contains" | "startsWith"
-  | "exists" | "notExists"
+  | "eq"
+  | "neq"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "regex"
+  | "contains"
+  | "startsWith"
+  | "exists"
+  | "notExists"
   | "in";
 
 /**
@@ -208,11 +209,11 @@ export interface TraceIntrinsics {
 
 /** Structural relationship type (inspired by TraceQL structural operators). */
 export type StructuralRelation =
-  | "descendant"   // >> : B is a descendant of A
-  | "ancestor"     // << : B is an ancestor of A
-  | "child"        // >  : B is a direct child of A
-  | "parent"       // <  : B is a direct parent of A
-  | "sibling";     // ~  : A and B share the same parent
+  | "descendant" // >> : B is a descendant of A
+  | "ancestor" // << : B is an ancestor of A
+  | "child" // >  : B is a direct child of A
+  | "parent" // <  : B is a direct parent of A
+  | "sibling"; // ~  : A and B share the same parent
 
 /**
  * A structural predicate: "trace must contain span A (matching left)

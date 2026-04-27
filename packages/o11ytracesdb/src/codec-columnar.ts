@@ -73,7 +73,7 @@ export class ByteBuf {
 
   writeVarint(value: bigint): void {
     // ZigZag encode then unsigned varint
-    const zigzag = value < 0n ? (-value * 2n - 1n) : (value * 2n);
+    const zigzag = value < 0n ? -value * 2n - 1n : value * 2n;
     let v = zigzag;
     do {
       this.ensure(1);
@@ -223,9 +223,7 @@ function buildDictWithIndex(values: Iterable<string>): DictWithIndex {
 function collectAttrKeys(spans: readonly SpanRecord[]): Iterable<string> {
   return {
     *[Symbol.iterator]() {
-      for (const s of spans)
-        for (const a of s.attributes)
-          yield a.key;
+      for (const s of spans) for (const a of s.attributes) yield a.key;
     },
   };
 }
@@ -235,8 +233,7 @@ function collectAttrStringVals(spans: readonly SpanRecord[]): Iterable<string> {
     *[Symbol.iterator]() {
       for (const s of spans)
         for (const a of s.attributes)
-          if (typeof a.value === "string" && a.value.length < 256)
-            yield a.value;
+          if (typeof a.value === "string" && a.value.length < 256) yield a.value;
     },
   };
 }
@@ -244,9 +241,7 @@ function collectAttrStringVals(spans: readonly SpanRecord[]): Iterable<string> {
 function collectStatusMsgs(spans: readonly SpanRecord[]): Iterable<string> {
   return {
     *[Symbol.iterator]() {
-      for (const s of spans)
-        if (s.statusMessage !== undefined)
-          yield s.statusMessage;
+      for (const s of spans) if (s.statusMessage !== undefined) yield s.statusMessage;
     },
   };
 }
@@ -443,8 +438,7 @@ export class ColumnarTracePolicy implements ChunkPolicy {
     return { payload: out.finish(), meta };
   }
 
-  decodePayload(buf: Uint8Array, nSpans: number, meta: unknown): SpanRecord[] {
-    const { nameDict, keyDict, valDict, msgDict } = meta as ColumnarMeta;
+  decodePayload(buf: Uint8Array, nSpans: number, _meta: unknown): SpanRecord[] {
     const reader = new ByteReader(buf);
     const n = nSpans;
     const spans: SpanRecord[] = new Array(n);
@@ -638,7 +632,10 @@ export class ColumnarTracePolicy implements ChunkPolicy {
    * when we just need trace IDs without full span data.
    * Skips sections 0, 1 and 3-8.
    */
-  decodeIdsOnly(buf: Uint8Array, nSpans: number): {
+  decodeIdsOnly(
+    buf: Uint8Array,
+    nSpans: number
+  ): {
     traceIds: Uint8Array[];
     spanIds: Uint8Array[];
     parentSpanIds: (Uint8Array | undefined)[];
@@ -675,7 +672,7 @@ export class ColumnarTracePolicy implements ChunkPolicy {
 
 // ─── AnyValue encoding ───────────────────────────────────────────────
 
-const enum ValueTag {
+enum ValueTag {
   NULL = 0,
   STRING_DICT = 1,
   STRING_RAW = 2,

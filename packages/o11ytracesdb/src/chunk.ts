@@ -20,8 +20,8 @@
  * for resource attributes.
  */
 
-import { createBloomFilter, bloomToBase64 } from "./bloom.js";
-import type { SpanRecord, StatusCode } from "./types.js";
+import { bloomToBase64, createBloomFilter } from "./bloom.js";
+import type { SpanRecord } from "./types.js";
 
 // ─── Chunk Header ────────────────────────────────────────────────────
 
@@ -104,7 +104,10 @@ export interface ChunkPolicy {
   /** Decode a binary payload back into spans. */
   decodePayload(buf: Uint8Array, nSpans: number, meta: unknown): SpanRecord[];
   /** Decode only the ID columns (Section 2) for trace assembly. */
-  decodeIdsOnly(buf: Uint8Array, nSpans: number): {
+  decodeIdsOnly(
+    buf: Uint8Array,
+    nSpans: number
+  ): {
     traceIds: Uint8Array[];
     spanIds: Uint8Array[];
     parentSpanIds: (Uint8Array | undefined)[];
@@ -194,7 +197,6 @@ function computeNestedSets(spans: SpanRecord[]): void {
   // Group by trace ID (using hex string key)
   const byTrace = new Map<string, SpanRecord[]>();
   for (const span of spans) {
-    const hex = bytesToHex(span.spanId); // use spanId temporarily for indexing
     const traceHex = bytesToHex(span.traceId);
     let group = byTrace.get(traceHex);
     if (!group) {
@@ -265,8 +267,11 @@ function computeNestedSets(spans: SpanRecord[]): void {
 }
 
 function compareBigintField(a: SpanRecord, b: SpanRecord): number {
-  return a.startTimeUnixNano < b.startTimeUnixNano ? -1 :
-    a.startTimeUnixNano > b.startTimeUnixNano ? 1 : 0;
+  return a.startTimeUnixNano < b.startTimeUnixNano
+    ? -1
+    : a.startTimeUnixNano > b.startTimeUnixNano
+      ? 1
+      : 0;
 }
 
 function bytesToHex(bytes: Uint8Array): string {

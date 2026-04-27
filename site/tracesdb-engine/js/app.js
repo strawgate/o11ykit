@@ -2,8 +2,17 @@
 // ── TracesDB Engine Demo — App Entry Point ───────────────────────────
 
 import { SCENARIOS } from "./data-gen.js";
-import { renderWaterfall, renderLegend } from "./waterfall.js";
-import { $, escapeHtml, formatBytes, formatNum, formatDurationNs, formatDurationMs, hexFromBytes, shortTraceId, serviceColor } from "./utils.js";
+import {
+  $,
+  escapeHtml,
+  formatBytes,
+  formatDurationMs,
+  formatDurationNs,
+  formatNum,
+  hexFromBytes,
+  shortTraceId,
+} from "./utils.js";
+import { renderLegend, renderWaterfall } from "./waterfall.js";
 
 // ── State ─────────────────────────────────────────────────────────────
 
@@ -12,7 +21,7 @@ let queryModule = null;
 let aggregateModule = null;
 let selectedScenario = null;
 let generatedData = null;
-let lastQueryResult = null;
+let _lastQueryResult = null;
 let waterfallCleanup = null;
 
 // ── Module Loading ────────────────────────────────────────────────────
@@ -23,11 +32,11 @@ async function loadTracesDB() {
   // Build the package path - adjust for your dev setup
   const base = "../../packages/o11ytracesdb/src/";
   const [engine, query, qbuilder, aggregate, types] = await Promise.all([
-    import(base + "engine.js"),
-    import(base + "query.js"),
-    import(base + "aggregate.js"),
-    import(base + "query-builder.js"),
-    import(base + "types.js"),
+    import(`${base}engine.js`),
+    import(`${base}query.js`),
+    import(`${base}aggregate.js`),
+    import(`${base}query-builder.js`),
+    import(`${base}types.js`),
   ]);
   return { engine, query, aggregate, qbuilder, types };
 }
@@ -72,8 +81,8 @@ function renderScenarios() {
 }
 
 function selectScenario(id) {
-  selectedScenario = SCENARIOS.find(s => s.id === id);
-  document.querySelectorAll(".scenario-card").forEach(card => {
+  selectedScenario = SCENARIOS.find((s) => s.id === id);
+  document.querySelectorAll(".scenario-card").forEach((card) => {
     card.classList.toggle("active", card.dataset.id === id);
   });
   $("#btnGenerate").disabled = false;
@@ -105,7 +114,16 @@ async function generateTraces() {
     store.flush();
   } else {
     // Mock store for static serving
-    store = { _spans: generatedData.spans, stats() { return { sealedSpans: generatedData.spans.length, chunks: Math.ceil(generatedData.spans.length / 128), payloadBytes: generatedData.spans.length * 80 }; } };
+    store = {
+      _spans: generatedData.spans,
+      stats() {
+        return {
+          sealedSpans: generatedData.spans.length,
+          chunks: Math.ceil(generatedData.spans.length / 128),
+          payloadBytes: generatedData.spans.length * 80,
+        };
+      },
+    };
   }
   const ingestTime = performance.now() - t1;
 
@@ -117,7 +135,7 @@ async function generateTraces() {
   $("#statIngestTime").textContent = formatDurationMs(ingestTime);
 
   const rawSize = generatedData.spans.length * 120; // rough estimate
-  const ratio = stats.payloadBytes > 0 ? (rawSize / stats.payloadBytes).toFixed(1) + "×" : "—";
+  const ratio = stats.payloadBytes > 0 ? `${(rawSize / stats.payloadBytes).toFixed(1)}×` : "—";
   $("#statCompression").textContent = ratio;
 
   $("#ingestStats").hidden = false;
@@ -140,17 +158,25 @@ function showStorageExplorer(stats) {
     { label: "Total Chunks", value: formatNum(stats.chunks) },
     { label: "Total Spans", value: formatNum(stats.sealedSpans) },
     { label: "Stored Bytes", value: formatBytes(stats.payloadBytes) },
-    { label: "Bytes/Span", value: stats.sealedSpans > 0 ? `${(stats.payloadBytes / stats.sealedSpans).toFixed(1)} B` : "—" },
+    {
+      label: "Bytes/Span",
+      value:
+        stats.sealedSpans > 0 ? `${(stats.payloadBytes / stats.sealedSpans).toFixed(1)} B` : "—",
+    },
     { label: "Bloom Filters", value: formatNum(stats.chunks) },
     { label: "Unique Services", value: String(generatedData.serviceCount) },
   ];
 
-  grid.innerHTML = items.map(item => `
+  grid.innerHTML = items
+    .map(
+      (item) => `
     <div class="storage-stat">
       <div class="stat-value">${item.value}</div>
       <div class="stat-label">${item.label}</div>
     </div>
-  `).join("");
+  `
+    )
+    .join("");
 }
 
 // ── Query Section ─────────────────────────────────────────────────────
@@ -169,6 +195,12 @@ function showQuerySection() {
 }
 
 function runQuery() {
+  if (!generatedData) {
+    const status = $("#queryStatus");
+    status.textContent = "⚠ Generate data first";
+    status.className = "query-status error";
+    return;
+  }
   const status = $("#queryStatus");
   const t0 = performance.now();
 
@@ -176,8 +208,12 @@ function runQuery() {
   const service = $("#qService").value || undefined;
   const spanNameRaw = $("#qSpanName").value || undefined;
   const statusCode = $("#qStatus").value ? Number($("#qStatus").value) : undefined;
-  const durMin = $("#qDurMin").value ? BigInt(Math.round(Number($("#qDurMin").value) * 1_000_000)) : undefined;
-  const durMax = $("#qDurMax").value ? BigInt(Math.round(Number($("#qDurMax").value) * 1_000_000)) : undefined;
+  const durMin = $("#qDurMin").value
+    ? BigInt(Math.round(Number($("#qDurMin").value) * 1_000_000))
+    : undefined;
+  const durMax = $("#qDurMax").value
+    ? BigInt(Math.round(Number($("#qDurMax").value) * 1_000_000))
+    : undefined;
   const sortBy = $("#qSort").value;
   const sortOrder = $("#qSortDir").value;
   const limit = Number($("#qLimit").value) || 50;
@@ -192,15 +228,19 @@ function runQuery() {
     if (attrOp !== "exists" && attrOp !== "notExists") {
       // Coerce to number if the value is numeric (for comparison operators)
       const numVal = Number(attrVal);
-      pred.value = !isNaN(numVal) && attrVal.trim() !== "" ? numVal : attrVal;
+      pred.value = !Number.isNaN(numVal) && attrVal.trim() !== "" ? numVal : attrVal;
     }
     attributePredicates.push(pred);
   }
 
   let spanNameRegex;
   if (spanNameRaw) {
-    try { spanNameRegex = new RegExp(spanNameRaw); }
-    catch { status.textContent = "⚠ Invalid regex in span name filter"; return; }
+    try {
+      spanNameRegex = new RegExp(spanNameRaw);
+    } catch {
+      status.textContent = "⚠ Invalid regex in span name filter";
+      return;
+    }
   }
 
   const opts = {
@@ -224,7 +264,7 @@ function runQuery() {
   }
 
   const queryTime = performance.now() - t0;
-  lastQueryResult = result;
+  _lastQueryResult = result;
 
   status.textContent = `${result.traces.length} traces found in ${formatDurationMs(queryTime)}`;
   showResults(result, queryTime);
@@ -241,22 +281,30 @@ function mockQuery(opts) {
   }
 
   const traces = [];
-  for (const [tid, tspans] of traceMap) {
-    const root = tspans.find(s => !s.parentSpanId) || tspans[0];
-    const svcAttr = root.attributes?.find(a => a.key === "service.name");
+  for (const [_tid, tspans] of traceMap) {
+    const root = tspans.find((s) => !s.parentSpanId) || tspans[0];
+    const svcAttr = root.attributes?.find((a) => a.key === "service.name");
 
     // Basic filters
     if (opts.serviceName) {
-      const hasService = tspans.some(s => s.attributes?.some(a => a.key === "service.name" && a.value === opts.serviceName));
+      const hasService = tspans.some((s) =>
+        s.attributes?.some((a) => a.key === "service.name" && a.value === opts.serviceName)
+      );
       if (!hasService) continue;
     }
     if (opts.statusCode !== undefined) {
-      const hasStatus = tspans.some(s => s.statusCode === opts.statusCode);
+      const hasStatus = tspans.some((s) => s.statusCode === opts.statusCode);
       if (!hasStatus) continue;
     }
 
-    const startNs = tspans.reduce((m, s) => s.startTimeUnixNano < m ? s.startTimeUnixNano : m, tspans[0].startTimeUnixNano);
-    const endNs = tspans.reduce((m, s) => s.endTimeUnixNano > m ? s.endTimeUnixNano : m, tspans[0].endTimeUnixNano);
+    const startNs = tspans.reduce(
+      (m, s) => (s.startTimeUnixNano < m ? s.startTimeUnixNano : m),
+      tspans[0].startTimeUnixNano
+    );
+    const endNs = tspans.reduce(
+      (m, s) => (s.endTimeUnixNano > m ? s.endTimeUnixNano : m),
+      tspans[0].endTimeUnixNano
+    );
 
     traces.push({
       traceId: tspans[0].traceId,
@@ -266,15 +314,21 @@ function mockQuery(opts) {
       spanCount: tspans.length,
       rootServiceName: svcAttr?.value || "unknown",
       rootSpanName: root.name,
-      hasError: tspans.some(s => s.statusCode === 2),
+      hasError: tspans.some((s) => s.statusCode === 2),
     });
   }
 
   // Sort
   if (opts.sortBy === "duration") {
-    traces.sort((a, b) => opts.sortOrder === "asc" ? Number(a.durationNanos - b.durationNanos) : Number(b.durationNanos - a.durationNanos));
+    traces.sort((a, b) =>
+      opts.sortOrder === "asc"
+        ? Number(a.durationNanos - b.durationNanos)
+        : Number(b.durationNanos - a.durationNanos)
+    );
   } else if (opts.sortBy === "spanCount") {
-    traces.sort((a, b) => opts.sortOrder === "asc" ? a.spanCount - b.spanCount : b.spanCount - a.spanCount);
+    traces.sort((a, b) =>
+      opts.sortOrder === "asc" ? a.spanCount - b.spanCount : b.spanCount - a.spanCount
+    );
   }
 
   return { traces: traces.slice(0, opts.limit || 50), totalTraces: traces.length, queryTimeMs: 0 };
@@ -306,13 +360,17 @@ function showResults(result, queryTimeMs) {
       ]);
       const aggGrid = $("#aggGrid");
       aggGrid.hidden = false;
-      aggGrid.innerHTML = agg.results.map(r => `
+      aggGrid.innerHTML = agg.results
+        .map(
+          (r) => `
         <div class="agg-card">
           <div class="agg-value">${r.fn === "count" ? r.value : formatDurationNs(BigInt(Math.round(r.value)))}</div>
           <div class="agg-label">${r.fn}${r.field ? `(${r.field})` : ""}</div>
         </div>
-      `).join("");
-    } catch (e) {
+      `
+        )
+        .join("");
+    } catch (_e) {
       // aggregation not available in mock mode
     }
   }
@@ -322,8 +380,11 @@ function showResults(result, queryTimeMs) {
   tbody.innerHTML = "";
   for (let i = 0; i < result.traces.length; i++) {
     const trace = result.traces[i];
-    const hasError = trace.hasError || trace.spans?.some(s => s.statusCode === 2);
-    const rootSvc = trace.rootServiceName || trace.rootSpan?.attributes?.find(a => a.key === "service.name")?.value || "—";
+    const hasError = trace.hasError || trace.spans?.some((s) => s.statusCode === 2);
+    const rootSvc =
+      trace.rootServiceName ||
+      trace.rootSpan?.attributes?.find((a) => a.key === "service.name")?.value ||
+      "—";
     const rootOp = trace.rootSpanName || trace.rootSpan?.name || "—";
 
     const tr = document.createElement("tr");
@@ -361,22 +422,23 @@ function showWaterfall(trace) {
   // Legend
   const services = new Set();
   for (const s of trace.spans) {
-    const svc = s.attributes?.find(a => a.key === "service.name")?.value;
+    const svc = s.attributes?.find((a) => a.key === "service.name")?.value;
     if (svc) services.add(svc);
   }
   renderLegend($("#waterfallLegend"), [...services]);
 
   // Scroll into view
   $("#section-waterfall").scrollIntoView({ behavior: "smooth", block: "start" });
-  $("#waterfallIntro").textContent = `Trace ${shortTraceId(trace.traceId)} · ${trace.spans.length} spans · ${formatDurationNs(trace.durationNanos)}`;
+  $("#waterfallIntro").textContent =
+    `Trace ${shortTraceId(trace.traceId)} · ${trace.spans.length} spans · ${formatDurationNs(trace.durationNanos)}`;
 }
 
 function showSpanDetail(span) {
   const detail = $("#spanDetail");
   detail.classList.add("visible");
 
-  const svc = span.attributes?.find(a => a.key === "service.name")?.value || "unknown";
-  const attrs = (span.attributes || []).filter(a => a.key !== "service.name");
+  const svc = span.attributes?.find((a) => a.key === "service.name")?.value || "unknown";
+  const attrs = (span.attributes || []).filter((a) => a.key !== "service.name");
 
   detail.innerHTML = `
     <h4>${escapeHtml(span.name)}</h4>
@@ -386,8 +448,8 @@ function showSpanDetail(span) {
       <tr><td>Duration</td><td>${formatDurationNs(span.durationNanos)}</td></tr>
       <tr><td>Status</td><td><span class="status-dot ${span.statusCode === 2 ? "error" : "ok"}"></span>${span.statusCode === 2 ? "Error" : span.statusCode === 1 ? "OK" : "Unset"}</td></tr>
       <tr><td>Kind</td><td>${["Unspecified", "Internal", "Server", "Client", "Producer", "Consumer"][span.kind] || span.kind}</td></tr>
-      ${attrs.map(a => `<tr><td>${escapeHtml(a.key)}</td><td>${escapeHtml(String(a.value))}</td></tr>`).join("")}
-      ${span.events?.length ? `<tr><td>Events</td><td>${span.events.map(e => escapeHtml(e.name)).join(", ")}</td></tr>` : ""}
+      ${attrs.map((a) => `<tr><td>${escapeHtml(a.key)}</td><td>${escapeHtml(String(a.value))}</td></tr>`).join("")}
+      ${span.events?.length ? `<tr><td>Events</td><td>${span.events.map((e) => escapeHtml(e.name)).join(", ")}</td></tr>` : ""}
     </table>
   `;
 }

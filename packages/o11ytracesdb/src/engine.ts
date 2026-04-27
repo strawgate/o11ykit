@@ -9,12 +9,7 @@ import type { Chunk, ChunkPolicy } from "./chunk.js";
 import { ChunkBuilder } from "./chunk.js";
 import { ColumnarTracePolicy } from "./codec-columnar.js";
 import { StreamRegistry } from "./stream.js";
-import type {
-  InstrumentationScope,
-  Resource,
-  SpanRecord,
-  StreamId,
-} from "./types.js";
+import type { InstrumentationScope, Resource, SpanRecord, StreamId } from "./types.js";
 
 export interface TraceStoreOpts {
   /** Maximum spans per chunk before auto-flush. Default: 1024. */
@@ -158,7 +153,7 @@ export class TraceStore {
       const oldest = this.chunkOrder[0]!;
       const overBytes = this.totalPayloadBytes > this.maxPayloadBytes;
       const overCount = this.chunkOrder.length > this.maxChunks;
-      const overTTL = (now - oldest.sealedAt) > this.ttlMs;
+      const overTTL = now - oldest.sealedAt > this.ttlMs;
 
       if (!overBytes && !overCount && !overTTL) break;
 
@@ -176,7 +171,12 @@ export class TraceStore {
   }
 
   /** Iterate all (streamId, chunk) pairs — used by the query engine. */
-  *iterChunks(): Generator<{ streamId: StreamId; resource: Resource; scope: InstrumentationScope; chunk: Chunk }> {
+  *iterChunks(): Generator<{
+    streamId: StreamId;
+    resource: Resource;
+    scope: InstrumentationScope;
+    chunk: Chunk;
+  }> {
     for (const streamId of this.registry.ids()) {
       const resource = this.registry.resourceOf(streamId);
       const scope = this.registry.scopeOf(streamId);

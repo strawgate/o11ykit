@@ -42,13 +42,19 @@ export function hexFromBytes(buf) {
 
 export function shortTraceId(buf) {
   const hex = hexFromBytes(buf);
-  return hex.slice(0, 8) + "…" + hex.slice(-4);
+  return `${hex.slice(0, 8)}…${hex.slice(-4)}`;
 }
 
 /** Return a CSS color for a service name (deterministic hash). */
 const SVC_COLORS = [
-  "#3b82f6", "#10b981", "#f59e0b", "#ef4444",
-  "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16",
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#06b6d4",
+  "#ec4899",
+  "#84cc16",
 ];
 
 export function serviceColor(name) {

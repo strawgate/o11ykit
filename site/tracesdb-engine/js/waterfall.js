@@ -2,7 +2,7 @@
 // ── Waterfall Renderer (Canvas 2D) ──────────────────────────────────
 // Renders a trace as a Gantt-style waterfall chart.
 
-import { formatDurationNs, serviceColor, hexFromBytes } from "./utils.js";
+import { formatDurationNs, hexFromBytes, serviceColor } from "./utils.js";
 
 const ROW_HEIGHT = 24;
 const LABEL_WIDTH = 200;
@@ -75,9 +75,15 @@ export function renderWaterfall(canvas, trace, opts = {}) {
   const displaySpans = ordered.length === sorted.length ? ordered : sorted;
 
   // Calculate time bounds
-  const traceStart = displaySpans.reduce((m, s) => s.startTimeUnixNano < m ? s.startTimeUnixNano : m, displaySpans[0].startTimeUnixNano);
-  const traceEnd = displaySpans.reduce((m, s) => s.endTimeUnixNano > m ? s.endTimeUnixNano : m, displaySpans[0].endTimeUnixNano);
-  const totalDuration = Number(traceEnd - traceStart);
+  const traceStart = displaySpans.reduce(
+    (m, s) => (s.startTimeUnixNano < m ? s.startTimeUnixNano : m),
+    displaySpans[0].startTimeUnixNano
+  );
+  const traceEnd = displaySpans.reduce(
+    (m, s) => (s.endTimeUnixNano > m ? s.endTimeUnixNano : m),
+    displaySpans[0].endTimeUnixNano
+  );
+  const totalDuration = Number(traceEnd - traceStart) || 1; // guard div-by-zero for instant spans
 
   // Canvas sizing
   const dpr = window.devicePixelRatio || 1;
@@ -136,7 +142,7 @@ export function renderWaterfall(canvas, trace, opts = {}) {
       }
 
       // Service color
-      const svcAttr = span.attributes?.find(a => a.key === "service.name");
+      const svcAttr = span.attributes?.find((a) => a.key === "service.name");
       const svcName = svcAttr?.value || "unknown";
       const color = serviceColor(svcName);
 
@@ -151,7 +157,7 @@ export function renderWaterfall(canvas, trace, opts = {}) {
 
       // Bar
       const spanStart = Number(span.startTimeUnixNano - traceStart);
-      const spanDur = Number(span.durationNanos || (span.endTimeUnixNano - span.startTimeUnixNano));
+      const spanDur = Number(span.durationNanos || span.endTimeUnixNano - span.startTimeUnixNano);
       const barX = LABEL_WIDTH + PADDING + (spanStart / totalDuration) * barAreaWidth;
       const barW = Math.max(2, (spanDur / totalDuration) * barAreaWidth);
       const barY = y + (ROW_HEIGHT - BAR_HEIGHT) / 2;
@@ -213,10 +219,10 @@ export function renderWaterfall(canvas, trace, opts = {}) {
 function truncateText(ctx, text, maxWidth) {
   if (ctx.measureText(text).width <= maxWidth) return text;
   let t = text;
-  while (t.length > 3 && ctx.measureText(t + "…").width > maxWidth) {
+  while (t.length > 3 && ctx.measureText(`${t}…`).width > maxWidth) {
     t = t.slice(0, -1);
   }
-  return t + "…";
+  return `${t}…`;
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -241,7 +247,11 @@ export function renderLegend(container, serviceNames) {
   for (const name of serviceNames) {
     const el = document.createElement("div");
     el.className = "legend-item";
-    el.innerHTML = `<span class="legend-swatch" style="background:${serviceColor(name)}"></span>${name}`;
+    const swatch = document.createElement("span");
+    swatch.className = "legend-swatch";
+    swatch.style.background = serviceColor(name);
+    el.appendChild(swatch);
+    el.appendChild(document.createTextNode(name));
     container.appendChild(el);
   }
   container.hidden = false;

@@ -8,7 +8,7 @@
  * summary statistics without a second scan of the store.
  */
 
-import type { AnyValue, KeyValue, SpanRecord, Trace } from "./types.js";
+import type { KeyValue, SpanRecord, Trace } from "./types.js";
 
 // ─── Aggregation result types ────────────────────────────────────────
 
@@ -46,8 +46,6 @@ export interface AggregationPipelineResult {
 
 // ─── Value extraction ────────────────────────────────────────────────
 
-type NumberExtractor = (item: Trace | SpanRecord) => number | null;
-
 function isTrace(item: Trace | SpanRecord): item is Trace {
   return "spans" in item && Array.isArray((item as Trace).spans);
 }
@@ -56,16 +54,21 @@ function isTrace(item: Trace | SpanRecord): item is Trace {
 function extractNumber(item: Trace | SpanRecord, field: string): number | null {
   if (isTrace(item)) {
     switch (field) {
-      case "duration": return Number(item.durationNanos);
-      case "spanCount": return item.spans.length;
-      default: return null;
+      case "duration":
+        return Number(item.durationNanos);
+      case "spanCount":
+        return item.spans.length;
+      default:
+        return null;
     }
   }
   // SpanRecord
   const span = item as SpanRecord;
   switch (field) {
-    case "duration": return Number(span.durationNanos);
-    case "startTime": return Number(span.startTimeUnixNano);
+    case "duration":
+      return Number(span.durationNanos);
+    case "startTime":
+      return Number(span.startTimeUnixNano);
     default: {
       // Try attribute lookup: "span.http.status_code" or just "http.status_code"
       const key = field.startsWith("span.") ? field.slice(5) : field;
@@ -89,16 +92,21 @@ function extractGroupKey(item: Trace | SpanRecord, field: string): string {
       }
       case "rootName":
         return item.rootSpan?.name ?? "<no root>";
-      default: return "<unknown>";
+      default:
+        return "<unknown>";
     }
   }
   const span = item as SpanRecord;
   switch (field) {
-    case "name": return span.name;
+    case "name":
+      return span.name;
     case "status":
       return span.statusCode === 0 ? "UNSET" : span.statusCode === 1 ? "OK" : "ERROR";
     case "kind":
-      return ["UNSPECIFIED", "INTERNAL", "SERVER", "CLIENT", "PRODUCER", "CONSUMER"][span.kind] ?? "UNKNOWN";
+      return (
+        ["UNSPECIFIED", "INTERNAL", "SERVER", "CLIENT", "PRODUCER", "CONSUMER"][span.kind] ??
+        "UNKNOWN"
+      );
     default: {
       const key = field.startsWith("span.") ? field.slice(5) : field;
       const attr = span.attributes.find((a: KeyValue) => a.key === key);
@@ -108,10 +116,6 @@ function extractGroupKey(item: Trace | SpanRecord, field: string): string {
 }
 
 // ─── Core aggregation functions ──────────────────────────────────────
-
-function computeCount(values: number[]): number {
-  return values.length;
-}
 
 function computeAvg(values: number[]): number {
   if (values.length === 0) return 0;
@@ -151,7 +155,7 @@ function computePercentile(values: number[], p: number): number {
 
 /**
  * Specification for a single aggregation function.
- * 
+ *
  * Supported functions:
  * - `count` — count of items (field ignored)
  * - `avg`, `min`, `max`, `sum` — numeric aggregation on field
@@ -176,7 +180,7 @@ export interface AggregationSpec {
 export function aggregateTraces(
   traces: readonly Trace[],
   specs: AggregationSpec[],
-  groupBy?: string[],
+  groupBy?: string[]
 ): AggregationPipelineResult {
   if (groupBy !== undefined && groupBy.length > 0) {
     return aggregateGrouped(traces as readonly (Trace | SpanRecord)[], specs, groupBy);
@@ -194,7 +198,7 @@ export function aggregateTraces(
 export function aggregateSpans(
   spans: readonly SpanRecord[],
   specs: AggregationSpec[],
-  groupBy?: string[],
+  groupBy?: string[]
 ): AggregationPipelineResult {
   if (groupBy !== undefined && groupBy.length > 0) {
     return aggregateGrouped(spans as readonly (Trace | SpanRecord)[], specs, groupBy);
@@ -205,13 +209,18 @@ export function aggregateSpans(
 function aggregateFlat(
   items: readonly (Trace | SpanRecord)[],
   specs: AggregationSpec[],
-  totalCount: number,
+  totalCount: number
 ): AggregationPipelineResult {
   const results: AggregationResult[] = [];
 
   for (const spec of specs) {
     if (spec.fn === "count") {
-      results.push({ fn: "count", field: spec.field ?? "*", value: items.length, count: items.length });
+      results.push({
+        fn: "count",
+        field: spec.field ?? "*",
+        value: items.length,
+        count: items.length,
+      });
       continue;
     }
 
@@ -224,14 +233,30 @@ function aggregateFlat(
 
     let value: number;
     switch (spec.fn) {
-      case "avg": value = computeAvg(values); break;
-      case "min": value = computeMin(values); break;
-      case "max": value = computeMax(values); break;
-      case "sum": value = computeSum(values); break;
-      case "p50": value = computePercentile(values, 50); break;
-      case "p90": value = computePercentile(values, 90); break;
-      case "p95": value = computePercentile(values, 95); break;
-      case "p99": value = computePercentile(values, 99); break;
+      case "avg":
+        value = computeAvg(values);
+        break;
+      case "min":
+        value = computeMin(values);
+        break;
+      case "max":
+        value = computeMax(values);
+        break;
+      case "sum":
+        value = computeSum(values);
+        break;
+      case "p50":
+        value = computePercentile(values, 50);
+        break;
+      case "p90":
+        value = computePercentile(values, 90);
+        break;
+      case "p95":
+        value = computePercentile(values, 95);
+        break;
+      case "p99":
+        value = computePercentile(values, 99);
+        break;
     }
 
     results.push({ fn: spec.fn, field, value, count: values.length });
@@ -243,7 +268,7 @@ function aggregateFlat(
 function aggregateGrouped(
   items: readonly (Trace | SpanRecord)[],
   specs: AggregationSpec[],
-  groupBy: string[],
+  groupBy: string[]
 ): AggregationPipelineResult {
   // Build groups
   const groupMap = new Map<string, (Trace | SpanRecord)[]>();

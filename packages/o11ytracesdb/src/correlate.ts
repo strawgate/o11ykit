@@ -102,11 +102,14 @@ export interface REDMetrics {
 export function deriveREDMetrics(
   spans: readonly SpanRecord[],
   bucketSizeNanos = 60_000_000_000n, // 1 minute
-  serviceName = "unknown",
+  serviceName = "unknown"
 ): REDMetrics[] {
   // Group by (operation, bucket) using a composite key with null separator
   // (safe against any characters in span names)
-  const groups = new Map<string, { operationName: string; bucketStartNano: bigint; spans: SpanRecord[] }>();
+  const groups = new Map<
+    string,
+    { operationName: string; bucketStartNano: bigint; spans: SpanRecord[] }
+  >();
   for (const span of spans) {
     const bucket = span.startTimeUnixNano - (span.startTimeUnixNano % bucketSizeNanos);
     const key = `${span.name}\0${bucket}`;
@@ -122,9 +125,10 @@ export function deriveREDMetrics(
   for (const [, group] of groups) {
     const { operationName, bucketStartNano } = group;
 
-    const durations = group.spans.map(s => s.durationNanos).sort((a, b) =>
-      a < b ? -1 : a > b ? 1 : 0);
-    const errors = group.spans.filter(s => s.statusCode === StatusCode.ERROR).length;
+    const durations = group.spans
+      .map((s) => s.durationNanos)
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const errors = group.spans.filter((s) => s.statusCode === StatusCode.ERROR).length;
     const sum = durations.reduce((acc, d) => acc + d, 0n);
 
     results.push({
@@ -147,8 +151,8 @@ export function deriveREDMetrics(
   }
 
   return results.sort((a, b) =>
-    a.bucketStartNano < b.bucketStartNano ? -1 :
-    a.bucketStartNano > b.bucketStartNano ? 1 : 0);
+    a.bucketStartNano < b.bucketStartNano ? -1 : a.bucketStartNano > b.bucketStartNano ? 1 : 0
+  );
 }
 
 /** Percentile from a sorted array of bigints. */
@@ -187,7 +191,7 @@ export interface ServiceGraphEdge {
  */
 export function computeServiceGraph(
   spans: readonly SpanRecord[],
-  getServiceName?: (span: SpanRecord) => string | undefined,
+  getServiceName?: (span: SpanRecord) => string | undefined
 ): ServiceGraphEdge[] {
   const svcName = getServiceName ?? defaultServiceName;
 

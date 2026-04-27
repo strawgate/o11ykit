@@ -2,11 +2,11 @@
  * Tests for the rich query predicates, trace-level intrinsics,
  * sort/pagination, and the fluent TraceQuery builder.
  */
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { TraceStore } from "../src/engine.js";
 import { queryTraces } from "../src/query.js";
 import { TraceQuery } from "../src/query-builder.js";
-import type { SpanRecord, AttributePredicate } from "../src/types.js";
+import type { SpanRecord } from "../src/types.js";
 import { SpanKind, StatusCode } from "../src/types.js";
 
 // ─── Test helpers ────────────────────────────────────────────────────
@@ -52,7 +52,8 @@ function buildStore(spans: SpanRecord[]): TraceStore {
 const spans: SpanRecord[] = [
   // Trace A: 3 spans, frontend service, some with errors
   span({
-    traceId: TRACE_A, name: "GET /api/users",
+    traceId: TRACE_A,
+    name: "GET /api/users",
     durationNanos: 50_000_000n,
     startTimeUnixNano: 1700000000000000000n,
     endTimeUnixNano: 1700000000050000000n,
@@ -64,7 +65,8 @@ const spans: SpanRecord[] = [
     ],
   }),
   span({
-    traceId: TRACE_A, name: "db.query SELECT",
+    traceId: TRACE_A,
+    name: "db.query SELECT",
     durationNanos: 30_000_000n,
     startTimeUnixNano: 1700000000010000000n,
     endTimeUnixNano: 1700000000040000000n,
@@ -76,20 +78,20 @@ const spans: SpanRecord[] = [
     ],
   }),
   span({
-    traceId: TRACE_A, name: "cache.lookup",
+    traceId: TRACE_A,
+    name: "cache.lookup",
     durationNanos: 2_000_000n,
     startTimeUnixNano: 1700000000005000000n,
     endTimeUnixNano: 1700000000007000000n,
     parentSpanId: makeId(8),
     kind: SpanKind.INTERNAL,
-    attributes: [
-      { key: "cache.hit", value: false },
-    ],
+    attributes: [{ key: "cache.hit", value: false }],
   }),
 
   // Trace B: 2 spans, error trace, POST method
   span({
-    traceId: TRACE_B, name: "POST /api/orders",
+    traceId: TRACE_B,
+    name: "POST /api/orders",
     durationNanos: 200_000_000n,
     startTimeUnixNano: 1700000000100000000n,
     endTimeUnixNano: 1700000000300000000n,
@@ -103,7 +105,8 @@ const spans: SpanRecord[] = [
     ],
   }),
   span({
-    traceId: TRACE_B, name: "db.query INSERT",
+    traceId: TRACE_B,
+    name: "db.query INSERT",
     durationNanos: 180_000_000n,
     startTimeUnixNano: 1700000000110000000n,
     endTimeUnixNano: 1700000000290000000n,
@@ -119,7 +122,8 @@ const spans: SpanRecord[] = [
 
   // Trace C: 1 span, short consumer span
   span({
-    traceId: TRACE_C, name: "kafka.consume",
+    traceId: TRACE_C,
+    name: "kafka.consume",
     durationNanos: 1_000_000n,
     startTimeUnixNano: 1700000000500000000n,
     endTimeUnixNano: 1700000000501000000n,
@@ -373,91 +377,64 @@ describe("sort and pagination", () => {
 
 describe("TraceQuery builder", () => {
   it("basic service + status query", () => {
-    const result = TraceQuery.where()
-      .service("test-svc")
-      .status("error")
-      .exec(store);
+    const result = TraceQuery.where().service("test-svc").status("error").exec(store);
     expect(result.traces.length).toBe(1);
     expect(result.traces[0]!.traceId).toStrictEqual(TRACE_B);
   });
 
   it("span name with regex", () => {
-    const result = TraceQuery.where()
-      .spanName(/^GET/)
-      .exec(store);
+    const result = TraceQuery.where().spanName(/^GET/).exec(store);
     expect(result.traces.length).toBe(1);
     expect(result.traces[0]!.traceId).toStrictEqual(TRACE_A);
   });
 
   it("attribute predicate via builder", () => {
-    const result = TraceQuery.where()
-      .attribute("http.status_code", "gte", 400)
-      .exec(store);
+    const result = TraceQuery.where().attribute("http.status_code", "gte", 400).exec(store);
     expect(result.traces.length).toBe(1);
     expect(result.traces[0]!.traceId).toStrictEqual(TRACE_B);
   });
 
   it("hasAttribute shorthand", () => {
-    const result = TraceQuery.where()
-      .hasAttribute("messaging.system")
-      .exec(store);
+    const result = TraceQuery.where().hasAttribute("messaging.system").exec(store);
     expect(result.traces.length).toBe(1);
     expect(result.traces[0]!.traceId).toStrictEqual(TRACE_C);
   });
 
   it("missingAttribute shorthand", () => {
-    const result = TraceQuery.where()
-      .missingAttribute("http.method")
-      .exec(store);
+    const result = TraceQuery.where().missingAttribute("http.method").exec(store);
     // Spans without http.method: cache.lookup (A), db.query INSERT (B), kafka.consume (C)
     expect(result.traces.length).toBe(3);
   });
 
   it("duration filter", () => {
-    const result = TraceQuery.where()
-      .duration({ min: 100_000_000n })
-      .exec(store);
+    const result = TraceQuery.where().duration({ min: 100_000_000n }).exec(store);
     // Only B has spans with 180ms and 200ms duration
     expect(result.traces.length).toBe(1);
     expect(result.traces[0]!.traceId).toStrictEqual(TRACE_B);
   });
 
   it("trace duration filter", () => {
-    const result = TraceQuery.where()
-      .traceDuration({ min: 100_000_000n })
-      .exec(store);
+    const result = TraceQuery.where().traceDuration({ min: 100_000_000n }).exec(store);
     expect(result.traces.length).toBe(1);
     expect(result.traces[0]!.traceId).toStrictEqual(TRACE_B);
   });
 
   it("rootSpanName filter", () => {
-    const result = TraceQuery.where()
-      .rootSpanName("kafka.consume")
-      .exec(store);
+    const result = TraceQuery.where().rootSpanName("kafka.consume").exec(store);
     expect(result.traces.length).toBe(1);
     expect(result.traces[0]!.traceId).toStrictEqual(TRACE_C);
   });
 
   it("sort and limit", () => {
-    const result = TraceQuery.where()
-      .sortBy("duration", "desc")
-      .limit(1)
-      .exec(store);
+    const result = TraceQuery.where().sortBy("duration", "desc").limit(1).exec(store);
     expect(result.traces.length).toBe(1);
     expect(result.traces[0]!.traceId).toStrictEqual(TRACE_B); // longest
     expect(result.totalTraces).toBe(3);
   });
 
   it("offset pagination", () => {
-    const page1 = TraceQuery.where()
-      .sortBy("startTime", "asc")
-      .limit(2)
-      .exec(store);
-    const page2 = TraceQuery.where()
-      .sortBy("startTime", "asc")
-      .offset(2)
-      .limit(2)
-      .exec(store);
+    const page1 = TraceQuery.where().sortBy("startTime", "asc").limit(2).exec(store);
+    const page2 = TraceQuery.where().sortBy("startTime", "asc").offset(2).limit(2).exec(store);
     expect(page1.traces.length).toBe(2);
     expect(page2.traces.length).toBe(1);
     expect(page1.totalTraces).toBe(3);
@@ -465,19 +442,13 @@ describe("TraceQuery builder", () => {
   });
 
   it("kind filter with string", () => {
-    const result = TraceQuery.where()
-      .kind("consumer")
-      .exec(store);
+    const result = TraceQuery.where().kind("consumer").exec(store);
     expect(result.traces.length).toBe(1);
     expect(result.traces[0]!.traceId).toStrictEqual(TRACE_C);
   });
 
   it("build() returns opts object", () => {
-    const opts = TraceQuery.where()
-      .service("frontend")
-      .status("error")
-      .limit(10)
-      .build();
+    const opts = TraceQuery.where().service("frontend").status("error").limit(10).build();
     expect(opts.serviceName).toBe("frontend");
     expect(opts.statusCode).toBe(StatusCode.ERROR);
     expect(opts.limit).toBe(10);

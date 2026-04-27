@@ -1,7 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { createBloomFilter, bloomMayContain, bloomToBase64, bloomFromBase64 } from "../src/bloom.js";
+import { describe, expect, it } from "vitest";
+import {
+  bloomFromBase64,
+  bloomMayContain,
+  bloomToBase64,
+  createBloomFilter,
+} from "../src/bloom.js";
 import { ColumnarTracePolicy } from "../src/codec-columnar.js";
-import { ChunkBuilder } from "../src/chunk.js";
 import { TraceStore } from "../src/engine.js";
 import { queryTraces } from "../src/query.js";
 import type { SpanRecord } from "../src/types.js";
@@ -108,7 +112,7 @@ describe("Partial decode — IDs only", () => {
         traceId,
         spanId: randomBytes(8),
         ...(i > 0 ? { parentSpanId: randomBytes(8) } : {}),
-      }),
+      })
     );
 
     const { payload } = policy.encodePayload(spans);
@@ -148,9 +152,7 @@ describe("Partial decode — IDs only", () => {
     const scope = { name: "test", version: "1.0.0" };
 
     const traceId = randomBytes(16);
-    const spans = Array.from({ length: 5 }, () =>
-      makeSpan({ traceId }),
-    );
+    const spans = Array.from({ length: 5 }, () => makeSpan({ traceId }));
     store.append(resource, scope, spans);
     store.flush();
 
@@ -265,12 +267,8 @@ describe("Query engine bloom filter pruning", () => {
     const targetTraceId = randomBytes(16);
     const otherTraceId = randomBytes(16);
 
-    const targetSpans = Array.from({ length: 4 }, () =>
-      makeSpan({ traceId: targetTraceId }),
-    );
-    const otherSpans = Array.from({ length: 4 }, () =>
-      makeSpan({ traceId: otherTraceId }),
-    );
+    const targetSpans = Array.from({ length: 4 }, () => makeSpan({ traceId: targetTraceId }));
+    const otherSpans = Array.from({ length: 4 }, () => makeSpan({ traceId: otherTraceId }));
 
     store.append(resource, scope, targetSpans);
     store.append(resource, scope, otherSpans);

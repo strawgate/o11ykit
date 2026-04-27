@@ -11,8 +11,8 @@
  * - Error flag (skip chunks without errors when filtering for errors)
  */
 
-import type { Chunk } from "./chunk.js";
 import { bloomFromBase64, bloomMayContain } from "./bloom.js";
+import type { Chunk } from "./chunk.js";
 import type { TraceStore } from "./engine.js";
 import type {
   AnyValue,
@@ -21,7 +21,6 @@ import type {
   SpanNode,
   SpanPredicate,
   SpanRecord,
-  StatusCode,
   StructuralPredicate,
   Trace,
   TraceIntrinsics,
@@ -128,7 +127,14 @@ function queryByTraceIdFast(store: TraceStore, traceId: Uint8Array): TraceQueryR
   }
 
   if (matchingSpans.length === 0) {
-    return { traces: [], chunksScanned, chunksPruned, spansExamined, totalTraces: 0, queryTimeMs: 0 };
+    return {
+      traces: [],
+      chunksScanned,
+      chunksPruned,
+      spansExamined,
+      totalTraces: 0,
+      queryTimeMs: 0,
+    };
   }
 
   // Assemble the single trace
@@ -147,7 +153,14 @@ function queryByTraceIdFast(store: TraceStore, traceId: Uint8Array): TraceQueryR
     durationNanos: maxEnd - first.startTimeUnixNano,
   };
 
-  return { traces: [trace], chunksScanned, chunksPruned, spansExamined, totalTraces: 1, queryTimeMs: 0 };
+  return {
+    traces: [trace],
+    chunksScanned,
+    chunksPruned,
+    spansExamined,
+    totalTraces: 1,
+    queryTimeMs: 0,
+  };
 }
 
 /**
@@ -220,7 +233,7 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
   // Phase 4: Apply structural predicates
   if (opts.structuralPredicates !== undefined && opts.structuralPredicates.length > 0) {
     traces = traces.filter((t) =>
-      opts.structuralPredicates!.every((pred) => matchesStructuralPredicate(t.spans, pred)),
+      opts.structuralPredicates!.every((pred) => matchesStructuralPredicate(t.spans, pred))
     );
   }
 
@@ -307,8 +320,11 @@ export function buildSpanTree(spans: readonly SpanRecord[]): SpanNode[] {
     node.depth = depth;
     // Sort children by start time (safe bigint comparison)
     node.children.sort((a, b) =>
-      a.span.startTimeUnixNano < b.span.startTimeUnixNano ? -1 :
-      a.span.startTimeUnixNano > b.span.startTimeUnixNano ? 1 : 0,
+      a.span.startTimeUnixNano < b.span.startTimeUnixNano
+        ? -1
+        : a.span.startTimeUnixNano > b.span.startTimeUnixNano
+          ? 1
+          : 0
     );
 
     // Compute self-time by merging overlapping child intervals
@@ -316,10 +332,14 @@ export function buildSpanTree(spans: readonly SpanRecord[]): SpanNode[] {
     const intervals: Array<{ start: bigint; end: bigint }> = [];
     for (const child of node.children) {
       // Clip child interval to parent bounds
-      const start = child.span.startTimeUnixNano > node.span.startTimeUnixNano
-        ? child.span.startTimeUnixNano : node.span.startTimeUnixNano;
-      const end = child.span.endTimeUnixNano < node.span.endTimeUnixNano
-        ? child.span.endTimeUnixNano : node.span.endTimeUnixNano;
+      const start =
+        child.span.startTimeUnixNano > node.span.startTimeUnixNano
+          ? child.span.startTimeUnixNano
+          : node.span.startTimeUnixNano;
+      const end =
+        child.span.endTimeUnixNano < node.span.endTimeUnixNano
+          ? child.span.endTimeUnixNano
+          : node.span.endTimeUnixNano;
       if (end > start) intervals.push({ start, end });
       setDepths(child, depth + 1);
     }
@@ -327,7 +347,7 @@ export function buildSpanTree(spans: readonly SpanRecord[]): SpanNode[] {
     // Merge overlapping intervals
     let childCoverage = 0n;
     if (intervals.length > 0) {
-      intervals.sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
+      intervals.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
       let mergedStart = intervals[0]!.start;
       let mergedEnd = intervals[0]!.end;
       for (let i = 1; i < intervals.length; i++) {
@@ -367,7 +387,7 @@ export function criticalPath(roots: SpanNode[]): SpanNode[] {
 
   // Pick the root with the longest duration
   const root = roots.reduce((best, r) =>
-    r.span.durationNanos > best.span.durationNanos ? r : best,
+    r.span.durationNanos > best.span.durationNanos ? r : best
   );
 
   const path: SpanNode[] = [root];
@@ -392,7 +412,7 @@ export function criticalPath(roots: SpanNode[]): SpanNode[] {
 function canPruneChunk(
   chunk: Chunk,
   opts: TraceQueryOpts,
-  resource: { attributes: KeyValue[] },
+  resource: { attributes: KeyValue[] }
 ): boolean {
   const h = chunk.header;
 
@@ -430,7 +450,7 @@ function canPruneChunk(
 function matchesSpan(
   span: SpanRecord,
   opts: TraceQueryOpts,
-  resource: { attributes: KeyValue[] },
+  resource: { attributes: KeyValue[] }
 ): boolean {
   if (opts.startTimeNano !== undefined && span.endTimeUnixNano < opts.startTimeNano) return false;
   if (opts.endTimeNano !== undefined && span.startTimeUnixNano > opts.endTimeNano) return false;
@@ -441,8 +461,10 @@ function matchesSpan(
   if (opts.kind !== undefined && span.kind !== opts.kind) return false;
   if (opts.statusCode !== undefined && span.statusCode !== opts.statusCode) return false;
 
-  if (opts.minDurationNanos !== undefined && span.durationNanos < opts.minDurationNanos) return false;
-  if (opts.maxDurationNanos !== undefined && span.durationNanos > opts.maxDurationNanos) return false;
+  if (opts.minDurationNanos !== undefined && span.durationNanos < opts.minDurationNanos)
+    return false;
+  if (opts.maxDurationNanos !== undefined && span.durationNanos > opts.maxDurationNanos)
+    return false;
 
   if (opts.serviceName !== undefined) {
     const svcAttr = resource.attributes.find((a) => a.key === "service.name");
@@ -504,10 +526,14 @@ function matchesAttributePredicate(span: SpanRecord, pred: AttributePredicate): 
       if (a === null || b === null) return false;
       if (typeof a !== typeof b) return false;
       switch (pred.op) {
-        case "gt": return a > b;
-        case "gte": return a >= b;
-        case "lt": return a < b;
-        case "lte": return a <= b;
+        case "gt":
+          return a > b;
+        case "gte":
+          return a >= b;
+        case "lt":
+          return a < b;
+        case "lte":
+          return a <= b;
       }
       break;
     }
@@ -515,8 +541,10 @@ function matchesAttributePredicate(span: SpanRecord, pred: AttributePredicate): 
     case "regex": {
       if (typeof attrVal !== "string" || typeof pred.value !== "string") return false;
       try {
-        const re = pred._compiledRegex ?? (pred._compiledRegex = new RegExp(pred.value));
-        return re.test(attrVal);
+        if (!pred._compiledRegex) {
+          pred._compiledRegex = new RegExp(pred.value);
+        }
+        return pred._compiledRegex.test(attrVal);
       } catch {
         return false;
       }
@@ -545,8 +573,10 @@ function matchesAttributePredicate(span: SpanRecord, pred: AttributePredicate): 
 
 /** Check if an assembled trace matches trace-level filter predicates. */
 function matchesTraceIntrinsics(trace: Trace, filter: TraceIntrinsics): boolean {
-  if (filter.minDurationNanos !== undefined && trace.durationNanos < filter.minDurationNanos) return false;
-  if (filter.maxDurationNanos !== undefined && trace.durationNanos > filter.maxDurationNanos) return false;
+  if (filter.minDurationNanos !== undefined && trace.durationNanos < filter.minDurationNanos)
+    return false;
+  if (filter.maxDurationNanos !== undefined && trace.durationNanos > filter.maxDurationNanos)
+    return false;
 
   if (filter.minSpanCount !== undefined && trace.spans.length < filter.minSpanCount) return false;
   if (filter.maxSpanCount !== undefined && trace.spans.length > filter.maxSpanCount) return false;
@@ -597,7 +627,7 @@ function matchesSpanPredicate(span: SpanRecord, pred: SpanPredicate): boolean {
  */
 function matchesStructuralPredicate(
   spans: readonly SpanRecord[],
-  pred: StructuralPredicate,
+  pred: StructuralPredicate
 ): boolean {
   const leftSpans = spans.filter((s) => matchesSpanPredicate(s, pred.left));
   const rightSpans = spans.filter((s) => matchesSpanPredicate(s, pred.right));
@@ -620,19 +650,27 @@ function checkRelation(
   a: SpanRecord,
   b: SpanRecord,
   relation: StructuralPredicate["relation"],
-  spanByHex: Map<string, SpanRecord>,
+  spanByHex: Map<string, SpanRecord>
 ): boolean {
   switch (relation) {
     case "descendant":
-      if (a.nestedSetLeft !== undefined && a.nestedSetRight !== undefined &&
-          b.nestedSetLeft !== undefined && b.nestedSetRight !== undefined) {
+      if (
+        a.nestedSetLeft !== undefined &&
+        a.nestedSetRight !== undefined &&
+        b.nestedSetLeft !== undefined &&
+        b.nestedSetRight !== undefined
+      ) {
         return a.nestedSetLeft < b.nestedSetLeft && b.nestedSetRight < a.nestedSetRight;
       }
       return isDescendantByParent(b, a, spanByHex);
 
     case "ancestor":
-      if (a.nestedSetLeft !== undefined && a.nestedSetRight !== undefined &&
-          b.nestedSetLeft !== undefined && b.nestedSetRight !== undefined) {
+      if (
+        a.nestedSetLeft !== undefined &&
+        a.nestedSetRight !== undefined &&
+        b.nestedSetLeft !== undefined &&
+        b.nestedSetRight !== undefined
+      ) {
         return b.nestedSetLeft < a.nestedSetLeft && a.nestedSetRight < b.nestedSetRight;
       }
       return isDescendantByParent(a, b, spanByHex);
@@ -661,7 +699,7 @@ function checkRelation(
 function isDescendantByParent(
   descendant: SpanRecord,
   ancestor: SpanRecord,
-  spanByHex: Map<string, SpanRecord>,
+  spanByHex: Map<string, SpanRecord>
 ): boolean {
   let current: SpanRecord | undefined = descendant;
   while (current?.parentSpanId !== undefined) {
@@ -685,7 +723,12 @@ function anyValueEquals(a: AnyValue, b: AnyValue): boolean {
   if (a === b) return true;
   if (a === null || b === null) return false;
   if (typeof a !== typeof b) return false;
-  if (typeof a === "string" || typeof a === "number" || typeof a === "bigint" || typeof a === "boolean") {
+  if (
+    typeof a === "string" ||
+    typeof a === "number" ||
+    typeof a === "bigint" ||
+    typeof a === "boolean"
+  ) {
     return a === b;
   }
   if (a instanceof Uint8Array && b instanceof Uint8Array) {
@@ -712,8 +755,11 @@ function anyValueEquals(a: AnyValue, b: AnyValue): boolean {
 
 /** Safe bigint sort comparator for spans by startTimeUnixNano. */
 function compareBigint(a: SpanRecord, b: SpanRecord): number {
-  return a.startTimeUnixNano < b.startTimeUnixNano ? -1 :
-    a.startTimeUnixNano > b.startTimeUnixNano ? 1 : 0;
+  return a.startTimeUnixNano < b.startTimeUnixNano
+    ? -1
+    : a.startTimeUnixNano > b.startTimeUnixNano
+      ? 1
+      : 0;
 }
 
 // ─── Structural queries (nested set model) ───────────────────────────
@@ -725,14 +771,20 @@ function compareBigint(a: SpanRecord, b: SpanRecord): number {
  * (Nested set numbers are per-trace, so cross-trace comparisons are invalid.)
  */
 export function isAncestorOf(ancestor: SpanRecord, descendant: SpanRecord): boolean {
-  if (ancestor.nestedSetLeft === undefined || ancestor.nestedSetRight === undefined ||
-      descendant.nestedSetLeft === undefined || descendant.nestedSetRight === undefined) {
+  if (
+    ancestor.nestedSetLeft === undefined ||
+    ancestor.nestedSetRight === undefined ||
+    descendant.nestedSetLeft === undefined ||
+    descendant.nestedSetRight === undefined
+  ) {
     return false;
   }
   // Must be from the same trace (nested set numbers are per-trace)
   if (!bytesEqual(ancestor.traceId, descendant.traceId)) return false;
-  return ancestor.nestedSetLeft < descendant.nestedSetLeft &&
-         descendant.nestedSetRight < ancestor.nestedSetRight;
+  return (
+    ancestor.nestedSetLeft < descendant.nestedSetLeft &&
+    descendant.nestedSetRight < ancestor.nestedSetRight
+  );
 }
 
 /**
@@ -748,9 +800,7 @@ export function isDescendantOf(descendant: SpanRecord, ancestor: SpanRecord): bo
 export function isSiblingOf(a: SpanRecord, b: SpanRecord): boolean {
   if (a.nestedSetParent === undefined || b.nestedSetParent === undefined) return false;
   if (!bytesEqual(a.traceId, b.traceId)) return false;
-  return a.nestedSetParent === b.nestedSetParent &&
-         a.nestedSetParent !== 0 &&
-         a !== b;
+  return a.nestedSetParent === b.nestedSetParent && a.nestedSetParent !== 0 && a !== b;
 }
 
 /**

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.11/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.13/schema.json",
   "files": {
     "includes": [
       "**",
@@ -58,6 +58,19 @@
         "packages/o11ylogsdb/src/chunk.ts",
         "packages/o11ylogsdb/src/drain.ts",
         "packages/o11ylogsdb/bench/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/o11ytracesdb/src/**",
+        "packages/o11ytracesdb/test/**"
       ],
       "linter": {
         "rules": {

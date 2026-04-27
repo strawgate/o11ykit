@@ -1,9 +1,9 @@
-import { describe, it, expect } from "vitest";
-import { ColumnarTracePolicy } from "../src/codec-columnar.js";
+import { describe, expect, it } from "vitest";
 import { ChunkBuilder } from "../src/chunk.js";
+import { ColumnarTracePolicy } from "../src/codec-columnar.js";
 import { TraceStore } from "../src/engine.js";
-import { queryTraces, buildSpanTree, criticalPath } from "../src/query.js";
-import type { SpanRecord, SpanEvent, SpanLink } from "../src/types.js";
+import { buildSpanTree, criticalPath, queryTraces } from "../src/query.js";
+import type { SpanRecord } from "../src/types.js";
 import { SpanKind, StatusCode } from "../src/types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ function makeTrace(numSpans: number): SpanRecord[] {
         startTimeUnixNano: childStart,
         endTimeUnixNano: childStart + 30_000_000n,
         durationNanos: 30_000_000n,
-      }),
+      })
     );
   }
   return spans;
@@ -192,9 +192,7 @@ describe("ColumnarTracePolicy — encode/decode round-trip", () => {
   });
 
   it("handles dictionary encoding for repeated span names", () => {
-    const spans = Array.from({ length: 50 }, (_, i) =>
-      makeSpan({ name: `op-${i % 5}` }),
-    );
+    const spans = Array.from({ length: 50 }, (_, i) => makeSpan({ name: `op-${i % 5}` }));
     const { payload, meta } = policy.encodePayload(spans);
     const decoded = policy.decodePayload(payload, spans.length, meta);
 
@@ -205,7 +203,7 @@ describe("ColumnarTracePolicy — encode/decode round-trip", () => {
 
   it("achieves expected compression ratio", () => {
     const spans = makeTrace(100);
-    const { payload, meta } = policy.encodePayload(spans);
+    const { payload } = policy.encodePayload(spans);
     const bytesPerSpan = payload.length / spans.length;
 
     // Should be roughly 50 B/span for typical spans with few attributes
@@ -227,7 +225,9 @@ describe("ChunkBuilder — serialize/deserialize", () => {
     const chunk = builder.flush();
     expect(chunk).not.toBeNull();
     expect(chunk!.header.nSpans).toBe(10);
-    expect(BigInt(chunk!.header.minTimeNano)).toBeLessThanOrEqual(BigInt(chunk!.header.maxTimeNano));
+    expect(BigInt(chunk!.header.minTimeNano)).toBeLessThanOrEqual(
+      BigInt(chunk!.header.maxTimeNano)
+    );
     expect(chunk!.header.spanNames.length).toBeGreaterThan(0);
   });
 
@@ -289,7 +289,9 @@ describe("TraceStore — ingest + query", () => {
 
     // Should find the new span's trace
     const traceIds = result.traces.map((t) =>
-      Array.from(t.traceId).map((b) => b.toString(16).padStart(2, "0")).join(""),
+      Array.from(t.traceId)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("")
     );
     const newTraceHex = Array.from(newSpan.traceId)
       .map((b) => b.toString(16).padStart(2, "0"))
