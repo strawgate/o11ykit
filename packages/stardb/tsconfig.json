@@ -8,6 +8,5 @@
     "lib": ["ES2023", "DOM"],
     "types": ["node"]
   },
-  "references": [{ "path": "../stardb" }],
   "include": ["src/**/*.ts"]
 }

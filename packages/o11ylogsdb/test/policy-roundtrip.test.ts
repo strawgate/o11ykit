@@ -1,7 +1,6 @@
+import { defaultRegistry } from "stardb";
 import { describe, expect, it } from "vitest";
-
 import { ChunkBuilder, type ChunkPolicy, DefaultChunkPolicy, readRecords } from "../src/chunk.js";
-import { defaultRegistry } from "../src/codec-baseline.js";
 import { ColumnarDrainPolicy, ColumnarRawPolicy } from "../src/codec-columnar.js";
 import { DrainChunkPolicy } from "../src/codec-drain.js";
 import { TypedColumnarDrainPolicy } from "../src/codec-typed.js";

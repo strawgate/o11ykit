@@ -4,6 +4,18 @@
 // stream registry, and a default body classifier. Real codec
 // implementations land via M0–M2 (see ../PLAN.md).
 
+// Codec primitives live in `stardb` — re-exported here so downstream
+// consumers of `o11ylogsdb` keep their existing import paths.
+export type { Codec, IntCodec, StringCodec } from "stardb";
+export {
+  CodecRegistry,
+  defaultRegistry,
+  GzipCodec,
+  lengthPrefixStringCodec,
+  rawCodec,
+  rawInt64Codec,
+  ZstdCodec,
+} from "stardb";
 export type { Chunk, ChunkHeader, ChunkPolicy } from "./chunk.js";
 export {
   CHUNK_VERSION,
@@ -15,16 +27,6 @@ export {
 } from "./chunk.js";
 export type { BodyClassifier, TemplateExtractor } from "./classify.js";
 export { defaultClassifier, TemplatedClassifier } from "./classify.js";
-export type { Codec, IntCodec, StringCodec } from "./codec.js";
-export { CodecRegistry } from "./codec.js";
-export {
-  defaultRegistry,
-  GzipCodec,
-  lengthPrefixStringCodec,
-  rawCodec,
-  rawInt64Codec,
-  ZstdCodec,
-} from "./codec-baseline.js";
 export type {
   ColumnarDrainPolicyConfig,
   ColumnarPolicyConfig,

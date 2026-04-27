@@ -21,7 +21,7 @@
  * over the result. M3/M4 replace this with a proper per-column form.
  */
 
-import type { CodecRegistry } from "./codec.js";
+import type { CodecRegistry } from "stardb";
 import type { InstrumentationScope, LogRecord, Resource } from "./types.js";
 
 const MAGIC_BYTES = new Uint8Array([0x4f, 0x4c, 0x44, 0x42]); // "OLDB"
