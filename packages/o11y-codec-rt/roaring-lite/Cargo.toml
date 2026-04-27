@@ -1,0 +1,22 @@
+[package]
+name = "o11y-codec-rt-roaring-lite"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Minimal Roaring32 bitmap (sorted-array container under 4096
+# cardinality, bitmap container at ≥ 4096; no run container).
+# Pure-Rust, no_std with `extern crate alloc`.
+#
+# Used by the o11ylogsdb engine for in-chunk postings (severity
+# values, attribute-key presence, low-cardinality columns) and by
+# the query path for AND-ing postings across columns. Reference:
+# Lemire et al., RoaringBitmap.
+
+[lib]
+
+[dependencies]
+
+[lints]
+workspace = true

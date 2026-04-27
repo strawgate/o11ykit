@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["core", "xor-delta", "alp", "interner", "drain", "fsst"]
+members = ["core", "xor-delta", "alp", "interner", "drain", "fsst", "roaring-lite"]
 
 # Shared codec runtime for o11ykit engines. Each engine's binding crate
 # (packages/o11ytsdb/rust, packages/o11ylogsdb/rust, …) depends on the
