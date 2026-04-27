@@ -20,7 +20,7 @@ executor that never materializes proportional-to-N.
 | Milestone | Status |
 |---|---|
 | **M0 — Codec workspace migration** | **complete.** `core` (bit I/O, ms→ns, zigzag), `xor-delta` (Gorilla), `alp` (full ALP/Delta-ALP), `interner` (FNV-1a string interner), `drain` (M2 below). All extracted to `packages/o11y-codec-rt/`. |
-| M1 — FSST + binary fuse + Roaring-lite | not started |
+| **M1 — FSST + binary fuse + Roaring-lite** | **FSST first cut shipped** at `packages/o11y-codec-rt/fsst/` — greedy encode, sequential decode, naive frequency-based table builder; round-trips verified. Suffix-counting selection, hash-accelerated encode, branch-free SIMD decode are follow-up. Binary fuse 8/16 + Roaring-lite pending. |
 | **M2 — Drain template extractor** | **graduated** to `packages/o11y-codec-rt/drain/`. ARI = 1.0 vs the published Python reference on five public log corpora. TS port at `src/drain.ts` is bit-identical and integrated via `DrainChunkPolicy`, `ColumnarDrainPolicy`, `TypedColumnarDrainPolicy`. Configurable masker + persistable state pending — see [`dev-docs/drain-prototype.md`](./dev-docs/drain-prototype.md). |
 | **M3 — Per-stream chunk format** | **scaffolded** (`src/chunk.ts` v1 wire format, `src/stream.ts` registry, `ChunkPolicy` plug-in surface with preEncode/postDecode + codecMeta round-trip). Per-column refinement pending. |
 | **M4 — Per-column codec dispatch** | **first cut shipped** (`ColumnarDrainPolicy`, `ColumnarRawPolicy`, `TypedColumnarDrainPolicy`). Per-column codec specialization (ALP for ints, FSST for strings, BF16 for identifiers) pending. |
