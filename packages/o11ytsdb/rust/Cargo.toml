@@ -28,3 +28,4 @@ panic = "abort"      # No unwinding — smaller binary
 o11y-codec-rt-core = { path = "../../o11y-codec-rt/core" }
 o11y-codec-rt-xor-delta = { path = "../../o11y-codec-rt/xor-delta" }
 o11y-codec-rt-alp = { path = "../../o11y-codec-rt/alp" }
+o11y-codec-rt-interner = { path = "../../o11y-codec-rt/interner" }
