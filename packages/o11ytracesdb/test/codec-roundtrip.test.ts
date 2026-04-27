@@ -201,6 +201,56 @@ describe("ColumnarTracePolicy — encode/decode round-trip", () => {
     }
   });
 
+  it("round-trips optional dropped counts and traceState", () => {
+    const baseTime = BigInt(Date.now()) * 1_000_000n;
+    const span = makeSpan({
+      traceState: "vendorkey=value",
+      droppedAttributesCount: 3,
+      droppedEventsCount: 1,
+      droppedLinksCount: 2,
+      events: [
+        {
+          timeUnixNano: baseTime + 5_000_000n,
+          name: "evt",
+          attributes: [],
+          droppedAttributesCount: 7,
+        },
+      ],
+      links: [
+        {
+          traceId: randomBytes(16),
+          spanId: randomBytes(8),
+          attributes: [],
+          traceState: "linkvendor=lv",
+          droppedAttributesCount: 4,
+        },
+      ],
+    });
+    const { payload, meta } = policy.encodePayload([span]);
+    const decoded = policy.decodePayload(payload, 1, meta);
+
+    const d = decoded[0]!;
+    expect(d.traceState).toBe("vendorkey=value");
+    expect(d.droppedAttributesCount).toBe(3);
+    expect(d.droppedEventsCount).toBe(1);
+    expect(d.droppedLinksCount).toBe(2);
+    expect(d.events[0]!.droppedAttributesCount).toBe(7);
+    expect(d.links[0]!.traceState).toBe("linkvendor=lv");
+    expect(d.links[0]!.droppedAttributesCount).toBe(4);
+  });
+
+  it("omits optional fields when they are zero/undefined", () => {
+    const span = makeSpan();
+    const { payload, meta } = policy.encodePayload([span]);
+    const decoded = policy.decodePayload(payload, 1, meta);
+
+    const d = decoded[0]!;
+    expect(d.traceState).toBeUndefined();
+    expect(d.droppedAttributesCount).toBeUndefined();
+    expect(d.droppedEventsCount).toBeUndefined();
+    expect(d.droppedLinksCount).toBeUndefined();
+  });
+
   it("achieves expected compression ratio", () => {
     const spans = makeTrace(100);
     const { payload } = policy.encodePayload(spans);

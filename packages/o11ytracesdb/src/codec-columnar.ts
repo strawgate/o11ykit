@@ -13,6 +13,7 @@
  *   Section 7: Events (count-prefixed sub-chunks)
  *   Section 8: Links (count-prefixed sub-chunks)
  *   Section 9: Nested sets (delta-encoded i32: left, right, parent per span)
+ *   Section 10: Optional fields (traceState, dropped counts per span/event/link)
  *
  * Sections are length-prefixed so the decoder can seek to any section
  * for partial decode (e.g. decode only IDs for trace assembly).
@@ -194,6 +195,11 @@ export class ByteReader {
     return textDecoder.decode(bytes);
   }
 
+  /** Number of unread bytes remaining in the buffer. */
+  get remaining(): number {
+    return this.buf.length - this.pos;
+  }
+
   /** Read a length-prefixed section, return a sub-reader over it. */
   readSection(): Uint8Array {
     const len = this.readU32();
@@ -248,13 +254,6 @@ function collectStatusMsgs(spans: readonly SpanRecord[]): Iterable<string> {
 
 // ─── Columnar Codec Implementation ──────────────────────────────────
 
-interface ColumnarMeta {
-  nameDict: string[];
-  keyDict: string[];
-  valDict: string[];
-  msgDict: string[];
-}
-
 export class ColumnarTracePolicy implements ChunkPolicy {
   codecName(): string {
     return "columnar-v1";
@@ -270,6 +269,21 @@ export class ColumnarTracePolicy implements ChunkPolicy {
     const keys = buildDictWithIndex(collectAttrKeys(spans));
     const vals = buildDictWithIndex(collectAttrStringVals(spans));
     const msgs = buildDictWithIndex(collectStatusMsgs(spans));
+
+    // Validate dictionary sizes fit in U16 indices
+    const MAX_DICT = 0xfffe; // 0xffff reserved as sentinel
+    if (names.dict.length > MAX_DICT) {
+      throw new RangeError(`Span name dictionary overflow: ${names.dict.length} entries (max ${MAX_DICT})`);
+    }
+    if (keys.dict.length > MAX_DICT) {
+      throw new RangeError(`Attribute key dictionary overflow: ${keys.dict.length} entries (max ${MAX_DICT})`);
+    }
+    if (vals.dict.length > MAX_DICT) {
+      throw new RangeError(`Attribute value dictionary overflow: ${vals.dict.length} entries (max ${MAX_DICT})`);
+    }
+    if (msgs.dict.length > MAX_DICT) {
+      throw new RangeError(`Status message dictionary overflow: ${msgs.dict.length} entries (max ${MAX_DICT})`);
+    }
 
     // Section 0: Timestamps (delta-of-delta startTime + delta-of-delta endTime)
     {
@@ -429,13 +443,32 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       out.patchSectionLength(off);
     }
 
-    const meta: ColumnarMeta = {
-      nameDict: names.dict,
-      keyDict: keys.dict,
-      valDict: vals.dict,
-      msgDict: msgs.dict,
-    };
-    return { payload: out.finish(), meta };
+    // Section 10: Optional per-span fields (traceState, dropped counts)
+    {
+      const off = out.reserveSectionLength();
+      for (const s of spans) {
+        out.writeString(s.traceState ?? "");
+        out.writeUvarint(s.droppedAttributesCount ?? 0);
+        out.writeUvarint(s.droppedEventsCount ?? 0);
+        out.writeUvarint(s.droppedLinksCount ?? 0);
+      }
+      // Per-event dropped attributes count
+      for (const s of spans) {
+        for (const evt of s.events) {
+          out.writeUvarint(evt.droppedAttributesCount ?? 0);
+        }
+      }
+      // Per-link optional fields
+      for (const s of spans) {
+        for (const link of s.links) {
+          out.writeString(link.traceState ?? "");
+          out.writeUvarint(link.droppedAttributesCount ?? 0);
+        }
+      }
+      out.patchSectionLength(off);
+    }
+
+    return { payload: out.finish(), meta: {} };
   }
 
   decodePayload(buf: Uint8Array, nSpans: number, _meta: unknown): SpanRecord[] {
@@ -597,6 +630,45 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       }
     }
 
+    // Section 10: Optional per-span fields (backward compatible)
+    const optTraceStates: (string | undefined)[] = new Array(n);
+    const optDroppedAttrCounts: (number | undefined)[] = new Array(n);
+    const optDroppedEvtCounts: (number | undefined)[] = new Array(n);
+    const optDroppedLinkCounts: (number | undefined)[] = new Array(n);
+    if (reader.remaining > 0) {
+      try {
+        const optSection = new ByteReader(reader.readSection());
+        for (let i = 0; i < n; i++) {
+          const ts = optSection.readString();
+          if (ts.length > 0) optTraceStates[i] = ts;
+          const dac = optSection.readUvarint();
+          if (dac > 0) optDroppedAttrCounts[i] = dac;
+          const dec = optSection.readUvarint();
+          if (dec > 0) optDroppedEvtCounts[i] = dec;
+          const dlc = optSection.readUvarint();
+          if (dlc > 0) optDroppedLinkCounts[i] = dlc;
+        }
+        // Per-event dropped attributes
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < allEvents[i]!.length; j++) {
+            const edac = optSection.readUvarint();
+            if (edac > 0) allEvents[i]![j]!.droppedAttributesCount = edac;
+          }
+        }
+        // Per-link optional fields
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < allLinks[i]!.length; j++) {
+            const lts = optSection.readString();
+            if (lts.length > 0) allLinks[i]![j]!.traceState = lts;
+            const ldac = optSection.readUvarint();
+            if (ldac > 0) allLinks[i]![j]!.droppedAttributesCount = ldac;
+          }
+        }
+      } catch {
+        // Section 10 not present in older data — all optional fields remain undefined
+      }
+    }
+
     // Assemble SpanRecords
     for (let i = 0; i < n; i++) {
       const parentId = parentSpanIds[i];
@@ -604,10 +676,15 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       const nsLeft = nestedSetLefts[i]!;
       const nsRight = nestedSetRights[i]!;
       const nsParent = nestedSetParents[i]!;
+      const traceState = optTraceStates[i];
+      const dac = optDroppedAttrCounts[i];
+      const dec = optDroppedEvtCounts[i];
+      const dlc = optDroppedLinkCounts[i];
       spans[i] = {
         traceId: traceIds[i]!,
         spanId: spanIds[i]!,
         ...(parentId !== undefined ? { parentSpanId: parentId } : {}),
+        ...(traceState !== undefined ? { traceState } : {}),
         name: nameIndices[i]!,
         kind: kinds[i]! as SpanRecord["kind"],
         startTimeUnixNano: startTimes[i]!,
@@ -616,8 +693,11 @@ export class ColumnarTracePolicy implements ChunkPolicy {
         statusCode: statusCodes[i]! as StatusCode,
         ...(statusMsg !== undefined ? { statusMessage: statusMsg } : {}),
         attributes: allAttrs[i]!,
+        ...(dac !== undefined ? { droppedAttributesCount: dac } : {}),
         events: allEvents[i]!,
+        ...(dec !== undefined ? { droppedEventsCount: dec } : {}),
         links: allLinks[i]!,
+        ...(dlc !== undefined ? { droppedLinksCount: dlc } : {}),
         ...(nsLeft !== 0 ? { nestedSetLeft: nsLeft } : {}),
         ...(nsRight !== 0 ? { nestedSetRight: nsRight } : {}),
         ...(nsParent !== 0 ? { nestedSetParent: nsParent } : {}),
