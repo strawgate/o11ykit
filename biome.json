@@ -57,7 +57,8 @@
         "packages/o11ylogsdb/src/codec-*.ts",
         "packages/o11ylogsdb/src/chunk.ts",
         "packages/o11ylogsdb/src/drain.ts",
-        "packages/o11ylogsdb/bench/**"
+        "packages/o11ylogsdb/bench/**",
+        "packages/o11ytsdb/test/**"
       ],
       "linter": {
         "rules": {
@@ -68,10 +69,7 @@
       }
     },
     {
-      "includes": [
-        "packages/o11ytracesdb/src/**",
-        "packages/o11ytracesdb/test/**"
-      ],
+      "includes": ["packages/o11ytracesdb/src/**", "packages/o11ytracesdb/test/**"],
       "linter": {
         "rules": {
           "style": {
