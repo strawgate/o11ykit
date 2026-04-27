@@ -75,6 +75,13 @@ export class StreamRegistry {
     e.chunks.push(chunk);
   }
 
+  removeChunk(id: StreamId, chunk: Chunk): void {
+    const e = this.byId.get(id);
+    if (!e) return;
+    const idx = e.chunks.indexOf(chunk);
+    if (idx !== -1) e.chunks.splice(idx, 1);
+  }
+
   chunksOf(id: StreamId): readonly Chunk[] {
     const e = this.byId.get(id);
     if (!e) throw new Error(`StreamRegistry: unknown id ${id}`);

@@ -21,6 +21,12 @@ export interface TraceStoreOpts {
   chunkSize?: number;
   /** Custom chunk policy. Default: ColumnarTracePolicy. */
   policy?: ChunkPolicy;
+  /** Maximum payload bytes before oldest chunks are evicted. Default: unlimited. */
+  maxPayloadBytes?: number;
+  /** Maximum number of sealed chunks. Default: unlimited. */
+  maxChunks?: number;
+  /** Maximum age in milliseconds before a chunk is evicted. Default: unlimited. */
+  ttlMs?: number;
 }
 
 export interface TraceStoreStats {
@@ -34,6 +40,10 @@ export interface TraceStoreStats {
   hotSpans: number;
   /** Total payload bytes across all sealed chunks. */
   payloadBytes: number;
+  /** Number of chunks evicted since creation. */
+  evictedChunks: number;
+  /** Number of spans evicted since creation. */
+  evictedSpans: number;
 }
 
 export class TraceStore {
@@ -41,13 +51,29 @@ export class TraceStore {
   private builders = new Map<StreamId, ChunkBuilder>();
   private readonly chunkSize: number;
   private readonly policy: ChunkPolicy;
+  private readonly maxPayloadBytes: number;
+  private readonly maxChunks: number;
+  private readonly ttlMs: number;
 
   /** LRU decode cache — avoids re-decoding sealed chunks on repeated queries. */
   private decodeCache = new WeakMap<Chunk, SpanRecord[]>();
 
+  /** Ordered list of all chunks for FIFO eviction (oldest first). */
+  private chunkOrder: { streamId: StreamId; chunk: Chunk; sealedAt: number }[] = [];
+
+  /** Running total of payload bytes. */
+  private totalPayloadBytes = 0;
+
+  /** Eviction counters. */
+  private _evictedChunks = 0;
+  private _evictedSpans = 0;
+
   constructor(opts: TraceStoreOpts = {}) {
     this.chunkSize = opts.chunkSize ?? 1024;
     this.policy = opts.policy ?? new ColumnarTracePolicy();
+    this.maxPayloadBytes = opts.maxPayloadBytes ?? Infinity;
+    this.maxChunks = opts.maxChunks ?? Infinity;
+    this.ttlMs = opts.ttlMs ?? Infinity;
   }
 
   /** Get the configured chunk policy (used by query engine). */
@@ -116,6 +142,31 @@ export class TraceStore {
     const chunk = builder.flush();
     if (chunk) {
       this.registry.appendChunk(streamId, chunk);
+      this.chunkOrder.push({ streamId, chunk, sealedAt: Date.now() });
+      this.totalPayloadBytes += chunk.header.payloadBytes;
+      this.evict();
+    }
+  }
+
+  /**
+   * Evict oldest chunks when over budget (bytes, count, or TTL).
+   * FIFO eviction: oldest chunks go first.
+   */
+  private evict(): void {
+    const now = Date.now();
+    while (this.chunkOrder.length > 0) {
+      const oldest = this.chunkOrder[0]!;
+      const overBytes = this.totalPayloadBytes > this.maxPayloadBytes;
+      const overCount = this.chunkOrder.length > this.maxChunks;
+      const overTTL = (now - oldest.sealedAt) > this.ttlMs;
+
+      if (!overBytes && !overCount && !overTTL) break;
+
+      this.chunkOrder.shift();
+      this.registry.removeChunk(oldest.streamId, oldest.chunk);
+      this.totalPayloadBytes -= oldest.chunk.header.payloadBytes;
+      this._evictedChunks++;
+      this._evictedSpans += oldest.chunk.header.nSpans;
     }
   }
 
@@ -160,6 +211,8 @@ export class TraceStore {
       sealedSpans,
       hotSpans,
       payloadBytes,
+      evictedChunks: this._evictedChunks,
+      evictedSpans: this._evictedSpans,
     };
   }
 }
