@@ -11,8 +11,9 @@ Part of the **o11ykit** suite — browser-native databases for metrics, traces, 
 | [o11ylogsdb](../o11ylogsdb/) | Logs | Drain template extraction, FSST |
 | **o11ytracesdb** | **Traces** | **Dictionary + nested set + bloom filter** |
 
-**Status:** production-ready core. 10-section columnar codec, ingest, query,
-trace assembly, structural queries, memory eviction — 85 passing tests.
+**Status:** production-ready core. Columnar codec, ingest, query,
+trace assembly, structural queries, aggregation pipeline, fluent query builder,
+memory eviction — 160 passing tests.
 
 ## Why
 
@@ -141,6 +142,9 @@ import {
   isAncestorOf,
   isDescendantOf,
   isSiblingOf,
+  TraceQuery,
+  aggregateTraces,
+  aggregateSpans,
 } from "o11ytracesdb";
 
 // Ingest
@@ -148,7 +152,7 @@ const store = new TraceStore({ chunkSize: 1024 });
 store.append(resource, scope, spans);
 store.flush();
 
-// Query
+// Simple query
 const result = queryTraces(store, {
   startTimeNano: 1700000000000000000n,
   endTimeNano:   1700000001000000000n,
@@ -157,6 +161,47 @@ const result = queryTraces(store, {
   statusCode: 2, // ERROR
   limit: 50,
 });
+
+// Fluent query builder (TraceQL-inspired)
+const result2 = TraceQuery.where()
+  .service("api-gateway")
+  .spanName(/POST.*/)
+  .duration({ min: 100_000_000n })
+  .attribute("http.status_code", "gte", 400)
+  .hasAttribute("error")
+  .traceDuration({ min: 5_000_000_000n })
+  .sortBy("duration", "desc")
+  .limit(50)
+  .exec(store);
+
+// Rich attribute predicates (11 operators)
+const result3 = queryTraces(store, {
+  attributePredicates: [
+    { key: "http.status_code", op: "gte", value: 400 },
+    { key: "db.system", op: "eq", value: "postgresql" },
+    { key: "error", op: "exists" },
+  ],
+});
+
+// Structural queries (TraceQL >> << ~ operators)
+const result4 = TraceQuery.where()
+  .service("frontend")
+  .hasDescendant(
+    { spanName: "api-handler" },
+    { statusCode: 2 }  // has error descendant
+  )
+  .exec(store);
+
+// Aggregation pipeline
+const agg = aggregateTraces(result.traces, [
+  { fn: "count" },
+  { fn: "avg", field: "duration" },
+  { fn: "p99", field: "duration" },
+]);
+// agg.results: [{ fn: "count", value: 42 }, { fn: "avg", field: "duration", value: 15000000 }, ...]
+
+const spanAgg = aggregateSpans(allSpans, [{ fn: "count" }, { fn: "avg", field: "duration" }], ["service.name"]);
+// spanAgg.groups: [{ groupKey: { "service.name": "api" }, count: 150, results: [...] }, ...]
 
 // Trace assembly + tree
 const trace = assembleTrace(store, traceId);
@@ -234,8 +279,14 @@ console.log(`${stats.evictedChunks} chunks evicted, ${stats.evictedSpans} spans 
 | Nested set encoding | ✅ Done |
 | Cross-signal correlation (RED, service graph) | ✅ Done |
 | Memory budget + TTL eviction | ✅ Done |
+| Rich query predicates (11 operators) | ✅ Done |
+| Fluent query builder (TraceQL-inspired) | ✅ Done |
+| Structural DSL (descendant/ancestor/child/sibling) | ✅ Done |
+| Aggregation pipeline (count/avg/p50/p90/p95/p99) | ✅ Done |
+| Trace-level intrinsics (rootService, traceDuration) | ✅ Done |
+| Sort + pagination | ✅ Done |
+| Interactive demo site | ✅ Done |
 | Dedicated attribute columns | 🔜 Planned |
 | WASM-accelerated codec | 🔜 Planned |
 | ZSTD compression layer | 🔜 Planned |
 | IndexedDB persistence | 🔜 Planned |
-| TTL / eviction | 🔜 Planned |
