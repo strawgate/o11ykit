@@ -85,6 +85,61 @@
   color: var(--traces);
 }
 
+/* Hero subtitle (positioning tagline) */
+.hero-subtitle {
+  font-size: 15px;
+  color: var(--traces);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin: 0 0 10px;
+}
+
+/* Hero stats row */
+.hero-stats {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 20px 0 24px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.hero-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.hero-stat-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--traces);
+  letter-spacing: -0.02em;
+}
+
+.hero-stat-label {
+  font-size: 12px;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Architecture note */
+.arch-note {
+  font-size: 14px;
+  color: var(--ink-soft);
+  max-width: 65ch;
+  margin: 16px auto 0;
+  padding: 12px 16px;
+  background: var(--surface-strong);
+  border-radius: 8px;
+  border-left: 3px solid var(--traces);
+  line-height: 1.5;
+}
+
 /* ─── Scenario Grid ──────────────────────────────────────────────── */
 .scenario-grid {
   display: grid;
@@ -346,6 +401,17 @@
   background: transparent;
   border: none;
   padding: 4px 8px;
+}
+
+.ingest-stats .stat-badge-accent {
+  background: var(--traces-soft);
+  border-radius: 8px;
+  border: 1px solid var(--traces);
+}
+
+.ingest-stats .stat-badge-accent .stat-value {
+  color: var(--traces);
+  font-weight: 800;
 }
 
 /* ─── Fork Grid ──────────────────────────────────────────────────── */

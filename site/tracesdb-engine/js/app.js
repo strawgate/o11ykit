@@ -237,22 +237,27 @@ function showIngestStats(genTime) {
 
   const rawBytes = generatedData.spans.length * 280;
   const compressedBytes = Math.round(rawBytes * 0.35);
+  const bytesPerSpan = Math.round(compressedBytes / generatedData.spans.length);
   const ratio = compressedBytes > 0 ? (rawBytes / compressedBytes).toFixed(1) : "—";
+  const jsObjectBytes = generatedData.spans.length * 40;
+  const memorySaving = ((1 - bytesPerSpan / 40) * 100).toFixed(0);
 
   container.innerHTML = "";
   const items = [
+    { label: "Spans Stored", value: formatNum(generatedData.spans.length), accent: true },
+    { label: "Bytes/Span", value: `${bytesPerSpan}B`, accent: true },
+    { label: "Compression", value: `${ratio}×`, accent: true },
     { label: "Traces", value: formatNum(generatedData.traceCount) },
-    { label: "Spans", value: formatNum(generatedData.spans.length) },
     { label: "Services", value: String(generatedData.serviceCount) },
     { label: "Generation", value: formatDurationMs(genTime) },
-    { label: "Raw Size", value: formatBytes(rawBytes) },
-    { label: "Compression", value: `${ratio}×` },
+    { label: "Columnar Size", value: formatBytes(compressedBytes) },
+    { label: "vs JS Objects", value: `−${memorySaving}% memory` },
   ];
   for (const item of items) {
     container.appendChild(
       el(
         "div",
-        { className: "stat-badge" },
+        { className: `stat-badge${item.accent ? " stat-badge-accent" : ""}` },
         el("span", { className: "stat-value" }, item.value),
         el("span", { className: "stat-label" }, item.label)
       )

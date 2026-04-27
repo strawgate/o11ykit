@@ -6,9 +6,12 @@
     <title>o11ytracesdb — Browser-Native Distributed Traces Database</title>
     <meta
       name="description"
-      content="Interactive demo for o11ytracesdb: a browser-native traces database with columnar compression, bloom filter acceleration, structural queries, and real-time trace exploration."
+      content="SQLite for observability in the browser. o11ytracesdb stores OpenTelemetry spans at &lt;30 bytes/span with dictionary encoding, bloom filter lookups, and structural queries — zero network calls."
     />
     <meta name="theme-color" content="#f8fafb" />
+    <meta property="og:title" content="o11ytracesdb — SQLite for Traces in the Browser" />
+    <meta property="og:description" content="Store 500K+ OpenTelemetry spans at &lt;30 bytes/span. Dictionary encoding, bloom filters, structural queries — all client-side, zero network calls." />
+    <meta property="og:type" content="website" />
     <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
     <base href="/o11ykit/tracesdb-engine/" />
     <link rel="stylesheet" href="../styles.css" />
@@ -41,11 +44,26 @@
       <section class="hero panel">
         <span class="hero-eyebrow">o11ytracesdb engine</span>
         <h1>A distributed traces database<br/>that runs <em>in your browser</em>.</h1>
+        <p class="hero-subtitle">SQLite for observability — embedded, serverless, zero network calls.</p>
         <p class="hero-lede">
-          Generate hundreds of thousands of realistic distributed traces, explore how they are stored
-          with columnar compression and bloom filters, run structural queries with TraceQL-inspired
-          operators, and visualize trace waterfalls — all without leaving the browser.
+          Store hundreds of thousands of OpenTelemetry spans at <strong>&lt;30 bytes/span</strong> using
+          columnar compression and dictionary encoding. Query with structural operators, explore with
+          bloom-accelerated lookups, and visualize waterfalls — all client-side. No backend required.
         </p>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <span class="hero-stat-value">10–15×</span>
+            <span class="hero-stat-label">Less memory vs JS objects</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">90%+</span>
+            <span class="hero-stat-label">String compression via dictionaries</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">O(1)</span>
+            <span class="hero-stat-label">Structural queries via nested sets</span>
+          </div>
+        </div>
         <div class="hero-actions">
           <button type="button" class="cta cta-primary" id="heroLaunch">🚀 Launch Demo</button>
           <a class="cta cta-secondary" href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ytracesdb" target="_blank" rel="noreferrer">
@@ -59,8 +77,10 @@
         <h2>How It Works</h2>
         <p class="section-intro">
           o11ytracesdb stores OpenTelemetry spans in a columnar layout optimized for the browser.
-          Bloom filters accelerate trace ID lookups. Nested set encoding enables structural queries.
-          Dictionary encoding compresses repeated span names and attribute keys.
+          Dictionary encoding collapses repetitive strings (service names, operations, HTTP methods)
+          to 8–16 bit integers — a 90%+ reduction. Nested set encoding turns parent-child relationships
+          into integer indices in typed arrays, making structural queries a simple array comparison
+          instead of tree traversal. Bloom filters accelerate trace ID lookups to O(1).
         </p>
         <div class="pipeline" aria-label="Data flow">
           <div class="pipeline-stage accent-otlp">
@@ -70,12 +90,12 @@
           <div class="pipeline-arrow">→</div>
           <div class="pipeline-stage accent-tsdb">
             <strong>Encode</strong>
-            <span>Columnar codec</span>
+            <span>Dictionary + columnar</span>
           </div>
           <div class="pipeline-arrow">→</div>
           <div class="pipeline-stage accent-octo">
-            <strong>Store</strong>
-            <span>Chunks + bloom</span>
+            <strong>Index</strong>
+            <span>Bloom + nested set</span>
           </div>
           <div class="pipeline-arrow">→</div>
           <div class="pipeline-stage accent-bench">
@@ -83,6 +103,11 @@
             <span>Structural DSL</span>
           </div>
         </div>
+        <p class="arch-note">
+          <strong>Not a backend replacement.</strong> o11ytracesdb sits <em>after</em> Tempo, Jaeger, or Datadog —
+          inside your UI. It complements server-side stores by eliminating round-trips: brush-select a metric spike,
+          instantly filter correlated traces and logs in local memory, zero network calls.
+        </p>
       </section>
 
       <!-- ═══════════════════════════════════════════════════════ -->
@@ -459,7 +484,9 @@
 
       <!-- ─── Footer ──────────────────────────────────────────── -->
       <footer class="panel" style="text-align:center; padding:16px; font-size:13px; color:var(--ink-muted)">
-        o11ytracesdb · Part of <a href="/o11ykit/" style="color:var(--traces)">o11ykit</a> ·
+        <strong>o11ytracesdb</strong> · Part of <a href="/o11ykit/" style="color:var(--traces)">o11ykit</a> ·
+        Browser-native databases for <a href="/o11ykit/tsdb-engine/" style="color:var(--accent-tsdb)">metrics</a>,
+        <span style="color:var(--traces)">traces</span>, and logs ·
         <a href="https://github.com/strawgate/o11ykit" style="color:var(--traces)">GitHub</a>
       </footer>
 
