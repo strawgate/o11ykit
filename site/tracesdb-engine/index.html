@@ -296,6 +296,16 @@
           status, and duration — then add attribute filters, structural predicates, and trace intrinsics.
         </p>
 
+        <!-- Quick Query Recipes -->
+        <div class="query-recipes" id="queryRecipes">
+          <span class="recipes-label">Quick:</span>
+          <button type="button" class="recipe-chip" data-recipe="errors">🔴 All Errors</button>
+          <button type="button" class="recipe-chip" data-recipe="slow">🐢 Slow Traces (&gt;1s)</button>
+          <button type="button" class="recipe-chip" data-recipe="root-errors">⚡ Root Span Errors</button>
+          <button type="button" class="recipe-chip" data-recipe="long-chains">🔗 Deep Call Chains</button>
+          <button type="button" class="recipe-chip" data-recipe="p99">📊 P99 by Service</button>
+        </div>
+
         <div class="query-lab-grid">
           <!-- Left: Query stages -->
           <div class="query-stages">

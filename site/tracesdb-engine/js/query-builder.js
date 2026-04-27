@@ -22,6 +22,7 @@ export function initQueryBuilder(spans, svcNames, callbacks = {}) {
   setupStructuralPredicates();
   setupTraceIntrinsics();
   setupAggToggle();
+  setupRecipes();
   bindQueryEvents();
   updatePreview();
 }
@@ -165,6 +166,76 @@ function getAggOpts() {
     field: $("#aggField")?.value || "duration",
     groupBy: $("#aggGroupBy")?.value || null,
   };
+}
+
+// ── Quick Query Recipes ───────────────────────────────────────────────
+
+const RECIPES = {
+  errors: { statusCode: 2, sortBy: "duration", sortDir: "desc" },
+  slow: { minDurationMs: 1000, sortBy: "duration", sortDir: "desc" },
+  "root-errors": {
+    statusCode: 2,
+    traceIntrinsics: { minTraceDurationMs: 0 },
+    sortBy: "duration",
+    sortDir: "desc",
+  },
+  "long-chains": { minDurationMs: 500, sortBy: "spanCount", sortDir: "desc", limit: 50 },
+  p99: {
+    sortBy: "duration",
+    sortDir: "desc",
+    limit: 50,
+    _aggregate: { fn: "p99", field: "duration", groupBy: "rootService" },
+  },
+};
+
+function setupRecipes() {
+  const container = $("#queryRecipes");
+  if (!container) return;
+  container.querySelectorAll(".recipe-chip").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const recipe = RECIPES[btn.dataset.recipe];
+      if (!recipe) return;
+      applyRecipe(recipe);
+      btn.classList.add("active");
+      setTimeout(() => btn.classList.remove("active"), 600);
+    });
+  });
+}
+
+function applyRecipe(recipe) {
+  // Reset form
+  if ($("#qService")) $("#qService").value = recipe.service || "";
+  if ($("#qSpanName")) $("#qSpanName").value = recipe.spanName || "";
+  if ($("#qStatus")) $("#qStatus").value = String(recipe.statusCode ?? -1);
+  if ($("#qKind")) $("#qKind").value = String(recipe.spanKind ?? -1);
+  if ($("#qMinDuration")) $("#qMinDuration").value = recipe.minDurationMs || "";
+  if ($("#qMaxDuration")) $("#qMaxDuration").value = recipe.maxDurationMs || "";
+  if ($("#qSortBy")) $("#qSortBy").value = recipe.sortBy || "duration";
+  if ($("#qSortDir")) $("#qSortDir").value = recipe.sortDir || "desc";
+  if ($("#qLimit")) $("#qLimit").value = String(recipe.limit || 100);
+
+  // Handle aggregation mode
+  if (recipe._aggregate) {
+    currentMode = "aggregate";
+    document.querySelectorAll(".agg-toggle-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.mode === "aggregate");
+    });
+    const aggConfig = $("#aggConfig");
+    if (aggConfig) aggConfig.classList.add("active");
+    if ($("#aggFn")) $("#aggFn").value = recipe._aggregate.fn;
+    if ($("#aggField")) $("#aggField").value = recipe._aggregate.field;
+    if ($("#aggGroupBy")) $("#aggGroupBy").value = recipe._aggregate.groupBy || "";
+  } else {
+    currentMode = "traces";
+    document.querySelectorAll(".agg-toggle-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.mode === "traces");
+    });
+    const aggConfig = $("#aggConfig");
+    if (aggConfig) aggConfig.classList.remove("active");
+  }
+
+  updatePreview();
+  runQuery();
 }
 
 // ── Build Query Opts ─────────────────────────────────────────────────
