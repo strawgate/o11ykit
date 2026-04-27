@@ -12,6 +12,7 @@
  *   Section 6: Attributes (key dict + per-span encoded attribute columns)
  *   Section 7: Events (count-prefixed sub-chunks)
  *   Section 8: Links (count-prefixed sub-chunks)
+ *   Section 9: Nested sets (delta-encoded i32: left, right, parent per span)
  *
  * Sections are length-prefixed so the decoder can seek to any section
  * for partial decode (e.g. decode only IDs for trace assembly).
@@ -413,6 +414,26 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       out.patchSectionLength(off);
     }
 
+    // Section 9: Nested sets (delta-encoded i32: left, right, parent)
+    {
+      const off = out.reserveSectionLength();
+      let prevLeft = 0;
+      let prevRight = 0;
+      let prevParent = 0;
+      for (const s of spans) {
+        const left = s.nestedSetLeft ?? 0;
+        const right = s.nestedSetRight ?? 0;
+        const parent = s.nestedSetParent ?? 0;
+        out.writeVarint(BigInt(left - prevLeft));
+        out.writeVarint(BigInt(right - prevRight));
+        out.writeVarint(BigInt(parent - prevParent));
+        prevLeft = left;
+        prevRight = right;
+        prevParent = parent;
+      }
+      out.patchSectionLength(off);
+    }
+
     const meta: ColumnarMeta = {
       nameDict: names.dict,
       keyDict: keys.dict,
@@ -563,10 +584,32 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       allLinks[i] = links;
     }
 
+    // Section 9: Nested sets (delta-encoded i32)
+    const nestedSetSection = new ByteReader(reader.readSection());
+    const nestedSetLefts: number[] = new Array(n);
+    const nestedSetRights: number[] = new Array(n);
+    const nestedSetParents: number[] = new Array(n);
+    {
+      let prevLeft = 0;
+      let prevRight = 0;
+      let prevParent = 0;
+      for (let i = 0; i < n; i++) {
+        prevLeft += Number(nestedSetSection.readVarint());
+        prevRight += Number(nestedSetSection.readVarint());
+        prevParent += Number(nestedSetSection.readVarint());
+        nestedSetLefts[i] = prevLeft;
+        nestedSetRights[i] = prevRight;
+        nestedSetParents[i] = prevParent;
+      }
+    }
+
     // Assemble SpanRecords
     for (let i = 0; i < n; i++) {
       const parentId = parentSpanIds[i];
       const statusMsg = statusMessages[i];
+      const nsLeft = nestedSetLefts[i]!;
+      const nsRight = nestedSetRights[i]!;
+      const nsParent = nestedSetParents[i]!;
       spans[i] = {
         traceId: traceIds[i]!,
         spanId: spanIds[i]!,
@@ -581,6 +624,9 @@ export class ColumnarTracePolicy implements ChunkPolicy {
         attributes: allAttrs[i]!,
         events: allEvents[i]!,
         links: allLinks[i]!,
+        ...(nsLeft !== 0 ? { nestedSetLeft: nsLeft } : {}),
+        ...(nsRight !== 0 ? { nestedSetRight: nsRight } : {}),
+        ...(nsParent !== 0 ? { nestedSetParent: nsParent } : {}),
       };
     }
 

@@ -113,6 +113,16 @@ export interface SpanRecord {
   /** Span links (causal relationships to other spans). */
   links: SpanLink[];
   droppedLinksCount?: number;
+  /**
+   * Nested set left boundary (computed at flush time).
+   * Used for O(1) ancestor/descendant checks:
+   *   A is ancestor of B iff A.nestedSetLeft < B.nestedSetLeft && B.nestedSetRight < A.nestedSetRight
+   */
+  nestedSetLeft?: number;
+  /** Nested set right boundary. */
+  nestedSetRight?: number;
+  /** Numeric parent ID (nestedSetLeft of parent span, 0 for roots). */
+  nestedSetParent?: number;
 }
 
 // ─── Stream Key ──────────────────────────────────────────────────────

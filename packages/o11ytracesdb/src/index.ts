@@ -43,7 +43,7 @@ export { ColumnarTracePolicy } from "./codec-columnar.js";
 export { createBloomFilter, bloomMayContain, bloomToBase64, bloomFromBase64 } from "./bloom.js";
 
 // Query
-export { assembleTrace, buildSpanTree, criticalPath, queryTraces } from "./query.js";
+export { assembleTrace, buildSpanTree, criticalPath, queryTraces, isAncestorOf, isDescendantOf, isSiblingOf, nestedSetDepth } from "./query.js";
 
 // Stream registry
 export { StreamRegistry } from "./stream.js";

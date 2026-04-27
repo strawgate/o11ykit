@@ -364,3 +364,50 @@ function compareBigint(a: SpanRecord, b: SpanRecord): number {
   return a.startTimeUnixNano < b.startTimeUnixNano ? -1 :
     a.startTimeUnixNano > b.startTimeUnixNano ? 1 : 0;
 }
+
+// ─── Structural queries (nested set model) ───────────────────────────
+
+/**
+ * O(1) ancestor check using nested set encoding.
+ * Returns true if `ancestor` is an ancestor of `descendant`.
+ * Both spans must have nestedSetLeft/Right populated (from same chunk).
+ */
+export function isAncestorOf(ancestor: SpanRecord, descendant: SpanRecord): boolean {
+  if (ancestor.nestedSetLeft === undefined || ancestor.nestedSetRight === undefined ||
+      descendant.nestedSetLeft === undefined || descendant.nestedSetRight === undefined) {
+    return false;
+  }
+  return ancestor.nestedSetLeft < descendant.nestedSetLeft &&
+         descendant.nestedSetRight < ancestor.nestedSetRight;
+}
+
+/**
+ * O(1) descendant check (inverse of isAncestorOf).
+ */
+export function isDescendantOf(descendant: SpanRecord, ancestor: SpanRecord): boolean {
+  return isAncestorOf(ancestor, descendant);
+}
+
+/**
+ * O(1) sibling check — two spans with the same nestedSetParent.
+ */
+export function isSiblingOf(a: SpanRecord, b: SpanRecord): boolean {
+  if (a.nestedSetParent === undefined || b.nestedSetParent === undefined) return false;
+  return a.nestedSetParent === b.nestedSetParent &&
+         a.nestedSetParent !== 0 &&
+         a !== b;
+}
+
+/**
+ * Compute the depth of a span from its nested set encoding.
+ * Counts how many other spans in the list are ancestors of this span.
+ * For pre-computed depth, use buildSpanTree() instead.
+ */
+export function nestedSetDepth(span: SpanRecord, allSpans: readonly SpanRecord[]): number {
+  if (span.nestedSetLeft === undefined) return 0;
+  let depth = 0;
+  for (const other of allSpans) {
+    if (other !== span && isAncestorOf(other, span)) depth++;
+  }
+  return depth;
+}

@@ -139,6 +139,9 @@ export class ChunkBuilder {
     const spans = this.spans;
     this.spans = [];
 
+    // Compute nested set numbering (per-trace DFS traversal)
+    computeNestedSets(spans);
+
     // Compute zone maps
     let minTime = spans[0]!.startTimeUnixNano;
     let maxTime = spans[0]!.endTimeUnixNano;
@@ -173,4 +176,103 @@ export class ChunkBuilder {
 
     return { header, payload };
   }
+}
+
+// ─── Nested Set Computation ──────────────────────────────────────────
+
+/**
+ * Compute nested set left/right/parent for all spans in a chunk.
+ * Groups spans by trace ID, builds parent-child relationships per trace,
+ * then assigns DFS numbering. Each trace gets an independent numbering
+ * space starting from 1.
+ *
+ * After this function, every span has nestedSetLeft, nestedSetRight, and
+ * nestedSetParent populated. Orphan spans (parent not in chunk) are treated
+ * as additional roots.
+ */
+function computeNestedSets(spans: SpanRecord[]): void {
+  // Group by trace ID (using hex string key)
+  const byTrace = new Map<string, SpanRecord[]>();
+  for (const span of spans) {
+    const hex = bytesToHex(span.spanId); // use spanId temporarily for indexing
+    const traceHex = bytesToHex(span.traceId);
+    let group = byTrace.get(traceHex);
+    if (!group) {
+      group = [];
+      byTrace.set(traceHex, group);
+    }
+    group.push(span);
+  }
+
+  // Process each trace independently
+  for (const traceSpans of byTrace.values()) {
+    // Build span-id → span index and parent-child edges
+    const bySpanId = new Map<string, SpanRecord>();
+    for (const s of traceSpans) {
+      bySpanId.set(bytesToHex(s.spanId), s);
+    }
+
+    // Build children map and find roots
+    const children = new Map<string, SpanRecord[]>();
+    const roots: SpanRecord[] = [];
+
+    for (const s of traceSpans) {
+      if (s.parentSpanId === undefined) {
+        roots.push(s);
+      } else {
+        const parentHex = bytesToHex(s.parentSpanId);
+        if (bySpanId.has(parentHex)) {
+          let kids = children.get(parentHex);
+          if (!kids) {
+            kids = [];
+            children.set(parentHex, kids);
+          }
+          kids.push(s);
+        } else {
+          // Orphan — parent not in this chunk, treat as root
+          roots.push(s);
+        }
+      }
+    }
+
+    // Sort roots and children by startTime for deterministic ordering
+    roots.sort(compareBigintField);
+    for (const kids of children.values()) {
+      kids.sort(compareBigintField);
+    }
+
+    // DFS to assign nested set numbers
+    let counter = 1;
+
+    function dfs(span: SpanRecord, parentLeft: number): void {
+      span.nestedSetLeft = counter++;
+      span.nestedSetParent = parentLeft;
+
+      const kids = children.get(bytesToHex(span.spanId));
+      if (kids) {
+        for (const child of kids) {
+          dfs(child, span.nestedSetLeft);
+        }
+      }
+
+      span.nestedSetRight = counter++;
+    }
+
+    for (const root of roots) {
+      dfs(root, 0);
+    }
+  }
+}
+
+function compareBigintField(a: SpanRecord, b: SpanRecord): number {
+  return a.startTimeUnixNano < b.startTimeUnixNano ? -1 :
+    a.startTimeUnixNano > b.startTimeUnixNano ? 1 : 0;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += ((bytes[i]! >> 4) & 0xf).toString(16) + (bytes[i]! & 0xf).toString(16);
+  }
+  return hex;
 }
