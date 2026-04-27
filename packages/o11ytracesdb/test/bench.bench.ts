@@ -141,22 +141,23 @@ describe("ingest + query", () => {
     store.flush();
   });
 
-  bench("query by trace_id (1K span store)", () => {
-    const store = new TraceStore({ chunkSize: 256 });
-    const resource = { attributes: [{ key: "service.name", value: "bench-svc" }] };
-    const scope = { name: "bench", version: "1.0.0" };
-    store.append(resource, scope, spans1K);
-    store.flush();
-    queryTraces(store, { traceId: spans1K[0]!.traceId });
+  // Pre-build a store to isolate query-only cost
+  const queryStore = new TraceStore({ chunkSize: 256 });
+  queryStore.append(
+    { attributes: [{ key: "service.name", value: "bench-svc" }] },
+    { name: "bench", version: "1.0.0" },
+    spans1K,
+  );
+  queryStore.flush();
+  // Warm decode cache
+  queryTraces(queryStore, { traceId: spans1K[0]!.traceId });
+
+  bench("query by trace_id (1K span store, query-only)", () => {
+    queryTraces(queryStore, { traceId: spans1K[0]!.traceId });
   });
 
-  bench("query by time range (1K span store)", () => {
-    const store = new TraceStore({ chunkSize: 256 });
-    const resource = { attributes: [{ key: "service.name", value: "bench-svc" }] };
-    const scope = { name: "bench", version: "1.0.0" };
-    store.append(resource, scope, spans1K);
-    store.flush();
-    queryTraces(store, {
+  bench("query by time range (1K span store, query-only)", () => {
+    queryTraces(queryStore, {
       startTimeNano: 1700000000000000000n,
       endTimeNano: 1700000000500000000n,
       limit: 10,

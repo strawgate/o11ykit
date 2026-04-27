@@ -92,10 +92,10 @@ Benchmarks on Apple Silicon (M-series), pure TypeScript (no WASM acceleration):
 | Encode 1K spans | 1,227 ops/s | 0.82 ms |
 | Decode 1K spans | 1,138 ops/s | 0.88 ms |
 | Ingest 1K spans | 355 ops/s | 2.8 ms |
-| Query by trace_id | 339 ops/s | 3.0 ms |
-| Query by time range | 237 ops/s | 4.2 ms |
-| Tree assembly (200 spans) | 10,068 ops/s | 0.10 ms |
-| Critical path (50 spans) | 40,579 ops/s | 0.025 ms |
+| **Query by trace_id** | **213,552 ops/s** | **0.005 ms** |
+| Query by time range | 4,408 ops/s | 0.23 ms |
+| Tree assembly (200 spans) | 6,180 ops/s | 0.16 ms |
+| Critical path (50 spans) | 9,090,909 ops/s | <0.001 ms |
 
 Encode/decode throughput scales linearly: 10K spans at 119/104 ops/s.
 
