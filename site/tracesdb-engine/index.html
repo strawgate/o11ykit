@@ -6,14 +6,21 @@
     <title>o11ytracesdb — Browser-Native Distributed Traces Database</title>
     <meta
       name="description"
-      content="Interactive demo for o11ytracesdb: a browser-native traces database with columnar compression, bloom filter acceleration, structural queries, and real-time trace exploration."
+      content="SQLite for observability in the browser. o11ytracesdb stores OpenTelemetry spans at &lt;30 bytes/span with dictionary encoding, bloom filter lookups, and structural queries — zero network calls."
     />
     <meta name="theme-color" content="#f8fafb" />
+    <meta property="og:title" content="o11ytracesdb — SQLite for Traces in the Browser" />
+    <meta property="og:description" content="Store 500K+ OpenTelemetry spans at &lt;30 bytes/span. Dictionary encoding, bloom filters, structural queries — all client-side, zero network calls." />
+    <meta property="og:type" content="website" />
     <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
     <base href="/o11ykit/tracesdb-engine/" />
     <link rel="stylesheet" href="../styles.css" />
     <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/demo.css" />
+    <link rel="stylesheet" href="css/storage-explorer.css" />
     <link rel="modulepreload" href="js/app.js" />
+    <link rel="modulepreload" href="js/data-gen.js" />
+    <link rel="modulepreload" href="js/utils.js" />
   </head>
   <body>
     <a href="#main-content" class="skip-link">Skip to main content</a>
@@ -35,16 +42,32 @@
 
       <!-- ─── Hero ────────────────────────────────────────────── -->
       <section class="hero panel">
-        <p class="eyebrow">o11ytracesdb engine</p>
-        <h1>A distributed traces database<br/>that runs in your browser.</h1>
-        <p class="lede">
-          Generate realistic distributed traces, explore how they are stored with
-          columnar compression, run structural queries with TraceQL-inspired operators,
-          and visualize trace waterfalls — all without leaving the browser.
+        <span class="hero-eyebrow">o11ytracesdb engine</span>
+        <h1>A distributed traces database<br/>that runs <em>in your browser</em>.</h1>
+        <p class="hero-subtitle">SQLite for observability — embedded, serverless, zero network calls.</p>
+        <p class="hero-lede">
+          Store hundreds of thousands of OpenTelemetry spans at <strong>&lt;30 bytes/span</strong> using
+          columnar compression and dictionary encoding. Query with structural operators, explore with
+          bloom-accelerated lookups, and visualize waterfalls — all client-side. No backend required.
         </p>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <span class="hero-stat-value">10–15×</span>
+            <span class="hero-stat-label">Less memory vs JS objects</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">90%+</span>
+            <span class="hero-stat-label">String compression via dictionaries</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">O(1)</span>
+            <span class="hero-stat-label">Structural queries via nested sets</span>
+          </div>
+        </div>
         <div class="hero-actions">
-          <a class="cta cta-primary" href="#section-dataset">Launch Live Demo ↓</a>
-          <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ytracesdb" target="_blank" rel="noreferrer">
+          <button type="button" class="cta cta-primary" id="heroLaunch">🚀 Launch Demo</button>
+          <a class="cta cta-secondary" href="learn/">Learn How It Works</a>
+          <a class="cta cta-secondary" href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ytracesdb" target="_blank" rel="noreferrer">
             Browse Source
           </a>
         </div>
@@ -55,8 +78,10 @@
         <h2>How It Works</h2>
         <p class="section-intro">
           o11ytracesdb stores OpenTelemetry spans in a columnar layout optimized for the browser.
-          Bloom filters accelerate trace ID lookups. Nested set encoding enables O(1) structural queries.
-          Dictionary encoding compresses repeated span names and attribute keys.
+          Dictionary encoding collapses repetitive strings (service names, operations, HTTP methods)
+          to 8–16 bit integers — a 90%+ reduction. Nested set encoding turns parent-child relationships
+          into integer indices in typed arrays, making structural queries a simple array comparison
+          instead of tree traversal. Bloom filters accelerate trace ID lookups to O(1).
         </p>
         <div class="pipeline" aria-label="Data flow">
           <div class="pipeline-stage accent-otlp">
@@ -66,12 +91,12 @@
           <div class="pipeline-arrow">→</div>
           <div class="pipeline-stage accent-tsdb">
             <strong>Encode</strong>
-            <span>Columnar codec</span>
+            <span>Dictionary + columnar</span>
           </div>
           <div class="pipeline-arrow">→</div>
           <div class="pipeline-stage accent-octo">
-            <strong>Store</strong>
-            <span>Chunks + bloom</span>
+            <strong>Index</strong>
+            <span>Bloom + nested set</span>
           </div>
           <div class="pipeline-arrow">→</div>
           <div class="pipeline-stage accent-bench">
@@ -79,154 +104,406 @@
             <span>Structural DSL</span>
           </div>
         </div>
+        <p class="arch-note">
+          <strong>Not a backend replacement.</strong> o11ytracesdb sits <em>after</em> Tempo, Jaeger, or Datadog —
+          inside your UI. It complements server-side stores by eliminating round-trips: brush-select a metric spike,
+          instantly filter correlated traces and logs in local memory, zero network calls.
+        </p>
       </section>
 
-      <!-- ─── Section 1: Dataset ──────────────────────────────── -->
+      <!-- ─── The Problem ──────────────────────────────────────── -->
+      <section class="panel problem-section" id="section-problem">
+        <h2>The Problem</h2>
+        <div class="problem-grid">
+          <div class="problem-card">
+            <span class="problem-icon">🔄</span>
+            <h3>Every click round-trips</h3>
+            <p>Existing observability UIs re-fetch data from the server on every pan, zoom, and filter. Click an exemplar? That's a network call to Tempo. Drill into a trace? Another call.</p>
+          </div>
+          <div class="problem-card">
+            <span class="problem-icon">💥</span>
+            <h3>Browsers crash at scale</h3>
+            <p>JS object overhead of 30–50 bytes per data point means dashboards routinely OOM. Kibana and Grafana both struggle with large trace datasets in the browser.</p>
+          </div>
+          <div class="problem-card">
+            <span class="problem-icon">🔗</span>
+            <h3>Cross-signal is 3+ hops</h3>
+            <p>Correlating a metric spike → traces → logs requires 3+ sequential API calls with server-side credentials. What should be instant takes seconds.</p>
+          </div>
+        </div>
+        <p class="problem-solution">
+          <strong>The fix:</strong> store spans in columnar typed arrays at &lt;30 bytes each, index with bloom filters and nested sets,
+          and query locally. Metric spike → correlated traces → filtered logs in one frame. Demo it yourself below ↓
+        </p>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <!-- Section 1: Dataset (scenario grid)                      -->
+      <!-- ═══════════════════════════════════════════════════════ -->
       <section class="panel" id="section-dataset">
-        <h2>Load a Dataset</h2>
+        <h2>Choose a Scenario</h2>
         <p class="section-intro">
-          Choose a trace scenario to generate. Each creates realistic distributed traces
-          with multiple services, varying depths, and configurable error rates.
+          Select a pre-built trace scenario to generate, or configure your own.
+          Each creates realistic distributed traces with multiple services, varying depths,
+          and configurable error rates.
         </p>
 
+        <!-- Scenario cards (rendered by JS) -->
         <div class="scenario-grid" id="scenarioGrid"></div>
 
-        <div class="controls-row">
-          <button type="button" class="btn btn-primary" id="btnGenerate" disabled>Generate Traces</button>
-          <span id="generateStatus" style="font-size:13px;color:var(--ink-muted)"></span>
+        <!-- Custom generator (hidden until "Custom" clicked) -->
+        <div id="customGeneratorInline" class="custom-generator" hidden>
+          <h3>⚙️ Custom Configuration</h3>
+          <div class="custom-gen-grid">
+            <div class="control-group">
+              <label for="customServices">Services</label>
+              <input type="range" id="customServices" min="2" max="12" value="6" />
+              <span class="range-value" id="customServicesValue">6</span>
+            </div>
+            <div class="control-group">
+              <label for="customTraces">Trace Count</label>
+              <input type="range" id="customTraces" min="100" max="50000" value="5000" step="100" />
+              <span class="range-value" id="customTracesValue">5,000</span>
+            </div>
+            <div class="control-group">
+              <label for="customDepth">Max Depth</label>
+              <input type="range" id="customDepth" min="1" max="6" value="3" />
+              <span class="range-value" id="customDepthValue">3</span>
+            </div>
+            <div class="control-group">
+              <label for="customErrorRate">Error Rate</label>
+              <input type="range" id="customErrorRate" min="0" max="50" value="5" />
+              <span class="range-value" id="customErrorValue">5%</span>
+            </div>
+          </div>
+          <button type="button" class="btn btn-primary" id="customGenerate">Generate Custom Dataset</button>
         </div>
 
-        <div class="stat-row" id="ingestStats" hidden>
-          <div class="stat-badge">
-            <span class="stat-value" id="statTraces">—</span>
-            <span class="stat-label">Traces</span>
+        <!-- Progress bar -->
+        <div class="progress-container" id="progressContainer">
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progressFill"></div>
           </div>
-          <div class="stat-badge">
-            <span class="stat-value" id="statSpans">—</span>
-            <span class="stat-label">Spans</span>
-          </div>
-          <div class="stat-badge">
-            <span class="stat-value" id="statServices">—</span>
-            <span class="stat-label">Services</span>
-          </div>
-          <div class="stat-badge">
-            <span class="stat-value" id="statIngestTime">—</span>
-            <span class="stat-label">Ingest Time</span>
-          </div>
-          <div class="stat-badge">
-            <span class="stat-value" id="statCompression">—</span>
-            <span class="stat-label">Compression</span>
-          </div>
+          <div class="progress-text" id="progressText"></div>
+        </div>
+
+        <!-- Ingest stats (shown after generation) -->
+        <div class="ingest-stats" id="ingestStats" hidden></div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <!-- Section 2: Fork Panel                                   -->
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <section class="panel" id="section-fork" hidden>
+        <div class="fork-intro">
+          <h2>What would you like to explore?</h2>
+          <p>Your dataset is ready. Pick a path to dive deeper.</p>
+        </div>
+        <div class="fork-grid">
+          <button type="button" class="fork-card" data-target="section-storage">
+            <span class="fork-icon">💾</span>
+            <h3>Storage Explorer</h3>
+            <p>Inspect chunks, compression, bloom filters, and the columnar byte layout.</p>
+            <span class="fork-cta">Explore Storage →</span>
+          </button>
+          <button type="button" class="fork-card" data-target="section-traces">
+            <span class="fork-icon">🔍</span>
+            <h3>Traces Explorer</h3>
+            <p>Service health dashboard, problematic traces, insights, and waterfall views.</p>
+            <span class="fork-cta">Explore Traces →</span>
+          </button>
+          <button type="button" class="fork-card" data-target="section-query">
+            <span class="fork-icon">🧪</span>
+            <h3>Query Builder</h3>
+            <p>Build TraceQL-like queries with attribute filters, structural predicates, and aggregations.</p>
+            <span class="fork-cta">Build Queries →</span>
+          </button>
         </div>
       </section>
 
-      <!-- ─── Section 2: Storage Explorer ─────────────────────── -->
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <!-- Section 3: Storage Explorer                             -->
+      <!-- ═══════════════════════════════════════════════════════ -->
       <section class="panel" id="section-storage" hidden>
+        <!-- Tab nav -->
+        <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
+          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-storage">💾 Storage</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-traces">🔍 Traces</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-query">🧪 Query</button>
+        </nav>
+
         <h2>Storage Explorer</h2>
         <p class="section-intro">
-          Inspect how traces are stored: chunks, bloom filter stats, compression ratios,
-          and bytes per span.
+          Inspect how traces are stored in a columnar layout: chunks, bloom filters,
+          compression ratios, and detailed byte-level exploration.
         </p>
-        <div class="storage-grid" id="storageGrid"></div>
+
+        <!-- Stats row -->
+        <div class="storage-stats-row" id="storageStatsRow"></div>
+
+        <!-- Main explorer: series list + chunk detail -->
+        <div class="storage-explorer">
+          <div class="storage-series-list" id="storageSeriesList"></div>
+          <div class="chunk-detail-panel" id="chunkDetailPanel">
+            <div class="chunk-empty-state">← Select a stream or chunk to inspect</div>
+          </div>
+        </div>
       </section>
 
-      <!-- ─── Section 3: Query Builder ────────────────────────── -->
-      <section class="panel" id="section-query" hidden>
-        <h2>Query Traces</h2>
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <!-- Section 4: Traces Explorer                              -->
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <section class="panel" id="section-traces" hidden>
+        <!-- Tab nav -->
+        <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-storage">💾 Storage</button>
+          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-traces">🔍 Traces</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-query">🧪 Query</button>
+        </nav>
+
+        <h2>Traces Explorer</h2>
         <p class="section-intro">
-          Build queries with attribute predicates, structural operators, and trace-level intrinsics.
-          Results appear instantly — everything runs in-browser.
+          Service health dashboard with RED metrics, automatic anomaly detection,
+          and problematic trace ranking. Click a service or trace to drill into the waterfall.
         </p>
 
-        <div class="query-panel" id="queryPanel">
-          <div class="filter-row">
-            <label for="qService">Service</label>
-            <select id="qService"><option value="">Any</option></select>
-          </div>
-          <div class="filter-row">
-            <label for="qSpanName">Span Name</label>
-            <input id="qSpanName" type="text" placeholder="e.g. POST /api/* (regex)" />
-          </div>
-          <div class="filter-row">
-            <label for="qStatus">Status</label>
-            <select id="qStatus">
-              <option value="">Any</option>
-              <option value="0">Unset</option>
-              <option value="1">OK</option>
-              <option value="2">Error</option>
-            </select>
-          </div>
-          <div class="filter-row">
-            <label for="qDurMin">Duration ≥</label>
-            <input id="qDurMin" type="number" placeholder="ms" style="width:100px" />
-            <label for="qDurMax" style="min-width:auto">≤</label>
-            <input id="qDurMax" type="number" placeholder="ms" style="width:100px" />
-          </div>
-          <div class="filter-row">
-            <label for="qAttrKey">Attribute</label>
-            <input id="qAttrKey" type="text" placeholder="key" style="width:120px" />
-            <select id="qAttrOp" style="width:80px">
-              <option value="eq">=</option>
-              <option value="neq">≠</option>
-              <option value="gt">&gt;</option>
-              <option value="gte">≥</option>
-              <option value="lt">&lt;</option>
-              <option value="lte">≤</option>
-              <option value="contains">contains</option>
-              <option value="regex">regex</option>
-              <option value="exists">exists</option>
-            </select>
-            <input id="qAttrVal" type="text" placeholder="value" style="width:140px" />
-          </div>
-          <div class="filter-row">
-            <label for="qSort">Sort By</label>
-            <select id="qSort">
-              <option value="startTime">Start Time</option>
-              <option value="duration">Duration</option>
-              <option value="spanCount">Span Count</option>
-            </select>
-            <select id="qSortDir" aria-label="Sort direction">
-              <option value="desc">Descending</option>
-              <option value="asc">Ascending</option>
-            </select>
-            <label for="qLimit" style="min-width:auto">Limit</label>
-            <input id="qLimit" type="number" value="50" style="width:70px" />
-          </div>
+        <!-- Service health grid -->
+        <div class="service-health-grid" id="serviceHealthGrid"></div>
+
+        <!-- Insights panel -->
+        <div class="insights-panel" id="insightsPanel" hidden></div>
+
+        <!-- Problematic traces -->
+        <div class="problematic-traces" id="problematicTraces"></div>
+
+        <!-- Filtered trace list (shown when clicking a service) -->
+        <div class="trace-list-panel" id="traceListPanel"></div>
+      </section>
+
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <!-- Section 5: Query Builder                                -->
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <section class="panel" id="section-query" hidden>
+        <!-- Tab nav -->
+        <nav class="explore-nav" role="tablist" aria-label="Explorer navigation">
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-storage">💾 Storage</button>
+          <button type="button" role="tab" class="explore-nav-btn" aria-selected="false" data-target="section-traces">🔍 Traces</button>
+          <button type="button" role="tab" class="explore-nav-btn active" aria-selected="true" data-target="section-query">🧪 Query</button>
+        </nav>
+
+        <h2>Query Builder</h2>
+        <p class="section-intro">
+          Build TraceQL-like queries with real-time preview. Select spans by service, name,
+          status, and duration — then add attribute filters, structural predicates, and trace intrinsics.
+        </p>
+
+        <!-- Quick Query Recipes -->
+        <div class="query-recipes" id="queryRecipes">
+          <span class="recipes-label">Quick:</span>
+          <button type="button" class="recipe-chip" data-recipe="errors">🔴 All Errors</button>
+          <button type="button" class="recipe-chip" data-recipe="slow">🐢 Slow Traces (&gt;1s)</button>
+          <button type="button" class="recipe-chip" data-recipe="root-errors">⚡ Root Span Errors</button>
+          <button type="button" class="recipe-chip" data-recipe="long-chains">🔗 Deep Call Chains</button>
+          <button type="button" class="recipe-chip" data-recipe="p99">📊 P99 by Service</button>
         </div>
 
-        <div class="controls-row" style="margin-top:12px">
-          <button type="button" class="btn btn-primary" id="btnQuery" disabled>Run Query</button>
-          <span id="queryStatus" style="font-size:13px;color:var(--ink-muted)"></span>
+        <div class="query-lab-grid">
+          <!-- Left: Query stages -->
+          <div class="query-stages">
+            <!-- Stage 1: Select Spans -->
+            <div class="query-stage">
+              <div class="query-stage-header">
+                <span class="query-stage-kicker">Stage 1</span>
+                <span class="query-stage-title">Select Spans</span>
+              </div>
+              <div class="filter-row">
+                <label for="qService">Service</label>
+                <select id="qService"><option value="">Any</option></select>
+              </div>
+              <div class="filter-row">
+                <label for="qSpanName">Span Name</label>
+                <input id="qSpanName" type="text" placeholder="regex, e.g. GET /api.*" />
+              </div>
+              <div class="filter-row">
+                <label for="qStatus">Status</label>
+                <select id="qStatus">
+                  <option value="-1">Any</option>
+                  <option value="0">Unset</option>
+                  <option value="1">OK</option>
+                  <option value="2">Error</option>
+                </select>
+              </div>
+              <div class="filter-row">
+                <label for="qKind">Kind</label>
+                <select id="qKind">
+                  <option value="-1">Any</option>
+                  <option value="0">Unspecified</option>
+                  <option value="1">Internal</option>
+                  <option value="2">Server</option>
+                  <option value="3">Client</option>
+                </select>
+              </div>
+              <div class="filter-row">
+                <label for="qMinDuration">Duration ≥</label>
+                <input id="qMinDuration" type="number" placeholder="ms" style="width:90px" />
+                <label for="qMaxDuration" style="min-width:auto">≤</label>
+                <input id="qMaxDuration" type="number" placeholder="ms" style="width:90px" />
+              </div>
+            </div>
+
+            <!-- Stage 2: Attribute Filters -->
+            <div class="query-stage">
+              <div class="query-stage-header">
+                <span class="query-stage-kicker">Stage 2</span>
+                <span class="query-stage-title">Attribute Filters</span>
+              </div>
+              <div class="attr-filter-list" id="attrFilterList"></div>
+              <button type="button" class="add-attr-btn" id="addAttrFilter">+ Add Attribute Filter</button>
+            </div>
+
+            <!-- Stage 3: Structural Predicates -->
+            <div class="query-stage">
+              <div class="query-stage-header">
+                <span class="query-stage-kicker">Stage 3</span>
+                <span class="query-stage-title">Structural Predicates</span>
+              </div>
+              <div class="filter-row">
+                <label for="qStructType">Type</label>
+                <select id="qStructType">
+                  <option value="none">None</option>
+                  <option value="hasDescendant">hasDescendant</option>
+                  <option value="hasAncestor">hasAncestor</option>
+                  <option value="hasSibling">hasSibling</option>
+                </select>
+              </div>
+              <div class="structural-predicate" id="structuralPredicateFields" style="display:none">
+                <div class="filter-row">
+                  <label for="qStructService">Service</label>
+                  <select id="qStructService"><option value="">Any</option></select>
+                </div>
+                <div class="filter-row">
+                  <label for="qStructSpanName">Span Name</label>
+                  <input id="qStructSpanName" type="text" placeholder="contains..." />
+                </div>
+                <div class="filter-row">
+                  <label for="qStructStatus">Status</label>
+                  <select id="qStructStatus">
+                    <option value="-1">Any</option>
+                    <option value="1">OK</option>
+                    <option value="2">Error</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stage 4: Trace Intrinsics -->
+            <div class="query-stage">
+              <div class="query-stage-header">
+                <span class="query-stage-kicker">Stage 4</span>
+                <span class="query-stage-title">Trace Intrinsics</span>
+              </div>
+              <div class="filter-row">
+                <label for="qIntrinsicRootService">Root Service</label>
+                <select id="qIntrinsicRootService"><option value="">Any</option></select>
+              </div>
+              <div class="filter-row">
+                <label for="qIntrinsicRootSpan">Root Span</label>
+                <input id="qIntrinsicRootSpan" type="text" placeholder="contains..." />
+              </div>
+              <div class="filter-row">
+                <label for="qIntrinsicMinDuration">Min Trace Duration</label>
+                <input id="qIntrinsicMinDuration" type="number" placeholder="ms" style="width:90px" />
+              </div>
+            </div>
+
+            <!-- Stage 5: Sort & Limit -->
+            <div class="query-stage">
+              <div class="query-stage-header">
+                <span class="query-stage-kicker">Stage 5</span>
+                <span class="query-stage-title">Sort &amp; Limit</span>
+              </div>
+              <div class="filter-row">
+                <label for="qSortBy">Sort By</label>
+                <select id="qSortBy">
+                  <option value="duration">Duration</option>
+                  <option value="spanCount">Span Count</option>
+                  <option value="errors">Errors</option>
+                </select>
+                <select id="qSortDir" aria-label="Sort direction">
+                  <option value="desc">Descending</option>
+                  <option value="asc">Ascending</option>
+                </select>
+              </div>
+              <div class="filter-row">
+                <label for="qLimit">Limit</label>
+                <input id="qLimit" type="number" value="100" style="width:80px" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Preview + Execute + Results -->
+          <div>
+            <!-- Query preview -->
+            <div class="query-preview">
+              <div class="query-preview-header">TraceQL Preview</div>
+              <div class="query-preview-code" id="queryPreviewCode">
+                <span class="op">{</span>
+                  <span class="op">/* select all spans */</span>
+                <span class="op">}</span>
+              </div>
+              <div class="query-actions">
+                <button type="button" class="btn btn-primary" id="executeQuery">▶ Execute</button>
+              </div>
+            </div>
+
+            <!-- Aggregation toggle -->
+            <div class="agg-toggle" style="margin-top:14px">
+              <button type="button" class="agg-toggle-btn active" data-mode="traces">Traces</button>
+              <button type="button" class="agg-toggle-btn" data-mode="aggregate">Aggregate</button>
+            </div>
+
+            <!-- Aggregation config (hidden by default) -->
+            <div class="agg-config" id="aggConfig">
+              <div class="filter-row">
+                <label for="aggFn">Function</label>
+                <select id="aggFn">
+                  <option value="count">count</option>
+                  <option value="avg">avg</option>
+                  <option value="sum">sum</option>
+                  <option value="min">min</option>
+                  <option value="max">max</option>
+                  <option value="p50">p50</option>
+                  <option value="p95">p95</option>
+                  <option value="p99">p99</option>
+                </select>
+              </div>
+              <div class="filter-row">
+                <label for="aggField">Field</label>
+                <select id="aggField">
+                  <option value="duration">Duration</option>
+                  <option value="spanCount">Span Count</option>
+                </select>
+              </div>
+              <div class="filter-row">
+                <label for="aggGroupBy">Group By</label>
+                <select id="aggGroupBy">
+                  <option value="">None</option>
+                  <option value="rootService">Root Service</option>
+                  <option value="rootSpan">Root Span</option>
+                  <option value="hasError">Has Error</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Results -->
+            <div class="query-results-panel" id="queryResultsPanel"></div>
+          </div>
         </div>
       </section>
 
-      <!-- ─── Section 4: Results ──────────────────────────────── -->
-      <section class="panel" id="section-results" hidden>
-        <h2>Query Results</h2>
-        <div class="stat-row" id="queryStats"></div>
-
-        <!-- Aggregation summary -->
-        <div class="agg-grid" id="aggGrid" hidden></div>
-
-        <!-- Results table -->
-        <div style="overflow-x:auto">
-          <table class="results-table" id="resultsTable">
-            <thead>
-              <tr>
-                <th>Trace ID</th>
-                <th>Root Service</th>
-                <th>Root Operation</th>
-                <th>Spans</th>
-                <th style="text-align:right">Duration</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="resultsBody"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- ─── Section 5: Trace Waterfall ──────────────────────── -->
+      <!-- ═══════════════════════════════════════════════════════ -->
+      <!-- Trace Waterfall (shared, shown by traces/query)         -->
+      <!-- ═══════════════════════════════════════════════════════ -->
       <section class="panel" id="section-waterfall" hidden>
         <h2>Trace Waterfall</h2>
         <p class="section-intro" id="waterfallIntro">
@@ -238,13 +515,15 @@
         </div>
         <div class="waterfall-legend" id="waterfallLegend" hidden></div>
 
-        <!-- Span detail -->
+        <!-- Span detail panel -->
         <div class="span-detail" id="spanDetail"></div>
       </section>
 
       <!-- ─── Footer ──────────────────────────────────────────── -->
       <footer class="panel" style="text-align:center; padding:16px; font-size:13px; color:var(--ink-muted)">
-        o11ytracesdb · Part of <a href="/o11ykit/" style="color:var(--traces)">o11ykit</a> ·
+        <strong>o11ytracesdb</strong> · Part of <a href="/o11ykit/" style="color:var(--traces)">o11ykit</a> ·
+        Browser-native databases for <a href="/o11ykit/tsdb-engine/" style="color:var(--accent-tsdb)">metrics</a>,
+        <span style="color:var(--traces)">traces</span>, and logs ·
         <a href="https://github.com/strawgate/o11ykit" style="color:var(--traces)">GitHub</a>
       </footer>
 
