@@ -26,6 +26,10 @@ name = "o11y-codec-rt-interner"
 version = "0.0.1"
 
 [[package]]
+name = "o11y-codec-rt-roaring-lite"
+version = "0.0.1"
+
+[[package]]
 name = "o11y-codec-rt-xor-delta"
 version = "0.0.1"
 dependencies = [

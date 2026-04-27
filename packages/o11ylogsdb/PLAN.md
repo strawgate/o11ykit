@@ -352,7 +352,8 @@ tests. Binary fuse 8/16 and Roaring-lite are still pending.
   BF16 (18 bits/key, 0.0015% FPR). Static / immutable. *Pending.*
 - `o11y-codec-rt/roaring-lite/` — minimal Roaring32 (sorted array
   container under 4096 cardinality, bitmap container ≥ 4096; no run
-  container). *Pending.*
+  container). ✅ Pure-Rust API: `insert`, `contains`, `iter`,
+  `cardinality`, `RoaringLite::and(a, b)`, `RoaringLite::or(a, b)`.
 - *(optional)* `o11y-codec-rt/onpair/` — byte-pair encoding string
   codec. Measured 4.49× ratio vs FSST's 1.54× on free-text body
   fragments. Add only if real workloads emerge with non-trivial
