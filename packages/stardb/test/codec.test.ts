@@ -137,6 +137,37 @@ describe("CodecRegistry", () => {
     expect(list.strings).toEqual(["length-prefix"]);
     expect(list.ints).toEqual(["raw-i64-le"]);
   });
+
+  it("getString / getInt resolve registered codecs", () => {
+    const registry = new CodecRegistry();
+    registry.registerString(lengthPrefixStringCodec);
+    registry.registerInt(rawInt64Codec);
+    expect(registry.getString("length-prefix")).toBe(lengthPrefixStringCodec);
+    expect(registry.getInt("raw-i64-le")).toBe(rawInt64Codec);
+  });
+
+  it("getString / getInt throw with descriptive errors on miss", () => {
+    const registry = new CodecRegistry();
+    registry.registerString(lengthPrefixStringCodec);
+    registry.registerInt(rawInt64Codec);
+    expect(() => registry.getString("missing")).toThrow(
+      /String codec not registered: "missing".*length-prefix/
+    );
+    expect(() => registry.getInt("missing")).toThrow(
+      /Int codec not registered: "missing".*raw-i64-le/
+    );
+  });
+
+  it("has() reports membership across all three namespaces", () => {
+    const registry = new CodecRegistry();
+    registry.register(rawCodec);
+    registry.registerString(lengthPrefixStringCodec);
+    registry.registerInt(rawInt64Codec);
+    expect(registry.has("raw")).toBe(true);
+    expect(registry.has("length-prefix")).toBe(true);
+    expect(registry.has("raw-i64-le")).toBe(true);
+    expect(registry.has("nope")).toBe(false);
+  });
 });
 
 describe("defaultRegistry", () => {

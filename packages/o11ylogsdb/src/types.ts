@@ -1,43 +1,23 @@
 /**
- * OTLP-logs-aligned types for the o11ylogsdb engine.
+ * Engine-internal types for o11ylogsdb.
  *
- * Mirrors the OpenTelemetry log data model
- * (https://opentelemetry.io/docs/specs/otel/logs/data-model/) but
- * uses a JS-friendly shape: BigInt timestamps, plain objects for
- * AnyValue/KeyValueList. Conversion to/from OTLP/proto and OTLP/JSON
- * lives in `@otlpkit/otlpjson`-style adapters; this module is the
- * engine's internal vocabulary.
+ * OTLP primitives that every `*db` engine consumes (AnyValue, KeyValue,
+ * Resource, InstrumentationScope, SeverityText, StreamId) live in
+ * `stardb` — re-exported here so callers keep their existing import
+ * paths. The remaining types in this file (LogRecord, BodyKind,
+ * StreamKey) are specific to the logs engine.
  */
 
-/** OTLP severity_text canonical values. */
-export type SeverityText = "TRACE" | "DEBUG" | "INFO" | "WARN" | "ERROR" | "FATAL";
+export type {
+  AnyValue,
+  InstrumentationScope,
+  KeyValue,
+  Resource,
+  SeverityText,
+  StreamId,
+} from "stardb";
 
-/** OTLP `AnyValue` — recursive primitive / list / map. */
-export type AnyValue =
-  | string
-  | number
-  | bigint
-  | boolean
-  | null
-  | Uint8Array
-  | AnyValue[]
-  | { [key: string]: AnyValue };
-
-export interface KeyValue {
-  key: string;
-  value: AnyValue;
-}
-
-export interface Resource {
-  attributes: KeyValue[];
-  droppedAttributesCount?: number;
-}
-
-export interface InstrumentationScope {
-  name: string;
-  version?: string;
-  attributes?: KeyValue[];
-}
+import type { AnyValue, InstrumentationScope, KeyValue, Resource, SeverityText } from "stardb";
 
 /** Internal LogRecord shape — one row in a chunk. */
 export interface LogRecord {
@@ -69,6 +49,3 @@ export interface StreamKey {
   resource: Resource;
   scope: InstrumentationScope;
 }
-
-/** Stable identity for a stream — hash-derived. */
-export type StreamId = number;

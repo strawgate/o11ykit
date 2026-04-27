@@ -13,3 +13,11 @@ export {
   rawInt64Codec,
   ZstdCodec,
 } from "./codec-baseline.js";
+export type {
+  AnyValue,
+  InstrumentationScope,
+  KeyValue,
+  Resource,
+  SeverityText,
+  StreamId,
+} from "./types.js";
