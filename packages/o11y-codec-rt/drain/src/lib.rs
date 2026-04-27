@@ -1,12 +1,10 @@
-//! o11y-drain — streaming log template extractor.
+//! o11y-codec-rt-drain — streaming log template extractor.
 //!
 //! In-house port of the Drain algorithm (He et al., "Drain: An Online
 //! Log Parsing Approach with Fixed Depth Tree", ICWS 2017) following
-//! the published reference's semantics. Designed to build
-//! cleanly for `wasm32-unknown-unknown` with the size profile in
-//! `Cargo.toml`. No std, no FFI dependencies (existing Rust ports of
-//! the algorithm pull in a C regex library that doesn't build for
-//! wasm32 without a sysroot).
+//! the published Python reference's semantics. No FFI dependencies
+//! and `no_std`-buildable for `wasm32-unknown-unknown`. The `extern "C"`
+//! ABI lives in each consuming engine's binding crate.
 //!
 //! ## Algorithm reminder
 //!
@@ -14,7 +12,7 @@
 //! 2. (Optional) replace tokens that look like numbers with `<*>` for
 //!    tree-branching purposes.
 //! 3. Group by token count at depth 1.
-//! 4. Walk a fixed-depth tree (default depth=4 → max node depth=2);
+//! 4. Walk a fixed-depth tree (default `depth = 4` → max node depth = 2);
 //!    each level keys on the i-th token. At a leaf there is a small
 //!    list of templates.
 //! 5. Compute similarity (fraction of matching positions, ignoring
@@ -27,16 +25,8 @@
 //! `depth = 4`, `sim_th = 0.4`, `max_children = 100`,
 //! `parametrize_numeric_tokens = true`. These match the published
 //! reference defaults so cross-validation holds.
-//!
-//! ## ABI
-//!
-//! Exposes a minimal `extern "C"` ABI sufficient to drive the parser
-//! from a JS/Wasm host: `drain_create`, `drain_ingest_line`,
-//! `drain_template_count`, `drain_get_template`, `drain_destroy`.
-//! The host owns line bytes and template-output buffers; the crate
-//! never returns pointers to its internal storage.
 
-#![cfg_attr(target_arch = "wasm32", no_std)]
+#![no_std]
 
 extern crate alloc;
 
@@ -45,77 +35,16 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 
-#[cfg(target_arch = "wasm32")]
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    core::arch::wasm32::unreachable()
-}
-
-// ── Minimal bump allocator (wasm32 only) ─────────────────────────────
-//
-// We use Vec/String/Box, so we need a global allocator. To keep the
-// dependency surface zero (matching o11ytsdb's bare-metal approach),
-// we ship a leak-only bump allocator backed by a 16 MB static arena.
-// Drain state for one chunk-of-logs is small (a few hundred clusters,
-// ~1 KB each); the host is expected to drain_destroy and re-create
-// the parser per chunk. If that becomes cramping we can swap in a
-// real allocator without touching the public ABI.
-#[cfg(target_arch = "wasm32")]
-mod bump_alloc {
-    use core::alloc::{GlobalAlloc, Layout};
-    use core::cell::UnsafeCell;
-    use core::sync::atomic::{AtomicUsize, Ordering};
-
-    const ARENA_SIZE: usize = 16 * 1024 * 1024;
-
-    #[repr(align(16))]
-    struct Arena(UnsafeCell<[u8; ARENA_SIZE]>);
-    unsafe impl Sync for Arena {}
-
-    static ARENA: Arena = Arena(UnsafeCell::new([0u8; ARENA_SIZE]));
-    static OFFSET: AtomicUsize = AtomicUsize::new(0);
-
-    pub struct Bump;
-
-    unsafe impl GlobalAlloc for Bump {
-        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-            let align = layout.align();
-            let size = layout.size();
-            let base = ARENA.0.get() as *mut u8 as usize;
-            loop {
-                let off = OFFSET.load(Ordering::Relaxed);
-                let aligned = (base + off + (align - 1)) & !(align - 1);
-                let new_off = (aligned - base).saturating_add(size);
-                if new_off > ARENA_SIZE {
-                    return core::ptr::null_mut();
-                }
-                if OFFSET
-                    .compare_exchange(off, new_off, Ordering::Relaxed, Ordering::Relaxed)
-                    .is_ok()
-                {
-                    return aligned as *mut u8;
-                }
-            }
-        }
-        unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
-            // Bump-leak: free is a no-op. Host re-creates the parser
-            // per chunk; the arena is reset by reloading the module.
-        }
-    }
-
-    #[global_allocator]
-    static GLOBAL: Bump = Bump;
-}
+/// Sentinel string used both as the wildcard token in templates and as
+/// the wildcard tree key. Matches the reference impl's `param_str`.
+pub const PARAM_STR: &str = "<*>";
 
 // ── Types ────────────────────────────────────────────────────────────
 
-/// Sentinel string used both as the wildcard token in templates and as
-/// the wildcard tree key. Matches the published reference's `param_str` default.
-const PARAM_STR: &str = "<*>";
-
 /// One template plus a usage count. We store templates as
 /// `Vec<String>` to avoid the lifetime gymnastics of borrowed slices,
-/// which keeps the `extern "C"` ABI simpler at a small RAM cost.
+/// which keeps the binding crate's `extern "C"` ABI simpler at a small
+/// RAM cost.
 #[derive(Debug, Clone)]
 pub struct Cluster {
     template: Vec<String>,
@@ -143,8 +72,8 @@ impl Cluster {
 }
 
 /// One internal tree node. Children are keyed by token (or by
-/// `PARAM_STR` for the wildcard branch). `cluster_ids` is non-empty only
-/// at leaf nodes.
+/// `PARAM_STR` for the wildcard branch). `cluster_ids` is non-empty
+/// only at leaf nodes.
 #[derive(Debug, Default)]
 struct Node {
     children: Vec<(String, Box<Node>)>,
@@ -176,7 +105,8 @@ impl Node {
     }
 }
 
-/// Drain configuration. Matches the published reference's defaults out of the box.
+/// Drain configuration. Matches the reference impl's defaults out of
+/// the box.
 #[derive(Debug, Clone)]
 pub struct Config {
     pub depth: u32,
@@ -199,9 +129,9 @@ impl Default for Config {
 /// Streaming Drain parser. Owns the prefix tree and all clusters.
 pub struct Drain {
     cfg: Config,
-    /// Children of root keyed by token-count string. We separate this
-    /// from the per-prefix tree because Drain treats the root → length
-    /// edge specially (the key is `len(tokens)`, not a token).
+    /// Children of root keyed by token-count. Drain treats the
+    /// root → length edge specially (the key is `len(tokens)`, not a
+    /// token), so it lives separately from the per-prefix tree.
     root: Vec<(u32, Box<Node>)>,
     clusters: Vec<Cluster>,
     next_id: u32,
@@ -225,6 +155,12 @@ impl Drain {
         &self.clusters
     }
 
+    /// Look up a cluster by index in `clusters()`. Useful for fast
+    /// metadata reads after `add_line`.
+    pub fn cluster(&self, idx: usize) -> Option<&Cluster> {
+        self.clusters.get(idx)
+    }
+
     fn root_child(&self, n: u32) -> Option<&Node> {
         self.root.iter().find(|(k, _)| *k == n).map(|(_, n)| n.as_ref())
     }
@@ -239,23 +175,23 @@ impl Drain {
         self.root.last_mut().unwrap().1.as_mut()
     }
 
-    /// Tokenize a log line on ASCII whitespace. The reference impl calls
-    /// `content.strip().split()` which splits on all whitespace and
-    /// drops empty fields. Rust's `split_whitespace()` matches.
+    /// Tokenize a log line on ASCII whitespace. The reference impl
+    /// calls `content.strip().split()` which splits on all whitespace
+    /// and drops empty fields; Rust's `split_whitespace()` matches.
     fn tokenize(line: &str) -> Vec<&str> {
         line.split_whitespace().collect()
     }
 
-    /// True if the token contains any ASCII digit. The reference impl uses
-    /// `str.isdigit()` over each char which on Python returns True
-    /// for any Unicode digit; for log corpora ASCII is the realistic
-    /// case and matche. The reference impl within rounding error.
+    /// True if the token contains any ASCII digit. The reference impl
+    /// uses `str.isdigit()` which on Python returns True for any
+    /// Unicode digit; for log corpora ASCII is the realistic case and
+    /// matches the reference impl within rounding error.
     fn has_numbers(token: &str) -> bool {
         token.bytes().any(|b| b.is_ascii_digit())
     }
 
-    /// Compute (similarity, param_count). Mirrors
-    /// `Drain.get_seq_distance` with `include_params=False`.
+    /// Compute (similarity, param_count). Mirrors `get_seq_distance`
+    /// with `include_params = False`.
     fn similarity(template: &[String], line: &[&str]) -> (f32, u32) {
         debug_assert_eq!(template.len(), line.len());
         if template.is_empty() {
@@ -276,8 +212,7 @@ impl Drain {
     }
 
     /// Walk the tree to find the candidate leaf, then linear-scan the
-    /// candidate list for the best match above `sim_th`. Returns the
-    /// matched cluster index in `self.clusters`, if any.
+    /// candidate list for the best match above `sim_th`.
     fn tree_search(&self, tokens: &[&str]) -> Option<usize> {
         let token_count = tokens.len() as u32;
         let cur = self.root_child(token_count)?;
@@ -308,9 +243,8 @@ impl Drain {
         self.fast_match(&node.cluster_ids, tokens)
     }
 
-    /// Find the best match among `cluster_ids` for `tokens`. Returns
-    /// the cluster index on tie-break: max similarity, then max
-    /// param_count. Mirror. The reference impl `fast_match`.
+    /// Find the best match among `cluster_ids` for `tokens`. Tie-break
+    /// on (max similarity, max param_count). Mirrors `fast_match`.
     fn fast_match(&self, cluster_ids: &[u32], tokens: &[&str]) -> Option<usize> {
         let mut max_sim: f32 = -1.0;
         let mut max_pc: i64 = -1;
@@ -356,7 +290,7 @@ impl Drain {
     }
 
     /// Insert a freshly-created cluster into the prefix tree. Mirrors
-    //. The reference impl `add_seq_to_prefix_tree`, including the slightly-finicky
+    /// `add_seq_to_prefix_tree`, including the slightly-finicky
     /// `max_children` bookkeeping.
     fn add_seq_to_tree(&mut self, cluster_id: u32, template: &[String]) {
         let token_count = template.len() as u32;
@@ -414,8 +348,8 @@ impl Drain {
     }
 
     /// Merge `tokens` into `template`: positions that disagree become
-    /// `<*>`. Mirror. The reference impl `create_template`. Returns true if the
-    /// template changed.
+    /// `<*>`. Mirrors `create_template`. Returns true if the template
+    /// changed.
     fn merge_template(template: &mut [String], tokens: &[&str]) -> bool {
         debug_assert_eq!(template.len(), tokens.len());
         let mut changed = false;
@@ -430,8 +364,8 @@ impl Drain {
 
     /// Ingest one log line. Returns the cluster ID assigned to this
     /// line. Mirrors `TemplateMiner.add_log_message` minus the masker
-    /// (the host is responsible for any pre-masking; the reference impl
-    /// installs no masking instructions by default).
+    /// (the host is responsible for any pre-masking; the reference
+    /// impl installs no masking instructions by default).
     pub fn add_line(&mut self, line: &str) -> u32 {
         let tokens = Self::tokenize(line);
         match self.tree_search(&tokens) {
@@ -461,137 +395,13 @@ impl Drain {
     }
 }
 
-// ── extern "C" ABI ───────────────────────────────────────────────────
-//
-// Pointers handed out by these functions belong to the host once
-// returned. Constructing/destroying the parser uses Box::into_raw /
-// Box::from_raw, the same pattern o11ytsdb uses for its own engines.
-
-/// Construct a parser with default config. Returns an opaque pointer
-/// the host must pass to all other entry points and finally release
-/// with `drain_destroy`.
-#[no_mangle]
-pub extern "C" fn drain_create() -> *mut Drain {
-    Box::into_raw(Box::new(Drain::new(Config::default())))
-}
-
-/// Construct a parser with custom config. `sim_th` is in basis points
-/// (e.g. 4000 = 0.4) so the ABI stays integer-only.
-#[no_mangle]
-pub extern "C" fn drain_create_with(
-    depth: u32,
-    sim_th_bp: u32,
-    max_children: u32,
-    parametrize_numeric: u32,
-) -> *mut Drain {
-    let cfg = Config {
-        depth: depth.max(3),
-        sim_th: (sim_th_bp as f32) / 10_000.0,
-        max_children: max_children.max(2),
-        parametrize_numeric_tokens: parametrize_numeric != 0,
-    };
-    Box::into_raw(Box::new(Drain::new(cfg)))
-}
-
-/// Ingest one log line. `ptr` points to UTF-8 bytes of length `len`
-/// in WASM linear memory; the parser copies what it needs. Returns
-/// the cluster ID, or 0 on error (null parser, invalid UTF-8).
-///
-/// # Safety
-/// Caller guarantees `parser` was returned by `drain_create*` and not
-/// yet destroyed, and that `ptr..ptr+len` is a valid byte range.
-#[no_mangle]
-pub unsafe extern "C" fn drain_ingest_line(parser: *mut Drain, ptr: *const u8, len: u32) -> u32 {
-    if parser.is_null() || (len > 0 && ptr.is_null()) {
-        return 0;
-    }
-    let bytes = core::slice::from_raw_parts(ptr, len as usize);
-    let line = match core::str::from_utf8(bytes) {
-        Ok(s) => s,
-        Err(_) => return 0,
-    };
-    (&mut *parser).add_line(line)
-}
-
-/// Number of templates currently held by the parser.
-///
-/// # Safety
-/// Caller guarantees `parser` was returned by `drain_create*` and not
-/// yet destroyed.
-#[no_mangle]
-pub unsafe extern "C" fn drain_template_count(parser: *const Drain) -> u32 {
-    if parser.is_null() {
-        return 0;
-    }
-    (&*parser).cluster_count() as u32
-}
-
-/// Copy the joined template string at `idx` into `out_ptr..out_ptr+cap`
-/// and return the number of bytes written, or 0 if `idx` is out of
-/// range or `cap` is too small.
-///
-/// # Safety
-/// Caller guarantees the output range is writeable.
-#[no_mangle]
-pub unsafe extern "C" fn drain_get_template(
-    parser: *const Drain,
-    idx: u32,
-    out_ptr: *mut u8,
-    cap: u32,
-) -> u32 {
-    if parser.is_null() || out_ptr.is_null() {
-        return 0;
-    }
-    let drain = &*parser;
-    let s = match drain.template_string(idx as usize) {
-        Some(s) => s,
-        None => return 0,
-    };
-    let bytes = s.as_bytes();
-    if bytes.len() > cap as usize {
-        return 0;
-    }
-    core::ptr::copy_nonoverlapping(bytes.as_ptr(), out_ptr, bytes.len());
-    bytes.len() as u32
-}
-
-/// Cluster ID and size for the template at `idx`. Packed into a single
-/// u64: high 32 bits = cluster_id, low 32 bits = size.
-///
-/// # Safety
-/// Caller guarantees `parser` was returned by `drain_create*` and not
-/// yet destroyed.
-#[no_mangle]
-pub unsafe extern "C" fn drain_get_template_meta(parser: *const Drain, idx: u32) -> u64 {
-    if parser.is_null() {
-        return 0;
-    }
-    let drain = &*parser;
-    match drain.clusters().get(idx as usize) {
-        Some(c) => ((c.id as u64) << 32) | c.size as u64,
-        None => 0,
-    }
-}
-
-/// Drop the parser. After this call the pointer is invalid.
-///
-/// # Safety
-/// Caller guarantees `parser` was returned by `drain_create*` and not
-/// yet destroyed.
-#[no_mangle]
-pub unsafe extern "C" fn drain_destroy(parser: *mut Drain) {
-    if !parser.is_null() {
-        drop(Box::from_raw(parser));
-    }
-}
-
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     extern crate std;
-    use std::vec;
+    use super::*;
+    use alloc::vec;
 
     #[test]
     fn empty_input_is_one_cluster() {
@@ -645,38 +455,20 @@ mod tests {
     }
 
     #[test]
-    fn template_count_meta_packs_id_and_size() {
+    fn cluster_id_and_size_after_merge() {
         let mut d = Drain::new(Config::default());
         d.add_line("alpha beta gamma delta");
         d.add_line("alpha beta gamma epsilon");
         d.add_line("alpha beta gamma zeta");
-        let meta = unsafe { drain_get_template_meta(&d as *const _, 0) };
-        let id = (meta >> 32) as u32;
-        let size = (meta & 0xffff_ffff) as u32;
-        assert_eq!(id, 1);
-        assert_eq!(size, 3);
+        let cluster = d.cluster(0).unwrap();
+        assert_eq!(cluster.id(), 1);
+        assert_eq!(cluster.size(), 3);
     }
 
     #[test]
-    fn ffi_lifecycle_round_trips() {
-        unsafe {
-            let p = drain_create();
-            let line = b"alpha beta gamma";
-            let id = drain_ingest_line(p, line.as_ptr(), line.len() as u32);
-            assert_eq!(id, 1);
-            assert_eq!(drain_template_count(p), 1);
-            let mut buf = [0u8; 64];
-            let n = drain_get_template(p, 0, buf.as_mut_ptr(), buf.len() as u32);
-            assert_eq!(&buf[..n as usize], b"alpha beta gamma");
-            drain_destroy(p);
-        }
-    }
-
-    #[test]
-    fn matches_drain3_apache_smoke() {
-        // Three Loghub-Apache-shaped lines that share template
-        // "[Sun Dec 04 ...] [notice] jk2_init() Found child <*> in scoreboard slot <*>"
-        // After tokenizing we just check the trailing portion.
+    fn matches_reference_impl_smoke() {
+        // Three Apache-corpus-shaped lines that share template
+        // "[notice] jk2_init() Found child <*> in scoreboard slot <*>".
         let mut d = Drain::new(Config::default());
         d.add_line("[notice] jk2_init() Found child 6725 in scoreboard slot 7");
         d.add_line("[notice] jk2_init() Found child 6726 in scoreboard slot 8");
@@ -694,8 +486,6 @@ mod tests {
         d.add_line("INFO worker stopped");
         d.add_line("ERROR disk full");
         d.add_line("ERROR disk degraded");
-        // 4 templates, 4 token count: under depth=4 and matching prefix
-        // tokens, INFO/ERROR + worker/disk decide the leaf.
         assert!(d.cluster_count() >= 2);
     }
 
@@ -712,5 +502,41 @@ mod tests {
         // 3 of 4 non-wildcard slots match; ratio = 3/4.
         assert!((sim - 0.75).abs() < 1e-6);
         assert_eq!(pc, 1);
+    }
+
+    #[test]
+    fn similarity_all_wildcards() {
+        let template = vec!["<*>".into(), "<*>".into()];
+        let line = vec!["x", "y"];
+        let (sim, pc) = Drain::similarity(&template, &line);
+        assert_eq!(sim, 0.0);
+        assert_eq!(pc, 2);
+    }
+
+    #[test]
+    fn ids_assigned_sequentially() {
+        let mut d = Drain::new(Config::default());
+        // Use distinct first tokens so each row creates a new cluster.
+        let a = d.add_line("alpha 1 2 3");
+        let b = d.add_line("beta 1 2 3");
+        let c = d.add_line("gamma 1 2 3");
+        assert_eq!(a, 1);
+        assert_eq!(b, 2);
+        assert_eq!(c, 3);
+    }
+
+    #[test]
+    fn config_overrides_take_effect() {
+        let cfg = Config {
+            depth: 4,
+            sim_th: 0.99,
+            max_children: 100,
+            parametrize_numeric_tokens: true,
+        };
+        // sim_th=0.99 means even one mismatched token forces a new cluster.
+        let mut d = Drain::new(cfg);
+        d.add_line("alpha beta gamma delta");
+        d.add_line("alpha beta gamma epsilon");
+        assert_eq!(d.cluster_count(), 2);
     }
 }

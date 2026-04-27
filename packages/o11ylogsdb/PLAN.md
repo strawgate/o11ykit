@@ -375,28 +375,32 @@ Optionally add OnPair as a body-specific codec.
 Streaming log parser, fixed-depth tree, similarity-threshold matching.
 Per-stream state. The body-shape classifier sits on top.
 
-**Status: prototype validated.** The in-house Rust Drain port at
-`rust-prototype/drain/` produces bit-identical clusterings to the
-published Python reference (ARI = 1.0000 on five public log corpora)
-at 6.7 KB gz / 0.9–3.3 M logs/s native. M2 is the graduation work:
-move that crate into `packages/o11y-codec-rt/drain/` and add the
-remaining wrapping (TS reference, masker, persistence). See
+**Status: graduated.** The in-house Rust Drain port now lives at
+`packages/o11y-codec-rt/drain/` as a workspace crate, validated
+bit-identical against the published Python reference (ARI = 1.0000
+on five public log corpora). Pure-Rust API; binding crates supply
+their own `extern "C"` wrappers when they need a WASM build. The
+former `packages/o11ylogsdb/rust-prototype/drain/` directory has
+been removed; its WASM scaffolding (panic-handler, bump allocator,
+`extern "C"` shims) will be re-created cleanly in
+`packages/o11ylogsdb/rust/` when an `o11ylogsdb-rust.wasm` artifact
+is needed. Default depth 4, `sim_th` 0.4, `max_children` 100. See
 [`dev-docs/drain-prototype.md`](./dev-docs/drain-prototype.md).
 
 **Deliverables:**
-- `o11y-codec-rt/drain/` — graduated from `rust-prototype/drain/`.
-  Default depth 4, `sim_th` 0.4, `max_children` 100. (Validated.)
+- `o11y-codec-rt/drain/` — pure-Rust Drain crate. ✅
 - Configurable mask layer (number / IP / hex prefix) — pure Rust, no
   C dependencies. Sits in front of the parser, called from the host.
-  *Not in the prototype; add during graduation.*
-- Persistable state (chunk header) — snapshot/restore. *Not in the
-  prototype; M3 concern, but ABI accommodates it.*
+  *Pending — host installs no masking instructions today.*
+- Persistable state (chunk header) — snapshot/restore. *Pending; M3
+  concern, but the API accommodates it.*
 - `body`-shape classifier: try Drain → if match, templated; else
-  probe for JSON/KVList; else free-text.
+  probe for JSON/KVList; else free-text. *In the TS engine; the
+  workspace crate just provides the parser.*
 - TS reference implementation (already at `src/drain.ts`, integrated
-  via `DrainChunkPolicy` and the columnar policies).
+  via `DrainChunkPolicy` and the columnar policies). ✅
 - Cross-validation test vectors against the published Python
-  reference on the public log corpus suite.
+  reference on the public log corpus suite. *In follow-up bench work.*
 
 **Benchmark gate:**
 
