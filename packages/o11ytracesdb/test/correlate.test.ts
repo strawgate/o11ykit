@@ -48,6 +48,13 @@ function makeSpan(opts: {
 // ─── Time Window Tests ───────────────────────────────────────────────
 
 describe("Time window extraction", () => {
+  it("traceTimeWindow handles empty trace", () => {
+    const emptyTrace: Trace = { traceId: fixedBytes(16, 0x00), spans: [], durationNanos: 0n };
+    const tw = traceTimeWindow(emptyTrace);
+    expect(tw.startNano).toBe(0n);
+    expect(tw.endNano).toBe(0n);
+  });
+
   it("extracts time window from a trace", () => {
     const spans = [
       makeSpan({ start: 1000n, duration: 100n }),

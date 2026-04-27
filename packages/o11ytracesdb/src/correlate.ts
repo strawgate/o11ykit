@@ -13,7 +13,7 @@
  * - Service graph computation from inter-service spans
  */
 
-import type { SpanRecord, Trace } from "./types.js";
+import type { Resource, SpanRecord, Trace } from "./types.js";
 import { StatusCode } from "./types.js";
 
 // ─── Time Window Extraction ──────────────────────────────────────────
@@ -34,6 +34,9 @@ export interface TimeWindow {
  * Optionally adds padding to capture context before/after the trace.
  */
 export function traceTimeWindow(trace: Trace, paddingNanos = 0n): TimeWindow {
+  if (trace.spans.length === 0) {
+    return { startNano: 0n, endNano: 0n };
+  }
   let min = trace.spans[0]!.startTimeUnixNano;
   let max = trace.spans[0]!.endTimeUnixNano;
   for (const span of trace.spans) {
@@ -240,7 +243,16 @@ export function computeServiceGraph(
   return [...edges.values()];
 }
 
-function defaultServiceName(span: SpanRecord): string | undefined {
+function defaultServiceName(span: SpanRecord, resource?: Resource): string | undefined {
+  // In OTLP, service.name is a resource attribute — check resource first
+  if (resource) {
+    for (const attr of resource.attributes) {
+      if (attr.key === "service.name" && typeof attr.value === "string") {
+        return attr.value;
+      }
+    }
+  }
+  // Fall back to span attributes as a last resort
   for (const attr of span.attributes) {
     if (attr.key === "service.name" && typeof attr.value === "string") {
       return attr.value;

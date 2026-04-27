@@ -11,6 +11,7 @@ import { ColumnarTracePolicy } from "./codec-columnar.js";
 import { StreamRegistry } from "./stream.js";
 import type { InstrumentationScope, Resource, SpanRecord, StreamId } from "./types.js";
 
+/** Configuration options for TraceStore. */
 export interface TraceStoreOpts {
   /** Maximum spans per chunk before auto-flush. Default: 1024. */
   chunkSize?: number;
@@ -24,6 +25,7 @@ export interface TraceStoreOpts {
   ttlMs?: number;
 }
 
+/** Aggregate statistics about the store. */
 export interface TraceStoreStats {
   /** Total number of streams (unique resource+scope pairs). */
   streams: number;
@@ -177,6 +179,7 @@ export class TraceStore {
     scope: InstrumentationScope;
     chunk: Chunk;
   }> {
+    this.evict();
     for (const streamId of this.registry.ids()) {
       const resource = this.registry.resourceOf(streamId);
       const scope = this.registry.scopeOf(streamId);
@@ -188,6 +191,7 @@ export class TraceStore {
 
   /** Aggregate stats about the store. */
   stats(): TraceStoreStats {
+    this.evict();
     let chunks = 0;
     let sealedSpans = 0;
     let payloadBytes = 0;

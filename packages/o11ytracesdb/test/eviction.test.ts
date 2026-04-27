@@ -50,7 +50,15 @@ describe("TraceStore eviction", () => {
   });
 
   it("evicts oldest chunks when maxPayloadBytes exceeded", () => {
-    const store = new TraceStore({ chunkSize: 10, maxPayloadBytes: 5000 });
+    // First, measure actual chunk size by encoding one batch
+    const measureStore = new TraceStore({ chunkSize: 10 });
+    measureStore.append(resource, scope, makeSpans(10));
+    measureStore.flush();
+    const oneChunkBytes = measureStore.stats().payloadBytes;
+
+    // Set budget to hold ~3 chunks
+    const budget = oneChunkBytes * 3 + 100;
+    const store = new TraceStore({ chunkSize: 10, maxPayloadBytes: budget });
 
     // Insert spans in batches to create multiple chunks
     for (let i = 0; i < 10; i++) {
@@ -59,8 +67,8 @@ describe("TraceStore eviction", () => {
     store.flush();
 
     const stats = store.stats();
-    // Total payload should be under the limit
-    expect(stats.payloadBytes).toBeLessThanOrEqual(5000);
+    // Total payload should be under the budget
+    expect(stats.payloadBytes).toBeLessThanOrEqual(budget);
     expect(stats.evictedChunks).toBeGreaterThan(0);
   });
 
@@ -82,6 +90,38 @@ describe("TraceStore eviction", () => {
     expect(stats.chunks).toBe(1); // only the new chunk remains
     expect(stats.evictedChunks).toBe(1);
     expect(stats.evictedSpans).toBe(10);
+  });
+
+  it("TTL eviction occurs on reads", async () => {
+    const store = new TraceStore({ chunkSize: 10, ttlMs: 50 });
+    store.append(resource, scope, makeSpans(10));
+    store.flush();
+    expect(store.stats().chunks).toBe(1);
+
+    await new Promise((r) => setTimeout(r, 60));
+
+    // Reading should trigger eviction even without new writes
+    const stats = store.stats();
+    expect(stats.chunks).toBe(0);
+    expect(stats.evictedChunks).toBe(1);
+  });
+
+  it("cleans up empty streams after full eviction", () => {
+    const store = new TraceStore({ chunkSize: 10, maxChunks: 1 });
+    const res1: Resource = { attributes: [{ key: "service.name", value: "svc-a" }] };
+    const res2: Resource = { attributes: [{ key: "service.name", value: "svc-b" }] };
+
+    // Create chunk for stream 1
+    store.append(res1, scope, makeSpans(10));
+    store.flush();
+    expect(store.stats().streams).toBe(1);
+
+    // Create chunk for stream 2 — should evict stream 1's only chunk
+    store.append(res2, scope, makeSpans(10));
+    store.flush();
+
+    // Stream 1 should be cleaned up since all its chunks were evicted
+    expect(store.stats().streams).toBe(1);
   });
 
   it("unlimited store never evicts", () => {

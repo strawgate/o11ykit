@@ -254,6 +254,7 @@ function collectStatusMsgs(spans: readonly SpanRecord[]): Iterable<string> {
 
 // ─── Columnar Codec Implementation ──────────────────────────────────
 
+/** Default columnar codec for trace span storage. */
 export class ColumnarTracePolicy implements ChunkPolicy {
   codecName(): string {
     return "columnar-v1";
@@ -273,16 +274,24 @@ export class ColumnarTracePolicy implements ChunkPolicy {
     // Validate dictionary sizes fit in U16 indices
     const MAX_DICT = 0xfffe; // 0xffff reserved as sentinel
     if (names.dict.length > MAX_DICT) {
-      throw new RangeError(`Span name dictionary overflow: ${names.dict.length} entries (max ${MAX_DICT})`);
+      throw new RangeError(
+        `Span name dictionary overflow: ${names.dict.length} entries (max ${MAX_DICT})`
+      );
     }
     if (keys.dict.length > MAX_DICT) {
-      throw new RangeError(`Attribute key dictionary overflow: ${keys.dict.length} entries (max ${MAX_DICT})`);
+      throw new RangeError(
+        `Attribute key dictionary overflow: ${keys.dict.length} entries (max ${MAX_DICT})`
+      );
     }
     if (vals.dict.length > MAX_DICT) {
-      throw new RangeError(`Attribute value dictionary overflow: ${vals.dict.length} entries (max ${MAX_DICT})`);
+      throw new RangeError(
+        `Attribute value dictionary overflow: ${vals.dict.length} entries (max ${MAX_DICT})`
+      );
     }
     if (msgs.dict.length > MAX_DICT) {
-      throw new RangeError(`Status message dictionary overflow: ${msgs.dict.length} entries (max ${MAX_DICT})`);
+      throw new RangeError(
+        `Status message dictionary overflow: ${msgs.dict.length} entries (max ${MAX_DICT})`
+      );
     }
 
     // Section 0: Timestamps (delta-of-delta startTime + delta-of-delta endTime)

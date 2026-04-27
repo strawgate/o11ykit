@@ -402,6 +402,15 @@ describe("structural queries", () => {
     expect(result.traces.length).toBe(1);
   });
 
+  it("hasParent builder method", () => {
+    // api-handler has direct parent root-gateway
+    const result = TraceQuery.where()
+      .hasParent({ spanName: "api-handler" }, { spanName: "root-gateway" })
+      .exec(store);
+    expect(result.traces.length).toBe(1);
+    expect(result.traces[0]!.traceId).toStrictEqual(TRACE_A);
+  });
+
   it("no match returns empty", () => {
     const result = queryTraces(store, {
       structuralPredicates: [

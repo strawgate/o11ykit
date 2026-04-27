@@ -18,7 +18,15 @@ export interface AggregationResult {
   fn: string;
   /** The field aggregated (e.g. "duration", "span.http.status_code"). */
   field: string;
-  /** Computed value. */
+  /**
+   * Computed value.
+   *
+   * Units depend on the field:
+   * - `duration` / `durationNanos`: value is in **nanoseconds** (number).
+   * - `startTime`: value is in **milliseconds** (Unix epoch ms) to avoid
+   *   BigInt→Number precision loss for nanosecond timestamps.
+   * - Attribute fields: value is the raw numeric attribute value.
+   */
   value: number;
   /** Number of input values (some may have been skipped if field was missing). */
   count: number;
@@ -68,7 +76,10 @@ function extractNumber(item: Trace | SpanRecord, field: string): number | null {
     case "duration":
       return Number(span.durationNanos);
     case "startTime":
-      return Number(span.startTimeUnixNano);
+      // Convert nanosecond BigInt to milliseconds before Number() to stay
+      // within Number.MAX_SAFE_INTEGER (~9×10¹⁵). Nanosecond timestamps
+      // (~1.7×10¹⁸) would lose precision as a Number.
+      return Number(span.startTimeUnixNano / 1_000_000n);
     default: {
       // Try attribute lookup: "span.http.status_code" or just "http.status_code"
       const key = field.startsWith("span.") ? field.slice(5) : field;
@@ -163,8 +174,14 @@ function computePercentile(values: number[], p: number): number {
  */
 export interface AggregationSpec {
   fn: "count" | "avg" | "min" | "max" | "sum" | "p50" | "p90" | "p95" | "p99";
-  /** Field to aggregate. For traces: "duration", "spanCount".
-   *  For spans: "duration", or attribute key like "http.status_code". */
+  /**
+   * Field to aggregate. For traces: "duration", "spanCount".
+   * For spans: "duration", "startTime", or attribute key like "http.status_code".
+   *
+   * Result units:
+   * - `"duration"` → nanoseconds
+   * - `"startTime"` → milliseconds (Unix epoch ms, converted from BigInt nanos)
+   */
   field?: string;
 }
 

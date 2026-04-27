@@ -54,6 +54,7 @@ const KIND_MAP: Record<string, SpanKind> = {
 
 // ─── Builder ─────────────────────────────────────────────────────────
 
+/** Fluent query builder for trace search. */
 export class TraceQuery {
   private _opts: TraceQueryOpts = {};
   private _predicates: AttributePredicate[] = [];
@@ -75,8 +76,10 @@ export class TraceQuery {
   spanName(name: string | RegExp): this {
     if (typeof name === "string") {
       this._opts.spanName = name;
+      delete this._opts.spanNameRegex;
     } else {
       this._opts.spanNameRegex = name;
+      delete this._opts.spanName;
     }
     return this;
   }
@@ -203,6 +206,15 @@ export class TraceQuery {
    */
   hasSibling(left: SpanPredicate, right: SpanPredicate): this {
     this._structural.push({ relation: "sibling", left, right });
+    return this;
+  }
+
+  /**
+   * Require trace to have a span matching `left` whose direct parent matches `right`.
+   * Equivalent to TraceQL: `{ left } < { right }`
+   */
+  hasParent(left: SpanPredicate, right: SpanPredicate): this {
+    this._structural.push({ relation: "parent", left, right });
     return this;
   }
 

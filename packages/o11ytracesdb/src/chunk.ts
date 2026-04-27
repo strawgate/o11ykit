@@ -25,6 +25,7 @@ import type { SpanRecord } from "./types.js";
 
 // ─── Chunk Header ────────────────────────────────────────────────────
 
+/** Metadata header for a sealed chunk. */
 export interface ChunkHeader {
   /** Number of spans in this chunk. */
   nSpans: number;
@@ -48,6 +49,7 @@ export interface ChunkHeader {
 
 // ─── Chunk ───────────────────────────────────────────────────────────
 
+/** A sealed chunk of encoded span data with metadata header. */
 export interface Chunk {
   header: ChunkHeader;
   payload: Uint8Array;
@@ -60,6 +62,11 @@ const SCHEMA_VERSION = 1;
 
 // ─── Serialization ───────────────────────────────────────────────────
 
+/**
+ * Serialize a chunk to its binary wire format.
+ * @param chunk - The chunk to serialize.
+ * @returns Binary representation including magic, version, header, and payload.
+ */
 export function serializeChunk(chunk: Chunk): Uint8Array {
   const headerJson = JSON.stringify(chunk.header);
   const headerBytes = new TextEncoder().encode(headerJson);
@@ -75,6 +82,11 @@ export function serializeChunk(chunk: Chunk): Uint8Array {
   return out;
 }
 
+/**
+ * Deserialize a binary buffer back into a Chunk.
+ * @param buf - Raw bytes produced by {@link serializeChunk}.
+ * @returns The deserialized chunk with header and payload.
+ */
 export function deserializeChunk(buf: Uint8Array): Chunk {
   if (buf.length < 9) throw new Error("o11ytracesdb: chunk too small");
   if (buf[0] !== 0x4f || buf[1] !== 0x54 || buf[2] !== 0x44 || buf[3] !== 0x42) {
@@ -96,6 +108,7 @@ export function deserializeChunk(buf: Uint8Array): Chunk {
 
 // ─── Chunk Builder ───────────────────────────────────────────────────
 
+/** Pluggable codec policy for encoding/decoding spans in chunks. */
 export interface ChunkPolicy {
   /** Codec name for the header. */
   codecName(): string;
@@ -114,6 +127,7 @@ export interface ChunkPolicy {
   };
 }
 
+/** Accumulates spans and flushes them into sealed chunks. */
 export class ChunkBuilder {
   private spans: SpanRecord[] = [];
   private readonly maxSpans: number;

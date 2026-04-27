@@ -19,6 +19,7 @@ interface StreamEntry {
   chunks: Chunk[];
 }
 
+/** Registry that interns (resource, scope) tuples to numeric stream IDs. */
 export class StreamRegistry {
   private nextId: StreamId = 1;
   private byHash = new Map<number, StreamEntry[]>();
@@ -80,6 +81,19 @@ export class StreamRegistry {
     if (!e) return;
     const idx = e.chunks.indexOf(chunk);
     if (idx !== -1) e.chunks.splice(idx, 1);
+
+    // Clean up empty stream entries to prevent memory leaks
+    if (e.chunks.length === 0) {
+      this.byId.delete(id);
+      const h = hashStream(e.resource, e.scope);
+      const bucket = this.byHash.get(h);
+      if (bucket) {
+        const bucketIdx = bucket.indexOf(e);
+        if (bucketIdx !== -1) bucket.splice(bucketIdx, 1);
+        if (bucket.length === 0) this.byHash.delete(h);
+      }
+      // byResourceRef is a WeakMap — entries are GC'd when Resource is no longer referenced
+    }
   }
 
   chunksOf(id: StreamId): readonly Chunk[] {

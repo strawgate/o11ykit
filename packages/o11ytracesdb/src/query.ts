@@ -18,6 +18,7 @@ import type {
   AnyValue,
   AttributePredicate,
   KeyValue,
+  Resource,
   SpanNode,
   SpanPredicate,
   SpanRecord,
@@ -28,6 +29,9 @@ import type {
   TraceQueryResult,
 } from "./types.js";
 
+/** Side-channel regex cache so AttributePredicate stays a clean public type. */
+const regexCache = new WeakMap<AttributePredicate, RegExp>();
+
 // ─── Hex lookup table (pre-computed for 0-255) ──────────────────────
 
 const HEX_LUT: string[] = new Array(256);
@@ -37,6 +41,14 @@ function hexFromBytes(bytes: Uint8Array): string {
   let hex = "";
   for (let i = 0; i < bytes.length; i++) hex += HEX_LUT[bytes[i]!]!;
   return hex;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
 }
 
 // ─── Query execution ─────────────────────────────────────────────────
@@ -88,7 +100,8 @@ function isTraceIdOnlyQuery(opts: TraceQueryOpts): boolean {
     opts.structuralPredicates === undefined &&
     opts.sortBy === undefined &&
     opts.sortOrder === undefined &&
-    opts.offset === undefined
+    opts.offset === undefined &&
+    (opts.limit === undefined || opts.limit > 0)
   );
 }
 
@@ -102,8 +115,9 @@ function queryByTraceIdFast(store: TraceStore, traceId: Uint8Array): TraceQueryR
   let chunksPruned = 0;
   let spansExamined = 0;
   const matchingSpans: SpanRecord[] = [];
+  let rootResource: Resource | undefined;
 
-  for (const { chunk } of store.iterChunks()) {
+  for (const { resource, chunk } of store.iterChunks()) {
     // Bloom filter pruning — most chunks won't contain this trace
     const h = chunk.header;
     if (h.bloomFilter !== undefined) {
@@ -122,6 +136,10 @@ function queryByTraceIdFast(store: TraceStore, traceId: Uint8Array): TraceQueryR
       spansExamined++;
       if (bytesEqual(spans[i]!.traceId, traceId)) {
         matchingSpans.push(spans[i]!);
+        // Record resource for root spans
+        if (spans[i]!.parentSpanId === undefined) {
+          rootResource = resource;
+        }
       }
     }
   }
@@ -149,6 +167,7 @@ function queryByTraceIdFast(store: TraceStore, traceId: Uint8Array): TraceQueryR
   const trace: Trace = {
     traceId: first.traceId,
     ...(rootSpan !== undefined ? { rootSpan } : {}),
+    ...(rootResource !== undefined ? { rootResource } : {}),
     spans: matchingSpans,
     durationNanos: maxEnd - first.startTimeUnixNano,
   };
@@ -172,12 +191,10 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
   let chunksPruned = 0;
   let spansExamined = 0;
 
-  // Phase 1: Find matching spans, collect their trace IDs
+  // Phase 1: Find matching trace IDs (with chunk pruning for speed)
   const matchingTraceIds = new Set<string>();
-  const allSpansByTrace = new Map<string, SpanRecord[]>();
 
   for (const { resource, chunk } of store.iterChunks()) {
-    // Chunk-level pruning
     if (canPruneChunk(chunk, opts, resource)) {
       chunksPruned++;
       continue;
@@ -188,29 +205,69 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
 
     for (const span of spans) {
       spansExamined++;
-      const traceHex = hexFromBytes(span.traceId);
-
-      // Accumulate all spans by trace (needed for complete trace assembly)
-      let group = allSpansByTrace.get(traceHex);
-      if (!group) {
-        group = [];
-        allSpansByTrace.set(traceHex, group);
-      }
-      group.push(span);
-
-      // Check if this span matches the filter
       if (matchesSpan(span, opts, resource)) {
-        matchingTraceIds.add(traceHex);
+        matchingTraceIds.add(hexFromBytes(span.traceId));
       }
     }
   }
 
-  // Phase 2: Assemble complete traces for all matching trace IDs
+  // Phase 2: Collect ALL spans for matched traces (no pruning — ensures
+  // complete traces even when a trace spans multiple chunks and some
+  // were pruned in phase 1).
+  const allSpansByTrace = new Map<string, SpanRecord[]>();
+  const rootResourceByTrace = new Map<string, Resource>();
+
+  if (matchingTraceIds.size > 0) {
+    // Pre-convert matching trace IDs to bytes for bloom filter checks
+    const matchingTraceIdBytes: Uint8Array[] = [];
+    for (const hex of matchingTraceIds) {
+      matchingTraceIdBytes.push(hexToBytes(hex));
+    }
+
+    for (const { resource, chunk } of store.iterChunks()) {
+      // Bloom filter optimization: skip chunks that definitely don't
+      // contain any of the matching trace IDs
+      const h = chunk.header;
+      if (h.bloomFilter !== undefined) {
+        const filter = bloomFromBase64(h.bloomFilter);
+        let mayContainAny = false;
+        for (const idBytes of matchingTraceIdBytes) {
+          if (bloomMayContain(filter, idBytes)) {
+            mayContainAny = true;
+            break;
+          }
+        }
+        if (!mayContainAny) continue;
+      }
+
+      const spans = store.decodeChunk(chunk);
+      for (const span of spans) {
+        const traceHex = hexFromBytes(span.traceId);
+        if (!matchingTraceIds.has(traceHex)) continue;
+
+        let group = allSpansByTrace.get(traceHex);
+        if (!group) {
+          group = [];
+          allSpansByTrace.set(traceHex, group);
+        }
+        group.push(span);
+
+        // Record the resource for root spans (service.name lives here)
+        if (span.parentSpanId === undefined) {
+          rootResourceByTrace.set(traceHex, resource);
+        }
+      }
+    }
+  }
+
+  // Phase 3: Assemble complete traces
   let traces: Trace[] = [];
   for (const traceHex of matchingTraceIds) {
-    const spans = allSpansByTrace.get(traceHex)!;
+    const spans = allSpansByTrace.get(traceHex);
+    if (!spans || spans.length === 0) continue;
     spans.sort(compareBigint);
     const rootSpan = spans.find((s) => s.parentSpanId === undefined);
+    const rootResource = rootResourceByTrace.get(traceHex);
     const first = spans[0]!;
     const minStart = first.startTimeUnixNano;
     let maxEnd = first.endTimeUnixNano;
@@ -220,6 +277,7 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
     traces.push({
       traceId: first.traceId,
       ...(rootSpan !== undefined ? { rootSpan } : {}),
+      ...(rootResource !== undefined ? { rootResource } : {}),
       spans,
       durationNanos: maxEnd - minStart,
     });
@@ -541,10 +599,12 @@ function matchesAttributePredicate(span: SpanRecord, pred: AttributePredicate): 
     case "regex": {
       if (typeof attrVal !== "string" || typeof pred.value !== "string") return false;
       try {
-        if (!pred._compiledRegex) {
-          pred._compiledRegex = new RegExp(pred.value);
+        let re = regexCache.get(pred);
+        if (!re) {
+          re = new RegExp(pred.value);
+          regexCache.set(pred, re);
         }
-        return pred._compiledRegex.test(attrVal);
+        return re.test(attrVal);
       } catch {
         return false;
       }
@@ -582,12 +642,14 @@ function matchesTraceIntrinsics(trace: Trace, filter: TraceIntrinsics): boolean 
   if (filter.maxSpanCount !== undefined && trace.spans.length > filter.maxSpanCount) return false;
 
   if (filter.rootServiceName !== undefined) {
-    // Root service name check requires correlating with resource — match against root span name attribute as proxy
-    // In practice, rootServiceName is checked against the root span's resource.service.name
-    // Since assembled traces don't carry resource, we skip if no root span
-    if (trace.rootSpan === undefined) return false;
-    const svcAttr = trace.rootSpan.attributes.find((a) => a.key === "service.name");
-    if (!svcAttr || svcAttr.value !== filter.rootServiceName) return false;
+    // service.name is a resource attribute in OTLP, not a span attribute
+    if (trace.rootResource !== undefined) {
+      const svcAttr = trace.rootResource.attributes.find((a) => a.key === "service.name");
+      if (!svcAttr || svcAttr.value !== filter.rootServiceName) return false;
+    } else {
+      // No resource attached — cannot match rootServiceName
+      return false;
+    }
   }
 
   if (filter.rootSpanName !== undefined) {

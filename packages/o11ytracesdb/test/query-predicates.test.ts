@@ -224,8 +224,8 @@ describe("attribute predicates", () => {
     const result = queryTraces(store, {
       attributePredicates: [{ key: "messaging.system", op: "notExists" }],
     });
-    // Traces A and B have spans without messaging.system
-    expect(result.traces.length).toBeGreaterThanOrEqual(2);
+    // Traces A and B have spans without messaging.system; C only has messaging.system spans
+    expect(result.traces.length).toBe(2);
   });
 
   it("in — value in set", () => {
@@ -485,6 +485,62 @@ describe("TraceQuery builder", () => {
   });
 });
 
+// ─── Two-phase query & rootResource ──────────────────────────────────
+
+describe("two-phase query: trace spanning multiple chunks", () => {
+  it("assembles full trace when spans are in different chunks", () => {
+    const sharedTraceId = makeId(16);
+    const rootSpanId = makeId(8);
+    const childSpanId = makeId(8);
+
+    const batch1: SpanRecord[] = [
+      span({
+        traceId: sharedTraceId,
+        spanId: rootSpanId,
+        name: "batch1-root",
+        durationNanos: 100_000_000n,
+        startTimeUnixNano: 1700000000000000000n,
+        endTimeUnixNano: 1700000000100000000n,
+      }),
+    ];
+    const batch2: SpanRecord[] = [
+      span({
+        traceId: sharedTraceId,
+        spanId: childSpanId,
+        parentSpanId: rootSpanId,
+        name: "batch2-child",
+        durationNanos: 50_000_000n,
+        startTimeUnixNano: 1700000000010000000n,
+        endTimeUnixNano: 1700000000060000000n,
+      }),
+    ];
+
+    // Use small chunkSize to force separate chunks
+    const multiChunkStore = new TraceStore({ chunkSize: 1 });
+    const resource = { attributes: [{ key: "service.name", value: "test-svc" }] };
+    const scope = { name: "test", version: "1.0" };
+
+    multiChunkStore.append(resource, scope, batch1);
+    multiChunkStore.flush();
+    multiChunkStore.append(resource, scope, batch2);
+    multiChunkStore.flush();
+
+    // Query with spanName filter matching only batch2
+    const result = queryTraces(multiChunkStore, { spanNameRegex: /batch2/ });
+    expect(result.traces.length).toBe(1);
+    // Both spans should be assembled into the trace
+    expect(result.traces[0]!.spans.length).toBe(2);
+  });
+});
+
+describe("rootResource on assembled trace", () => {
+  it("populated rootResource on assembled trace", () => {
+    const result = queryTraces(store, { traceId: TRACE_A });
+    expect(result.traces[0]?.rootResource).toBeDefined();
+    expect(result.traces[0]?.rootResource?.attributes).toBeDefined();
+  });
+});
+
 // ─── Backward compatibility ──────────────────────────────────────────
 
 describe("backward compatibility", () => {
@@ -512,10 +568,12 @@ describe("backward compatibility", () => {
   });
 
   it("fast path not used when other filters present", () => {
+    // Use ERROR status which doesn't match TRACE_A spans (they're OK)
+    // This forces the general path and verifies the filter is actually applied
     const result = queryTraces(store, {
       traceId: TRACE_A,
-      statusCode: StatusCode.OK,
+      statusCode: StatusCode.ERROR,
     });
-    expect(result.traces.length).toBe(1);
+    expect(result.traces.length).toBe(0);
   });
 });

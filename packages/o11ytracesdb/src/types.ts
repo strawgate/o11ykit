@@ -135,6 +135,8 @@ export interface Trace {
   traceId: Uint8Array;
   /** Root span (parentSpanId === undefined), if present. */
   rootSpan?: SpanRecord;
+  /** Resource associated with the root span (carries service.name etc.). */
+  rootResource?: Resource;
   /** All spans in this trace, ordered by startTimeUnixNano. */
   spans: SpanRecord[];
   /** Total trace duration (root end - root start, or max end - min start). */
@@ -183,8 +185,6 @@ export interface AttributePredicate {
   op: AttributeOp;
   /** Value to compare against. Not needed for exists/notExists. */
   value?: AnyValue | AnyValue[];
-  /** @internal Cached compiled regex for op === "regex". */
-  _compiledRegex?: RegExp;
 }
 
 // ─── Trace-level intrinsics ──────────────────────────────────────────

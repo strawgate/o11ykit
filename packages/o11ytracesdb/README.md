@@ -13,7 +13,7 @@ Part of the **o11ykit** suite — browser-native databases for metrics, traces, 
 
 **Status:** production-ready core. Columnar codec, ingest, query,
 trace assembly, structural queries, aggregation pipeline, fluent query builder,
-memory eviction — 160 passing tests.
+memory eviction — extensive test suite.
 
 ## Why
 
@@ -244,6 +244,17 @@ const edges = computeServiceGraph(allSpans);
 // Extract trace IDs for log correlation
 const traceIds = extractTraceIds(spans); // hex strings for o11ylogsdb queries
 ```
+
+## Advanced API
+
+Lower-level building blocks are exported for custom storage, persistence, and analysis workflows:
+
+- **`ChunkBuilder`** / **`ColumnarTracePolicy`** — build and encode chunks directly, bypassing `TraceStore`, for custom chunk management.
+- **`StreamRegistry`** — inspect interned (resource, scope) → stream ID mappings.
+- **`serializeChunk()`** / **`deserializeChunk()`** — convert sealed chunks to/from binary for IndexedDB or network persistence.
+- **`createBloomFilter()`** / **`bloomMayContain()`** — create and probe BF8 bloom filters over trace IDs.
+- **`spanTimeWindow()`** / **`traceTimeWindow()`** — derive time windows from individual spans or assembled traces for cross-signal queries.
+- **`extractServiceNames()`** — discover unique service names from a set of spans.
 
 ## Memory Budget
 

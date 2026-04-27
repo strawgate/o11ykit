@@ -37,6 +37,7 @@ export function renderWaterfall(canvas, trace, opts = {}) {
   }
 
   const depthMap = new Map();
+  const visiting = new Set();
   function getDepth(span) {
     const id = hexFromBytes(span.spanId);
     if (depthMap.has(id)) return depthMap.get(id);
@@ -44,9 +45,15 @@ export function renderWaterfall(canvas, trace, opts = {}) {
       depthMap.set(id, 0);
       return 0;
     }
+    if (visiting.has(id)) {
+      depthMap.set(id, 0);
+      return 0;
+    }
+    visiting.add(id);
     const parentHex = hexFromBytes(span.parentSpanId);
     const parent = spanMap.get(parentHex);
     const d = parent ? getDepth(parent) + 1 : 0;
+    visiting.delete(id);
     depthMap.set(id, d);
     return d;
   }
@@ -87,17 +94,24 @@ export function renderWaterfall(canvas, trace, opts = {}) {
 
   // Canvas sizing
   const dpr = window.devicePixelRatio || 1;
-  const canvasWidth = canvas.parentElement.clientWidth || 800;
+  let canvasWidth = canvas.parentElement.clientWidth || 800;
   const canvasHeight = displaySpans.length * ROW_HEIGHT + PADDING * 2;
-  canvas.width = canvasWidth * dpr;
-  canvas.height = canvasHeight * dpr;
-  canvas.style.width = `${canvasWidth}px`;
-  canvas.style.height = `${canvasHeight}px`;
+
+  function sizeCanvas() {
+    canvasWidth = canvas.parentElement.clientWidth || 800;
+    canvas.width = canvasWidth * dpr;
+    canvas.height = canvasHeight * dpr;
+    canvas.style.width = `${canvasWidth}px`;
+    canvas.style.height = `${canvasHeight}px`;
+    const ctx2 = canvas.getContext("2d");
+    ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  sizeCanvas();
 
   const ctx = canvas.getContext("2d");
   ctx.scale(dpr, dpr);
 
-  const barAreaWidth = canvasWidth - LABEL_WIDTH - PADDING * 2;
+  let barAreaWidth = canvasWidth - LABEL_WIDTH - PADDING * 2;
 
   // Draw
   function draw(hoverIndex = -1) {
@@ -207,10 +221,22 @@ export function renderWaterfall(canvas, trace, opts = {}) {
   canvas.addEventListener("mousemove", onMouseMove);
   canvas.addEventListener("click", onClick);
 
+  // Re-render on container resize
+  let resizeObserver;
+  if (typeof ResizeObserver !== "undefined" && canvas.parentElement) {
+    resizeObserver = new ResizeObserver(() => {
+      sizeCanvas();
+      barAreaWidth = canvasWidth - LABEL_WIDTH - PADDING * 2;
+      draw(currentHover);
+    });
+    resizeObserver.observe(canvas.parentElement);
+  }
+
   return {
     cleanup() {
       canvas.removeEventListener("mousemove", onMouseMove);
       canvas.removeEventListener("click", onClick);
+      if (resizeObserver) resizeObserver.disconnect();
     },
     spans: displaySpans,
   };
