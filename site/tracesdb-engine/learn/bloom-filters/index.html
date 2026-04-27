@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bloom Filters — Interactive Experience | o11ytracesdb</title>
+    <meta name="description" content="Add trace IDs to a bloom filter, watch bits light up, and see how O(1) lookups let a traces database skip chunks without scanning." />
+    <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/o11ykit/styles.css" />
+    <style>
+      :root {
+        --xp-bg: #0a1624;
+        --xp-surface: #0f1f33;
+        --xp-surface-raised: #162a42;
+        --xp-surface-hover: #1a3350;
+        --xp-border: rgba(232, 93, 26, 0.12);
+        --xp-border-strong: rgba(232, 93, 26, 0.25);
+        --xp-text: #e2e8f0;
+        --xp-text-muted: #94a3b8;
+        --xp-text-dim: #64748b;
+        --xp-accent: #e85d1a;
+        --xp-accent-light: #ff8a50;
+        --xp-accent-glow: rgba(232, 93, 26, 0.15);
+        --xp-success: #34d399;
+        --xp-warn: #fbbf24;
+        --xp-error: #f87171;
+        --xp-font: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+        --xp-mono: "IBM Plex Mono", "Fira Code", monospace;
+        --xp-max-width: 960px;
+        --xp-radius: 16px;
+        --xp-radius-sm: 8px;
+        --xp-radius-xs: 4px;
+      }
+
+      body { background: var(--xp-bg); color: var(--xp-text); font-family: var(--xp-font); -webkit-font-smoothing: antialiased; }
+
+      .ambient {
+        background:
+          radial-gradient(600px 400px at 10% -5%, rgba(232, 93, 26, 0.08), transparent 60%),
+          radial-gradient(500px 400px at 90% 10%, rgba(6, 182, 212, 0.06), transparent 55%),
+          radial-gradient(700px 500px at 50% 105%, rgba(52, 211, 153, 0.05), transparent 65%);
+      }
+
+      .topbar.panel { background: var(--xp-surface); border-color: var(--xp-border); box-shadow: none; }
+      .brand { color: #fff; }
+      .topnav a { color: var(--xp-text-muted); background: var(--xp-surface-raised); border-color: var(--xp-border-strong); }
+      .topnav a:hover { color: #fff; border-color: var(--xp-accent); }
+      .topnav a[aria-current="page"] { color: var(--xp-accent-light); border-color: var(--xp-accent); background: var(--xp-accent-glow); }
+
+      .page { max-width: var(--xp-max-width); }
+
+      .xp-breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--xp-text-dim); padding: 16px 0; border-bottom: 1px solid var(--xp-border); margin-bottom: 40px; }
+      .xp-breadcrumb a { color: var(--xp-text-muted); text-decoration: none; transition: color 150ms; }
+      .xp-breadcrumb a:hover { color: var(--xp-accent); }
+      .xp-breadcrumb .sep { color: var(--xp-text-dim); font-size: 10px; }
+      .xp-breadcrumb .current { color: var(--xp-text); font-weight: 500; }
+
+      .xp-eyebrow { display: inline-block; text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; font-weight: 700; color: var(--xp-accent); margin: 0 0 8px; padding: 4px 10px; background: var(--xp-accent-glow); border-radius: 999px; border: 1px solid rgba(232, 93, 26, 0.2); }
+      .xp-hero { margin-bottom: 48px; }
+      .xp-hero h1 { margin: 0 0 16px; font-size: clamp(28px, 4.5vw, 44px); line-height: 1.1; letter-spacing: -0.025em; font-weight: 700; color: #fff; }
+      .xp-hero .lede { margin: 0; font-size: 17px; line-height: 1.55; color: var(--xp-text-muted); max-width: 65ch; }
+
+      .xp-section { margin-bottom: 48px; }
+      .xp-section h2 { font-size: 22px; font-weight: 600; color: #fff; margin: 0 0 8px; }
+      .xp-section p { margin: 0 0 16px; font-size: 15px; line-height: 1.6; color: var(--xp-text-muted); max-width: 65ch; }
+
+      .xp-card { background: var(--xp-surface); border: 1px solid var(--xp-border); border-radius: var(--xp-radius); padding: 24px; margin-bottom: 20px; }
+
+      .xp-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 20px; }
+
+      .xp-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500; font-family: var(--xp-font); color: var(--xp-text); background: var(--xp-surface-raised); border: 1px solid var(--xp-border-strong); border-radius: var(--xp-radius-sm); cursor: pointer; transition: all 150ms; }
+      .xp-btn:hover { background: var(--xp-surface-hover); border-color: var(--xp-accent); }
+      .xp-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .xp-btn-primary { background: var(--xp-accent); color: #0a1624; border-color: var(--xp-accent); font-weight: 600; }
+      .xp-btn-primary:hover { background: var(--xp-accent-light); }
+
+      .xp-input { padding: 8px 12px; font-size: 13px; font-family: var(--xp-font); color: var(--xp-text); background: var(--xp-surface-raised); border: 1px solid var(--xp-border-strong); border-radius: var(--xp-radius-sm); outline: none; min-width: 0; }
+      .xp-input:focus { border-color: var(--xp-accent); box-shadow: 0 0 0 2px var(--xp-accent-glow); }
+
+      .xp-stats-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+      .xp-stat { display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; background: var(--xp-surface); border: 1px solid var(--xp-border); border-radius: var(--xp-radius-sm); min-width: 100px; }
+      .xp-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--xp-text-dim); }
+      .xp-stat-value { font-family: var(--xp-mono); font-size: 20px; font-weight: 600; color: #fff; }
+      .xp-stat-unit { font-size: 12px; color: var(--xp-text-muted); font-weight: 400; }
+
+      .xp-insight { margin-top: 16px; padding: 16px 20px; background: var(--xp-accent-glow); border: 1px solid rgba(232, 93, 26, 0.25); border-radius: var(--xp-radius-sm); font-size: 14px; line-height: 1.6; color: var(--xp-text); }
+      .xp-insight strong { color: var(--xp-accent-light); }
+
+      /* Bit grid */
+      .bit-grid {
+        display: grid;
+        grid-template-columns: repeat(16, 1fr);
+        gap: 3px;
+        margin-bottom: 16px;
+      }
+      .bit-cell {
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--xp-mono);
+        font-size: 11px;
+        font-weight: 600;
+        border-radius: 4px;
+        transition: all 300ms ease;
+        cursor: default;
+        position: relative;
+      }
+      .bit-cell.off {
+        background: var(--xp-surface-raised);
+        color: var(--xp-text-dim);
+      }
+      .bit-cell.on {
+        background: rgba(232, 93, 26, 0.3);
+        color: var(--xp-accent-light);
+        box-shadow: 0 0 8px rgba(232, 93, 26, 0.2);
+      }
+      .bit-cell.probe {
+        outline: 2px solid var(--xp-accent);
+        outline-offset: -1px;
+        z-index: 1;
+      }
+      .bit-cell.probe-miss {
+        outline: 2px solid var(--xp-error);
+        outline-offset: -1px;
+        z-index: 1;
+      }
+      .bit-cell .bit-index {
+        position: absolute;
+        top: -1px;
+        right: 2px;
+        font-size: 7px;
+        color: var(--xp-text-dim);
+        opacity: 0.6;
+      }
+
+      @keyframes bit-flash {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.3); }
+        100% { transform: scale(1); }
+      }
+      .bit-cell.flash { animation: bit-flash 300ms ease; }
+
+      /* Fill meter */
+      .fill-meter { height: 8px; background: var(--xp-surface-raised); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+      .fill-meter-bar { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--xp-accent), var(--xp-warn)); transition: width 400ms ease; }
+
+      /* Lookup result */
+      .lookup-result {
+        padding: 14px 20px;
+        border-radius: var(--xp-radius-sm);
+        font-size: 14px;
+        line-height: 1.6;
+        margin-top: 12px;
+        display: none;
+      }
+      .lookup-result.show { display: block; }
+      .lookup-result.found {
+        background: rgba(52, 211, 153, 0.12);
+        border: 1px solid rgba(52, 211, 153, 0.3);
+        color: var(--xp-success);
+      }
+      .lookup-result.not-found {
+        background: rgba(248, 113, 113, 0.12);
+        border: 1px solid rgba(248, 113, 113, 0.3);
+        color: var(--xp-error);
+      }
+      .lookup-result .hash-detail {
+        font-family: var(--xp-mono);
+        font-size: 12px;
+        display: block;
+        margin-top: 6px;
+        color: var(--xp-text-dim);
+      }
+
+      /* History list */
+      .history-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 12px;
+      }
+      .history-item {
+        padding: 3px 10px;
+        font-size: 11px;
+        font-family: var(--xp-mono);
+        background: var(--xp-surface-raised);
+        border: 1px solid var(--xp-border);
+        border-radius: 999px;
+        color: var(--xp-text-muted);
+      }
+
+      .learn-footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--xp-border); text-align: center; font-size: 13px; color: var(--xp-text-dim); }
+      .learn-footer a { text-decoration: none; }
+
+      @keyframes xp-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      .xp-animate-in { animation: xp-fade-in 400ms ease both; }
+
+      @media (max-width: 640px) {
+        .page { padding: 0 14px 40px; }
+        .xp-card { padding: 16px; }
+        .xp-hero h1 { font-size: 26px; }
+        .bit-grid { grid-template-columns: repeat(8, 1fr); gap: 2px; }
+        .xp-stats-row { gap: 8px; }
+        .xp-stat { min-width: 80px; padding: 10px 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <div class="ambient" aria-hidden="true"></div>
+    <main class="page" id="main">
+
+      <header class="topbar panel">
+        <a class="brand" href="/o11ykit/"><img class="brand-mark" src="/o11ykit/logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
+        <nav class="topnav" aria-label="Primary">
+          <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
+          <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+          <a href="/o11ykit/tracesdb-engine/" aria-current="page">TracesDB</a>
+          <a href="/o11ykit/octo11y/">Octo11y</a>
+          <a href="/o11ykit/benchkit/">Benchkit</a>
+          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </header>
+
+      <nav class="xp-breadcrumb" aria-label="Breadcrumb">
+        <a href="/o11ykit/tracesdb-engine/">TracesDB Engine</a>
+        <span class="sep">›</span>
+        <a href="/o11ykit/tracesdb-engine/learn/">Learn</a>
+        <span class="sep">›</span>
+        <span class="current">Bloom Filters</span>
+      </nav>
+
+      <div class="xp-hero">
+        <p class="xp-eyebrow">Indexing</p>
+        <h1>Bloom Filters</h1>
+        <p class="lede">
+          A <strong>bloom filter</strong> is a compact bit array that answers "Is this item in the set?"
+          in O(1) time. It can say <strong>"definitely not"</strong> or <strong>"probably yes"</strong>
+          — but never gives a false negative. In a traces database, each chunk carries a bloom filter
+          for its trace IDs. Looking up a trace? Check each chunk's filter in microseconds and skip
+          the ones that definitely don't contain it.
+        </p>
+      </div>
+
+      <!-- ① Bit Array -->
+      <section class="xp-section" id="bits-section">
+        <h2>① The Bit Array</h2>
+        <p>128 bits, all starting at zero. Each cell shows its bit position index.</p>
+        <div class="xp-card">
+          <div class="bit-grid" id="bit-grid"></div>
+          <div class="fill-meter"><div class="fill-meter-bar" id="fill-bar" style="width:0%;"></div></div>
+        </div>
+      </section>
+
+      <!-- ② Add Trace IDs -->
+      <section class="xp-section" id="add-section">
+        <h2>② Add Trace IDs</h2>
+        <p>Type a trace ID (or use the presets) to hash it with 3 hash functions and set the corresponding bits.</p>
+        <div class="xp-card">
+          <div class="xp-controls">
+            <input type="text" class="xp-input" id="input-add" placeholder="e.g. abc123def456" style="width:220px;" />
+            <button type="button" class="xp-btn xp-btn-primary" id="btn-add">+ Add</button>
+            <button type="button" class="xp-btn" id="btn-random">🎲 Random ID</button>
+            <button type="button" class="xp-btn" id="btn-add-many">+10 Random</button>
+            <button type="button" class="xp-btn" id="btn-clear">Clear All</button>
+          </div>
+          <p style="font-size:13px;color:var(--xp-text-dim);margin:0 0 8px;">Quick presets:</p>
+          <div class="xp-controls" id="presets" style="margin-bottom:0;"></div>
+          <div class="history-list" id="history-list"></div>
+        </div>
+      </section>
+
+      <!-- ③ Lookup -->
+      <section class="xp-section" id="lookup-section">
+        <h2>③ Lookup Trace ID</h2>
+        <p>Check whether a trace ID <em>might</em> be in the set. All hashed bits must be 1 for a "probably yes."</p>
+        <div class="xp-card">
+          <div class="xp-controls">
+            <input type="text" class="xp-input" id="input-lookup" placeholder="e.g. abc123def456" style="width:220px;" />
+            <button type="button" class="xp-btn xp-btn-primary" id="btn-lookup">🔍 Lookup</button>
+          </div>
+          <div class="lookup-result" id="lookup-result"></div>
+        </div>
+      </section>
+
+      <!-- ④ Statistics -->
+      <section class="xp-section" id="stats-section">
+        <h2>④ Statistics</h2>
+        <div class="xp-stats-row" id="stats-row"></div>
+        <div class="xp-insight">
+          <strong>Key insight:</strong> Bloom filters tell us which chunks to skip. Instead of scanning
+          all chunks for a trace ID, we check each chunk's bloom filter in microseconds. A 128-bit
+          filter with 3 hash functions can hold ~20 items before the false positive rate exceeds 5%.
+          Real implementations use larger filters (e.g., 1 KB per chunk) for millions of IDs.
+        </div>
+      </section>
+
+      <footer class="learn-footer">
+        <p>
+          Part of <a href="/o11ykit/" style="color: var(--xp-accent);">o11ykit</a>
+          · <a href="/o11ykit/tracesdb-engine/learn/" style="color: var(--xp-text-muted);">← Back to Learn</a>
+        </p>
+      </footer>
+    </main>
+
+    <script>
+      (() => {
+        "use strict";
+
+        const BITS = 128;
+        const NUM_HASHES = 3;
+        let bitArray = new Uint8Array(BITS);
+        let itemCount = 0;
+        let addedItems = [];
+
+        const PRESETS = [
+          "a1b2c3d4e5f6",
+          "trace-00ff-aabb",
+          "svc-checkout-001",
+          "req-7890-xyz",
+          "span-root-42"
+        ];
+
+        function fnvHash(str, seed) {
+          let h = (seed ^ 0x811c9dc5) >>> 0;
+          for (let i = 0; i < str.length; i++) {
+            h ^= str.charCodeAt(i);
+            h = Math.imul(h, 0x01000193) >>> 0;
+          }
+          return h % BITS;
+        }
+
+        function getPositions(str) {
+          return [
+            fnvHash(str, 0),
+            fnvHash(str, 31),
+            fnvHash(str, 97)
+          ];
+        }
+
+        function addItem(str) {
+          const positions = getPositions(str);
+          for (let i = 0; i < positions.length; i++) {
+            bitArray[positions[i]] = 1;
+          }
+          itemCount++;
+          addedItems.push(str);
+          return positions;
+        }
+
+        function lookupItem(str) {
+          const positions = getPositions(str);
+          let allSet = true;
+          for (let i = 0; i < positions.length; i++) {
+            if (!bitArray[positions[i]]) {
+              allSet = false;
+              break;
+            }
+          }
+          return { found: allSet, positions: positions };
+        }
+
+        function fillRatio() {
+          let set = 0;
+          for (let i = 0; i < BITS; i++) {
+            if (bitArray[i]) set++;
+          }
+          return set / BITS;
+        }
+
+        function bitsSet() {
+          let set = 0;
+          for (let i = 0; i < BITS; i++) {
+            if (bitArray[i]) set++;
+          }
+          return set;
+        }
+
+        function falsePositiveRate() {
+          const k = NUM_HASHES;
+          const n = itemCount;
+          const m = BITS;
+          if (n === 0) return 0;
+          return (1 - Math.exp(-k * n / m)) ** k;
+        }
+
+        function randomHex(len) {
+          const chars = "0123456789abcdef";
+          let result = "";
+          for (let i = 0; i < len; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+          }
+          return result;
+        }
+
+        function renderBitGrid() {
+          const grid = document.getElementById("bit-grid");
+          grid.innerHTML = "";
+          for (let i = 0; i < BITS; i++) {
+            const cell = document.createElement("div");
+            cell.className = `bit-cell ${bitArray[i] ? "on" : "off"}`;
+            cell.setAttribute("data-bit", i);
+            cell.textContent = bitArray[i] ? "1" : "0";
+            const idx = document.createElement("span");
+            idx.className = "bit-index";
+            idx.textContent = i;
+            cell.appendChild(idx);
+            grid.appendChild(cell);
+          }
+        }
+
+        function highlightBits(positions, className) {
+          clearHighlights();
+          for (let i = 0; i < positions.length; i++) {
+            const cell = document.querySelector(`[data-bit="${positions[i]}"]`);
+            if (cell) {
+              cell.classList.add(className);
+              cell.classList.add("flash");
+            }
+          }
+        }
+
+        function clearHighlights() {
+          const cells = document.querySelectorAll(".bit-cell.probe, .bit-cell.probe-miss, .bit-cell.flash");
+          for (let i = 0; i < cells.length; i++) {
+            cells[i].classList.remove("probe", "probe-miss", "flash");
+          }
+        }
+
+        function updateFillBar() {
+          const pct = (fillRatio() * 100).toFixed(1);
+          document.getElementById("fill-bar").style.width = `${pct}%`;
+        }
+
+        function renderStats() {
+          const el = document.getElementById("stats-row");
+          el.innerHTML = "";
+
+          function makeStat(label, value, unit) {
+            const stat = document.createElement("div");
+            stat.className = "xp-stat";
+            stat.innerHTML =
+              '<span class="xp-stat-label">' + label + "</span>" +
+              '<span class="xp-stat-value">' + value +
+              (unit ? ` <span class="xp-stat-unit">${unit}</span>` : "") +
+              "</span>";
+            return stat;
+          }
+
+          el.appendChild(makeStat("Items Added", itemCount, ""));
+          el.appendChild(makeStat("Bits Set", `${bitsSet()} / ${BITS}`, ""));
+          el.appendChild(makeStat("Fill Ratio", (fillRatio() * 100).toFixed(1), "%"));
+          el.appendChild(makeStat("False Positive Rate", (falsePositiveRate() * 100).toFixed(2), "%"));
+        }
+
+        function renderHistory() {
+          const el = document.getElementById("history-list");
+          el.innerHTML = "";
+          for (let i = 0; i < addedItems.length; i++) {
+            const item = document.createElement("span");
+            item.className = "history-item";
+            item.textContent = addedItems[i];
+            el.appendChild(item);
+          }
+        }
+
+        function doAdd(str) {
+          if (!str) return;
+          const positions = addItem(str);
+          renderBitGrid();
+          highlightBits(positions, "probe");
+          updateFillBar();
+          renderStats();
+          renderHistory();
+        }
+
+        function doLookup(str) {
+          if (!str) return;
+          clearHighlights();
+          const result = lookupItem(str);
+          const el = document.getElementById("lookup-result");
+
+          if (result.found) {
+            const isReal = addedItems.indexOf(str) !== -1;
+            el.className = "lookup-result show found";
+            el.innerHTML =
+              (isReal
+                ? `✅ <strong>Probably yes</strong> — all ${NUM_HASHES} bits are set. This ID was previously added.`
+                : `⚠️ <strong>Probably yes</strong> — all ${NUM_HASHES} bits are set. But this is a <strong>false positive</strong>! This ID was never added.`) +
+              '<span class="hash-detail">Bits checked: [' + result.positions.join(", ") + "] — all are 1</span>";
+            highlightBits(result.positions, "probe");
+          } else {
+            el.className = "lookup-result show not-found";
+            const missingBits = [];
+            for (let i = 0; i < result.positions.length; i++) {
+              if (!bitArray[result.positions[i]]) missingBits.push(result.positions[i]);
+            }
+            el.innerHTML =
+              '❌ <strong>Definitely not in the set.</strong> Bit(s) at position ' +
+              missingBits.join(", ") + " are 0." +
+              '<span class="hash-detail">Bits checked: [' + result.positions.join(", ") + "]</span>";
+            highlightBits(result.positions, "probe-miss");
+          }
+        }
+
+        function clearAll() {
+          bitArray = new Uint8Array(BITS);
+          itemCount = 0;
+          addedItems = [];
+          clearHighlights();
+          renderBitGrid();
+          updateFillBar();
+          renderStats();
+          renderHistory();
+          document.getElementById("lookup-result").className = "lookup-result";
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+          renderBitGrid();
+          renderStats();
+
+          const presetsEl = document.getElementById("presets");
+          for (let i = 0; i < PRESETS.length; i++) {
+            ((preset) => {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "xp-btn";
+              btn.textContent = preset;
+              btn.style.fontSize = "11px";
+              btn.style.fontFamily = "var(--xp-mono)";
+              btn.addEventListener("click", () => {
+                document.getElementById("input-add").value = preset;
+                doAdd(preset);
+              });
+              presetsEl.appendChild(btn);
+            })(PRESETS[i]);
+          }
+
+          document.getElementById("btn-add").addEventListener("click", () => {
+            const val = document.getElementById("input-add").value.trim();
+            if (val) doAdd(val);
+          });
+
+          document.getElementById("input-add").addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              const val = this.value.trim();
+              if (val) doAdd(val);
+            }
+          });
+
+          document.getElementById("btn-random").addEventListener("click", () => {
+            const id = randomHex(12);
+            document.getElementById("input-add").value = id;
+            doAdd(id);
+          });
+
+          document.getElementById("btn-add-many").addEventListener("click", () => {
+            for (let i = 0; i < 10; i++) {
+              doAdd(randomHex(12));
+            }
+          });
+
+          document.getElementById("btn-clear").addEventListener("click", clearAll);
+
+          document.getElementById("btn-lookup").addEventListener("click", () => {
+            const val = document.getElementById("input-lookup").value.trim();
+            if (val) doLookup(val);
+          });
+
+          document.getElementById("input-lookup").addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+              const val = this.value.trim();
+              if (val) doLookup(val);
+            }
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>
