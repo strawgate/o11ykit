@@ -1,7 +1,6 @@
+import { defaultRegistry } from "stardb";
 import { describe, expect, it } from "vitest";
-
 import { ChunkBuilder, DefaultChunkPolicy } from "../src/chunk.js";
-import { defaultRegistry } from "../src/codec-baseline.js";
 import { StreamRegistry } from "../src/stream.js";
 import type { InstrumentationScope, LogRecord, Resource } from "../src/types.js";
 

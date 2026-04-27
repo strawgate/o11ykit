@@ -1,0 +1,38 @@
+{
+  "name": "stardb",
+  "version": "0.0.0",
+  "description": "Shared core (`*db`) for the o11ykit family of in-memory OpenTelemetry databases. Codec interface, codec registry, baseline byte/string/int codecs.",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "opentelemetry",
+    "codec",
+    "compression",
+    "shared"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

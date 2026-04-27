@@ -17,12 +17,12 @@
  * classifier + policy and re-running the bench.
  */
 
+import type { CodecRegistry } from "stardb";
+import { defaultRegistry } from "stardb";
 import type { ChunkPolicy } from "./chunk.js";
 import { ChunkBuilder, chunkWireSize, DefaultChunkPolicy, readRecords } from "./chunk.js";
 import type { BodyClassifier } from "./classify.js";
 import { defaultClassifier } from "./classify.js";
-import type { CodecRegistry } from "./codec.js";
-import { defaultRegistry } from "./codec-baseline.js";
 import { StreamRegistry } from "./stream.js";
 import type { InstrumentationScope, LogRecord, Resource, StreamId } from "./types.js";
 
