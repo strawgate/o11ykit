@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>o11ykit — Telemetry building blocks for browser apps and CI</title>
+    <title>o11ykit — SQLite for observability, in the browser</title>
     <meta
       name="description"
-      content="Shape OTLP, compress time-series in the browser, publish GitHub-native metrics, and gate regressions. OtlpKit, o11ytsdb, Octo11y, and Benchkit in one stack."
+      content="Browser-native databases for metrics, traces, and logs. Columnar compression at sub-4 bytes per point, zero-latency cross-signal correlation, and no backend required. The observability database category the browser never had."
     />
     <meta name="theme-color" content="#f8fafb" />
     <link rel="icon" href="./logo.svg" type="image/svg+xml" />
@@ -22,167 +22,297 @@
       <header class="topbar panel">
         <a class="brand" href="/o11ykit/"><img class="brand-mark" src="./logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
         <nav class="topnav" aria-label="Primary">
-          <a href="#paths">Start Here</a>
-          <a href="#experiences">Experiences</a>
+          <a href="#signals">Signals</a>
+          <a href="#vision">Vision</a>
           <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
-          <a href="/o11ykit/benchkit/">Benchkit Demo</a>
+          <a href="/o11ykit/tracesdb-engine/">TracesDB</a>
+          <a href="/o11ykit/benchkit/">Benchkit</a>
           <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">Playground</a>
           <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </header>
 
+      <!-- ─── Hero ────────────────────────────────────────────── -->
       <section class="hero panel">
         <div class="hero-lockup">
           <img class="hero-mark" src="./logo.svg" width="48" height="48" alt="" aria-hidden="true" />
           <span class="hero-name">o11ykit</span>
         </div>
-        <p class="eyebrow">telemetry platform</p>
-        <h1>Telemetry building blocks<br/>for browsers and CI.</h1>
+        <p class="eyebrow">browser observability database</p>
+        <h1>SQLite for observability,<br/>in the browser.</h1>
         <p class="lede">
-          Parse OTLP, explore storage internals, publish GitHub-native metrics, and gate
-          regressions. Start with the layer you need instead of reading the whole stack top to
-          bottom.
+          Every observability SPA today is a dumb terminal — every pan, zoom, and filter
+          round-trips to a backend. o11ykit puts a real database in the browser: columnar
+          compression at <strong>sub‑4 bytes per point</strong>, instant cross-signal
+          correlation, and zero GC pressure. No Prometheus. No Elasticsearch. No backend.
         </p>
+        <div class="hero-stats" aria-label="Key metrics">
+          <div class="hero-stat">
+            <span class="hero-stat-value">&lt;4 B</span>
+            <span class="hero-stat-label">per data point</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">10–15×</span>
+            <span class="hero-stat-label">less memory than JS objects</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">0 ms</span>
+            <span class="hero-stat-label">cross-signal correlation</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">3</span>
+            <span class="hero-stat-label">signal types: metrics, traces, logs</span>
+          </div>
+        </div>
         <div class="hero-actions">
-          <a class="cta cta-primary" href="/o11ykit/tsdb-engine/">Explore TSDB Engine</a>
-          <a class="cta" href="/o11ykit/otlpkit/">Explore OtlpKit</a>
-          <a class="cta" href="/o11ykit/octo11y/">Set Up Actions Telemetry</a>
+          <a class="cta cta-primary" href="/o11ykit/tsdb-engine/">Launch TSDB Demo</a>
+          <a class="cta" href="/o11ykit/otlpkit/">OtlpKit Packages</a>
+          <a class="cta" href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">Browse Source</a>
         </div>
         <div class="pill-row" aria-label="Core capabilities">
-          <span class="pill">parse + query OTLP</span>
-          <span class="pill">browser-native TSDB</span>
-          <span class="pill">TypeScript or Rust→WASM codecs</span>
-          <span class="pill">GitHub-native metrics pipelines</span>
-          <span class="pill">CI regression gates</span>
+          <span class="pill">OTLP → Arrow → columnar store</span>
+          <span class="pill">ALP + XOR-delta + dictionary encoding</span>
+          <span class="pill">TypeScript + Rust→WASM</span>
+          <span class="pill">chart-agnostic adapters</span>
+          <span class="pill">zero-infrastructure</span>
         </div>
       </section>
 
-      <section id="paths" class="panel">
-        <h2>Start here</h2>
+      <!-- ─── The Problem ─────────────────────────────────────── -->
+      <section class="panel callout">
+        <h3>The problem we solve</h3>
+        <p>
+          Kibana, Grafana, Datadog, and Honeycomb all treat the browser as a <em>stateless
+          renderer</em>. Every interaction re-fetches data. The JS object tax of 30–50 bytes
+          per point means dashboards crash at scale. There is no real telemetry database
+          in the browser — until now.
+        </p>
+        <p>
+          o11ykit gives observability UI builders the embedded database they've been
+          hand-rolling badly: instant pan/zoom, client-side aggregation, cross-panel shared
+          queries, and multi-million-point retention without GC pressure.
+        </p>
+      </section>
+
+      <!-- ─── Three Signals ───────────────────────────────────── -->
+      <section id="signals" class="panel">
+        <h2>Three signals, three databases</h2>
         <p class="section-intro">
-          Most visitors only need one of three jobs: shape telemetry, inspect the TSDB, or wire up
-          GitHub-native metrics in CI.
+          One database per OTel signal type. Each specializes its compression and indexing
+          for the data model. Together, they enable zero-latency cross-signal correlation
+          in local memory.
         </p>
         <div class="grid grid-3">
           <article class="card accent-tsdb">
-            <h3>TSDB Engine</h3>
+            <h3>o11ytsdb</h3>
+            <p class="signal-subtitle">metrics</p>
             <p>
-              Load a dataset, compare storage layouts, inspect chunks, and run queries in the
-              browser. Then drop into the learn hub or source once the demo has earned the detail.
+              ALP encoding, delta-of-delta timestamps, XOR-delta values, WASM-accelerated
+              codecs. Sub-4 bytes per sample. Ships first — it's the simplest model and
+              delivers the headline compression number.
             </p>
             <div class="card-links">
-              <a href="/o11ykit/tsdb-engine/#section-dataset">Launch live demo</a>
+              <a href="/o11ykit/tsdb-engine/#section-dataset">Live demo</a>
               <a href="/o11ykit/tsdb-engine/learn/">Learn hub</a>
             </div>
           </article>
-          <article class="card accent-otlp">
-            <h3>OtlpKit</h3>
+          <article class="card accent-logs">
+            <h3>o11ylogsdb</h3>
+            <p class="signal-subtitle">logs</p>
             <p>
-              Parse OTLP JSON, filter and bucket records, and build chart-ready views without
-              committing to a storage engine first.
+              Drain3-style template extraction on ingest collapses string columns 5–10×.
+              Turns "unique" messages into <code>template_id + params</code>, making
+              full-text indexing feasible in the browser. Ships second — highest user pain.
             </p>
             <div class="card-links">
-              <a href="/o11ykit/otlpkit/">Open OtlpKit</a>
-              <a href="/o11ykit/otlpkit-docs/">Package docs</a>
+              <a href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ylogsdb" target="_blank" rel="noreferrer">Source</a>
             </div>
           </article>
-          <article class="card accent-octo">
-            <h3>Actions Telemetry</h3>
+          <article class="card accent-traces">
+            <h3>o11ytracesdb</h3>
+            <p class="signal-subtitle">traces</p>
             <p>
-              Use Octo11y to publish metrics from GitHub Actions, then layer Benchkit on top when
-              you want baselines and regression gates.
+              Dictionary encoding collapses 90%+ of span strings to 8–16 bit integers.
+              Parent-child relationships stored as typed-array indices enable SIMD-friendly
+              critical-path computation. Ships last — most complex model.
             </p>
             <div class="card-links">
-              <a href="/o11ykit/octo11y/">Octo11y guide</a>
-              <a href="/o11ykit/benchkit/">Benchkit demo</a>
+              <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">Roadmap</a>
             </div>
           </article>
         </div>
-        <p class="section-intro" style="margin-top: 18px;">
-          Want the playful route first? Jump straight into the interactive explainers.
+      </section>
+
+      <!-- ─── Vision: Cross-signal correlation ────────────────── -->
+      <section id="vision" class="panel">
+        <h2>The vision: zero-latency correlation</h2>
+        <p class="section-intro">
+          Today, clicking a metric spike triggers a server call to fetch traces, then another for
+          logs — hundreds of milliseconds each, plus backend credentials. With all three stores
+          co-resident in the browser:
+        </p>
+        <div class="pipeline">
+          <div class="pipeline-stage">
+            <div class="stage-icon">📈</div>
+            <div class="stage-name">Brush a spike</div>
+            <div class="stage-desc">Select a time range in o11ytsdb</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage">
+            <div class="stage-icon">🔗</div>
+            <div class="stage-name">Correlate</div>
+            <div class="stage-desc">Pass window to traces + logs in local memory</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage">
+            <div class="stage-icon">⚡</div>
+            <div class="stage-name">Render</div>
+            <div class="stage-desc">Zero network calls, instant results</div>
+          </div>
+        </div>
+        <p class="section-intro" style="margin-top: 16px;">
+          Traces generate derived RED metrics back into o11ytsdb. Metrics link to traces via
+          exemplars. Logs connect to both via trace IDs. A self-reinforcing data model.
+        </p>
+      </section>
+
+      <!-- ─── Architecture spine ──────────────────────────────── -->
+      <section class="panel">
+        <h2>Architecture</h2>
+        <p class="section-intro">
+          A shared spine connects OTLP ingestion to signal-specific stores and chart-agnostic output.
+        </p>
+        <div class="pipeline">
+          <div class="pipeline-stage">
+            <div class="stage-icon">📦</div>
+            <div class="stage-name">OTLP</div>
+            <div class="stage-desc">Protobuf or JSON ingest</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage">
+            <div class="stage-icon">🏹</div>
+            <div class="stage-name">Arrow</div>
+            <div class="stage-desc">SIMD-aware columnar interchange</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage">
+            <div class="stage-icon">🗄️</div>
+            <div class="stage-name">o11y*db</div>
+            <div class="stage-desc">Signal-specific columnar store</div>
+          </div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage">
+            <div class="stage-icon">📊</div>
+            <div class="stage-name">Adapters</div>
+            <div class="stage-desc">uPlot, ECharts, Chart.js, Arrow out</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── What we are not ─────────────────────────────────── -->
+      <section class="panel">
+        <h2>What o11ykit is not</h2>
+        <p class="section-intro">
+          Clear boundaries prevent scope creep. o11ykit sits <em>after</em> your backend, inside the UI.
+        </p>
+        <div class="grid grid-3">
+          <article class="card">
+            <h4>Not Prometheus</h4>
+            <p>We don't scrape, store long-term, or serve remote queries. We consume what Prometheus produces.</p>
+          </article>
+          <article class="card">
+            <h4>Not Elasticsearch</h4>
+            <p>We don't do distributed full-text search. We do template-aware log compression in a single tab.</p>
+          </article>
+          <article class="card">
+            <h4>Not Grafana</h4>
+            <p>We're a library, not a dashboard. We output typed arrays — what you render is your business.</p>
+          </article>
+          <article class="card">
+            <h4>Not OTel SDK</h4>
+            <p>We don't instrument your code. We store and query what your instrumentation produces.</p>
+          </article>
+          <article class="card">
+            <h4>Not DuckDB</h4>
+            <p>DuckDB-WASM is 18 MB with no metric semantics. We're &lt;5 KB with deep signal awareness.</p>
+          </article>
+          <article class="card">
+            <h4>Not a backend</h4>
+            <p>Single-user, single-tab, in-process. Complements your server-side store, never replaces it.</p>
+          </article>
+        </div>
+      </section>
+
+      <!-- ─── For whom ────────────────────────────────────────── -->
+      <section class="panel">
+        <h2>Built for observability UI builders</h2>
+        <p class="section-intro">
+          If you're building a Kibana-like product, an internal dashboard, or any UI that
+          visualizes OTel data — you're hand-rolling local caches, chart transforms, and label
+          filters today. o11ykit replaces that ad-hoc layer with a real embedded database.
+        </p>
+        <div class="grid grid-2">
+          <article class="card">
+            <h4>Today (without o11ykit)</h4>
+            <p>
+              Fetch JSON → store in JS arrays (30–50 B/point) → hand-roll aggregation →
+              re-fetch on every pan/zoom → OOM at scale → 3+ server round-trips per exemplar click.
+            </p>
+          </article>
+          <article class="card accent-tsdb">
+            <h4>With o11ykit</h4>
+            <p>
+              Ingest OTLP → columnar compression (&lt;4 B/point) → streaming queries →
+              instant pan/zoom → cross-signal correlation in local memory → no network calls.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <!-- ─── Try it ──────────────────────────────────────────── -->
+      <section class="panel">
+        <h2>Try it now</h2>
+        <p class="section-intro">
+          Start hands-on. The architecture docs make more sense once you've seen the engine
+          compress and query real data.
         </p>
         <div class="learn-strip" aria-label="Interactive experiments">
+          <a href="/o11ykit/tsdb-engine/#section-dataset">
+            <span class="learn-icon">🚀</span>
+            <span>TSDB Live Demo</span>
+          </a>
           <a href="/o11ykit/tsdb-engine/learn/">
             <span class="learn-icon">📚</span>
             <span>Learn Hub</span>
-          </a>
-          <a href="/o11ykit/tsdb-engine/learn/string-interning/">
-            <span class="learn-icon">🏷️</span>
-            <span>String Interning</span>
-          </a>
-          <a href="/o11ykit/tsdb-engine/learn/chunk-stats/">
-            <span class="learn-icon">📊</span>
-            <span>Chunk Stats</span>
           </a>
           <a href="/o11ykit/tsdb-engine/learn/xor-delta/">
             <span class="learn-icon">⊕</span>
             <span>XOR-Delta</span>
           </a>
+          <a href="/o11ykit/tsdb-engine/learn/string-interning/">
+            <span class="learn-icon">🏷️</span>
+            <span>String Interning</span>
+          </a>
           <a href="/o11ykit/tsdb-engine/learn/query-engine/">
             <span class="learn-icon">🔍</span>
             <span>Query Engine</span>
           </a>
-        </div>
-      </section>
-
-      <section id="experiences" class="panel">
-        <h2>Interactive surfaces</h2>
-        <p class="section-intro">
-          Start with the hands-on routes first. The docs and architecture pages make more sense
-          once you have seen the stack do real work.
-        </p>
-        <div class="grid grid-2">
-          <article class="card accent-tsdb">
-            <h3>TSDB Live Demo</h3>
-            <p>
-              Generate data, compress it, inspect storage behavior, and run queries in the browser
-              against the engine directly.
-            </p>
-            <div class="card-links">
-              <a href="/o11ykit/tsdb-engine/#section-dataset">Launch demo</a>
-              <a href="/o11ykit/tsdb-engine/">Engine overview</a>
-            </div>
-          </article>
-          <article class="card accent-tsdb">
-            <h3>Codec + query learn hub</h3>
-            <p>
-              Bring back the playful side: XOR-delta, delta-of-delta, ALP, string interning, chunk
-              stats, and query-engine walkthroughs are all still here.
-            </p>
-            <div class="card-links">
-              <a href="/o11ykit/tsdb-engine/learn/">Open learn hub</a>
-              <a href="/o11ykit/tsdb-engine/learn/xor-delta/">XOR-delta</a>
-            </div>
-          </article>
-          <article class="card accent-otlp">
-            <h3>OtlpKit packages</h3>
-            <p>
-              Start from the OtlpKit overview, then drop into package docs when you need exact
-              exports and adapter details.
-            </p>
-            <div class="card-links">
-              <a href="/o11ykit/otlpkit/">Open OtlpKit</a>
-              <a href="/o11ykit/otlpkit-docs/">Package docs</a>
-            </div>
-          </article>
-          <article class="card accent-bench">
-            <h3>Benchkit walkthrough</h3>
-            <p>
-              Follow the benchmark story from raw output to telemetry, comparisons, and regression
-              gates in CI.
-            </p>
-            <div class="card-links">
-              <a href="/o11ykit/benchkit/">Open Benchkit Demo</a>
-              <a href="/o11ykit/octo11y/">Pipeline guide</a>
-            </div>
-          </article>
+          <a href="/o11ykit/otlpkit/">
+            <span class="learn-icon">📦</span>
+            <span>OtlpKit</span>
+          </a>
+          <a href="/o11ykit/benchkit/">
+            <span class="learn-icon">📏</span>
+            <span>Benchkit</span>
+          </a>
         </div>
       </section>
 
       <footer class="site-footer">
         <p>
-          Layering: <code>@benchkit/* → @octo11y/* → @otlpkit/*</code>, with <code>o11ytsdb</code>
-          as the browser-native storage engine beside the OTLP foundation.
+          <strong>o11ykit</strong> — browser-native databases for metrics, traces, and logs.<br/>
+          Stack: <code>OTLP → Arrow → o11y*db → chart adapters</code>.
+          Not Prometheus. Not Elasticsearch. Not Grafana. Just the embedded database your UI needs.
         </p>
       </footer>
     </main>
