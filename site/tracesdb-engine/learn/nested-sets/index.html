@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nested Set Encoding — Interactive Experience | o11ytracesdb</title>
+    <meta name="description" content="See how parent-child trace relationships become left/right integers that enable O(1) structural queries — interactively explore nested set encoding." />
+    <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/o11ykit/styles.css" />
+    <style>
+      :root {
+        --xp-bg: #0a1624;
+        --xp-surface: #0f1f33;
+        --xp-surface-raised: #162a42;
+        --xp-surface-hover: #1a3350;
+        --xp-border: rgba(232, 93, 26, 0.12);
+        --xp-border-strong: rgba(232, 93, 26, 0.25);
+        --xp-text: #e2e8f0;
+        --xp-text-muted: #94a3b8;
+        --xp-text-dim: #64748b;
+        --xp-accent: #e85d1a;
+        --xp-accent-light: #ff8a50;
+        --xp-accent-glow: rgba(232, 93, 26, 0.15);
+        --xp-success: #34d399;
+        --xp-warn: #fbbf24;
+        --xp-error: #f87171;
+        --xp-font: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+        --xp-mono: "IBM Plex Mono", "Fira Code", monospace;
+        --xp-max-width: 960px;
+        --xp-radius: 16px;
+        --xp-radius-sm: 8px;
+        --xp-radius-xs: 4px;
+      }
+
+      body { background: var(--xp-bg); color: var(--xp-text); font-family: var(--xp-font); -webkit-font-smoothing: antialiased; }
+
+      .ambient {
+        background:
+          radial-gradient(600px 400px at 10% -5%, rgba(232, 93, 26, 0.08), transparent 60%),
+          radial-gradient(500px 400px at 90% 10%, rgba(139, 92, 246, 0.06), transparent 55%),
+          radial-gradient(700px 500px at 50% 105%, rgba(52, 211, 153, 0.05), transparent 65%);
+      }
+
+      .topbar.panel { background: var(--xp-surface); border-color: var(--xp-border); box-shadow: none; }
+      .brand { color: #fff; }
+      .topnav a { color: var(--xp-text-muted); background: var(--xp-surface-raised); border-color: var(--xp-border-strong); }
+      .topnav a:hover { color: #fff; border-color: var(--xp-accent); }
+      .topnav a[aria-current="page"] { color: var(--xp-accent-light); border-color: var(--xp-accent); background: var(--xp-accent-glow); }
+
+      .page { max-width: var(--xp-max-width); }
+
+      .xp-breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--xp-text-dim); padding: 16px 0; border-bottom: 1px solid var(--xp-border); margin-bottom: 40px; }
+      .xp-breadcrumb a { color: var(--xp-text-muted); text-decoration: none; transition: color 150ms; }
+      .xp-breadcrumb a:hover { color: var(--xp-accent); }
+      .xp-breadcrumb .sep { color: var(--xp-text-dim); font-size: 10px; }
+      .xp-breadcrumb .current { color: var(--xp-text); font-weight: 500; }
+
+      .xp-eyebrow { display: inline-block; text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; font-weight: 700; color: var(--xp-accent); margin: 0 0 8px; padding: 4px 10px; background: var(--xp-accent-glow); border-radius: 999px; border: 1px solid rgba(232, 93, 26, 0.2); }
+      .xp-hero { margin-bottom: 48px; }
+      .xp-hero h1 { margin: 0 0 16px; font-size: clamp(28px, 4.5vw, 44px); line-height: 1.1; letter-spacing: -0.025em; font-weight: 700; color: #fff; }
+      .xp-hero .lede { margin: 0; font-size: 17px; line-height: 1.55; color: var(--xp-text-muted); max-width: 65ch; }
+
+      .xp-section { margin-bottom: 48px; }
+      .xp-section h2 { font-size: 22px; font-weight: 600; color: #fff; margin: 0 0 8px; }
+      .xp-section p { margin: 0 0 16px; font-size: 15px; line-height: 1.6; color: var(--xp-text-muted); max-width: 65ch; }
+
+      .xp-card { background: var(--xp-surface); border: 1px solid var(--xp-border); border-radius: var(--xp-radius); padding: 24px; margin-bottom: 20px; }
+
+      .xp-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 20px; }
+
+      .xp-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500; font-family: var(--xp-font); color: var(--xp-text); background: var(--xp-surface-raised); border: 1px solid var(--xp-border-strong); border-radius: var(--xp-radius-sm); cursor: pointer; transition: all 150ms; }
+      .xp-btn:hover { background: var(--xp-surface-hover); border-color: var(--xp-accent); }
+      .xp-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .xp-btn-primary { background: var(--xp-accent); color: #0a1624; border-color: var(--xp-accent); font-weight: 600; }
+      .xp-btn-primary:hover { background: var(--xp-accent-light); }
+
+      .xp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .xp-table th { text-align: left; padding: 8px 12px; font-weight: 600; color: var(--xp-text-dim); text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; border-bottom: 1px solid var(--xp-border-strong); }
+      .xp-table td { padding: 8px 12px; border-bottom: 1px solid var(--xp-border); color: var(--xp-text); }
+      .xp-table tr:hover td { background: rgba(232, 93, 26, 0.05); }
+
+      .xp-stats-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+      .xp-stat { display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; background: var(--xp-surface); border: 1px solid var(--xp-border); border-radius: var(--xp-radius-sm); min-width: 100px; }
+      .xp-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--xp-text-dim); }
+      .xp-stat-value { font-family: var(--xp-mono); font-size: 20px; font-weight: 600; color: #fff; }
+
+      .xp-insight { margin-top: 16px; padding: 16px 20px; background: var(--xp-accent-glow); border: 1px solid rgba(232, 93, 26, 0.25); border-radius: var(--xp-radius-sm); font-size: 14px; line-height: 1.6; color: var(--xp-text); }
+      .xp-insight strong { color: var(--xp-accent-light); }
+
+      /* Tree visualization */
+      .tree-container { padding: 16px 0; }
+      .tree-node {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding-left: 0;
+      }
+      .tree-node .tree-children {
+        padding-left: 28px;
+        border-left: 2px solid var(--xp-border-strong);
+        margin-left: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .span-node {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 14px;
+        background: var(--xp-surface-raised);
+        border: 2px solid var(--xp-border-strong);
+        border-radius: var(--xp-radius-sm);
+        cursor: pointer;
+        transition: all 200ms;
+        font-size: 13px;
+        user-select: none;
+      }
+      .span-node:hover { border-color: var(--xp-accent); background: var(--xp-surface-hover); }
+      .span-node.selected { border-color: #8b5cf6; background: rgba(139, 92, 246, 0.15); box-shadow: 0 0 12px rgba(139, 92, 246, 0.2); }
+      .span-node.dfs-active { border-color: var(--xp-accent); background: var(--xp-accent-glow); box-shadow: 0 0 16px rgba(232, 93, 26, 0.3); }
+      .span-node.numbered { border-color: var(--xp-success); }
+      .span-node .node-name { font-weight: 600; color: #fff; }
+      .span-node .node-service { font-size: 11px; color: var(--xp-text-dim); }
+      .span-node .node-lr {
+        font-family: var(--xp-mono);
+        font-size: 11px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: rgba(52, 211, 153, 0.15);
+        color: var(--xp-success);
+        border: 1px solid rgba(52, 211, 153, 0.3);
+        opacity: 0;
+        transition: opacity 300ms;
+      }
+      .span-node .node-lr.visible { opacity: 1; }
+
+      /* Ancestor result */
+      .ancestor-result {
+        padding: 16px 20px;
+        border-radius: var(--xp-radius-sm);
+        font-size: 14px;
+        line-height: 1.6;
+        margin-top: 12px;
+        display: none;
+      }
+      .ancestor-result.show { display: block; }
+      .ancestor-result.yes {
+        background: rgba(52, 211, 153, 0.12);
+        border: 1px solid rgba(52, 211, 153, 0.3);
+        color: var(--xp-success);
+      }
+      .ancestor-result.no {
+        background: rgba(248, 113, 113, 0.12);
+        border: 1px solid rgba(248, 113, 113, 0.3);
+        color: var(--xp-error);
+      }
+      .ancestor-result .math {
+        font-family: var(--xp-mono);
+        font-size: 13px;
+        display: block;
+        margin-top: 8px;
+        color: var(--xp-text-muted);
+      }
+
+      .select-hint { font-size: 13px; color: var(--xp-text-dim); padding: 12px 0; }
+
+      .learn-footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--xp-border); text-align: center; font-size: 13px; color: var(--xp-text-dim); }
+      .learn-footer a { text-decoration: none; }
+
+      @keyframes xp-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      .xp-animate-in { animation: xp-fade-in 400ms ease both; }
+
+      @media (max-width: 640px) {
+        .page { padding: 0 14px 40px; }
+        .xp-card { padding: 16px; }
+        .xp-hero h1 { font-size: 26px; }
+        .tree-node .tree-children { padding-left: 16px; }
+      }
+    </style>
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <div class="ambient" aria-hidden="true"></div>
+    <main class="page" id="main">
+
+      <header class="topbar panel">
+        <a class="brand" href="/o11ykit/"><img class="brand-mark" src="/o11ykit/logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
+        <nav class="topnav" aria-label="Primary">
+          <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
+          <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+          <a href="/o11ykit/tracesdb-engine/" aria-current="page">TracesDB</a>
+          <a href="/o11ykit/octo11y/">Octo11y</a>
+          <a href="/o11ykit/benchkit/">Benchkit</a>
+          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </header>
+
+      <nav class="xp-breadcrumb" aria-label="Breadcrumb">
+        <a href="/o11ykit/tracesdb-engine/">TracesDB Engine</a>
+        <span class="sep">›</span>
+        <a href="/o11ykit/tracesdb-engine/learn/">Learn</a>
+        <span class="sep">›</span>
+        <span class="current">Nested Set Encoding</span>
+      </nav>
+
+      <div class="xp-hero">
+        <p class="xp-eyebrow">Structure</p>
+        <h1>Nested Set Encoding</h1>
+        <p class="lede">
+          Traces are trees — each span can have child spans. <strong>Nested set encoding</strong> converts
+          this tree into flat integer pairs (left, right) assigned during a depth-first traversal.
+          Once encoded, checking "Is A an ancestor of B?" becomes a simple integer comparison:
+          <code style="color:var(--xp-accent-light);background:var(--xp-surface-raised);padding:2px 6px;border-radius:4px;font-family:var(--xp-mono);font-size:0.85em;">A.left &lt; B.left AND A.right &gt; B.right</code>.
+          No tree traversal needed.
+        </p>
+      </div>
+
+      <!-- ① Trace Tree -->
+      <section class="xp-section" id="tree-section">
+        <h2>① Trace Tree</h2>
+        <p>A sample 8-span trace. Click "Run DFS" to see the depth-first traversal assign left/right numbers.</p>
+        <div class="xp-card">
+          <div class="xp-controls">
+            <button type="button" class="xp-btn xp-btn-primary" id="btn-dfs">▶ Run DFS</button>
+            <button type="button" class="xp-btn" id="btn-tree-reset">Reset</button>
+          </div>
+          <div class="tree-container" id="tree-container"></div>
+        </div>
+      </section>
+
+      <!-- ② Nested Set Table -->
+      <section class="xp-section" id="table-section" style="display:none;">
+        <h2>② Nested Set Table</h2>
+        <p>Every span now has a left/right pair. These integers live in a typed array — compact and fast.</p>
+        <div class="xp-card">
+          <table class="xp-table" id="ns-table">
+            <thead><tr><th>Span</th><th>Service</th><th>Left</th><th>Right</th><th>Depth</th></tr></thead>
+            <tbody id="ns-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ③ Ancestor Query -->
+      <section class="xp-section" id="query-section" style="display:none;">
+        <h2>③ Is Ancestor?</h2>
+        <p>Click any two spans in the tree above to test ancestry. First click = potential ancestor, second click = potential descendant.</p>
+        <div class="xp-card">
+          <p class="select-hint" id="select-hint">Click a span in the tree above to select the <strong>ancestor</strong> candidate.</p>
+          <div class="ancestor-result" id="ancestor-result"></div>
+        </div>
+        <div class="xp-insight">
+          <strong>Key insight:</strong> Parent-child stored as integer indices in typed arrays makes
+          structural queries SIMD-friendly array scans. Instead of walking a tree, you compare two
+          numbers — and that works for "find all descendants" too:
+          <code style="color:var(--xp-accent-light);background:var(--xp-surface-raised);padding:2px 6px;border-radius:4px;font-family:var(--xp-mono);font-size:0.85em;">parent.left &lt; child.left AND parent.right &gt; child.right</code>.
+        </div>
+      </section>
+
+      <footer class="learn-footer">
+        <p>
+          Part of <a href="/o11ykit/" style="color: var(--xp-accent);">o11ykit</a>
+          · <a href="/o11ykit/tracesdb-engine/learn/" style="color: var(--xp-text-muted);">← Back to Learn</a>
+        </p>
+      </footer>
+    </main>
+
+    <script>
+      (() => {
+        "use strict";
+
+        const SVC_COLORS = ["#06b6d4", "#8b5cf6", "#f59e0b", "#10b981", "#ec4899", "#3b82f6", "#ef4444", "#a3e635"];
+
+        const tree = {
+          id: "root", name: "GET /api/checkout", service: "api-gateway", svcIdx: 0, left: 0, right: 0, depth: 0,
+          children: [
+            { id: "auth", name: "auth.validate", service: "auth-service", svcIdx: 1, left: 0, right: 0, depth: 1, children: [] },
+            { id: "cart", name: "cart.getItems", service: "cart-service", svcIdx: 2, left: 0, right: 0, depth: 1,
+              children: [
+                { id: "redis", name: "redis.get", service: "cache", svcIdx: 3, left: 0, right: 0, depth: 2, children: [] },
+                { id: "dbq", name: "db.query", service: "postgres", svcIdx: 4, left: 0, right: 0, depth: 2, children: [] }
+              ]
+            },
+            { id: "pay", name: "payment.charge", service: "payment-svc", svcIdx: 5, left: 0, right: 0, depth: 1,
+              children: [
+                { id: "stripe", name: "stripe.api", service: "external", svcIdx: 6, left: 0, right: 0, depth: 2, children: [] }
+              ]
+            },
+            { id: "order", name: "order.create", service: "order-service", svcIdx: 7, left: 0, right: 0, depth: 1, children: [] }
+          ]
+        };
+
+        function flattenTree(node, list) {
+          list = list || [];
+          list.push(node);
+          for (let i = 0; i < node.children.length; i++) {
+            flattenTree(node.children[i], list);
+          }
+          return list;
+        }
+
+        const allNodes = flattenTree(tree);
+        let dfsOrder = [];
+        let dfsNumbered = false;
+        let selectedA = null;
+        let selectedB = null;
+
+        function resetLR(node) {
+          node.left = 0;
+          node.right = 0;
+          for (let i = 0; i < node.children.length; i++) {
+            resetLR(node.children[i]);
+          }
+        }
+
+        function buildDFSOrder(node, list) {
+          list = list || [];
+          list.push({ node: node, type: "enter" });
+          for (let i = 0; i < node.children.length; i++) {
+            buildDFSOrder(node.children[i], list);
+          }
+          list.push({ node: node, type: "leave" });
+          return list;
+        }
+
+        function renderTree(node) {
+          const div = document.createElement("div");
+          div.className = "tree-node";
+
+          const spanEl = document.createElement("div");
+          spanEl.className = "span-node";
+          spanEl.setAttribute("data-id", node.id);
+          spanEl.style.borderLeftColor = SVC_COLORS[node.svcIdx % SVC_COLORS.length];
+          spanEl.style.borderLeftWidth = "4px";
+
+          const nameSpan = document.createElement("span");
+          nameSpan.className = "node-name";
+          nameSpan.textContent = node.name;
+
+          const svcSpan = document.createElement("span");
+          svcSpan.className = "node-service";
+          svcSpan.textContent = node.service;
+
+          const lrSpan = document.createElement("span");
+          lrSpan.className = "node-lr";
+          lrSpan.setAttribute("data-lr", node.id);
+          lrSpan.textContent = `L:${node.left} R:${node.right}`;
+
+          spanEl.appendChild(nameSpan);
+          spanEl.appendChild(svcSpan);
+          spanEl.appendChild(lrSpan);
+
+          spanEl.addEventListener("click", () => {
+            handleNodeClick(node);
+          });
+
+          div.appendChild(spanEl);
+
+          if (node.children.length > 0) {
+            const childrenDiv = document.createElement("div");
+            childrenDiv.className = "tree-children";
+            for (let i = 0; i < node.children.length; i++) {
+              childrenDiv.appendChild(renderTree(node.children[i]));
+            }
+            div.appendChild(childrenDiv);
+          }
+          return div;
+        }
+
+        function updateLRLabels() {
+          for (let i = 0; i < allNodes.length; i++) {
+            const node = allNodes[i];
+            const el = document.querySelector(`[data-lr="${node.id}"]`);
+            if (el) {
+              el.textContent = `L:${node.left} R:${node.right}`;
+            }
+          }
+        }
+
+        function sleep(ms) {
+          return new Promise((resolve) => { setTimeout(resolve, ms); });
+        }
+
+        async function runDFS() {
+          resetLR(tree);
+          dfsOrder = buildDFSOrder(tree);
+          let counter = 1;
+
+          document.getElementById("btn-dfs").disabled = true;
+
+          for (let i = 0; i < dfsOrder.length; i++) {
+            const step = dfsOrder[i];
+            const nodeEl = document.querySelector(`[data-id="${step.node.id}"]`);
+
+            if (step.type === "enter") {
+              step.node.left = counter++;
+              nodeEl.classList.add("dfs-active");
+              updateLRLabels();
+              const lrEl = document.querySelector(`[data-lr="${step.node.id}"]`);
+              if (lrEl) lrEl.classList.add("visible");
+              await sleep(350);
+              nodeEl.classList.remove("dfs-active");
+            } else {
+              step.node.right = counter++;
+              nodeEl.classList.add("dfs-active");
+              nodeEl.classList.add("numbered");
+              updateLRLabels();
+              await sleep(350);
+              nodeEl.classList.remove("dfs-active");
+            }
+          }
+
+          dfsNumbered = true;
+          document.getElementById("btn-dfs").disabled = false;
+
+          const tableSection = document.getElementById("table-section");
+          tableSection.style.display = "";
+          tableSection.classList.add("xp-animate-in");
+          renderNSTable();
+
+          const querySection = document.getElementById("query-section");
+          querySection.style.display = "";
+          querySection.classList.add("xp-animate-in");
+        }
+
+        function renderNSTable() {
+          const tbody = document.getElementById("ns-tbody");
+          tbody.innerHTML = "";
+          for (let i = 0; i < allNodes.length; i++) {
+            const n = allNodes[i];
+            const tr = document.createElement("tr");
+            tr.innerHTML =
+              "<td style='font-weight:600;color:#fff;'>" + n.name + "</td>" +
+              "<td style='color:var(--xp-text-dim);font-size:12px;'>" + n.service + "</td>" +
+              "<td style='font-family:var(--xp-mono);color:var(--xp-success);font-weight:600;'>" + n.left + "</td>" +
+              "<td style='font-family:var(--xp-mono);color:var(--xp-success);font-weight:600;'>" + n.right + "</td>" +
+              "<td style='font-family:var(--xp-mono);color:var(--xp-text-dim);'>" + n.depth + "</td>";
+            tbody.appendChild(tr);
+          }
+        }
+
+        function handleNodeClick(node) {
+          if (!dfsNumbered) return;
+
+          clearSelection();
+
+          if (selectedA === null) {
+            selectedA = node;
+            const el = document.querySelector(`[data-id="${node.id}"]`);
+            if (el) el.classList.add("selected");
+            document.getElementById("select-hint").innerHTML =
+              '<strong style="color:#8b5cf6;">' + node.name +
+              "</strong> selected as ancestor candidate. Now click the <strong>descendant</strong> candidate.";
+            document.getElementById("ancestor-result").className = "ancestor-result";
+          } else {
+            selectedB = node;
+            const elB = document.querySelector(`[data-id="${node.id}"]`);
+            if (elB) elB.classList.add("selected");
+            checkAncestry();
+          }
+        }
+
+        function clearSelection() {
+          if (selectedA !== null && selectedB !== null) {
+            selectedA = null;
+            selectedB = null;
+            const allSelected = document.querySelectorAll(".span-node.selected");
+            for (let i = 0; i < allSelected.length; i++) {
+              allSelected[i].classList.remove("selected");
+            }
+          }
+        }
+
+        function checkAncestry() {
+          const a = selectedA;
+          const b = selectedB;
+          const isAnc = a.left < b.left && a.right > b.right;
+
+          const result = document.getElementById("ancestor-result");
+          result.className = `ancestor-result show ${isAnc ? "yes" : "no"}`;
+
+          if (isAnc) {
+            result.innerHTML =
+              "✅ <strong>" + a.name + "</strong> IS an ancestor of <strong>" + b.name + "</strong>" +
+              '<span class="math">' + a.left + " &lt; " + b.left + " ✓ AND " + a.right + " &gt; " + b.right + " ✓</span>";
+          } else {
+            const reasons = [];
+            if (a.left >= b.left) reasons.push(`${a.left} ≥ ${b.left} ✗`);
+            if (a.right <= b.right) reasons.push(`${a.right} ≤ ${b.right} ✗`);
+            result.innerHTML =
+              "❌ <strong>" + a.name + "</strong> is NOT an ancestor of <strong>" + b.name + "</strong>" +
+              '<span class="math">' + reasons.join(" AND ") + "</span>";
+          }
+
+          document.getElementById("select-hint").innerHTML =
+            "Click another span to start a new query.";
+        }
+
+        function resetTree() {
+          resetLR(tree);
+          dfsNumbered = false;
+          selectedA = null;
+          selectedB = null;
+          document.getElementById("tree-container").innerHTML = "";
+          document.getElementById("tree-container").appendChild(renderTree(tree));
+          document.getElementById("table-section").style.display = "none";
+          document.getElementById("query-section").style.display = "none";
+          document.getElementById("select-hint").innerHTML =
+            'Click a span in the tree above to select the <strong>ancestor</strong> candidate.';
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+          document.getElementById("tree-container").appendChild(renderTree(tree));
+          document.getElementById("btn-dfs").addEventListener("click", runDFS);
+          document.getElementById("btn-tree-reset").addEventListener("click", resetTree);
+        });
+      })();
+    </script>
+  </body>
+</html>

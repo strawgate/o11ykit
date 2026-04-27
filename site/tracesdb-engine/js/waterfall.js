@@ -1,45 +1,58 @@
 // @ts-nocheck
 // ── Waterfall Renderer (Canvas 2D) ──────────────────────────────────
 // Renders a trace as a Gantt-style waterfall chart.
+// Handles both Uint8Array and string-based span IDs.
+// Supports click-to-detail for span inspection.
 
-import { formatDurationNs, hexFromBytes, serviceColor } from "./utils.js";
+import { formatDurationNs, hexFromBytes, serviceColor, spanServiceName } from "./utils.js";
 
 const ROW_HEIGHT = 24;
 const LABEL_WIDTH = 200;
 const PADDING = 8;
 const BAR_HEIGHT = 14;
 const FONT_SIZE = 11;
+const MAX_VISIBLE_ROWS = 200;
+
+function spanIdStr(id) {
+  if (!id) return "";
+  if (typeof id === "string") return id;
+  if (id instanceof Uint8Array) return hexFromBytes(id);
+  return String(id);
+}
 
 /**
  * Render a trace waterfall into a canvas element.
  * @param {HTMLCanvasElement} canvas
- * @param {Object} trace - { traceId, spans, rootSpan, durationNanos }
+ * @param {Object} trace - { traceId, spans }
  * @param {Object} [opts]
- * @param {function} [opts.onSpanClick] - callback(spanIndex)
- * @returns {{ cleanup: () => void }}
+ * @param {function} [opts.onSpanClick] - callback(span, spanIndex)
+ * @returns {{ cleanup: () => void, spans: Array }}
  */
 export function renderWaterfall(canvas, trace, opts = {}) {
   const { spans } = trace;
-  if (!spans || spans.length === 0) return { cleanup() {} };
+  if (!spans || spans.length === 0) return { cleanup() {}, spans: [] };
 
   // Sort spans: root first, then by start time
   const sorted = [...spans].sort((a, b) => {
-    if (!a.parentSpanId && b.parentSpanId) return -1;
-    if (a.parentSpanId && !b.parentSpanId) return 1;
+    const aIsRoot = !a.parentSpanId;
+    const bIsRoot = !b.parentSpanId;
+    if (aIsRoot && !bIsRoot) return -1;
+    if (!aIsRoot && bIsRoot) return 1;
     const diff = Number(a.startTimeUnixNano - b.startTimeUnixNano);
     return diff;
   });
 
-  // Build depth map for indentation
+  // Build depth map
   const spanMap = new Map();
   for (const s of sorted) {
-    spanMap.set(hexFromBytes(s.spanId), s);
+    spanMap.set(spanIdStr(s.spanId), s);
   }
 
   const depthMap = new Map();
   const visiting = new Set();
+
   function getDepth(span) {
-    const id = hexFromBytes(span.spanId);
+    const id = spanIdStr(span.spanId);
     if (depthMap.has(id)) return depthMap.get(id);
     if (!span.parentSpanId) {
       depthMap.set(id, 0);
@@ -50,8 +63,8 @@ export function renderWaterfall(canvas, trace, opts = {}) {
       return 0;
     }
     visiting.add(id);
-    const parentHex = hexFromBytes(span.parentSpanId);
-    const parent = spanMap.get(parentHex);
+    const parentId = spanIdStr(span.parentSpanId);
+    const parent = spanMap.get(parentId);
     const d = parent ? getDepth(parent) + 1 : 0;
     visiting.delete(id);
     depthMap.set(id, d);
@@ -59,13 +72,13 @@ export function renderWaterfall(canvas, trace, opts = {}) {
   }
   for (const s of sorted) getDepth(s);
 
-  // Re-sort by tree order (DFS)
+  // Tree-order sort (DFS)
   const ordered = [];
   const childrenOf = new Map();
   for (const s of sorted) {
-    const parentHex = s.parentSpanId ? hexFromBytes(s.parentSpanId) : "__root__";
-    if (!childrenOf.has(parentHex)) childrenOf.set(parentHex, []);
-    childrenOf.get(parentHex).push(s);
+    const parentKey = s.parentSpanId ? spanIdStr(s.parentSpanId) : "__root__";
+    if (!childrenOf.has(parentKey)) childrenOf.set(parentKey, []);
+    childrenOf.get(parentKey).push(s);
   }
 
   function dfs(parentKey) {
@@ -73,29 +86,32 @@ export function renderWaterfall(canvas, trace, opts = {}) {
     children.sort((a, b) => Number(a.startTimeUnixNano - b.startTimeUnixNano));
     for (const c of children) {
       ordered.push(c);
-      dfs(hexFromBytes(c.spanId));
+      dfs(spanIdStr(c.spanId));
     }
   }
   dfs("__root__");
 
-  // If DFS didn't capture all (broken parent refs), just use sorted
   const displaySpans = ordered.length === sorted.length ? ordered : sorted;
 
-  // Calculate time bounds
-  const traceStart = displaySpans.reduce(
+  // Viewport clipping for large traces
+  const clipped = displaySpans.length > MAX_VISIBLE_ROWS;
+  const visibleSpans = clipped ? displaySpans.slice(0, MAX_VISIBLE_ROWS) : displaySpans;
+
+  // Time bounds
+  const traceStart = visibleSpans.reduce(
     (m, s) => (s.startTimeUnixNano < m ? s.startTimeUnixNano : m),
-    displaySpans[0].startTimeUnixNano
+    visibleSpans[0].startTimeUnixNano
   );
-  const traceEnd = displaySpans.reduce(
+  const traceEnd = visibleSpans.reduce(
     (m, s) => (s.endTimeUnixNano > m ? s.endTimeUnixNano : m),
-    displaySpans[0].endTimeUnixNano
+    visibleSpans[0].endTimeUnixNano
   );
-  const totalDuration = Number(traceEnd - traceStart) || 1; // guard div-by-zero for instant spans
+  const totalDuration = Number(traceEnd - traceStart) || 1;
 
   // Canvas sizing
   const dpr = window.devicePixelRatio || 1;
   let canvasWidth = canvas.parentElement?.clientWidth || 800;
-  const canvasHeight = displaySpans.length * ROW_HEIGHT + PADDING * 2;
+  const canvasHeight = visibleSpans.length * ROW_HEIGHT + PADDING * 2;
 
   function sizeCanvas() {
     canvasWidth = canvas.parentElement?.clientWidth || 800;
@@ -109,10 +125,9 @@ export function renderWaterfall(canvas, trace, opts = {}) {
   sizeCanvas();
 
   const ctx = canvas.getContext("2d");
-
   let barAreaWidth = canvasWidth - LABEL_WIDTH - PADDING * 2;
+  let selectedIndex = -1;
 
-  // Draw
   function draw(hoverIndex = -1) {
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
@@ -132,7 +147,7 @@ export function renderWaterfall(canvas, trace, opts = {}) {
       ctx.stroke();
     }
 
-    // Time labels at top
+    // Time labels
     ctx.font = `${FONT_SIZE - 1}px "IBM Plex Mono", monospace`;
     ctx.fillStyle = "#64748b";
     ctx.textAlign = "center";
@@ -143,30 +158,32 @@ export function renderWaterfall(canvas, trace, opts = {}) {
     }
 
     // Rows
-    for (let i = 0; i < displaySpans.length; i++) {
-      const span = displaySpans[i];
+    for (let i = 0; i < visibleSpans.length; i++) {
+      const span = visibleSpans[i];
       const y = PADDING + i * ROW_HEIGHT;
-      const depth = depthMap.get(hexFromBytes(span.spanId)) || 0;
+      const depth = depthMap.get(spanIdStr(span.spanId)) || 0;
 
-      // Hover highlight
-      if (i === hoverIndex) {
+      // Selection highlight
+      if (i === selectedIndex) {
+        ctx.fillStyle = "rgba(232, 93, 26, 0.12)";
+        ctx.fillRect(0, y, canvasWidth, ROW_HEIGHT);
+      } else if (i === hoverIndex) {
         ctx.fillStyle = "rgba(59, 130, 246, 0.08)";
         ctx.fillRect(0, y, canvasWidth, ROW_HEIGHT);
       }
 
-      // Service color
-      const svcAttr = span.attributes?.find((a) => a.key === "service.name");
-      const svcName = svcAttr?.value || "unknown";
+      // Color
+      const svcName = spanServiceName(span);
       const color = serviceColor(svcName);
 
-      // Label (indented by depth)
+      // Label
       ctx.font = `${FONT_SIZE}px "IBM Plex Mono", monospace`;
       ctx.fillStyle = "#94a3b8";
       ctx.textAlign = "left";
-      const label = `${"  ".repeat(depth)}${span.name}`;
+      const indent = Math.min(depth * 2, 12);
+      const label = `${"  ".repeat(indent)}${span.name}`;
       const maxLabelWidth = LABEL_WIDTH - 8;
-      const truncLabel = truncateText(ctx, label, maxLabelWidth);
-      ctx.fillText(truncLabel, 4, y + ROW_HEIGHT / 2 + 4);
+      ctx.fillText(truncateText(ctx, label, maxLabelWidth), 4, y + ROW_HEIGHT / 2 + 4);
 
       // Bar
       const spanStart = Number(span.startTimeUnixNano - traceStart);
@@ -184,7 +201,7 @@ export function renderWaterfall(canvas, trace, opts = {}) {
       roundRect(ctx, barX, barY, barW, BAR_HEIGHT, 3);
       ctx.fill();
 
-      // Duration label on bar (if fits)
+      // Duration on bar
       if (barW > 50) {
         ctx.font = `${FONT_SIZE - 1}px "IBM Plex Mono", monospace`;
         ctx.fillStyle = "#fff";
@@ -192,17 +209,30 @@ export function renderWaterfall(canvas, trace, opts = {}) {
         ctx.fillText(formatDurationNs(spanDur), barX + 4, barY + BAR_HEIGHT - 3);
       }
     }
+
+    // Clipped indicator
+    if (clipped) {
+      ctx.fillStyle = "rgba(148, 163, 184, 0.6)";
+      ctx.font = `${FONT_SIZE}px "IBM Plex Mono", monospace`;
+      ctx.textAlign = "center";
+      ctx.fillText(
+        `… ${displaySpans.length - MAX_VISIBLE_ROWS} more spans`,
+        canvasWidth / 2,
+        canvasHeight - 4
+      );
+    }
   }
 
   draw();
 
   // Interaction
   let currentHover = -1;
+
   function getSpanAtY(clientY) {
     const rect = canvas.getBoundingClientRect();
     const y = clientY - rect.top;
     const idx = Math.floor((y - PADDING) / ROW_HEIGHT);
-    return idx >= 0 && idx < displaySpans.length ? idx : -1;
+    return idx >= 0 && idx < visibleSpans.length ? idx : -1;
   }
 
   function onMouseMove(e) {
@@ -216,15 +246,16 @@ export function renderWaterfall(canvas, trace, opts = {}) {
 
   function onClick(e) {
     const idx = getSpanAtY(e.clientY);
-    if (idx >= 0 && opts.onSpanClick) {
-      opts.onSpanClick(displaySpans[idx], idx);
+    if (idx >= 0) {
+      selectedIndex = idx;
+      draw(idx);
+      if (opts.onSpanClick) opts.onSpanClick(visibleSpans[idx], idx);
     }
   }
 
   canvas.addEventListener("mousemove", onMouseMove);
   canvas.addEventListener("click", onClick);
 
-  // Re-render on container resize
   let resizeObserver;
   if (typeof ResizeObserver !== "undefined" && canvas.parentElement) {
     resizeObserver = new ResizeObserver(() => {
@@ -268,20 +299,18 @@ function roundRect(ctx, x, y, w, h, r) {
 
 /**
  * Build the service legend below the waterfall.
- * @param {HTMLElement} container
- * @param {string[]} serviceNames
  */
 export function renderLegend(container, serviceNames) {
   container.innerHTML = "";
   for (const name of serviceNames) {
-    const el = document.createElement("div");
-    el.className = "legend-item";
+    const item = document.createElement("div");
+    item.className = "legend-item";
     const swatch = document.createElement("span");
     swatch.className = "legend-swatch";
     swatch.style.background = serviceColor(name);
-    el.appendChild(swatch);
-    el.appendChild(document.createTextNode(name));
-    container.appendChild(el);
+    item.appendChild(swatch);
+    item.appendChild(document.createTextNode(name));
+    container.appendChild(item);
   }
   container.hidden = false;
 }

@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dictionary Encoding — Interactive Experience | o11ytracesdb</title>
+    <meta name="description" content="See how repeated span strings compress from raw UTF-8 to integer dictionary IDs — interactively explore dictionary encoding in a traces database." />
+    <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/o11ykit/styles.css" />
+    <style>
+      :root {
+        --xp-bg: #0a1624;
+        --xp-surface: #0f1f33;
+        --xp-surface-raised: #162a42;
+        --xp-surface-hover: #1a3350;
+        --xp-border: rgba(232, 93, 26, 0.12);
+        --xp-border-strong: rgba(232, 93, 26, 0.25);
+        --xp-text: #e2e8f0;
+        --xp-text-muted: #94a3b8;
+        --xp-text-dim: #64748b;
+        --xp-accent: #e85d1a;
+        --xp-accent-light: #ff8a50;
+        --xp-accent-glow: rgba(232, 93, 26, 0.15);
+        --xp-success: #34d399;
+        --xp-warn: #fbbf24;
+        --xp-error: #f87171;
+        --xp-font: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+        --xp-mono: "IBM Plex Mono", "Fira Code", monospace;
+        --xp-max-width: 960px;
+        --xp-radius: 16px;
+        --xp-radius-sm: 8px;
+        --xp-radius-xs: 4px;
+      }
+
+      body { background: var(--xp-bg); color: var(--xp-text); font-family: var(--xp-font); -webkit-font-smoothing: antialiased; }
+
+      .ambient {
+        background:
+          radial-gradient(600px 400px at 10% -5%, rgba(232, 93, 26, 0.08), transparent 60%),
+          radial-gradient(500px 400px at 90% 10%, rgba(139, 92, 246, 0.06), transparent 55%),
+          radial-gradient(700px 500px at 50% 105%, rgba(52, 211, 153, 0.05), transparent 65%);
+      }
+
+      .topbar.panel { background: var(--xp-surface); border-color: var(--xp-border); box-shadow: none; }
+      .brand { color: #fff; }
+      .topnav a { color: var(--xp-text-muted); background: var(--xp-surface-raised); border-color: var(--xp-border-strong); }
+      .topnav a:hover { color: #fff; border-color: var(--xp-accent); }
+      .topnav a[aria-current="page"] { color: var(--xp-accent-light); border-color: var(--xp-accent); background: var(--xp-accent-glow); }
+
+      .page { max-width: var(--xp-max-width); }
+
+      .xp-breadcrumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--xp-text-dim); padding: 16px 0; border-bottom: 1px solid var(--xp-border); margin-bottom: 40px; }
+      .xp-breadcrumb a { color: var(--xp-text-muted); text-decoration: none; transition: color 150ms; }
+      .xp-breadcrumb a:hover { color: var(--xp-accent); }
+      .xp-breadcrumb .sep { color: var(--xp-text-dim); font-size: 10px; }
+      .xp-breadcrumb .current { color: var(--xp-text); font-weight: 500; }
+
+      .xp-eyebrow { display: inline-block; text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; font-weight: 700; color: var(--xp-accent); margin: 0 0 8px; padding: 4px 10px; background: var(--xp-accent-glow); border-radius: 999px; border: 1px solid rgba(232, 93, 26, 0.2); }
+      .xp-hero { margin-bottom: 48px; }
+      .xp-hero h1 { margin: 0 0 16px; font-size: clamp(28px, 4.5vw, 44px); line-height: 1.1; letter-spacing: -0.025em; font-weight: 700; color: #fff; }
+      .xp-hero .lede { margin: 0; font-size: 17px; line-height: 1.55; color: var(--xp-text-muted); max-width: 65ch; }
+
+      .xp-section { margin-bottom: 48px; }
+      .xp-section h2 { font-size: 22px; font-weight: 600; color: #fff; margin: 0 0 8px; }
+      .xp-section p { margin: 0 0 16px; font-size: 15px; line-height: 1.6; color: var(--xp-text-muted); max-width: 65ch; }
+
+      .xp-card { background: var(--xp-surface); border: 1px solid var(--xp-border); border-radius: var(--xp-radius); padding: 24px; margin-bottom: 20px; }
+
+      .xp-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 20px; }
+
+      .xp-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500; font-family: var(--xp-font); color: var(--xp-text); background: var(--xp-surface-raised); border: 1px solid var(--xp-border-strong); border-radius: var(--xp-radius-sm); cursor: pointer; transition: all 150ms; }
+      .xp-btn:hover { background: var(--xp-surface-hover); border-color: var(--xp-accent); }
+      .xp-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .xp-btn-primary { background: var(--xp-accent); color: #0a1624; border-color: var(--xp-accent); font-weight: 600; }
+      .xp-btn-primary:hover { background: var(--xp-accent-light); }
+
+      .xp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .xp-table th { text-align: left; padding: 8px 12px; font-weight: 600; color: var(--xp-text-dim); text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px; border-bottom: 1px solid var(--xp-border-strong); }
+      .xp-table td { padding: 8px 12px; border-bottom: 1px solid var(--xp-border); color: var(--xp-text); font-family: var(--xp-mono); font-size: 12px; }
+      .xp-table tr.highlight td { background: var(--xp-accent-glow); transition: background 300ms; }
+      .xp-table tr:hover td { background: rgba(232, 93, 26, 0.05); }
+
+      .xp-stats-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+      .xp-stat { display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; background: var(--xp-surface); border: 1px solid var(--xp-border); border-radius: var(--xp-radius-sm); min-width: 100px; }
+      .xp-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--xp-text-dim); }
+      .xp-stat-value { font-family: var(--xp-mono); font-size: 20px; font-weight: 600; color: #fff; }
+      .xp-stat-unit { font-size: 12px; color: var(--xp-text-muted); font-weight: 400; }
+
+      .xp-insight { margin-top: 16px; padding: 16px 20px; background: var(--xp-accent-glow); border: 1px solid rgba(232, 93, 26, 0.25); border-radius: var(--xp-radius-sm); font-size: 14px; line-height: 1.6; color: var(--xp-text); }
+      .xp-insight strong { color: var(--xp-accent-light); }
+
+      .dict-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      @media (max-width: 700px) { .dict-split { grid-template-columns: 1fr; } }
+
+      .dict-panel-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--xp-text-dim); margin-bottom: 8px; display: block; }
+
+      .dict-table-wrap { max-height: 420px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--xp-border-strong) transparent; }
+      .dict-table-wrap::-webkit-scrollbar { width: 4px; }
+      .dict-table-wrap::-webkit-scrollbar-thumb { background: var(--xp-border-strong); border-radius: 2px; }
+
+      .id-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; font-family: var(--xp-mono); background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+
+      .xp-input { padding: 8px 12px; font-size: 13px; font-family: var(--xp-font); color: var(--xp-text); background: var(--xp-surface-raised); border: 1px solid var(--xp-border-strong); border-radius: var(--xp-radius-sm); outline: none; }
+      .xp-input:focus { border-color: var(--xp-accent); box-shadow: 0 0 0 2px var(--xp-accent-glow); }
+
+      .learn-footer { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--xp-border); text-align: center; font-size: 13px; color: var(--xp-text-dim); }
+      .learn-footer a { text-decoration: none; }
+
+      @keyframes xp-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+      .xp-animate-in { animation: xp-fade-in 400ms ease both; }
+
+      @media (max-width: 640px) {
+        .page { padding: 0 14px 40px; }
+        .xp-card { padding: 16px; }
+        .xp-hero h1 { font-size: 26px; }
+        .xp-stats-row { gap: 8px; }
+        .xp-stat { min-width: 80px; padding: 10px 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <div class="ambient" aria-hidden="true"></div>
+    <main class="page" id="main">
+
+      <header class="topbar panel">
+        <a class="brand" href="/o11ykit/"><img class="brand-mark" src="/o11ykit/logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
+        <nav class="topnav" aria-label="Primary">
+          <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
+          <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+          <a href="/o11ykit/tracesdb-engine/" aria-current="page">TracesDB</a>
+          <a href="/o11ykit/octo11y/">Octo11y</a>
+          <a href="/o11ykit/benchkit/">Benchkit</a>
+          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </header>
+
+      <nav class="xp-breadcrumb" aria-label="Breadcrumb">
+        <a href="/o11ykit/tracesdb-engine/">TracesDB Engine</a>
+        <span class="sep">›</span>
+        <a href="/o11ykit/tracesdb-engine/learn/">Learn</a>
+        <span class="sep">›</span>
+        <span class="current">Dictionary Encoding</span>
+      </nav>
+
+      <div class="xp-hero">
+        <p class="xp-eyebrow">Compression</p>
+        <h1>Dictionary Encoding</h1>
+        <p class="lede">
+          <strong>Dictionary encoding</strong> means: instead of storing the same string over and over,
+          store each unique string <strong>once</strong> in a dictionary and replace every occurrence
+          with a tiny integer ID. In trace storage, strings like <code style="color:var(--xp-accent-light);background:var(--xp-surface-raised);padding:2px 6px;border-radius:4px;font-family:var(--xp-mono);font-size:0.85em;">service.name=api-gateway</code>
+          appear in thousands of spans — without dictionary encoding, each copy wastes memory.
+        </p>
+      </div>
+
+      <!-- ① Raw Span Data -->
+      <section class="xp-section" id="raw-section">
+        <h2>① Raw Span Data</h2>
+        <p>Below are 20 example spans with three string fields each. Notice how many strings repeat.</p>
+        <div class="xp-card">
+          <div class="dict-table-wrap">
+            <table class="xp-table" id="raw-table">
+              <thead>
+                <tr><th>#</th><th>service.name</th><th>http.method</th><th>span.name</th></tr>
+              </thead>
+              <tbody id="raw-tbody"></tbody>
+            </table>
+          </div>
+          <div class="xp-stats-row" id="raw-stats" style="margin-top:16px;"></div>
+        </div>
+      </section>
+
+      <!-- ② Encode -->
+      <section class="xp-section" id="encode-section">
+        <h2>② Encode</h2>
+        <p>Click to replace every string with its dictionary ID. Watch the data shrink.</p>
+        <div class="xp-controls">
+          <button type="button" class="xp-btn xp-btn-primary" id="btn-encode">⚡ Encode All</button>
+          <button type="button" class="xp-btn" id="btn-reset">Reset</button>
+        </div>
+        <div class="dict-split">
+          <div>
+            <span class="dict-panel-label">Dictionary (ID → String)</span>
+            <div class="xp-card" style="margin-bottom:0;">
+              <div class="dict-table-wrap">
+                <table class="xp-table" id="dict-table">
+                  <thead><tr><th>ID</th><th>String</th><th>Bytes</th></tr></thead>
+                  <tbody id="dict-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <div>
+            <span class="dict-panel-label">Encoded Data</span>
+            <div class="xp-card" style="margin-bottom:0;">
+              <div class="dict-table-wrap">
+                <table class="xp-table" id="encoded-table">
+                  <thead><tr><th>#</th><th>service</th><th>method</th><th>name</th></tr></thead>
+                  <tbody id="encoded-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ③ Compression Stats -->
+      <section class="xp-section" id="stats-section">
+        <h2>③ Compression Stats</h2>
+        <div class="xp-stats-row" id="compression-stats"></div>
+        <div class="xp-insight" id="insight-box" style="display:none;">
+          <strong>Key insight:</strong> 90%+ of span strings are repetitive. Dictionary encoding
+          collapses them to 8–16 bit integers. With 20 spans, you're already seeing significant
+          compression — at 100K spans, the savings are enormous.
+        </div>
+      </section>
+
+      <!-- ④ Add Custom Span -->
+      <section class="xp-section" id="custom-section">
+        <h2>④ Add Custom Spans</h2>
+        <p>Add your own spans and see how the dictionary grows — or doesn't — when strings repeat.</p>
+        <div class="xp-card">
+          <div class="xp-controls">
+            <input type="text" class="xp-input" id="input-service" placeholder="service.name" value="api-gateway" style="width:140px;" />
+            <input type="text" class="xp-input" id="input-method" placeholder="http.method" value="GET" style="width:100px;" />
+            <input type="text" class="xp-input" id="input-name" placeholder="span.name" value="GET /api/health" style="width:180px;" />
+            <button type="button" class="xp-btn xp-btn-primary" id="btn-add">+ Add Span</button>
+          </div>
+          <p style="font-size:13px;color:var(--xp-text-dim);margin:0;">Try adding a span with an existing service name — the dictionary won't grow, but a new ID reference will appear.</p>
+        </div>
+      </section>
+
+      <footer class="learn-footer">
+        <p>
+          Part of <a href="/o11ykit/" style="color: var(--xp-accent);">o11ykit</a>
+          · <a href="/o11ykit/tracesdb-engine/learn/" style="color: var(--xp-text-muted);">← Back to Learn</a>
+        </p>
+      </footer>
+    </main>
+
+    <script>
+      (() => {
+        "use strict";
+
+        const SERVICES = [
+          "api-gateway", "user-service", "payment-service", "db-proxy",
+          "cache-layer", "auth-service", "order-service", "notification-svc"
+        ];
+        const METHODS = ["GET", "POST", "PUT", "DELETE"];
+        const SPAN_NAMES = [
+          "GET /api/users", "POST /api/orders", "SELECT * FROM users",
+          "redis.get", "grpc.call", "GET /api/products", "POST /api/checkout",
+          "INSERT INTO orders", "cache.lookup", "auth.verify",
+          "GET /api/health", "PUT /api/settings"
+        ];
+
+        let spans = [];
+        const dictionary = new Map();
+        let nextId = 0;
+        let encoded = false;
+        const encoder = new TextEncoder();
+
+        function pick(arr) {
+          return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        function generateSpans() {
+          spans = [];
+          for (let i = 0; i < 20; i++) {
+            spans.push({
+              service: pick(SERVICES),
+              method: pick(METHODS),
+              name: pick(SPAN_NAMES)
+            });
+          }
+        }
+
+        function byteLen(s) {
+          return encoder.encode(s).length;
+        }
+
+        function rawBytes() {
+          let total = 0;
+          for (let i = 0; i < spans.length; i++) {
+            const s = spans[i];
+            total += byteLen(s.service) + byteLen(s.method) + byteLen(s.name);
+          }
+          return total;
+        }
+
+        function getOrAssignId(str) {
+          if (dictionary.has(str)) return dictionary.get(str);
+          const id = nextId++;
+          dictionary.set(str, id);
+          return id;
+        }
+
+        function dictBytes() {
+          let total = 0;
+          dictionary.forEach((_id, str) => {
+            total += byteLen(str) + 2;
+          });
+          return total;
+        }
+
+        function encodedDataBytes() {
+          return spans.length * 3 * 2;
+        }
+
+        function compressedTotal() {
+          return dictBytes() + encodedDataBytes();
+        }
+
+        function fmt(n) {
+          return n.toLocaleString();
+        }
+
+        function makeStat(label, value, unit) {
+          const el = document.createElement("div");
+          el.className = "xp-stat";
+          el.innerHTML =
+            '<span class="xp-stat-label">' + label + "</span>" +
+            '<span class="xp-stat-value">' + value + " " +
+            '<span class="xp-stat-unit">' + unit + "</span></span>";
+          return el;
+        }
+
+        function renderRawTable() {
+          const tbody = document.getElementById("raw-tbody");
+          tbody.innerHTML = "";
+          for (let i = 0; i < spans.length; i++) {
+            const s = spans[i];
+            const tr = document.createElement("tr");
+            tr.innerHTML =
+              "<td>" + (i + 1) + "</td>" +
+              "<td>" + s.service + "</td>" +
+              "<td>" + s.method + "</td>" +
+              "<td>" + s.name + "</td>";
+            tbody.appendChild(tr);
+          }
+
+          const statsEl = document.getElementById("raw-stats");
+          statsEl.innerHTML = "";
+          const uniqueStrings = new Set();
+          for (let j = 0; j < spans.length; j++) {
+            uniqueStrings.add(spans[j].service);
+            uniqueStrings.add(spans[j].method);
+            uniqueStrings.add(spans[j].name);
+          }
+          statsEl.appendChild(makeStat("Total Strings", fmt(spans.length * 3), ""));
+          statsEl.appendChild(makeStat("Unique Strings", fmt(uniqueStrings.size), ""));
+          statsEl.appendChild(makeStat("Raw Bytes", fmt(rawBytes()), "B"));
+        }
+
+        function renderDictTable() {
+          const tbody = document.getElementById("dict-tbody");
+          tbody.innerHTML = "";
+          dictionary.forEach((id, str) => {
+            const tr = document.createElement("tr");
+            tr.innerHTML =
+              '<td><span class="id-badge">' + id + "</span></td>" +
+              "<td>" + str + "</td>" +
+              "<td>" + byteLen(str) + "</td>";
+            tbody.appendChild(tr);
+          });
+        }
+
+        function renderEncodedTable() {
+          const tbody = document.getElementById("encoded-tbody");
+          tbody.innerHTML = "";
+          for (let i = 0; i < spans.length; i++) {
+            const s = spans[i];
+            const sId = dictionary.get(s.service);
+            const mId = dictionary.get(s.method);
+            const nId = dictionary.get(s.name);
+            const tr = document.createElement("tr");
+            tr.innerHTML =
+              "<td>" + (i + 1) + "</td>" +
+              '<td><span class="id-badge">' + sId + "</span></td>" +
+              '<td><span class="id-badge">' + mId + "</span></td>" +
+              '<td><span class="id-badge">' + nId + "</span></td>";
+            tbody.appendChild(tr);
+          }
+        }
+
+        function renderStats() {
+          const el = document.getElementById("compression-stats");
+          el.innerHTML = "";
+          const raw = rawBytes();
+          const comp = compressedTotal();
+          const ratio = raw > 0 ? ((1 - comp / raw) * 100).toFixed(1) : "0";
+          el.appendChild(makeStat("Raw Bytes", fmt(raw), "B"));
+          el.appendChild(makeStat("Dict Bytes", fmt(dictBytes()), "B"));
+          el.appendChild(makeStat("Data Bytes", fmt(encodedDataBytes()), "B"));
+          el.appendChild(makeStat("Compressed Total", fmt(comp), "B"));
+          el.appendChild(makeStat("Savings", ratio, "%"));
+
+          document.getElementById("insight-box").style.display = "";
+        }
+
+        function sleep(ms) {
+          return new Promise((resolve) => { setTimeout(resolve, ms); });
+        }
+
+        async function animateEncode() {
+          dictionary.clear();
+          nextId = 0;
+          encoded = true;
+
+          const rawRows = document.getElementById("raw-tbody").children;
+
+          for (let i = 0; i < spans.length; i++) {
+            const s = spans[i];
+            getOrAssignId(s.service);
+            getOrAssignId(s.method);
+            getOrAssignId(s.name);
+
+            rawRows[i].classList.add("highlight");
+            renderDictTable();
+            renderEncodedTable();
+            await sleep(80);
+            rawRows[i].classList.remove("highlight");
+          }
+
+          renderStats();
+        }
+
+        function resetAll() {
+          dictionary.clear();
+          nextId = 0;
+          encoded = false;
+          generateSpans();
+          renderRawTable();
+          document.getElementById("dict-tbody").innerHTML = "";
+          document.getElementById("encoded-tbody").innerHTML = "";
+          document.getElementById("compression-stats").innerHTML = "";
+          document.getElementById("insight-box").style.display = "none";
+        }
+
+        function addCustomSpan() {
+          const service = document.getElementById("input-service").value.trim();
+          const method = document.getElementById("input-method").value.trim();
+          const name = document.getElementById("input-name").value.trim();
+          if (!service || !method || !name) return;
+
+          spans.push({ service: service, method: method, name: name });
+          renderRawTable();
+
+          if (encoded) {
+            getOrAssignId(service);
+            getOrAssignId(method);
+            getOrAssignId(name);
+            renderDictTable();
+            renderEncodedTable();
+            renderStats();
+          }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+          generateSpans();
+          renderRawTable();
+
+          document.getElementById("btn-encode").addEventListener("click", function () {
+            this.disabled = true;
+            animateEncode().then(() => {
+              document.getElementById("btn-encode").disabled = false;
+            });
+          });
+          document.getElementById("btn-reset").addEventListener("click", resetAll);
+          document.getElementById("btn-add").addEventListener("click", addCustomSpan);
+        });
+      })();
+    </script>
+  </body>
+</html>

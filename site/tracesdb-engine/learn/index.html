@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Learn — How Trace Storage Works | o11ytracesdb</title>
+    <meta name="description" content="Interactive experiences that teach you how a distributed traces database stores, compresses, and queries span data — from dictionary encoding to bloom filter lookups." />
+    <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
+    <base href="/o11ykit/tracesdb-engine/learn/" />
+    <link rel="stylesheet" href="../../styles.css" />
+    <style>
+      :root {
+        --xp-bg: #0a1624;
+        --xp-surface: #0f1f33;
+        --xp-surface-raised: #162a42;
+        --xp-surface-hover: #1a3350;
+        --xp-border: rgba(232, 93, 26, 0.12);
+        --xp-border-strong: rgba(232, 93, 26, 0.25);
+        --xp-text: #e2e8f0;
+        --xp-text-muted: #94a3b8;
+        --xp-text-dim: #64748b;
+        --xp-accent: #e85d1a;
+        --xp-accent-light: #ff8a50;
+        --xp-accent-glow: rgba(232, 93, 26, 0.15);
+        --xp-font: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+        --xp-mono: "IBM Plex Mono", "Fira Code", monospace;
+        --xp-max-width: 960px;
+        --xp-radius: 16px;
+        --xp-radius-sm: 8px;
+      }
+
+      body {
+        background: var(--xp-bg);
+        color: var(--xp-text);
+        font-family: var(--xp-font);
+      }
+
+      .ambient {
+        background:
+          radial-gradient(600px 400px at 10% -5%, rgba(232, 93, 26, 0.08), transparent 60%),
+          radial-gradient(500px 400px at 90% 10%, rgba(139, 92, 246, 0.06), transparent 55%),
+          radial-gradient(700px 500px at 50% 105%, rgba(52, 211, 153, 0.05), transparent 65%);
+      }
+
+      .topbar.panel {
+        background: var(--xp-surface);
+        border-color: var(--xp-border);
+        box-shadow: none;
+      }
+
+      .brand { color: #fff; }
+
+      .topnav a {
+        color: var(--xp-text-muted);
+        background: var(--xp-surface-raised);
+        border-color: var(--xp-border-strong);
+      }
+      .topnav a:hover {
+        color: #fff;
+        border-color: var(--xp-accent);
+      }
+      .topnav a[aria-current="page"] {
+        color: var(--xp-accent-light);
+        border-color: var(--xp-accent);
+        background: var(--xp-accent-glow);
+      }
+
+      .page {
+        max-width: var(--xp-max-width);
+      }
+
+      .learn-breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--xp-text-dim);
+        padding: 16px 0;
+        border-bottom: 1px solid var(--xp-border);
+        margin-bottom: 40px;
+      }
+      .learn-breadcrumb a {
+        color: var(--xp-text-muted);
+        text-decoration: none;
+        transition: color 150ms;
+      }
+      .learn-breadcrumb a:hover { color: var(--xp-accent); }
+      .learn-breadcrumb .sep { color: var(--xp-text-dim); font-size: 10px; }
+      .learn-breadcrumb .current { color: var(--xp-text); font-weight: 500; }
+
+      .learn-eyebrow {
+        display: inline-block;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--xp-accent);
+        margin: 0 0 8px;
+        padding: 4px 10px;
+        background: var(--xp-accent-glow);
+        border-radius: 999px;
+        border: 1px solid rgba(232, 93, 26, 0.2);
+      }
+
+      .learn-hero h1 {
+        margin: 0 0 16px;
+        font-size: clamp(28px, 4.5vw, 44px);
+        line-height: 1.1;
+        letter-spacing: -0.025em;
+        font-weight: 700;
+        color: #fff;
+      }
+
+      .learn-hero .lede {
+        margin: 0;
+        font-size: 17px;
+        line-height: 1.55;
+        color: var(--xp-text-muted);
+        max-width: 65ch;
+      }
+
+      .hub-intro {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 32px;
+        align-items: center;
+      }
+
+      .hub-intro-diagram {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        font-family: var(--xp-mono);
+        font-size: 11px;
+        color: var(--xp-text-dim);
+        padding: 16px;
+        background: var(--xp-surface);
+        border: 1px solid var(--xp-border);
+        border-radius: var(--xp-radius-sm);
+        white-space: pre;
+        line-height: 1.4;
+      }
+
+      @media (max-width: 700px) {
+        .hub-intro { grid-template-columns: 1fr; }
+        .hub-intro-diagram { display: none; }
+      }
+
+      .hub-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+        margin-top: 32px;
+      }
+
+      .hub-card {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        padding: 24px;
+        background: var(--xp-surface);
+        border: 1px solid var(--xp-border);
+        border-radius: var(--xp-radius);
+        text-decoration: none;
+        color: inherit;
+        transition: all 200ms;
+        position: relative;
+        overflow: hidden;
+      }
+      .hub-card:hover {
+        border-color: var(--xp-accent);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px rgba(232, 93, 26, 0.08);
+      }
+      .hub-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: var(--card-accent, var(--xp-accent));
+        opacity: 0;
+        transition: opacity 200ms;
+      }
+      .hub-card:hover::before { opacity: 1; }
+
+      .hub-icon {
+        font-size: 28px;
+        width: 48px;
+        height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--card-glow, var(--xp-accent-glow));
+        border-radius: 12px;
+        flex-shrink: 0;
+      }
+      .hub-card h3 {
+        margin: 0;
+        font-size: 17px;
+        font-weight: 600;
+        color: #fff;
+      }
+      .hub-card p {
+        margin: 0;
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--xp-text-muted);
+      }
+
+      .hub-tag {
+        display: inline-block;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: var(--card-glow, var(--xp-accent-glow));
+        color: var(--card-accent, var(--xp-accent));
+        border: 1px solid var(--card-accent, var(--xp-accent));
+        opacity: 0.8;
+      }
+
+      .xp-difficulty {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 999px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+      .xp-difficulty.beginner {
+        background: rgba(34, 197, 94, 0.15);
+        color: #86efac;
+        border: 1px solid rgba(34, 197, 94, 0.3);
+      }
+      .xp-difficulty.intermediate {
+        background: rgba(251, 191, 36, 0.15);
+        color: #fde68a;
+        border: 1px solid rgba(251, 191, 36, 0.3);
+      }
+
+      .learn-section h2 {
+        color: #fff;
+        margin: 0 0 4px;
+        font-size: 22px;
+        font-weight: 600;
+      }
+      .learn-section p {
+        color: var(--xp-text-muted);
+        font-size: 14px;
+        margin-bottom: 16px;
+      }
+
+      .learn-footer {
+        margin-top: 48px;
+        padding-top: 24px;
+        border-top: 1px solid var(--xp-border);
+        text-align: center;
+        font-size: 13px;
+        color: var(--xp-text-dim);
+      }
+      .learn-footer a { text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <div class="ambient" aria-hidden="true"></div>
+    <main class="page" id="main">
+
+      <header class="topbar panel">
+        <a class="brand" href="/o11ykit/"><img class="brand-mark" src="/o11ykit/logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
+        <nav class="topnav" aria-label="Primary">
+          <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
+          <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+          <a href="/o11ykit/tracesdb-engine/" aria-current="page">TracesDB</a>
+          <a href="/o11ykit/octo11y/">Octo11y</a>
+          <a href="/o11ykit/benchkit/">Benchkit</a>
+          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </header>
+
+      <nav class="learn-breadcrumb" aria-label="Breadcrumb">
+        <a href="../">TracesDB Engine</a>
+        <span class="sep">›</span>
+        <span class="current">Learn</span>
+      </nav>
+
+      <div class="learn-hero">
+        <p class="learn-eyebrow">Learn</p>
+        <h1>How o11ytracesdb Works</h1>
+        <div class="hub-intro">
+          <p class="lede">
+            A browser-native traces database takes hundreds of thousands of OpenTelemetry spans
+            and packs them into a fraction of their original size — then answers structural queries
+            across all of them in milliseconds.
+            <br /><br />
+            Each experience below lets you <strong>see</strong> and <strong>interact</strong> with
+            one piece of that puzzle. Click any card to explore.
+          </p>
+          <div class="hub-intro-diagram" aria-hidden="true">OTLP span arrives
+  ↓
+┌─────────────────────────┐
+│  Dictionary Encoding    │ strings → integer IDs
+│  Columnar Layout        │ typed arrays per field
+├─────────────────────────┤
+│  Nested Set Encoding    │ tree → left/right ints
+│  Bloom Filters          │ O(1) trace ID lookup
+├─────────────────────────┤
+│  Structural Queries     │ ancestor / descendant
+│  Waterfall Rendering    │ span → pixel mapping
+└─────────────────────────┘
+  ↓
+Answer in &lt;1ms</div>
+        </div>
+      </div>
+
+      <section class="learn-section">
+        <h2>Interactive Experiences</h2>
+        <p>Three hands-on explorations that show how trace data gets stored, indexed, and queried.</p>
+        <div class="hub-grid">
+
+          <a href="dictionary-encoding/" class="hub-card" style="--card-accent: #f59e0b; --card-glow: rgba(245, 158, 11, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(245, 158, 11, 0.1);">📖</div>
+            <span class="xp-difficulty beginner">Beginner</span>
+            <h3>Dictionary Encoding</h3>
+            <p>See how repeated span strings (service names, HTTP methods, operations) collapse from raw UTF-8 to compact integer IDs — a 90%+ reduction.</p>
+            <span class="hub-tag" style="--card-accent: #f59e0b; --card-glow: rgba(245, 158, 11, 0.1);">Compression</span>
+          </a>
+
+          <a href="nested-sets/" class="hub-card" style="--card-accent: #8b5cf6; --card-glow: rgba(139, 92, 246, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(139, 92, 246, 0.1);">🌳</div>
+            <span class="xp-difficulty intermediate">Intermediate</span>
+            <h3>Nested Set Encoding</h3>
+            <p>Watch parent-child trace relationships become left/right integers that enable O(1) structural queries — no tree traversal needed.</p>
+            <span class="hub-tag" style="--card-accent: #8b5cf6; --card-glow: rgba(139, 92, 246, 0.1);">Structure</span>
+          </a>
+
+          <a href="bloom-filters/" class="hub-card" style="--card-accent: #06b6d4; --card-glow: rgba(6, 182, 212, 0.1);">
+            <div class="hub-icon" style="--card-glow: rgba(6, 182, 212, 0.1);">🔍</div>
+            <span class="xp-difficulty beginner">Beginner</span>
+            <h3>Bloom Filters</h3>
+            <p>Add trace IDs to a bit array via hashing and see how bloom filters enable O(1) chunk-skip lookups with predictable false positive rates.</p>
+            <span class="hub-tag" style="--card-accent: #06b6d4; --card-glow: rgba(6, 182, 212, 0.1);">Indexing</span>
+          </a>
+
+        </div>
+      </section>
+
+      <footer class="learn-footer">
+        <p>
+          Part of <a href="../../" style="color: var(--xp-accent);">o11ykit</a>
+          · <a href="../" style="color: var(--xp-text-muted);">← Back to Demo</a>
+        </p>
+      </footer>
+
+    </main>
+  </body>
+</html>
