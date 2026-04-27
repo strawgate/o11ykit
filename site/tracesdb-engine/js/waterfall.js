@@ -170,9 +170,10 @@ export function renderWaterfall(canvas, trace, opts = {}) {
 
       // Bar
       const spanStart = Number(span.startTimeUnixNano - traceStart);
-      const spanDurNanos = span.durationNanos != null
-        ? span.durationNanos
-        : (span.endTimeUnixNano - span.startTimeUnixNano);
+      const spanDurNanos =
+        span.durationNanos != null
+          ? span.durationNanos
+          : span.endTimeUnixNano - span.startTimeUnixNano;
       const spanDur = Number(spanDurNanos);
       const barX = LABEL_WIDTH + PADDING + (spanStart / totalDuration) * barAreaWidth;
       const barW = Math.max(2, (spanDur / totalDuration) * barAreaWidth);
