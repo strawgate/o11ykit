@@ -236,4 +236,33 @@ describe("Structural queries (nested set model)", () => {
       expect(nestedSetDepth(grandchild, allSpans)).toBe(2);
     });
   });
+
+  describe("cross-trace safety", () => {
+    it("isAncestorOf returns false for spans from different traces with overlapping numbers", () => {
+      // Trace A root: [1,8], Trace B inner: [2,3] — would be false positive without traceId check
+      const TRACE_B = fixedBytes(16, 0xBB);
+      const traceARoot: SpanRecord = {
+        ...root,
+        traceId: TRACE_A,
+        nestedSetLeft: 1,
+        nestedSetRight: 8,
+      };
+      const traceBInner: SpanRecord = {
+        ...root,
+        traceId: TRACE_B,
+        spanId: fixedBytes(8, 0x10),
+        nestedSetLeft: 2,
+        nestedSetRight: 3,
+      };
+      // Numbers suggest ancestor relationship, but different traces
+      expect(isAncestorOf(traceARoot, traceBInner)).toBe(false);
+    });
+
+    it("isSiblingOf returns false for spans from different traces", () => {
+      const TRACE_B = fixedBytes(16, 0xBB);
+      const spanA: SpanRecord = { ...childA, traceId: TRACE_A };
+      const spanB: SpanRecord = { ...childB, traceId: TRACE_B };
+      expect(isSiblingOf(spanA, spanB)).toBe(false);
+    });
+  });
 });

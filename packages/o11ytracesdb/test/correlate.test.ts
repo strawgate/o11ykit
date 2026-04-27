@@ -228,3 +228,44 @@ describe("Correlation helpers", () => {
     expect(names).toContain("backend");
   });
 });
+
+// ─── Bug regression tests ────────────────────────────────────────────
+
+describe("Bug fixes", () => {
+  it("handles span names containing pipe characters in RED metrics", () => {
+    const baseTime = 1700000000000000000n;
+    const spans = [
+      makeSpan({ name: "graphql|query|mutation", start: baseTime, duration: 10_000_000n }),
+      makeSpan({ name: "graphql|query|mutation", start: baseTime + 1000n, duration: 20_000_000n }),
+    ];
+
+    // Should not throw SyntaxError from BigInt parsing
+    const metrics = deriveREDMetrics(spans);
+    expect(metrics.length).toBe(1);
+    expect(metrics[0]!.operationName).toBe("graphql|query|mutation");
+    expect(metrics[0]!.rate).toBe(2);
+  });
+
+  it("detects service graph edges from root CLIENT spans (no parentSpanId)", () => {
+    // Root CLIENT span (no parent) calling a child SERVER span
+    const clientSpan = makeSpan({
+      spanId: 0x01,
+      kind: SpanKind.CLIENT,
+      // No parentSpanId — this is the trace root
+      name: "call-downstream",
+      serviceName: "api-gateway",
+    });
+    const serverSpan = makeSpan({
+      spanId: 0x02,
+      kind: SpanKind.SERVER,
+      parentSpanId: 0x01,
+      name: "handle-request",
+      serviceName: "user-service",
+    });
+
+    const edges = computeServiceGraph([clientSpan, serverSpan]);
+    expect(edges.length).toBe(1);
+    expect(edges[0]!.source).toBe("api-gateway");
+    expect(edges[0]!.target).toBe("user-service");
+  });
+});

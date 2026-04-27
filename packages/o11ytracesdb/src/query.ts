@@ -370,13 +370,16 @@ function compareBigint(a: SpanRecord, b: SpanRecord): number {
 /**
  * O(1) ancestor check using nested set encoding.
  * Returns true if `ancestor` is an ancestor of `descendant`.
- * Both spans must have nestedSetLeft/Right populated (from same chunk).
+ * Both spans must have nestedSetLeft/Right populated and belong to the same trace.
+ * (Nested set numbers are per-trace, so cross-trace comparisons are invalid.)
  */
 export function isAncestorOf(ancestor: SpanRecord, descendant: SpanRecord): boolean {
   if (ancestor.nestedSetLeft === undefined || ancestor.nestedSetRight === undefined ||
       descendant.nestedSetLeft === undefined || descendant.nestedSetRight === undefined) {
     return false;
   }
+  // Must be from the same trace (nested set numbers are per-trace)
+  if (!bytesEqual(ancestor.traceId, descendant.traceId)) return false;
   return ancestor.nestedSetLeft < descendant.nestedSetLeft &&
          descendant.nestedSetRight < ancestor.nestedSetRight;
 }
@@ -389,10 +392,11 @@ export function isDescendantOf(descendant: SpanRecord, ancestor: SpanRecord): bo
 }
 
 /**
- * O(1) sibling check — two spans with the same nestedSetParent.
+ * O(1) sibling check — two spans with the same nestedSetParent and same trace.
  */
 export function isSiblingOf(a: SpanRecord, b: SpanRecord): boolean {
   if (a.nestedSetParent === undefined || b.nestedSetParent === undefined) return false;
+  if (!bytesEqual(a.traceId, b.traceId)) return false;
   return a.nestedSetParent === b.nestedSetParent &&
          a.nestedSetParent !== 0 &&
          a !== b;

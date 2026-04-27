@@ -104,36 +104,36 @@ export function deriveREDMetrics(
   bucketSizeNanos = 60_000_000_000n, // 1 minute
   serviceName = "unknown",
 ): REDMetrics[] {
-  // Group by (operation, bucket)
-  const groups = new Map<string, SpanRecord[]>();
+  // Group by (operation, bucket) using a composite key with null separator
+  // (safe against any characters in span names)
+  const groups = new Map<string, { operationName: string; bucketStartNano: bigint; spans: SpanRecord[] }>();
   for (const span of spans) {
     const bucket = span.startTimeUnixNano - (span.startTimeUnixNano % bucketSizeNanos);
-    const key = `${span.name}|${bucket}`;
+    const key = `${span.name}\0${bucket}`;
     let group = groups.get(key);
     if (!group) {
-      group = [];
+      group = { operationName: span.name, bucketStartNano: bucket, spans: [] };
       groups.set(key, group);
     }
-    group.push(span);
+    group.spans.push(span);
   }
 
   const results: REDMetrics[] = [];
-  for (const [key, group] of groups) {
-    const [operationName, bucketStr] = key.split("|") as [string, string];
-    const bucketStartNano = BigInt(bucketStr);
+  for (const [, group] of groups) {
+    const { operationName, bucketStartNano } = group;
 
-    const durations = group.map(s => s.durationNanos).sort((a, b) =>
+    const durations = group.spans.map(s => s.durationNanos).sort((a, b) =>
       a < b ? -1 : a > b ? 1 : 0);
-    const errors = group.filter(s => s.statusCode === StatusCode.ERROR).length;
+    const errors = group.spans.filter(s => s.statusCode === StatusCode.ERROR).length;
     const sum = durations.reduce((acc, d) => acc + d, 0n);
 
     results.push({
       serviceName,
       operationName,
       bucketStartNano,
-      rate: group.length,
+      rate: group.spans.length,
       errors,
-      errorRate: group.length > 0 ? errors / group.length : 0,
+      errorRate: group.spans.length > 0 ? errors / group.spans.length : 0,
       duration: {
         min: durations[0]!,
         max: durations[durations.length - 1]!,
@@ -191,28 +191,33 @@ export function computeServiceGraph(
 ): ServiceGraphEdge[] {
   const svcName = getServiceName ?? defaultServiceName;
 
-  // Build span lookup by spanId hex
-  const spanById = new Map<string, SpanRecord>();
+  // Build reverse index: parentSpanId hex → child SERVER spans (O(n))
+  const serverChildrenByParent = new Map<string, SpanRecord[]>();
   for (const span of spans) {
-    spanById.set(bytesToHex(span.spanId), span);
+    if (span.kind !== 2) continue; // SERVER only
+    if (!span.parentSpanId) continue;
+    const parentHex = bytesToHex(span.parentSpanId);
+    let children = serverChildrenByParent.get(parentHex);
+    if (!children) {
+      children = [];
+      serverChildrenByParent.set(parentHex, children);
+    }
+    children.push(span);
   }
 
-  // Find CLIENT spans that have a child SERVER span
+  // Find CLIENT spans and look up their child SERVER spans via index (O(n))
   const edges = new Map<string, ServiceGraphEdge>();
   for (const span of spans) {
     if (span.kind !== 3) continue; // CLIENT spans only
-    if (!span.parentSpanId) continue;
 
     const source = svcName(span);
     if (!source) continue;
 
-    // Find child SERVER spans (spans whose parentSpanId matches this span's spanId)
     const myId = bytesToHex(span.spanId);
-    for (const candidate of spans) {
-      if (candidate.kind !== 2) continue; // SERVER only
-      if (!candidate.parentSpanId) continue;
-      if (bytesToHex(candidate.parentSpanId) !== myId) continue;
+    const children = serverChildrenByParent.get(myId);
+    if (!children) continue;
 
+    for (const candidate of children) {
       const target = svcName(candidate);
       if (!target || target === source) continue;
 
