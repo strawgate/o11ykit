@@ -12,6 +12,7 @@
  */
 
 import type { Chunk } from "./chunk.js";
+import { bloomFromBase64, bloomMayContain } from "./bloom.js";
 import type { TraceStore } from "./engine.js";
 import type {
   AnyValue,
@@ -256,6 +257,12 @@ function canPruneChunk(
   resource: { attributes: KeyValue[] },
 ): boolean {
   const h = chunk.header;
+
+  // Bloom filter pruning — skip chunks that definitely don't contain the target trace ID
+  if (opts.traceId !== undefined && h.bloomFilter !== undefined) {
+    const filter = bloomFromBase64(h.bloomFilter);
+    if (!bloomMayContain(filter, opts.traceId)) return true;
+  }
 
   // Time range pruning
   if (opts.startTimeNano !== undefined) {

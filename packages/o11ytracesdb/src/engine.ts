@@ -61,6 +61,18 @@ export class TraceStore {
   }
 
   /**
+   * Decode only the ID columns from a chunk — used for trace assembly
+   * when we just need trace IDs without full span data.
+   */
+  decodeChunkIds(chunk: Chunk): {
+    traceIds: Uint8Array[];
+    spanIds: Uint8Array[];
+    parentSpanIds: (Uint8Array | undefined)[];
+  } {
+    return this.policy.decodeIdsOnly(chunk.payload, chunk.header.nSpans);
+  }
+
+  /**
    * Append spans from a single (resource, scope) batch.
    * This is the primary ingest path — mirrors OTLP batch structure.
    */

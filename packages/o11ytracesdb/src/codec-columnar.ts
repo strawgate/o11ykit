@@ -374,13 +374,16 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       out.patchSectionLength(off);
     }
 
-    // Section 7: Events (per-span event count + encoded events)
+    // Section 7: Events (per-span event count + encoded events with delta timestamps)
     {
       const off = out.reserveSectionLength();
-      for (const s of spans) {
+      for (let idx = 0; idx < n; idx++) {
+        const s = spans[idx]!;
         out.writeUvarint(s.events.length);
         for (const evt of s.events) {
-          out.writeVarint(evt.timeUnixNano);
+          // Store as delta from span start for better compression
+          const timeDelta = evt.timeUnixNano - s.startTimeUnixNano;
+          out.writeVarint(timeDelta);
           out.writeString(evt.name);
           out.writeUvarint(evt.attributes.length);
           for (const attr of evt.attributes) {
@@ -517,14 +520,15 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       allAttrs[i] = attrs;
     }
 
-    // Section 7: Events
+    // Section 7: Events (decode delta timestamps back to absolute)
     const evtSection = new ByteReader(reader.readSection());
     const allEvents: SpanEvent[][] = new Array(n);
     for (let i = 0; i < n; i++) {
       const evtCount = evtSection.readUvarint();
       const events: SpanEvent[] = new Array(evtCount);
       for (let j = 0; j < evtCount; j++) {
-        const timeUnixNano = evtSection.readVarint();
+        const timeDelta = evtSection.readVarint();
+        const timeUnixNano = startTimes[i]! + timeDelta;
         const name = evtSection.readString();
         const attrCount = evtSection.readUvarint();
         const attributes: KeyValue[] = new Array(attrCount);
@@ -581,6 +585,45 @@ export class ColumnarTracePolicy implements ChunkPolicy {
     }
 
     return spans;
+  }
+
+  /**
+   * Decode only the ID columns (Section 2) — used for trace assembly
+   * when we just need trace IDs without full span data.
+   * Skips sections 0, 1 and 3-8.
+   */
+  decodeIdsOnly(buf: Uint8Array, nSpans: number): {
+    traceIds: Uint8Array[];
+    spanIds: Uint8Array[];
+    parentSpanIds: (Uint8Array | undefined)[];
+  } {
+    const reader = new ByteReader(buf);
+    const n = nSpans;
+
+    // Skip Section 0 (timestamps)
+    const sec0Len = reader.readU32();
+    reader.pos += sec0Len;
+
+    // Skip Section 1 (durations)
+    const sec1Len = reader.readU32();
+    reader.pos += sec1Len;
+
+    // Decode Section 2 (IDs)
+    const idSection = new ByteReader(reader.readSection());
+    const nullBitmapLen = Math.ceil(n / 8);
+    const nullBitmap = idSection.readBytes(nullBitmapLen);
+    const traceIds: Uint8Array[] = new Array(n);
+    const spanIds: Uint8Array[] = new Array(n);
+    const parentSpanIds: (Uint8Array | undefined)[] = new Array(n);
+    for (let i = 0; i < n; i++) traceIds[i] = new Uint8Array(idSection.readBytes(16));
+    for (let i = 0; i < n; i++) spanIds[i] = new Uint8Array(idSection.readBytes(8));
+    for (let i = 0; i < n; i++) {
+      if (nullBitmap[i >>> 3]! & (1 << (i & 7))) {
+        parentSpanIds[i] = new Uint8Array(idSection.readBytes(8));
+      }
+    }
+
+    return { traceIds, spanIds, parentSpanIds };
   }
 }
 

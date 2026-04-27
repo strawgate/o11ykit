@@ -20,6 +20,7 @@
  * for resource attributes.
  */
 
+import { createBloomFilter, bloomToBase64 } from "./bloom.js";
 import type { SpanRecord, StatusCode } from "./types.js";
 
 // ─── Chunk Header ────────────────────────────────────────────────────
@@ -41,6 +42,8 @@ export interface ChunkHeader {
   codecMeta?: unknown;
   /** Payload byte length. */
   payloadBytes: number;
+  /** Base64-encoded bloom filter over trace IDs for fast pruning. */
+  bloomFilter?: string;
 }
 
 // ─── Chunk ───────────────────────────────────────────────────────────
@@ -100,6 +103,12 @@ export interface ChunkPolicy {
   encodePayload(spans: readonly SpanRecord[]): { payload: Uint8Array; meta?: unknown };
   /** Decode a binary payload back into spans. */
   decodePayload(buf: Uint8Array, nSpans: number, meta: unknown): SpanRecord[];
+  /** Decode only the ID columns (Section 2) for trace assembly. */
+  decodeIdsOnly(buf: Uint8Array, nSpans: number): {
+    traceIds: Uint8Array[];
+    spanIds: Uint8Array[];
+    parentSpanIds: (Uint8Array | undefined)[];
+  };
 }
 
 export class ChunkBuilder {
@@ -145,6 +154,11 @@ export class ChunkBuilder {
 
     const { payload, meta } = this.policy.encodePayload(spans);
 
+    // Compute bloom filter from trace IDs
+    const traceIds = spans.map((s) => s.traceId);
+    const bloom = createBloomFilter(traceIds);
+    const bloomB64 = bloomToBase64(bloom);
+
     const header: ChunkHeader = {
       nSpans: spans.length,
       minTimeNano: minTime.toString(),
@@ -154,6 +168,7 @@ export class ChunkBuilder {
       codecName: this.policy.codecName(),
       codecMeta: meta,
       payloadBytes: payload.length,
+      ...(bloomB64.length > 0 ? { bloomFilter: bloomB64 } : {}),
     };
 
     return { header, payload };

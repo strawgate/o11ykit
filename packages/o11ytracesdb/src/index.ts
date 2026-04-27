@@ -39,6 +39,9 @@ export type { Chunk, ChunkHeader, ChunkPolicy } from "./chunk.js";
 // Codec
 export { ColumnarTracePolicy } from "./codec-columnar.js";
 
+// Bloom filter
+export { createBloomFilter, bloomMayContain, bloomToBase64, bloomFromBase64 } from "./bloom.js";
+
 // Query
 export { assembleTrace, buildSpanTree, criticalPath, queryTraces } from "./query.js";
 
