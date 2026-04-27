@@ -1,36 +1,78 @@
-/* ─── TracesDB Engine — CSS Variable Palette ─────────────────────── */
+/* ─── TracesDB Engine — Base Variables & Reset ───────────────────── */
 
 :root {
-  /* Trace accent color (warm orange-red, distinct from tsdb purple) */
+  /* brand / accent — matches parent --otlp */
   --traces: #e85d1a;
   --traces-light: #ff8a50;
-  --traces-dim: rgba(232, 93, 26, 0.15);
+  --traces-soft: rgba(232, 93, 26, 0.15);
+  --traces-glow: rgba(232, 93, 26, 0.35);
+  --traces-dim: rgba(232, 93, 26, 0.08);
 
-  /* Service colors for waterfall */
-  --svc-0: #3b82f6;
-  --svc-1: #10b981;
+  /* sister accent colors from parent styles.css */
+  --accent-otlp: #e85d1a;
+  --accent-tsdb: #7c3aed;
+  --accent-octo: #058d75;
+  --accent-bench: #1259e0;
+
+  /* service palette (12 distinct services) */
+  --svc-0: #06b6d4;
+  --svc-1: #8b5cf6;
   --svc-2: #f59e0b;
-  --svc-3: #ef4444;
-  --svc-4: #8b5cf6;
-  --svc-5: #06b6d4;
-  --svc-6: #ec4899;
-  --svc-7: #84cc16;
+  --svc-3: #10b981;
+  --svc-4: #ec4899;
+  --svc-5: #3b82f6;
+  --svc-6: #ef4444;
+  --svc-7: #a3e635;
+  --svc-8: #f97316;
+  --svc-9: #14b8a6;
+  --svc-10: #a78bfa;
+  --svc-11: #fb923c;
 
-  /* Status colors */
+  /* status */
   --status-ok: #10b981;
   --status-error: #ef4444;
-  --status-unset: #94a3b8;
+  --status-unset: #6b7280;
 
-  /* Dark panels (waterfall, storage explorer) */
+  /* dark panels */
   --dark-bg: #0a1929;
-  --dark-bg-alt: #0d2137;
+  --dark-surface: #0f2640;
+  --dark-surface-alt: #132d4a;
+  --dark-border: rgba(96, 165, 250, 0.18);
+  --dark-border-strong: rgba(96, 165, 250, 0.35);
   --dark-text: #e2e8f0;
-  --dark-text-muted: #94a3b8;
+  --dark-muted: #94a3b8;
   --dark-accent: #60a5fa;
 
-  /* Z-index scale */
+  /* byte explorer section colors */
+  --region-header: #e85d1a;
+  --region-timestamps: #06b6d4;
+  --region-durations: #10b981;
+  --region-ids: #8b5cf6;
+  --region-names: #f59e0b;
+  --region-status: #ef4444;
+  --region-kind: #ec4899;
+  --region-attributes: #3b82f6;
+  --region-events: #a3e635;
+  --region-links: #14b8a6;
+  --region-bloom: #a78bfa;
+
+  /* highlight / selection */
+  --highlight-primary: #3b82f6;
+  --highlight-bg: rgba(59, 130, 246, 0.15);
+
+  /* z-index scale */
+  --z-cell: 1;
+  --z-highlight: 2;
+  --z-hover: 3;
+  --z-panel: 10;
+  --z-decode-panel: 10;
   --z-tooltip: 50;
-  --z-modal: 100;
+
+  /* badges for storage modes */
+  --badge-hot-bg: rgba(239, 68, 68, 0.15);
+  --badge-hot-text: #fca5a5;
+  --badge-frozen-bg: rgba(96, 165, 250, 0.15);
+  --badge-frozen-text: #93c5fd;
 }
 
 /* ─── Section intro ──────────────────────────────────────────────── */
@@ -42,7 +84,7 @@
   line-height: 1.5;
 }
 
-/* ─── Stat badges ────────────────────────────────────────────────── */
+/* ─── Stat cards (shared) ────────────────────────────────────────── */
 .stat-row {
   display: flex;
   flex-wrap: wrap;
@@ -76,95 +118,40 @@
   margin-top: 2px;
 }
 
-/* ─── Scenario cards ─────────────────────────────────────────────── */
-.scenario-grid {
+/* stat-card: dark variant used in explorers */
+.stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.scenario-card {
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--surface-strong);
-  cursor: pointer;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
-}
-
-.scenario-card:hover {
-  border-color: var(--traces);
-  box-shadow: 0 4px 16px rgba(232, 93, 26, 0.1);
-}
-
-.scenario-card.active {
-  border-color: var(--traces);
-  box-shadow: 0 0 0 2px var(--traces-dim);
-}
-
-.scenario-card h3 {
-  margin: 0 0 6px;
-  font-size: 15px;
-}
-
-.scenario-card p {
-  margin: 0;
-  font-size: 13px;
-  color: var(--ink-soft);
-  line-height: 1.4;
-}
-
-.scenario-card .scenario-meta {
-  margin-top: 8px;
-  font-size: 11px;
-  color: var(--ink-muted);
-  font-family: var(--mono);
-}
-
-/* ─── Controls ───────────────────────────────────────────────────── */
-.controls-row {
-  display: flex;
-  flex-wrap: wrap;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 10px;
-  align-items: center;
-  margin: 12px 0;
+  margin-bottom: 18px;
 }
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 18px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface-strong);
-  font-family: var(--sans);
-  font-size: 14px;
-  cursor: pointer;
-  transition: all 0.15s;
+.stat-card {
+  padding: 14px 16px;
+  background: var(--dark-surface);
+  border: 1px solid var(--dark-border);
+  border-radius: 10px;
+  text-align: center;
 }
 
-.btn:hover {
-  border-color: var(--traces);
+.stat-card .stat-big {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--traces);
+  line-height: 1.1;
 }
 
-.btn-primary {
-  background: var(--traces);
-  color: white;
-  border-color: var(--traces);
+.stat-card .stat-big.compact {
+  font-size: 17px;
 }
 
-.btn-primary:hover {
-  background: var(--traces-light);
-  border-color: var(--traces-light);
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.stat-card .stat-desc {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dark-muted);
+  margin-top: 4px;
 }
 
 /* ─── Waterfall ──────────────────────────────────────────────────── */
@@ -174,7 +161,7 @@
   overflow-x: hidden;
   overflow-y: auto;
   max-height: 600px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--dark-border);
   min-height: 200px;
   position: relative;
 }
@@ -189,7 +176,7 @@
   align-items: center;
   justify-content: center;
   min-height: 200px;
-  color: var(--dark-text-muted);
+  color: var(--dark-muted);
   font-size: 14px;
 }
 
@@ -198,8 +185,8 @@
   flex-wrap: wrap;
   gap: 12px;
   padding: 8px 12px;
-  background: var(--dark-bg-alt);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--dark-surface);
+  border-top: 1px solid var(--dark-border);
   font-size: 12px;
 }
 
@@ -207,7 +194,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--dark-text-muted);
+  color: var(--dark-muted);
 }
 
 .legend-swatch {
@@ -218,13 +205,14 @@
 
 /* ─── Span detail panel ──────────────────────────────────────────── */
 .span-detail {
-  background: var(--dark-bg-alt);
+  background: var(--dark-surface);
   border-radius: 8px;
   padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--dark-border);
   display: none;
   color: var(--dark-text);
   font-size: 13px;
+  margin-top: 12px;
 }
 
 .span-detail.visible {
@@ -248,46 +236,46 @@
 }
 
 .span-detail td:first-child {
-  color: var(--dark-text-muted);
+  color: var(--dark-muted);
   width: 140px;
   font-family: var(--mono);
   font-size: 12px;
 }
 
-/* ─── Query builder UI ───────────────────────────────────────────── */
-.query-panel {
-  display: grid;
-  gap: 12px;
+.span-detail .span-events {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dark-border);
 }
 
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
+.span-detail .event-row {
+  padding: 4px 0;
+  font-size: 12px;
 }
 
-.filter-row label {
-  font-size: 13px;
-  color: var(--ink-soft);
-  min-width: 80px;
+.span-detail .event-name {
+  color: var(--status-error);
+  font-weight: 600;
 }
 
-.filter-row input,
-.filter-row select {
-  font-family: var(--sans);
-  font-size: 13px;
-  padding: 6px 10px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--surface-strong);
+.span-detail .event-time {
+  color: var(--dark-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-left: 8px;
 }
 
-.filter-row input:focus,
-.filter-row select:focus {
-  outline: none;
-  border-color: var(--traces);
-  box-shadow: 0 0 0 2px var(--traces-dim);
+.span-detail .stack-trace {
+  background: var(--dark-bg);
+  border-radius: 4px;
+  padding: 8px;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dark-muted);
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 /* ─── Results table ──────────────────────────────────────────────── */
@@ -312,16 +300,16 @@
   border-bottom: 1px solid var(--line);
 }
 
-.results-table tr {
+.results-table tbody tr {
   cursor: pointer;
   transition: background 0.1s;
 }
 
-.results-table tr:hover {
+.results-table tbody tr:hover {
   background: var(--traces-dim);
 }
 
-.results-table tr.selected {
+.results-table tbody tr.selected {
   background: rgba(232, 93, 26, 0.08);
 }
 
@@ -352,25 +340,6 @@
 }
 .status-dot.unset {
   background: var(--status-unset);
-}
-
-/* ─── Storage stats ──────────────────────────────────────────────── */
-.storage-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 10px;
-}
-
-.storage-stat {
-  padding: 12px;
-  background: var(--surface-strong);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  text-align: center;
-}
-
-.storage-stat .stat-value {
-  font-size: 20px;
 }
 
 /* ─── Aggregation results ────────────────────────────────────────── */
@@ -406,20 +375,13 @@
 
 /* ─── Responsive ─────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .scenario-grid {
-    grid-template-columns: 1fr;
-  }
-  .storage-grid {
+  .stats-grid {
     grid-template-columns: 1fr 1fr;
   }
   .stat-row {
     flex-direction: column;
   }
-  .filter-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .filter-row label {
-    min-width: auto;
+  .agg-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
