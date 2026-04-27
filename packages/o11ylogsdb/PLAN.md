@@ -225,7 +225,9 @@ the M1-only baseline; the current shipped binary is 18 KB gzipped.
 | `o11ylogsdb-rust.wasm` | 50 KB | **<25 KB** | Combined cdylib of FSST + Roaring-lite + binary-fuse + in-house Drain currently builds to 21 KB gz; budget includes headroom. |
 | `o11ytracesdb-rust.wasm` (future) | 50 KB | <25 KB | Similar codec stack minus Drain. |
 
-Per-engine budget enforced in CI. Overshooting blocks merge.
+Per-engine budget tracked manually for now (each codec-workspace PR
+reports its size delta in the PR body). A proper CI gate is a
+follow-up.
 
 Measurements validated:
 
