@@ -1,0 +1,276 @@
+/**
+ * Cross-signal correlation utilities for o11ytracesdb.
+ *
+ * Enables the "holy grail" of browser-native observability: zero-latency
+ * cross-signal correlation between traces, metrics, and logs without
+ * server round-trips. When all three o11y*db engines are co-resident in
+ * the browser, this module bridges them.
+ *
+ * Key patterns:
+ * - Time window extraction from traces for querying sibling stores
+ * - Trace ID propagation for log correlation
+ * - RED metrics derivation (Rate, Error, Duration) from span data
+ * - Service graph computation from inter-service spans
+ */
+
+import type { SpanRecord, Trace } from "./types.js";
+import { StatusCode } from "./types.js";
+
+// ─── Time Window Extraction ──────────────────────────────────────────
+
+/**
+ * A time window that can be passed to o11ytsdb or o11ylogsdb queries.
+ * Uses bigint nanoseconds for consistency with OTLP timestamps.
+ */
+export interface TimeWindow {
+  startNano: bigint;
+  endNano: bigint;
+}
+
+/**
+ * Extract a time window from a trace — useful for querying metrics/logs
+ * that overlap with this trace's execution window.
+ *
+ * Optionally adds padding to capture context before/after the trace.
+ */
+export function traceTimeWindow(trace: Trace, paddingNanos = 0n): TimeWindow {
+  let min = trace.spans[0]!.startTimeUnixNano;
+  let max = trace.spans[0]!.endTimeUnixNano;
+  for (const span of trace.spans) {
+    if (span.startTimeUnixNano < min) min = span.startTimeUnixNano;
+    if (span.endTimeUnixNano > max) max = span.endTimeUnixNano;
+  }
+  return {
+    startNano: min - paddingNanos,
+    endNano: max + paddingNanos,
+  };
+}
+
+/**
+ * Extract a time window from a single span — for correlating logs/metrics
+ * to a specific operation.
+ */
+export function spanTimeWindow(span: SpanRecord, paddingNanos = 0n): TimeWindow {
+  return {
+    startNano: span.startTimeUnixNano - paddingNanos,
+    endNano: span.endTimeUnixNano + paddingNanos,
+  };
+}
+
+// ─── RED Metrics Derivation ──────────────────────────────────────────
+
+/**
+ * RED (Rate, Error, Duration) metrics derived from span data.
+ * These can be fed into o11ytsdb for metric-based alerting/visualization.
+ */
+export interface REDMetrics {
+  /** Service name (from resource attributes or span attributes). */
+  serviceName: string;
+  /** Operation/span name. */
+  operationName: string;
+  /** Time bucket start (nanoseconds). */
+  bucketStartNano: bigint;
+  /** Number of requests (spans) in this bucket. */
+  rate: number;
+  /** Number of error spans in this bucket. */
+  errors: number;
+  /** Error rate (errors / rate). */
+  errorRate: number;
+  /** Duration statistics. */
+  duration: {
+    min: bigint;
+    max: bigint;
+    sum: bigint;
+    count: number;
+    /** p50 approximation (median of sorted durations). */
+    p50: bigint;
+    /** p95 approximation. */
+    p95: bigint;
+    /** p99 approximation. */
+    p99: bigint;
+  };
+}
+
+/**
+ * Derive RED metrics from a set of spans, bucketed by time interval.
+ *
+ * @param spans - Spans to analyze (typically from a query result)
+ * @param bucketSizeNanos - Time bucket size in nanoseconds (default: 1 minute)
+ * @param serviceName - Service name to label metrics with
+ * @returns Array of RED metrics, one per (operation, bucket) pair
+ */
+export function deriveREDMetrics(
+  spans: readonly SpanRecord[],
+  bucketSizeNanos = 60_000_000_000n, // 1 minute
+  serviceName = "unknown",
+): REDMetrics[] {
+  // Group by (operation, bucket)
+  const groups = new Map<string, SpanRecord[]>();
+  for (const span of spans) {
+    const bucket = span.startTimeUnixNano - (span.startTimeUnixNano % bucketSizeNanos);
+    const key = `${span.name}|${bucket}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = [];
+      groups.set(key, group);
+    }
+    group.push(span);
+  }
+
+  const results: REDMetrics[] = [];
+  for (const [key, group] of groups) {
+    const [operationName, bucketStr] = key.split("|") as [string, string];
+    const bucketStartNano = BigInt(bucketStr);
+
+    const durations = group.map(s => s.durationNanos).sort((a, b) =>
+      a < b ? -1 : a > b ? 1 : 0);
+    const errors = group.filter(s => s.statusCode === StatusCode.ERROR).length;
+    const sum = durations.reduce((acc, d) => acc + d, 0n);
+
+    results.push({
+      serviceName,
+      operationName,
+      bucketStartNano,
+      rate: group.length,
+      errors,
+      errorRate: group.length > 0 ? errors / group.length : 0,
+      duration: {
+        min: durations[0]!,
+        max: durations[durations.length - 1]!,
+        sum,
+        count: durations.length,
+        p50: percentile(durations, 0.5),
+        p95: percentile(durations, 0.95),
+        p99: percentile(durations, 0.99),
+      },
+    });
+  }
+
+  return results.sort((a, b) =>
+    a.bucketStartNano < b.bucketStartNano ? -1 :
+    a.bucketStartNano > b.bucketStartNano ? 1 : 0);
+}
+
+/** Percentile from a sorted array of bigints. */
+function percentile(sorted: bigint[], p: number): bigint {
+  if (sorted.length === 0) return 0n;
+  const idx = Math.ceil(p * sorted.length) - 1;
+  return sorted[Math.max(0, idx)]!;
+}
+
+// ─── Service Graph ───────────────────────────────────────────────────
+
+/**
+ * An edge in the service graph — represents a call from one service to another.
+ */
+export interface ServiceGraphEdge {
+  /** Calling service name. */
+  source: string;
+  /** Called service name. */
+  target: string;
+  /** Number of calls observed. */
+  callCount: number;
+  /** Number of error calls. */
+  errorCount: number;
+  /** Total duration of calls (for averaging). */
+  totalDurationNanos: bigint;
+}
+
+/**
+ * Compute a service graph from spans.
+ * Identifies CLIENT→SERVER pairs that represent inter-service calls.
+ *
+ * @param spans - All spans (typically from multiple traces)
+ * @param getServiceName - Function to extract service name from a span
+ *   (default: looks for "service.name" attribute)
+ * @returns Array of service graph edges
+ */
+export function computeServiceGraph(
+  spans: readonly SpanRecord[],
+  getServiceName?: (span: SpanRecord) => string | undefined,
+): ServiceGraphEdge[] {
+  const svcName = getServiceName ?? defaultServiceName;
+
+  // Build span lookup by spanId hex
+  const spanById = new Map<string, SpanRecord>();
+  for (const span of spans) {
+    spanById.set(bytesToHex(span.spanId), span);
+  }
+
+  // Find CLIENT spans that have a child SERVER span
+  const edges = new Map<string, ServiceGraphEdge>();
+  for (const span of spans) {
+    if (span.kind !== 3) continue; // CLIENT spans only
+    if (!span.parentSpanId) continue;
+
+    const source = svcName(span);
+    if (!source) continue;
+
+    // Find child SERVER spans (spans whose parentSpanId matches this span's spanId)
+    const myId = bytesToHex(span.spanId);
+    for (const candidate of spans) {
+      if (candidate.kind !== 2) continue; // SERVER only
+      if (!candidate.parentSpanId) continue;
+      if (bytesToHex(candidate.parentSpanId) !== myId) continue;
+
+      const target = svcName(candidate);
+      if (!target || target === source) continue;
+
+      const edgeKey = `${source}→${target}`;
+      let edge = edges.get(edgeKey);
+      if (!edge) {
+        edge = { source, target, callCount: 0, errorCount: 0, totalDurationNanos: 0n };
+        edges.set(edgeKey, edge);
+      }
+      edge.callCount++;
+      if (candidate.statusCode === StatusCode.ERROR) edge.errorCount++;
+      edge.totalDurationNanos += candidate.durationNanos;
+    }
+  }
+
+  return [...edges.values()];
+}
+
+function defaultServiceName(span: SpanRecord): string | undefined {
+  for (const attr of span.attributes) {
+    if (attr.key === "service.name" && typeof attr.value === "string") {
+      return attr.value;
+    }
+  }
+  return undefined;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += (bytes[i]! >> 4).toString(16) + (bytes[i]! & 0xf).toString(16);
+  }
+  return hex;
+}
+
+// ─── Trace ID Correlation ────────────────────────────────────────────
+
+/**
+ * Extract all unique trace IDs from spans as hex strings.
+ * Useful for querying o11ylogsdb by trace_id to find correlated logs.
+ */
+export function extractTraceIds(spans: readonly SpanRecord[]): string[] {
+  const seen = new Set<string>();
+  for (const span of spans) {
+    seen.add(bytesToHex(span.traceId));
+  }
+  return [...seen];
+}
+
+/**
+ * Extract all unique service names from spans.
+ * Useful for scoping metrics queries to relevant services.
+ */
+export function extractServiceNames(spans: readonly SpanRecord[]): string[] {
+  const seen = new Set<string>();
+  for (const span of spans) {
+    const name = defaultServiceName(span);
+    if (name) seen.add(name);
+  }
+  return [...seen];
+}

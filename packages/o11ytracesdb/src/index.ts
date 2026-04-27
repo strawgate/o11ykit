@@ -45,5 +45,16 @@ export { createBloomFilter, bloomMayContain, bloomToBase64, bloomFromBase64 } fr
 // Query
 export { assembleTrace, buildSpanTree, criticalPath, queryTraces, isAncestorOf, isDescendantOf, isSiblingOf, nestedSetDepth } from "./query.js";
 
+// Cross-signal correlation
+export {
+  traceTimeWindow,
+  spanTimeWindow,
+  deriveREDMetrics,
+  computeServiceGraph,
+  extractTraceIds,
+  extractServiceNames,
+} from "./correlate.js";
+export type { TimeWindow, REDMetrics, ServiceGraphEdge } from "./correlate.js";
+
 // Stream registry
 export { StreamRegistry } from "./stream.js";

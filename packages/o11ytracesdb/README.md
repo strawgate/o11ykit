@@ -1,17 +1,34 @@
 # o11ytracesdb
 
-Browser-native (also Node, Bun, Edge) traces database for OpenTelemetry
-span data. Sister to `o11ytsdb` (metrics) and `o11ylogsdb` (logs).
+> *SQLite for traces in the browser.*
 
-**Status:** functional. Core codec, ingest, query, and trace assembly
-working with 49 passing tests and comprehensive benchmarks.
+Browser-native distributed traces database for OpenTelemetry span data.
+Part of the **o11ykit** suite — browser-native databases for metrics, traces, and logs.
 
-## Goal
+| Sibling | Signal | Key Technique |
+|---------|--------|---------------|
+| [o11ytsdb](../o11ytsdb/) | Metrics | XOR-delta (Gorilla), WASM-accelerated |
+| [o11ylogsdb](../o11ylogsdb/) | Logs | Drain template extraction, FSST |
+| **o11ytracesdb** | **Traces** | **Dictionary + nested set + bloom filter** |
 
-10–40× storage efficiency vs raw OTLP/JSON (~50 B/span vs 500–2000 B).
-Zero-latency trace assembly + search + cross-signal correlation entirely
-client-side. Columnar codec with bloom filter chunk pruning, partial decode,
-and delta-of-delta timestamp compression.
+**Status:** production-ready core. 10-section columnar codec, ingest, query,
+trace assembly, structural queries — 66 passing tests, comprehensive benchmarks.
+
+## Why
+
+Today's observability UIs (Grafana, Kibana, Honeycomb) are **dumb terminals** —
+every trace lookup round-trips to a server. Clicking an exemplar on a metric
+chart triggers sequential network calls: fetch traces → fetch logs → re-render.
+Hundreds of milliseconds per interaction, no offline support.
+
+o11ytracesdb sits *after* your backend, inside the browser. It enables:
+- **Zero-latency trace assembly** — assemble from local columnar storage
+- **Instant structural queries** — O(1) ancestor/descendant via nested sets
+- **Cross-signal correlation** — share time windows with o11ytsdb/o11ylogsdb in-memory
+- **10–40× compression** — ~50 B/span vs 500–2000 B raw OTLP JSON
+
+**Not Jaeger.** No Cassandra, no ES. **Not Tempo.** No Parquet files, no object storage.
+Embedded, serverless, single-process — like SQLite, but for distributed traces.
 
 ## Architecture
 
@@ -20,6 +37,7 @@ and delta-of-delta timestamp compression.
 │              TraceStore (engine.ts)              │
 │  append() → ChunkBuilder → sealed Chunk         │
 │  flush()   iterChunks()   decodeChunk()         │
+│  WeakMap decode cache (immutable chunks)        │
 ├─────────────────────────────────────────────────┤
 │  StreamRegistry (stream.ts)                     │
 │  FNV-1a intern of (resource, scope) → StreamId  │
@@ -29,17 +47,19 @@ and delta-of-delta timestamp compression.
 │  Accumulates spans → flush → Chunk              │
 │  Zone maps: time range, hasError, spanNames     │
 │  BF8 bloom filter on trace IDs                  │
+│  Nested set computation (per-trace DFS)         │
 ├─────────────────────────────────────────────────┤
 │  ColumnarTracePolicy (codec-columnar.ts)        │
-│  9-section columnar payload:                    │
+│  10-section columnar payload:                   │
 │  [timestamps|durations|IDs|names|kind|status|   │
-│   attributes|events|links]                      │
-│  Partial decode: decodeIdsOnly() skips 7/9 sec  │
+│   attributes|events|links|nested-sets]          │
+│  Partial decode: decodeIdsOnly() skips 8/10 sec │
 ├─────────────────────────────────────────────────┤
 │  Query Engine (query.ts)                        │
 │  queryTraces() — chunk pruning → decode → match │
 │  buildSpanTree() — merged-interval self-time    │
 │  criticalPath() — greedy latest-end traversal   │
+│  isAncestorOf/isDescendantOf — O(1) nested set  │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -60,6 +80,7 @@ and delta-of-delta timestamp compression.
 | Events | Delta timestamps from span start | ~0.5 |
 | Links | Raw IDs + inline attrs | ~1.0 |
 | BF8 bloom filter | ~10 bits/trace | ~0.06 |
+| Nested set (left, right, parent) | Delta-encoded i32 | ~0.3 |
 | **Total (typical, 5 attrs)** | | **~50 B/span** |
 
 ## Performance
@@ -100,6 +121,11 @@ Benchmarks on Apple Silicon (M-series), no WASM acceleration:
 7. **Delta-of-delta** — separate DoD streams for start and end times.
    Adjacent spans in the same chunk often have very close timestamps.
 
+8. **Nested set encoding** — per-trace DFS numbering assigns (left, right,
+   parent) integers to each span at flush() time. Enables O(1) ancestor/
+   descendant/sibling checks via `isAncestorOf()`, `isDescendantOf()`,
+   `isSiblingOf()` without tree traversal.
+
 ## API
 
 ```typescript
@@ -109,6 +135,9 @@ import {
   assembleTrace,
   buildSpanTree,
   criticalPath,
+  isAncestorOf,
+  isDescendantOf,
+  isSiblingOf,
 } from "o11ytracesdb";
 
 // Ingest
@@ -130,13 +159,20 @@ const result = queryTraces(store, {
 const trace = assembleTrace(store, traceId);
 const roots = buildSpanTree(trace.spans);
 const path = criticalPath(roots);
+
+// Structural queries (O(1) via nested set encoding)
+const parent = trace.spans[0];
+const child = trace.spans[1];
+isAncestorOf(parent, child);    // true — no tree walk needed
+isDescendantOf(child, parent);  // true
+isSiblingOf(child, child2);     // true if same parent
 ```
 
 ## Roadmap
 
 | Feature | Status |
 |---------|--------|
-| Columnar codec (9 sections) | ✅ Done |
+| Columnar codec (10 sections) | ✅ Done |
 | Dictionary encoding | ✅ Done |
 | Delta-of-delta timestamps | ✅ Done |
 | BF8 bloom filter | ✅ Done |
@@ -146,7 +182,7 @@ const path = criticalPath(roots);
 | Two-phase trace assembly | ✅ Done |
 | Merged-interval self-time | ✅ Done |
 | Critical path computation | ✅ Done |
-| Nested set encoding | 🔜 Planned |
+| Nested set encoding | ✅ Done |
 | Dedicated attribute columns | 🔜 Planned |
 | WASM-accelerated codec | 🔜 Planned |
 | ZSTD compression layer | 🔜 Planned |
