@@ -360,7 +360,8 @@ export class ColumnarTracePolicy implements ChunkPolicy {
           );
         }
         if (s.parentSpanId !== undefined) {
-          nullBitmap[i >>> 3] |= 1 << (i & 7);
+          const byteIdx = i >>> 3;
+          nullBitmap[byteIdx] = (nullBitmap[byteIdx] ?? 0) | (1 << (i & 7));
         }
       }
       out.writeBytes(nullBitmap);
