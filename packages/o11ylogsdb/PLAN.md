@@ -337,26 +337,29 @@ Add FSST encode + SIMD decode to the shared workspace. Add binary fuse
 8/16 builders. Add Roaring-lite (array + bitmap container only).
 Optionally add OnPair as a body-specific codec.
 
+**Status: FSST first cut landed.** `o11y-codec-rt/fsst/` ships
+greedy encode, sequential decode, and a naive frequency-based
+symbol-table builder. Round-trip correctness verified by 16 unit
+tests. Binary fuse 8/16 and Roaring-lite are still pending.
+
 **Deliverables:**
-- `o11y-codec-rt/fsst/` — pure-Rust FSST (static symbol-table string
-  codec from the published paper). Symbol table builder, encode,
-  branch-free SIMD decode via terminator byte. The reference Rust
-  impl measures 15 KB gz / 4.93 GB/s decode in WASM unchanged; trim
-  for size as needed.
+- `o11y-codec-rt/fsst/` — pure-Rust FSST. ✅ first cut.
+  *Pending:* suffix-counting symbol selection (real paper algorithm),
+  hash-accelerated encode, branch-free SIMD decode via terminator byte.
+  Once those land, target is 15 KB gz / ~4.93 GB/s decode in WASM
+  matching the published numbers.
 - `o11y-codec-rt/binary-fuse/` — BF8 (9 bits/key, 0.39% FPR) and
-  BF16 (18 bits/key, 0.0015% FPR). Static / immutable.
+  BF16 (18 bits/key, 0.0015% FPR). Static / immutable. *Pending.*
 - `o11y-codec-rt/roaring-lite/` — minimal Roaring32 (sorted array
   container under 4096 cardinality, bitmap container ≥ 4096; no run
-  container). The published full-feature Rust crate is 11 KB gz; our
-  minimal subset re-implements smaller.
-- *(optional, on the FSST budget)* `o11y-codec-rt/onpair/` — Byte-pair
-  encoding string codec. Measured 4.49× ratio vs FSST's 1.54× on
-  free-text body fragments and 9.6 GB/s decode vs FSST's 1.5 GB/s
-  for per-row decode. Add only if real workloads emerge with
-  non-trivial free-text share.
-- TS reference implementations.
+  container). *Pending.*
+- *(optional)* `o11y-codec-rt/onpair/` — byte-pair encoding string
+  codec. Measured 4.49× ratio vs FSST's 1.54× on free-text body
+  fragments. Add only if real workloads emerge with non-trivial
+  free-text share.
+- TS reference implementations. *Pending.*
 - Cross-validation vectors against the published reference
-  implementations (FSST, xor-filter, Roaring32).
+  implementations (FSST, xor-filter, Roaring32). *Pending.*
 
 **Benchmark gate:**
 

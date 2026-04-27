@@ -1,0 +1,23 @@
+[package]
+name = "o11y-codec-rt-fsst"
+version = "0.0.1"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# FSST (Fast Static Symbol Table) string codec — Boncz, Neumann, Leis,
+# VLDB 2020. Per-table encode/decode for short string runs (variable
+# values inside log/metric chunks). Pure-Rust slice API; the WASM
+# extern "C" surface lives in each consuming engine's binding crate.
+#
+# This first cut prioritizes correctness: greedy encode, sequential
+# decode, naive k-gram-frequency-based symbol-table builder. Suffix-
+# counting selection, hash-accelerated encode, and branch-free SIMD
+# decode are follow-up optimization work.
+
+[lib]
+
+[dependencies]
+
+[lints]
+workspace = true
