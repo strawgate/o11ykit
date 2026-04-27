@@ -12,6 +12,14 @@
  * @param bitsPerElement — bits per element (default 10 for ~0.1% FPR)
  */
 export function createBloomFilter(traceIds: Uint8Array[], bitsPerElement = 10): Uint8Array {
+  const MAX_BITS_PER_ELEMENT = 32;
+  if (!Number.isFinite(bitsPerElement) || bitsPerElement <= 0) {
+    throw new RangeError(
+      `o11ytracesdb: bitsPerElement must be a positive finite number, got ${bitsPerElement}`
+    );
+  }
+  const safeBpe = Math.min(bitsPerElement, MAX_BITS_PER_ELEMENT);
+
   // Deduplicate trace IDs
   const unique = new Set<string>();
   const uniqueIds: Uint8Array[] = [];
@@ -26,7 +34,7 @@ export function createBloomFilter(traceIds: Uint8Array[], bitsPerElement = 10): 
   const nElements = uniqueIds.length;
   if (nElements === 0) return new Uint8Array(0);
 
-  const nBits = Math.max(8, nElements * bitsPerElement);
+  const nBits = Math.max(8, nElements * safeBpe);
   const nBytes = Math.ceil(nBits / 8);
   const effectiveBits = nBytes * 8; // use full byte capacity for consistency
   const filter = new Uint8Array(nBytes);

@@ -153,8 +153,8 @@ describe("aggregateTraces", () => {
       { fn: "min", field: "duration" },
       { fn: "max", field: "duration" },
     ]);
-    expect(agg.results[0]!.value).toBe(50_000_000); // B
-    expect(agg.results[1]!.value).toBe(100_000_000); // A
+    expect(agg.results[0]!.value).toBe(50_000_000n); // B
+    expect(agg.results[1]!.value).toBe(100_000_000n); // A
   });
 
   it("sum(spanCount)", () => {
@@ -169,8 +169,8 @@ describe("aggregateTraces", () => {
       { fn: "p99", field: "duration" },
     ]);
     // With only 2 values, p50 = min, p90/p99 = max
-    expect(agg.results[0]!.value).toBe(50_000_000);
-    expect(agg.results[2]!.value).toBe(100_000_000);
+    expect(agg.results[0]!.value).toBe(50_000_000n);
+    expect(agg.results[2]!.value).toBe(100_000_000n);
   });
 
   it("multiple aggregations at once", () => {

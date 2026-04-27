@@ -207,7 +207,7 @@ export class ChunkBuilder {
  * nestedSetParent populated. Orphan spans (parent not in chunk) are treated
  * as additional roots.
  */
-function computeNestedSets(spans: SpanRecord[]): void {
+export function computeNestedSets(spans: SpanRecord[]): void {
   // Group by trace ID (using hex string key)
   const byTrace = new Map<string, SpanRecord[]>();
   for (const span of spans) {

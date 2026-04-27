@@ -94,11 +94,11 @@ export function renderWaterfall(canvas, trace, opts = {}) {
 
   // Canvas sizing
   const dpr = window.devicePixelRatio || 1;
-  let canvasWidth = canvas.parentElement.clientWidth || 800;
+  let canvasWidth = canvas.parentElement?.clientWidth || 800;
   const canvasHeight = displaySpans.length * ROW_HEIGHT + PADDING * 2;
 
   function sizeCanvas() {
-    canvasWidth = canvas.parentElement.clientWidth || 800;
+    canvasWidth = canvas.parentElement?.clientWidth || 800;
     canvas.width = canvasWidth * dpr;
     canvas.height = canvasHeight * dpr;
     canvas.style.width = `${canvasWidth}px`;
@@ -170,7 +170,10 @@ export function renderWaterfall(canvas, trace, opts = {}) {
 
       // Bar
       const spanStart = Number(span.startTimeUnixNano - traceStart);
-      const spanDur = Number(span.durationNanos || span.endTimeUnixNano - span.startTimeUnixNano);
+      const spanDurNanos = span.durationNanos != null
+        ? span.durationNanos
+        : (span.endTimeUnixNano - span.startTimeUnixNano);
+      const spanDur = Number(spanDurNanos);
       const barX = LABEL_WIDTH + PADDING + (spanStart / totalDuration) * barAreaWidth;
       const barW = Math.max(2, (spanDur / totalDuration) * barAreaWidth);
       const barY = y + (ROW_HEIGHT - BAR_HEIGHT) / 2;
@@ -185,7 +188,7 @@ export function renderWaterfall(canvas, trace, opts = {}) {
         ctx.font = `${FONT_SIZE - 1}px "IBM Plex Mono", monospace`;
         ctx.fillStyle = "#fff";
         ctx.textAlign = "left";
-        ctx.fillText(formatDurationNs(span.durationNanos), barX + 4, barY + BAR_HEIGHT - 3);
+        ctx.fillText(formatDurationNs(spanDur), barX + 4, barY + BAR_HEIGHT - 3);
       }
     }
   }

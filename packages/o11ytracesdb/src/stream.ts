@@ -99,6 +99,12 @@ export class StreamRegistry {
         if (bucket.length === 0) this.byHash.delete(h);
       }
       // byResourceRef is a WeakMap — entries are GC'd when Resource is no longer referenced
+      // Also explicitly clean up the scope entry to avoid stale lookups while Resource is live
+      const scopeMap = this.byResourceRef.get(e.resource);
+      if (scopeMap) {
+        scopeMap.delete(e.scope);
+        if (scopeMap.size === 0) this.byResourceRef.delete(e.resource);
+      }
     }
   }
 

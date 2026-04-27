@@ -193,6 +193,11 @@ export class ByteReader {
   }
 
   readBytes(n: number): Uint8Array {
+    if (this.pos + n > this.buf.length) {
+      throw new RangeError(
+        `o11ytracesdb: truncated read: need ${n} bytes at offset ${this.pos}, buffer length ${this.buf.length}`
+      );
+    }
     const slice = this.buf.subarray(this.pos, this.pos + n);
     this.pos += n;
     return slice;
@@ -459,6 +464,16 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       for (const s of spans) {
         out.writeUvarint(s.links.length);
         for (const link of s.links) {
+          if (link.traceId.length !== 16) {
+            throw new RangeError(
+              `o11ytracesdb: link traceId must be 16 bytes, got ${link.traceId.length}`
+            );
+          }
+          if (link.spanId.length !== 8) {
+            throw new RangeError(
+              `o11ytracesdb: link spanId must be 8 bytes, got ${link.spanId.length}`
+            );
+          }
           out.writeBytes(link.traceId);
           out.writeBytes(link.spanId);
           out.writeUvarint(link.attributes.length);

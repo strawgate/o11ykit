@@ -252,7 +252,7 @@ export function computeServiceGraph(
   return [...edges.values()];
 }
 
-function defaultServiceName(span: SpanRecord, resource?: Resource): string | undefined {
+export function defaultServiceName(span: SpanRecord, resource?: Resource): string | undefined {
   // In OTLP, service.name is a resource attribute — check resource first
   if (resource) {
     for (const attr of resource.attributes) {
@@ -305,4 +305,22 @@ export function extractServiceNames(spans: readonly SpanRecord[]): string[] {
     if (name) seen.add(name);
   }
   return [...seen];
+}
+
+/**
+ * Creates a service name extractor that uses resource attributes first,
+ * then falls back to span attributes. Use this with computeServiceGraph
+ * and extractServiceNames when you have access to a resource-to-span mapping.
+ *
+ * @example
+ * const spanResources = new Map(spans.map(s => [s, resource]));
+ * computeServiceGraph(spans, makeResourceAwareExtractor(spanResources));
+ */
+export function makeResourceAwareExtractor(
+  spanToResource: Map<SpanRecord, Resource>
+): (span: SpanRecord) => string | undefined {
+  return (span: SpanRecord) => {
+    const resource = spanToResource.get(span);
+    return defaultServiceName(span, resource);
+  };
 }

@@ -13,6 +13,7 @@
 
 import { bloomFromBase64, bloomMayContain } from "./bloom.js";
 import type { Chunk } from "./chunk.js";
+import { computeNestedSets } from "./chunk.js";
 import type { TraceStore } from "./engine.js";
 import type {
   AnyValue,
@@ -31,6 +32,16 @@ import type {
 
 /** Side-channel regex cache so AttributePredicate stays a clean public type. */
 const regexCache = new WeakMap<AttributePredicate, RegExp>();
+
+/** Basic ReDoS guard: reject patterns with nested quantifiers or catastrophic backtracking constructs. */
+function isSafePattern(pattern: string): boolean {
+  if (pattern.length > 1000) return false;
+  // Reject nested quantifiers: (x+)+ (x*)* (x+)* etc.
+  if (/\([^)]*[+*][^)]*\)[+*?]/.test(pattern)) return false;
+  // Reject excessive alternations that could cause exponential backtracking
+  if (/(\|[^|]{0,20}){10,}/.test(pattern)) return false;
+  return true;
+}
 
 // ─── Hex lookup table (pre-computed for 0-255) ──────────────────────
 
@@ -293,6 +304,11 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
       spans,
       durationNanos: maxEnd - minStart,
     });
+  }
+
+  // Fix cross-chunk nested set coordinates before evaluating structural predicates
+  for (const trace of traces) {
+    computeNestedSets(trace.spans);
   }
 
   // Phase 3: Apply trace-level filters
@@ -621,7 +637,7 @@ function matchesAttributePredicate(span: SpanRecord, pred: AttributePredicate): 
 
     case "regex": {
       if (typeof attrVal !== "string" || typeof pred.value !== "string") return false;
-      if (pred.value.length > 1000) return false;
+      if (!isSafePattern(pred.value)) return false;
       try {
         let re = regexCache.get(pred);
         if (!re) {

@@ -108,6 +108,7 @@ export class TraceStore {
    * This is the primary ingest path — mirrors OTLP batch structure.
    */
   append(resource: Resource, scope: InstrumentationScope, spans: readonly SpanRecord[]): void {
+    if (spans.length === 0) return;
     const streamId = this.registry.intern(resource, scope);
     let builder = this.builders.get(streamId);
     if (!builder) {

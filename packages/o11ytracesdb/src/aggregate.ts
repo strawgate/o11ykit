@@ -22,12 +22,12 @@ export interface AggregationResult {
    * Computed value.
    *
    * Units depend on the field:
-   * - `duration` / `durationNanos`: value is in **nanoseconds** (number).
+   * - `duration` / `durationNanos`: value is in **nanoseconds** (bigint for duration fields, number otherwise).
    * - `startTime`: value is in **milliseconds** (Unix epoch ms) to avoid
    *   BigInt→Number precision loss for nanosecond timestamps.
    * - Attribute fields: value is the raw numeric attribute value.
    */
-  value: number;
+  value: number | bigint;
   /** Number of input values (some may have been skipped if field was missing). */
   count: number;
 }
@@ -59,11 +59,11 @@ function isTrace(item: Trace | SpanRecord): item is Trace {
 }
 
 /** Extract a numeric value from a trace or span by field name. */
-function extractNumber(item: Trace | SpanRecord, field: string): number | null {
+function extractNumber(item: Trace | SpanRecord, field: string): number | bigint | null {
   if (isTrace(item)) {
     switch (field) {
       case "duration":
-        return Number(item.durationNanos);
+        return item.durationNanos; // keep as bigint
       case "spanCount":
         return item.spans.length;
       default:
@@ -74,7 +74,7 @@ function extractNumber(item: Trace | SpanRecord, field: string): number | null {
   const span = item as SpanRecord;
   switch (field) {
     case "duration":
-      return Number(span.durationNanos);
+      return span.durationNanos; // keep as bigint
     case "startTime":
       // Convert nanosecond BigInt to milliseconds before Number() to stay
       // within Number.MAX_SAFE_INTEGER (~9×10¹⁵). Nanosecond timestamps
@@ -85,7 +85,7 @@ function extractNumber(item: Trace | SpanRecord, field: string): number | null {
       const key = field.startsWith("span.") ? field.slice(5) : field;
       const attr = span.attributes.find((a: KeyValue) => a.key === key);
       if (attr !== undefined && typeof attr.value === "number") return attr.value;
-      if (attr !== undefined && typeof attr.value === "bigint") return Number(attr.value);
+      if (attr !== undefined && typeof attr.value === "bigint") return attr.value; // keep as bigint
       return null;
     }
   }
@@ -128,44 +128,77 @@ function extractGroupKey(item: Trace | SpanRecord, field: string): string {
 
 // ─── Core aggregation functions ──────────────────────────────────────
 
-function computeAvg(values: number[]): number {
+function computeAvg(values: (number | bigint)[]): number {
   if (values.length === 0) return 0;
   let sum = 0;
-  for (const v of values) sum += v;
+  for (const v of values) sum += Number(v);
   return sum / values.length;
 }
 
-function computeMin(values: number[]): number {
+function computeMin(values: (number | bigint)[]): number | bigint {
   if (values.length === 0) return 0;
-  let min = values[0] ?? 0;
+  const first = values[0] ?? 0;
+  if (typeof first === "bigint") {
+    let min = first;
+    for (let i = 1; i < values.length; i++) {
+      const v = values[i];
+      if (typeof v === "bigint" && v < min) min = v;
+    }
+    return min;
+  }
+  let min = first as number;
   for (let i = 1; i < values.length; i++) {
     const v = values[i];
-    if (v !== undefined && v < min) min = v;
+    if (typeof v === "number" && v < min) min = v;
   }
   return min;
 }
 
-function computeMax(values: number[]): number {
+function computeMax(values: (number | bigint)[]): number | bigint {
   if (values.length === 0) return 0;
-  let max = values[0] ?? 0;
+  const first = values[0] ?? 0;
+  if (typeof first === "bigint") {
+    let max = first;
+    for (let i = 1; i < values.length; i++) {
+      const v = values[i];
+      if (typeof v === "bigint" && v > max) max = v;
+    }
+    return max;
+  }
+  let max = first as number;
   for (let i = 1; i < values.length; i++) {
     const v = values[i];
-    if (v !== undefined && v > max) max = v;
+    if (typeof v === "number" && v > max) max = v;
   }
   return max;
 }
 
-function computeSum(values: number[]): number {
+function computeSum(values: (number | bigint)[]): number | bigint {
+  if (values.length === 0) return 0;
+  const first = values[0];
+  if (typeof first === "bigint") {
+    let sum = 0n;
+    for (const v of values) {
+      if (typeof v === "bigint") sum += v;
+    }
+    return sum;
+  }
   let sum = 0;
-  for (const v of values) sum += v;
+  for (const v of values) sum += Number(v);
   return sum;
 }
 
-function computePercentile(values: number[], p: number): number {
+function computePercentile(values: (number | bigint)[], p: number): number | bigint {
   if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
+  const first = values[0];
+  if (typeof first === "bigint") {
+    const sorted = [...values].sort((a, b) => Number(a) - Number(b));
+    const idx = Math.ceil((p / 100) * sorted.length) - 1;
+    return (sorted[Math.max(0, idx)] as bigint) ?? 0n;
+  }
+  const sorted = [...values].sort((a, b) => Number(a) - Number(b));
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
-  return sorted[Math.max(0, idx)] ?? 0;
+  return (sorted[Math.max(0, idx)] as number) ?? 0;
 }
 
 // ─── Aggregation specs ───────────────────────────────────────────────
@@ -248,13 +281,13 @@ function aggregateFlat(
     }
 
     const field = spec.field ?? "duration";
-    const values: number[] = [];
+    const values: (number | bigint)[] = [];
     for (const item of items) {
       const v = extractNumber(item, field);
       if (v !== null) values.push(v);
     }
 
-    let value: number;
+    let value: number | bigint;
     switch (spec.fn) {
       case "avg":
         value = computeAvg(values);
@@ -301,7 +334,7 @@ function aggregateGrouped(
     for (const field of groupBy) {
       keyParts.push(extractGroupKey(item, field));
     }
-    const key = keyParts.join("\0");
+    const key = JSON.stringify(keyParts);
     let group = groupMap.get(key);
     if (!group) {
       group = [];
@@ -313,7 +346,7 @@ function aggregateGrouped(
   // Aggregate each group
   const groups: AggregationGroup[] = [];
   for (const [key, groupItems] of groupMap) {
-    const keyParts = key.split("\0");
+    const keyParts = JSON.parse(key) as string[];
     const groupKey: Record<string, string> = {};
     for (let i = 0; i < groupBy.length; i++) {
       const gk = groupBy[i];
