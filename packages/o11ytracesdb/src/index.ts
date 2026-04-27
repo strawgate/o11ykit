@@ -20,14 +20,13 @@ export type {
   SpanLink,
   SpanNode,
   SpanRecord,
-  StatusCode,
   StreamId,
   StreamKey,
   Trace,
   TraceQueryOpts,
   TraceQueryResult,
 } from "./types.js";
-export { SpanKind, StatusCode as StatusCodeEnum } from "./types.js";
+export { SpanKind, StatusCode } from "./types.js";
 
 // Engine
 export { TraceStore } from "./engine.js";

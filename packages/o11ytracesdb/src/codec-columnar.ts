@@ -15,24 +15,21 @@
  *
  * Sections are length-prefixed so the decoder can seek to any section
  * for partial decode (e.g. decode only IDs for trace assembly).
- *
- * Compression strategy per column type:
- * - Timestamps: delta-of-delta (spans within a chunk arrive ~monotonically)
- * - Durations: zigzag-varint (cluster by operation → small deltas when sorted)
- * - IDs: raw bytes (incompressible random data; BF8 filter in header for lookup)
- * - Names: dictionary → u16 index (typically 10-100 distinct per chunk)
- * - Kind/Status: raw u8 (5 and 3 possible values respectively)
- * - Attributes: key dictionary + typed value columns
  */
 
 import type { ChunkPolicy } from "./chunk.js";
 import type { AnyValue, KeyValue, SpanEvent, SpanLink, SpanRecord, StatusCode } from "./types.js";
 
+// ─── Shared text codec singletons (avoid per-call allocation) ────────
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
 // ─── ByteBuf — growable write buffer ─────────────────────────────────
 
-class ByteBuf {
-  private buf: Uint8Array;
-  private view: DataView;
+export class ByteBuf {
+  buf: Uint8Array;
+  view: DataView;
   pos = 0;
 
   constructor(initialCapacity = 4096) {
@@ -40,7 +37,6 @@ class ByteBuf {
     this.view = new DataView(this.buf.buffer);
   }
 
-  /** Ensure capacity for `needed` more bytes. */
   ensure(needed: number): void {
     if (this.pos + needed <= this.buf.length) return;
     let newCap = this.buf.length * 2;
@@ -49,12 +45,6 @@ class ByteBuf {
     next.set(this.buf);
     this.buf = next;
     this.view = new DataView(this.buf.buffer);
-  }
-
-  writeFloat64(v: number): void {
-    this.ensure(8);
-    this.view.setFloat64(this.pos, v, true);
-    this.pos += 8;
   }
 
   writeU8(v: number): void {
@@ -74,9 +64,15 @@ class ByteBuf {
     this.pos += 4;
   }
 
+  writeFloat64(v: number): void {
+    this.ensure(8);
+    this.view.setFloat64(this.pos, v, true);
+    this.pos += 8;
+  }
+
   writeVarint(value: bigint): void {
     // ZigZag encode then unsigned varint
-    const zigzag = value < 0n ? ((-value) * 2n - 1n) : (value * 2n);
+    const zigzag = value < 0n ? (-value * 2n - 1n) : (value * 2n);
     let v = zigzag;
     do {
       this.ensure(1);
@@ -105,12 +101,24 @@ class ByteBuf {
   }
 
   writeString(s: string): void {
-    const encoded = new TextEncoder().encode(s);
+    const encoded = textEncoder.encode(s);
     this.writeUvarint(encoded.length);
     this.writeBytes(encoded);
   }
 
-  /** Write a section: u32 length prefix + content. Returns byte array of content. */
+  /** Reserve space for a u32 section length, return the offset to backpatch. */
+  reserveSectionLength(): number {
+    const offset = this.pos;
+    this.writeU32(0); // placeholder
+    return offset;
+  }
+
+  /** Backpatch a section length at the given offset. */
+  patchSectionLength(offset: number): void {
+    const len = this.pos - offset - 4;
+    this.view.setUint32(offset, len, true);
+  }
+
   finish(): Uint8Array {
     return this.buf.subarray(0, this.pos);
   }
@@ -118,7 +126,7 @@ class ByteBuf {
 
 // ─── ByteReader — sequential reader ──────────────────────────────────
 
-class ByteReader {
+export class ByteReader {
   private view: DataView;
   pos = 0;
 
@@ -139,6 +147,12 @@ class ByteReader {
   readU32(): number {
     const v = this.view.getUint32(this.pos, true);
     this.pos += 4;
+    return v;
+  }
+
+  readFloat64(): number {
+    const v = this.view.getFloat64(this.pos, true);
+    this.pos += 8;
     return v;
   }
 
@@ -176,29 +190,72 @@ class ByteReader {
   readString(): string {
     const len = this.readUvarint();
     const bytes = this.readBytes(len);
-    return new TextDecoder().decode(bytes);
+    return textDecoder.decode(bytes);
   }
 
+  /** Read a length-prefixed section, return a sub-reader over it. */
   readSection(): Uint8Array {
     const len = this.readU32();
     return this.readBytes(len);
   }
+}
 
-  get remaining(): number {
-    return this.buf.length - this.pos;
-  }
+// ─── Dictionary builder ──────────────────────────────────────────────
+
+interface DictWithIndex {
+  dict: string[];
+  index: Map<string, number>;
+}
+
+function buildDictWithIndex(values: Iterable<string>): DictWithIndex {
+  const counts = new Map<string, number>();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  const dict = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1]) // most frequent first
+    .map(([value]) => value);
+  const index = new Map<string, number>();
+  for (let i = 0; i < dict.length; i++) index.set(dict[i]!, i);
+  return { dict, index };
+}
+
+// Collect attribute keys/values without intermediate array allocations
+function collectAttrKeys(spans: readonly SpanRecord[]): Iterable<string> {
+  return {
+    *[Symbol.iterator]() {
+      for (const s of spans)
+        for (const a of s.attributes)
+          yield a.key;
+    },
+  };
+}
+
+function collectAttrStringVals(spans: readonly SpanRecord[]): Iterable<string> {
+  return {
+    *[Symbol.iterator]() {
+      for (const s of spans)
+        for (const a of s.attributes)
+          if (typeof a.value === "string" && a.value.length < 256)
+            yield a.value;
+    },
+  };
+}
+
+function collectStatusMsgs(spans: readonly SpanRecord[]): Iterable<string> {
+  return {
+    *[Symbol.iterator]() {
+      for (const s of spans)
+        if (s.statusMessage !== undefined)
+          yield s.statusMessage;
+    },
+  };
 }
 
 // ─── Columnar Codec Implementation ──────────────────────────────────
 
 interface ColumnarMeta {
-  /** String dictionary for span names. */
   nameDict: string[];
-  /** String dictionary for attribute keys. */
   keyDict: string[];
-  /** String dictionary for attribute string values (low-cardinality). */
   valDict: string[];
-  /** String dictionary for status messages. */
   msgDict: string[];
 }
 
@@ -209,23 +266,18 @@ export class ColumnarTracePolicy implements ChunkPolicy {
 
   encodePayload(spans: readonly SpanRecord[]): { payload: Uint8Array; meta?: unknown } {
     const n = spans.length;
-    const out = new ByteBuf(n * 60); // estimate ~60 B/span
+    // Single output buffer — sections written inline with length backpatching
+    const out = new ByteBuf(n * 60);
 
-    // Build dictionaries
-    const nameDict = buildDict(spans.map((s) => s.name));
-    const keyDict = buildDict(spans.flatMap((s) => s.attributes.map((a) => a.key)));
-    const valDict = buildDict(
-      spans
-        .flatMap((s) => s.attributes.filter((a) => typeof a.value === "string").map((a) => a.value as string))
-        .filter((v) => v.length < 256), // only dict-encode short strings
-    );
-    const msgDict = buildDict(
-      spans.map((s) => s.statusMessage).filter((m): m is string => m !== undefined),
-    );
+    // Build dictionaries with O(1) index maps
+    const names = buildDictWithIndex(spans.map((s) => s.name));
+    const keys = buildDictWithIndex(collectAttrKeys(spans));
+    const vals = buildDictWithIndex(collectAttrStringVals(spans));
+    const msgs = buildDictWithIndex(collectStatusMsgs(spans));
 
     // Section 0: Timestamps (delta-of-delta startTime + delta-of-delta endTime)
-    const tsSection = new ByteBuf(n * 4);
     {
+      const off = out.reserveSectionLength();
       let prevStart = 0n;
       let prevStartDelta = 0n;
       let prevEnd = 0n;
@@ -233,144 +285,137 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       for (const s of spans) {
         const startDelta = s.startTimeUnixNano - prevStart;
         const startDoD = startDelta - prevStartDelta;
-        tsSection.writeVarint(startDoD);
+        out.writeVarint(startDoD);
         prevStartDelta = startDelta;
         prevStart = s.startTimeUnixNano;
 
         const endDelta = s.endTimeUnixNano - prevEnd;
         const endDoD = endDelta - prevEndDelta;
-        tsSection.writeVarint(endDoD);
+        out.writeVarint(endDoD);
         prevEndDelta = endDelta;
         prevEnd = s.endTimeUnixNano;
       }
+      out.patchSectionLength(off);
     }
-    const tsBytes = tsSection.finish();
-    out.writeU32(tsBytes.length);
-    out.writeBytes(tsBytes);
 
     // Section 1: Durations (zigzag-varint)
-    const durSection = new ByteBuf(n * 3);
-    for (const s of spans) {
-      durSection.writeVarint(s.durationNanos);
+    {
+      const off = out.reserveSectionLength();
+      for (const s of spans) out.writeVarint(s.durationNanos);
+      out.patchSectionLength(off);
     }
-    const durBytes = durSection.finish();
-    out.writeU32(durBytes.length);
-    out.writeBytes(durBytes);
 
-    // Section 2: IDs (raw: traceId×16, spanId×8, parentSpanId×8 + null bitmap)
-    const idSection = new ByteBuf(n * 33);
-    // Null bitmap for parentSpanId (1 bit per span, packed)
-    const nullBitmapLen = Math.ceil(n / 8);
-    const nullBitmap = new Uint8Array(nullBitmapLen);
-    for (let i = 0; i < n; i++) {
-      if (spans[i]!.parentSpanId !== undefined) {
-        nullBitmap[i >>> 3]! |= 1 << (i & 7);
+    // Section 2: IDs (null bitmap + traceId×16 + spanId×8 + parentSpanId×8)
+    {
+      const off = out.reserveSectionLength();
+      const nullBitmapLen = Math.ceil(n / 8);
+      const nullBitmap = new Uint8Array(nullBitmapLen);
+      for (let i = 0; i < n; i++) {
+        if (spans[i]!.parentSpanId !== undefined) {
+          nullBitmap[i >>> 3]! |= 1 << (i & 7);
+        }
       }
-    }
-    idSection.writeBytes(nullBitmap);
-    // trace_ids contiguous
-    for (const s of spans) idSection.writeBytes(s.traceId);
-    // span_ids contiguous
-    for (const s of spans) idSection.writeBytes(s.spanId);
-    // parent_span_ids (only for non-null entries)
-    for (const s of spans) {
-      if (s.parentSpanId !== undefined) {
-        idSection.writeBytes(s.parentSpanId);
+      out.writeBytes(nullBitmap);
+      for (const s of spans) out.writeBytes(s.traceId);
+      for (const s of spans) out.writeBytes(s.spanId);
+      for (const s of spans) {
+        if (s.parentSpanId !== undefined) out.writeBytes(s.parentSpanId);
       }
+      out.patchSectionLength(off);
     }
-    const idBytes = idSection.finish();
-    out.writeU32(idBytes.length);
-    out.writeBytes(idBytes);
 
-    // Section 3: Span names (dictionary indices as u16)
-    const nameSection = new ByteBuf(n * 2 + 256);
-    nameSection.writeUvarint(nameDict.length);
-    for (const name of nameDict) nameSection.writeString(name);
-    for (const s of spans) {
-      nameSection.writeU16(nameDict.indexOf(s.name));
+    // Section 3: Span names (dictionary + u16 indices)
+    {
+      const off = out.reserveSectionLength();
+      out.writeUvarint(names.dict.length);
+      for (const name of names.dict) out.writeString(name);
+      for (const s of spans) out.writeU16(names.index.get(s.name)!);
+      out.patchSectionLength(off);
     }
-    const nameBytes = nameSection.finish();
-    out.writeU32(nameBytes.length);
-    out.writeBytes(nameBytes);
 
     // Section 4: Kind (u8 per span)
-    const kindSection = new ByteBuf(n);
-    for (const s of spans) kindSection.writeU8(s.kind);
-    const kindBytes = kindSection.finish();
-    out.writeU32(kindBytes.length);
-    out.writeBytes(kindBytes);
+    {
+      const off = out.reserveSectionLength();
+      for (const s of spans) out.writeU8(s.kind);
+      out.patchSectionLength(off);
+    }
 
     // Section 5: Status (u8 code + optional message via dict index)
-    const statusSection = new ByteBuf(n * 2 + 128);
-    statusSection.writeUvarint(msgDict.length);
-    for (const msg of msgDict) statusSection.writeString(msg);
-    for (const s of spans) {
-      statusSection.writeU8(s.statusCode);
-      if (s.statusMessage !== undefined) {
-        const idx = msgDict.indexOf(s.statusMessage);
-        statusSection.writeU16(idx === -1 ? 0xffff : idx);
-      } else {
-        statusSection.writeU16(0xffff); // sentinel for no message
+    {
+      const off = out.reserveSectionLength();
+      out.writeUvarint(msgs.dict.length);
+      for (const msg of msgs.dict) out.writeString(msg);
+      for (const s of spans) {
+        out.writeU8(s.statusCode);
+        if (s.statusMessage !== undefined) {
+          const idx = msgs.index.get(s.statusMessage);
+          out.writeU16(idx !== undefined ? idx : 0xffff);
+        } else {
+          out.writeU16(0xffff);
+        }
       }
+      out.patchSectionLength(off);
     }
-    const statusBytes = statusSection.finish();
-    out.writeU32(statusBytes.length);
-    out.writeBytes(statusBytes);
 
-    // Section 6: Attributes (key dict + per-span attribute data)
-    const attrSection = new ByteBuf(n * 20);
-    attrSection.writeUvarint(keyDict.length);
-    for (const key of keyDict) attrSection.writeString(key);
-    attrSection.writeUvarint(valDict.length);
-    for (const val of valDict) attrSection.writeString(val);
-    for (const s of spans) {
-      attrSection.writeUvarint(s.attributes.length);
-      for (const attr of s.attributes) {
-        attrSection.writeU16(keyDict.indexOf(attr.key));
-        encodeAnyValue(attrSection, attr.value, valDict);
+    // Section 6: Attributes (key dict + value dict + per-span data)
+    {
+      const off = out.reserveSectionLength();
+      out.writeUvarint(keys.dict.length);
+      for (const key of keys.dict) out.writeString(key);
+      out.writeUvarint(vals.dict.length);
+      for (const val of vals.dict) out.writeString(val);
+      for (const s of spans) {
+        out.writeUvarint(s.attributes.length);
+        for (const attr of s.attributes) {
+          out.writeU16(keys.index.get(attr.key)!);
+          encodeAnyValue(out, attr.value, vals.index);
+        }
       }
+      out.patchSectionLength(off);
     }
-    const attrBytes = attrSection.finish();
-    out.writeU32(attrBytes.length);
-    out.writeBytes(attrBytes);
 
     // Section 7: Events (per-span event count + encoded events)
-    const evtSection = new ByteBuf(256);
-    for (const s of spans) {
-      evtSection.writeUvarint(s.events.length);
-      for (const evt of s.events) {
-        evtSection.writeVarint(evt.timeUnixNano);
-        evtSection.writeString(evt.name);
-        evtSection.writeUvarint(evt.attributes.length);
-        for (const attr of evt.attributes) {
-          evtSection.writeString(attr.key);
-          encodeAnyValue(evtSection, attr.value, valDict);
+    {
+      const off = out.reserveSectionLength();
+      for (const s of spans) {
+        out.writeUvarint(s.events.length);
+        for (const evt of s.events) {
+          out.writeVarint(evt.timeUnixNano);
+          out.writeString(evt.name);
+          out.writeUvarint(evt.attributes.length);
+          for (const attr of evt.attributes) {
+            out.writeString(attr.key);
+            encodeAnyValue(out, attr.value, vals.index);
+          }
         }
       }
+      out.patchSectionLength(off);
     }
-    const evtBytes = evtSection.finish();
-    out.writeU32(evtBytes.length);
-    out.writeBytes(evtBytes);
 
     // Section 8: Links (per-span link count + encoded links)
-    const linkSection = new ByteBuf(64);
-    for (const s of spans) {
-      linkSection.writeUvarint(s.links.length);
-      for (const link of s.links) {
-        linkSection.writeBytes(link.traceId);
-        linkSection.writeBytes(link.spanId);
-        linkSection.writeUvarint(link.attributes.length);
-        for (const attr of link.attributes) {
-          linkSection.writeString(attr.key);
-          encodeAnyValue(linkSection, attr.value, valDict);
+    {
+      const off = out.reserveSectionLength();
+      for (const s of spans) {
+        out.writeUvarint(s.links.length);
+        for (const link of s.links) {
+          out.writeBytes(link.traceId);
+          out.writeBytes(link.spanId);
+          out.writeUvarint(link.attributes.length);
+          for (const attr of link.attributes) {
+            out.writeString(attr.key);
+            encodeAnyValue(out, attr.value, vals.index);
+          }
         }
       }
+      out.patchSectionLength(off);
     }
-    const linkBytes = linkSection.finish();
-    out.writeU32(linkBytes.length);
-    out.writeBytes(linkBytes);
 
-    const meta: ColumnarMeta = { nameDict, keyDict, valDict, msgDict };
+    const meta: ColumnarMeta = {
+      nameDict: names.dict,
+      keyDict: keys.dict,
+      valDict: vals.dict,
+      msgDict: msgs.dict,
+    };
     return { payload: out.finish(), meta };
   }
 
@@ -426,13 +471,13 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       }
     }
 
-    // Section 3: Names
+    // Section 3: Names (uses header-level nameDict for decode)
     const nameSection = new ByteReader(reader.readSection());
     const dictLen = nameSection.readUvarint();
     const localNameDict: string[] = new Array(dictLen);
     for (let i = 0; i < dictLen; i++) localNameDict[i] = nameSection.readString();
-    const names: string[] = new Array(n);
-    for (let i = 0; i < n; i++) names[i] = localNameDict[nameSection.readU16()]!;
+    const nameIndices: string[] = new Array(n);
+    for (let i = 0; i < n; i++) nameIndices[i] = localNameDict[nameSection.readU16()]!;
 
     // Section 4: Kind
     const kindSection = new ByteReader(reader.readSection());
@@ -522,7 +567,7 @@ export class ColumnarTracePolicy implements ChunkPolicy {
         traceId: traceIds[i]!,
         spanId: spanIds[i]!,
         ...(parentId !== undefined ? { parentSpanId: parentId } : {}),
-        name: names[i]!,
+        name: nameIndices[i]!,
         kind: kinds[i]! as SpanRecord["kind"],
         startTimeUnixNano: startTimes[i]!,
         endTimeUnixNano: endTimes[i]!,
@@ -543,8 +588,8 @@ export class ColumnarTracePolicy implements ChunkPolicy {
 
 const enum ValueTag {
   NULL = 0,
-  STRING_DICT = 1, // index into value dictionary
-  STRING_RAW = 2,  // inline length-prefixed string
+  STRING_DICT = 1,
+  STRING_RAW = 2,
   INT = 3,
   DOUBLE = 4,
   BOOL_TRUE = 5,
@@ -554,12 +599,12 @@ const enum ValueTag {
   MAP = 9,
 }
 
-function encodeAnyValue(buf: ByteBuf, value: AnyValue, valDict: string[]): void {
+function encodeAnyValue(buf: ByteBuf, value: AnyValue, valIndex: Map<string, number>): void {
   if (value === null) {
     buf.writeU8(ValueTag.NULL);
   } else if (typeof value === "string") {
-    const dictIdx = valDict.indexOf(value);
-    if (dictIdx !== -1) {
+    const dictIdx = valIndex.get(value);
+    if (dictIdx !== undefined) {
       buf.writeU8(ValueTag.STRING_DICT);
       buf.writeU16(dictIdx);
     } else {
@@ -581,14 +626,14 @@ function encodeAnyValue(buf: ByteBuf, value: AnyValue, valDict: string[]): void 
   } else if (Array.isArray(value)) {
     buf.writeU8(ValueTag.ARRAY);
     buf.writeUvarint(value.length);
-    for (const item of value) encodeAnyValue(buf, item, valDict);
+    for (const item of value) encodeAnyValue(buf, item, valIndex);
   } else {
     buf.writeU8(ValueTag.MAP);
     const entries = Object.entries(value);
     buf.writeUvarint(entries.length);
     for (const [k, v] of entries) {
       buf.writeString(k);
-      encodeAnyValue(buf, v as AnyValue, valDict);
+      encodeAnyValue(buf, v as AnyValue, valIndex);
     }
   }
 }
@@ -604,12 +649,8 @@ function decodeAnyValue(reader: ByteReader, valDict: string[]): AnyValue {
       return reader.readString();
     case ValueTag.INT:
       return reader.readVarint();
-    case ValueTag.DOUBLE: {
-      const view = new DataView(reader["buf"].buffer, reader["buf"].byteOffset, reader["buf"].byteLength);
-      const v = view.getFloat64(reader.pos, true);
-      reader.pos += 8;
-      return v;
-    }
+    case ValueTag.DOUBLE:
+      return reader.readFloat64();
     case ValueTag.BOOL_TRUE:
       return true;
     case ValueTag.BOOL_FALSE:
@@ -636,15 +677,4 @@ function decodeAnyValue(reader: ByteReader, valDict: string[]): AnyValue {
     default:
       throw new Error(`o11ytracesdb: unknown value tag ${tag}`);
   }
-}
-
-// ─── Dictionary builder ──────────────────────────────────────────────
-
-function buildDict(values: string[]): string[] {
-  const counts = new Map<string, number>();
-  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
-  // Include all distinct values, sorted by frequency (most frequent first)
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([value]) => value);
 }

@@ -9,11 +9,9 @@
  * - Time-range zone maps (skip chunks outside query window)
  * - Span name dictionary (skip chunks without matching operation)
  * - Error flag (skip chunks without errors when filtering for errors)
- * - Future: BF8 bloom filter on trace_id for point lookups
  */
 
-import type { Chunk, ChunkPolicy } from "./chunk.js";
-import { ColumnarTracePolicy } from "./codec-columnar.js";
+import type { Chunk } from "./chunk.js";
 import type { TraceStore } from "./engine.js";
 import type {
   AnyValue,
@@ -26,16 +24,35 @@ import type {
   TraceQueryResult,
 } from "./types.js";
 
+// ─── Hex lookup table (pre-computed for 0-255) ──────────────────────
+
+const HEX_LUT: string[] = new Array(256);
+for (let i = 0; i < 256; i++) HEX_LUT[i] = i.toString(16).padStart(2, "0");
+
+function hexFromBytes(bytes: Uint8Array): string {
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) hex += HEX_LUT[bytes[i]!]!;
+  return hex;
+}
+
 // ─── Query execution ─────────────────────────────────────────────────
 
+/**
+ * Query traces from the store. Supports filtering by time range, trace ID,
+ * service name, span name, duration, status, kind, and attributes.
+ *
+ * When filter predicates match individual spans, the engine performs a
+ * second pass to collect ALL spans for matching trace IDs — ensuring
+ * complete traces for tree assembly and visualization.
+ */
 export function queryTraces(store: TraceStore, opts: TraceQueryOpts): TraceQueryResult {
-  const policy = new ColumnarTracePolicy();
   let chunksScanned = 0;
   let chunksPruned = 0;
   let spansExamined = 0;
 
-  // Collect matching spans
-  const matchingSpans: SpanRecord[] = [];
+  // Phase 1: Find matching spans, collect their trace IDs
+  const matchingTraceIds = new Set<string>();
+  const allSpansByTrace = new Map<string, SpanRecord[]>();
 
   for (const { resource, chunk } of store.iterChunks()) {
     // Chunk-level pruning
@@ -45,42 +62,39 @@ export function queryTraces(store: TraceStore, opts: TraceQueryOpts): TraceQuery
     }
 
     chunksScanned++;
-    const spans = policy.decodePayload(chunk.payload, chunk.header.nSpans, chunk.header.codecMeta);
+    const spans = store.decodeChunk(chunk);
 
     for (const span of spans) {
       spansExamined++;
+      const traceHex = hexFromBytes(span.traceId);
+
+      // Accumulate all spans by trace (needed for complete trace assembly)
+      let group = allSpansByTrace.get(traceHex);
+      if (!group) {
+        group = [];
+        allSpansByTrace.set(traceHex, group);
+      }
+      group.push(span);
+
+      // Check if this span matches the filter
       if (matchesSpan(span, opts, resource)) {
-        matchingSpans.push(span);
+        matchingTraceIds.add(traceHex);
       }
     }
   }
 
-  // Group spans by trace_id → assemble traces
-  const traceMap = new Map<string, SpanRecord[]>();
-  for (const span of matchingSpans) {
-    const key = hexFromBytes(span.traceId);
-    const group = traceMap.get(key);
-    if (group) {
-      group.push(span);
-    } else {
-      traceMap.set(key, [span]);
-    }
-  }
-
-  // If searching by trace_id, we want ALL spans for those traces
-  // (not just the matching ones). For now, this is a single-pass query.
-  // A production implementation would do a second pass to collect full traces.
-
+  // Phase 2: Assemble complete traces for all matching trace IDs
   let traces: Trace[] = [];
-  for (const [traceIdHex, spans] of traceMap) {
-    spans.sort((a, b) => Number(a.startTimeUnixNano - b.startTimeUnixNano));
+  for (const traceHex of matchingTraceIds) {
+    const spans = allSpansByTrace.get(traceHex)!;
+    spans.sort(compareBigint);
     const rootSpan = spans.find((s) => s.parentSpanId === undefined);
     const first = spans[0]!;
     const minStart = first.startTimeUnixNano;
-    const maxEnd = spans.reduce(
-      (max, s) => (s.endTimeUnixNano > max ? s.endTimeUnixNano : max),
-      first.endTimeUnixNano,
-    );
+    let maxEnd = first.endTimeUnixNano;
+    for (let i = 1; i < spans.length; i++) {
+      if (spans[i]!.endTimeUnixNano > maxEnd) maxEnd = spans[i]!.endTimeUnixNano;
+    }
     traces.push({
       traceId: first.traceId,
       ...(rootSpan !== undefined ? { rootSpan } : {}),
@@ -89,8 +103,12 @@ export function queryTraces(store: TraceStore, opts: TraceQueryOpts): TraceQuery
     });
   }
 
-  // Sort traces by start time (most recent first)
-  traces.sort((a, b) => Number(b.spans[0]!.startTimeUnixNano - a.spans[0]!.startTimeUnixNano));
+  // Sort traces by start time (most recent first) — safe bigint comparison
+  traces.sort((a, b) => {
+    const aStart = a.spans[0]!.startTimeUnixNano;
+    const bStart = b.spans[0]!.startTimeUnixNano;
+    return bStart > aStart ? 1 : bStart < aStart ? -1 : 0;
+  });
 
   // Apply limit
   if (opts.limit !== undefined && traces.length > opts.limit) {
@@ -115,7 +133,8 @@ export function assembleTrace(store: TraceStore, traceId: Uint8Array): Trace | n
 
 /**
  * Build a span tree from a flat list of spans (single trace).
- * Returns the root node(s). Handles multiple roots (orphaned spans).
+ * Returns root nodes. Handles multiple roots (orphaned spans).
+ * Self-time computation correctly merges overlapping children.
  */
 export function buildSpanTree(spans: readonly SpanRecord[]): SpanNode[] {
   const nodes = new Map<string, SpanNode>();
@@ -144,29 +163,50 @@ export function buildSpanTree(spans: readonly SpanRecord[]): SpanNode[] {
     }
   }
 
-  // Compute depths and self-times
+  // Compute depths and self-times (with merged interval subtraction)
   function setDepths(node: SpanNode, depth: number): void {
     node.depth = depth;
-    // Sort children by start time
-    node.children.sort((a, b) => Number(a.span.startTimeUnixNano - b.span.startTimeUnixNano));
-    // Self-time = duration - overlapping child time
-    let childTime = 0n;
+    // Sort children by start time (safe bigint comparison)
+    node.children.sort((a, b) =>
+      a.span.startTimeUnixNano < b.span.startTimeUnixNano ? -1 :
+      a.span.startTimeUnixNano > b.span.startTimeUnixNano ? 1 : 0,
+    );
+
+    // Compute self-time by merging overlapping child intervals
+    // then subtracting total covered time from parent duration
+    const intervals: Array<{ start: bigint; end: bigint }> = [];
     for (const child of node.children) {
-      // Only count child time that overlaps with parent
-      const overlapStart =
-        child.span.startTimeUnixNano > node.span.startTimeUnixNano
-          ? child.span.startTimeUnixNano
-          : node.span.startTimeUnixNano;
-      const overlapEnd =
-        child.span.endTimeUnixNano < node.span.endTimeUnixNano
-          ? child.span.endTimeUnixNano
-          : node.span.endTimeUnixNano;
-      if (overlapEnd > overlapStart) {
-        childTime += overlapEnd - overlapStart;
-      }
+      // Clip child interval to parent bounds
+      const start = child.span.startTimeUnixNano > node.span.startTimeUnixNano
+        ? child.span.startTimeUnixNano : node.span.startTimeUnixNano;
+      const end = child.span.endTimeUnixNano < node.span.endTimeUnixNano
+        ? child.span.endTimeUnixNano : node.span.endTimeUnixNano;
+      if (end > start) intervals.push({ start, end });
       setDepths(child, depth + 1);
     }
-    node.selfTimeNanos = node.span.durationNanos - childTime;
+
+    // Merge overlapping intervals
+    let childCoverage = 0n;
+    if (intervals.length > 0) {
+      intervals.sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
+      let mergedStart = intervals[0]!.start;
+      let mergedEnd = intervals[0]!.end;
+      for (let i = 1; i < intervals.length; i++) {
+        const iv = intervals[i]!;
+        if (iv.start <= mergedEnd) {
+          // Overlapping — extend
+          if (iv.end > mergedEnd) mergedEnd = iv.end;
+        } else {
+          // Gap — flush previous interval
+          childCoverage += mergedEnd - mergedStart;
+          mergedStart = iv.start;
+          mergedEnd = iv.end;
+        }
+      }
+      childCoverage += mergedEnd - mergedStart;
+    }
+
+    node.selfTimeNanos = node.span.durationNanos - childCoverage;
     if (node.selfTimeNanos < 0n) node.selfTimeNanos = 0n;
   }
 
@@ -195,7 +235,6 @@ export function criticalPath(roots: SpanNode[]): SpanNode[] {
   let current = root;
 
   while (current.children.length > 0) {
-    // Find the child that ends latest (blocks parent completion)
     let latest = current.children[0]!;
     for (let i = 1; i < current.children.length; i++) {
       if (current.children[i]!.span.endTimeUnixNano > latest.span.endTimeUnixNano) {
@@ -220,21 +259,19 @@ function canPruneChunk(
 
   // Time range pruning
   if (opts.startTimeNano !== undefined) {
-    const chunkMax = BigInt(h.maxTimeNano);
-    if (chunkMax < opts.startTimeNano) return true;
+    if (BigInt(h.maxTimeNano) < opts.startTimeNano) return true;
   }
   if (opts.endTimeNano !== undefined) {
-    const chunkMin = BigInt(h.minTimeNano);
-    if (chunkMin > opts.endTimeNano) return true;
+    if (BigInt(h.minTimeNano) > opts.endTimeNano) return true;
   }
 
   // Error filter pruning
   if (opts.statusCode === 2 && !h.hasError) return true;
 
-  // Span name pruning (check if chunk's name dictionary contains the target)
+  // Span name pruning
   if (opts.spanName !== undefined && !h.spanNames.includes(opts.spanName)) return true;
 
-  // Service name pruning (check resource attributes in header)
+  // Service name pruning
   if (opts.serviceName !== undefined) {
     const svcAttr = resource.attributes.find((a) => a.key === "service.name");
     if (svcAttr && svcAttr.value !== opts.serviceName) return true;
@@ -278,14 +315,6 @@ function matchesSpan(
 
 // ─── Utilities ───────────────────────────────────────────────────────
 
-function hexFromBytes(bytes: Uint8Array): string {
-  let hex = "";
-  for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i]!.toString(16).padStart(2, "0");
-  }
-  return hex;
-}
-
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -296,10 +325,35 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 function anyValueEquals(a: AnyValue, b: AnyValue): boolean {
   if (a === b) return true;
+  if (a === null || b === null) return false;
   if (typeof a !== typeof b) return false;
   if (typeof a === "string" || typeof a === "number" || typeof a === "bigint" || typeof a === "boolean") {
     return a === b;
   }
-  // For complex types, fall back to JSON comparison
-  return JSON.stringify(a) === JSON.stringify(b);
+  if (a instanceof Uint8Array && b instanceof Uint8Array) {
+    return bytesEqual(a, b);
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!anyValueEquals(a[i]!, b[i]!)) return false;
+    }
+    return true;
+  }
+  if (typeof a === "object" && typeof b === "object") {
+    const aEntries = Object.entries(a as Record<string, AnyValue>);
+    const bObj = b as Record<string, AnyValue>;
+    if (aEntries.length !== Object.keys(bObj).length) return false;
+    for (const [k, v] of aEntries) {
+      if (!anyValueEquals(v, bObj[k]!)) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Safe bigint sort comparator for spans by startTimeUnixNano. */
+function compareBigint(a: SpanRecord, b: SpanRecord): number {
+  return a.startTimeUnixNano < b.startTimeUnixNano ? -1 :
+    a.startTimeUnixNano > b.startTimeUnixNano ? 1 : 0;
 }

@@ -14,7 +14,6 @@ import type {
   Resource,
   SpanRecord,
   StreamId,
-  StreamKey,
 } from "./types.js";
 
 export interface TraceStoreOpts {
@@ -46,6 +45,19 @@ export class TraceStore {
   constructor(opts: TraceStoreOpts = {}) {
     this.chunkSize = opts.chunkSize ?? 1024;
     this.policy = opts.policy ?? new ColumnarTracePolicy();
+  }
+
+  /** Get the configured chunk policy (used by query engine). */
+  getPolicy(): ChunkPolicy {
+    return this.policy;
+  }
+
+  /**
+   * Decode a chunk's payload using the store's configured policy.
+   * This is the canonical way to decode chunks — avoids hardcoding a codec.
+   */
+  decodeChunk(chunk: Chunk): SpanRecord[] {
+    return this.policy.decodePayload(chunk.payload, chunk.header.nSpans, chunk.header.codecMeta);
   }
 
   /**
@@ -99,22 +111,6 @@ export class TraceStore {
       const scope = this.registry.scopeOf(streamId);
       for (const chunk of this.registry.chunksOf(streamId)) {
         yield { streamId, resource, scope, chunk };
-      }
-    }
-  }
-
-  /** Iterate all unflushed spans in hot builders. */
-  *iterHotSpans(): Generator<{ streamId: StreamId; resource: Resource; scope: InstrumentationScope; spans: readonly SpanRecord[] }> {
-    for (const [streamId, builder] of this.builders) {
-      if (builder.length > 0) {
-        // Peek at the builder's buffered spans via a flush+re-append pattern
-        // (The builder doesn't expose buffered spans directly, so we flush temporarily)
-        const resource = this.registry.resourceOf(streamId);
-        const scope = this.registry.scopeOf(streamId);
-        // We can't access internal spans without flushing, so skip for now.
-        // Hot spans are included in queries via the flush-before-query pattern.
-        void resource;
-        void scope;
       }
     }
   }
