@@ -270,6 +270,47 @@ pub fn extract_packed_safe(buf: &[u8], i: usize, bw: u8) -> u64 {
     (raw << bit_pos) >> (64 - bw)
 }
 
+// ── OTLP timestamp normalization ─────────────────────────────────────
+
+/// Convert an array of f64 millisecond timestamps to i64 nanoseconds.
+/// Used by both engines when normalizing OTLP timestamps. The wasm32
+/// build uses SIMD (`f64x2_mul`); other targets use a scalar loop.
+///
+/// Caller guarantees `input.len() == output.len()`.
+pub fn ms_to_ns(input: &[f64], output: &mut [i64]) {
+    debug_assert_eq!(input.len(), output.len());
+    let n = input.len();
+    if n == 0 {
+        return;
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        use core::arch::wasm32::*;
+        let pairs = n / 2;
+        let scale = f64x2_splat(1_000_000.0);
+        for i in 0..pairs {
+            let idx = i * 2;
+            let v = unsafe { v128_load(input.as_ptr().add(idx) as *const v128) };
+            let scaled = f64x2_mul(v, scale);
+            let a = f64x2_extract_lane::<0>(scaled) as i64;
+            let b = f64x2_extract_lane::<1>(scaled) as i64;
+            let result = i64x2_replace_lane::<1>(i64x2_splat(a), b);
+            unsafe {
+                v128_store(output.as_mut_ptr().add(idx) as *mut v128, result);
+            }
+        }
+        if n % 2 != 0 {
+            output[n - 1] = (input[n - 1] * 1_000_000.0) as i64;
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        for i in 0..n {
+            output[i] = (input[i] * 1_000_000.0) as i64;
+        }
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -540,5 +581,48 @@ mod tests {
         let buf = [0b10100000u8];
         let got = extract_packed_safe(&buf, 0, 3);
         assert_eq!(got, 0b101);
+    }
+
+    // ── ms_to_ns ─────────────────────────────────────────────────────
+
+    #[test]
+    fn ms_to_ns_basic() {
+        let input = [1000.0, 1500.5, 0.0, 2.0];
+        let mut output = [0i64; 4];
+        ms_to_ns(&input, &mut output);
+        assert_eq!(output, [1_000_000_000, 1_500_500_000, 0, 2_000_000]);
+    }
+
+    #[test]
+    fn ms_to_ns_single_and_odd() {
+        let mut out = [0i64; 1];
+        ms_to_ns(&[42.0], &mut out);
+        assert_eq!(out[0], 42_000_000);
+        let mut out3 = [0i64; 3];
+        ms_to_ns(&[1.0, 2.0, 3.0], &mut out3);
+        assert_eq!(out3, [1_000_000, 2_000_000, 3_000_000]);
+    }
+
+    #[test]
+    fn ms_to_ns_negative() {
+        let mut out = [0i64; 1];
+        ms_to_ns(&[-100.0], &mut out);
+        assert_eq!(out[0], -100_000_000);
+    }
+
+    #[test]
+    fn ms_to_ns_empty_is_noop() {
+        let mut out: [i64; 0] = [];
+        ms_to_ns(&[], &mut out);
+    }
+
+    #[test]
+    fn ms_to_ns_large_array() {
+        let input: std::vec::Vec<f64> = (0..1000).map(|i| i as f64).collect();
+        let mut output = std::vec![0i64; 1000];
+        ms_to_ns(&input, &mut output);
+        for i in 0..1000 {
+            assert_eq!(output[i], (i as i64) * 1_000_000);
+        }
     }
 }

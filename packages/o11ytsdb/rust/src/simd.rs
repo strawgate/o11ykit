@@ -1,50 +1,20 @@
-// ── SIMD accelerators: msToNs, quantizeBatch ────────────────────────
+// ── SIMD-accelerated extern "C" shims ───────────────────────────────
 //
-// WASM SIMD-accelerated bulk transforms:
-//   - msToNs: convert f64 millisecond timestamps to i64 nanoseconds
-//   - quantizeBatch: round f64 values to a given decimal precision
+// `msToNs` is the OTLP timestamp normalization (ms→ns) that both
+// engines need; the pure logic lives in `o11y-codec-rt-core` and
+// this file just marshals raw pointers. `quantizeBatch` is metric-
+// specific (round to decimal precision) and stays here.
 
-/// Convert an array of f64 millisecond timestamps to i64 nanosecond timestamps.
-/// Uses SIMD i64x2_mul to process 2 timestamps per iteration.
+/// Convert an array of f64 millisecond timestamps to i64 nanoseconds.
 #[no_mangle]
 pub extern "C" fn msToNs(in_ptr: *const f64, out_ptr: *mut i64, count: u32) {
     if count == 0 {
         return;
     }
-    #[cfg(target_arch = "wasm32")]
-    {
-        use core::arch::wasm32::*;
-        let n = count as usize;
-        let input = unsafe { core::slice::from_raw_parts(in_ptr, n) };
-        let output = unsafe { core::slice::from_raw_parts_mut(out_ptr, n) };
-
-        let pairs = n / 2;
-        let scale = f64x2_splat(1_000_000.0);
-        for i in 0..pairs {
-            let idx = i * 2;
-            let v = unsafe { v128_load(input.as_ptr().add(idx) as *const v128) };
-            let scaled = f64x2_mul(v, scale);
-            let a = f64x2_extract_lane::<0>(scaled) as i64;
-            let b = f64x2_extract_lane::<1>(scaled) as i64;
-            let result = i64x2_replace_lane::<1>(i64x2_splat(a), b);
-            unsafe {
-                v128_store(output.as_mut_ptr().add(idx) as *mut v128, result);
-            }
-        }
-        if n % 2 != 0 {
-            output[n - 1] = (input[n - 1] * 1_000_000.0) as i64;
-        }
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let n = count as usize;
-        let input = unsafe { core::slice::from_raw_parts(in_ptr, n) };
-        let output = unsafe { core::slice::from_raw_parts_mut(out_ptr, n) };
-        for i in 0..n {
-            output[i] = (input[i] * 1_000_000.0) as i64;
-        }
-    }
+    let n = count as usize;
+    let input = unsafe { core::slice::from_raw_parts(in_ptr, n) };
+    let output = unsafe { core::slice::from_raw_parts_mut(out_ptr, n) };
+    o11y_codec_rt_core::ms_to_ns(input, output);
 }
 
 /// Quantize an array of f64 values to a given decimal precision.
@@ -192,7 +162,6 @@ mod tests {
 
     #[test]
     fn ms_to_ns_large_array() {
-        let _g = crate::test_lock::LOCK.lock().unwrap();
         let input: std::vec::Vec<f64> = (0..1000).map(|i| i as f64).collect();
         let mut output = std::vec![0i64; 1000];
         msToNs(input.as_ptr(), output.as_mut_ptr(), 1000);
@@ -203,7 +172,6 @@ mod tests {
 
     #[test]
     fn quantize_batch_large_scale() {
-        let _g = crate::test_lock::LOCK.lock().unwrap();
         let input = [123456.789f64, 0.001234, 999.9995, 0.0];
         let mut output = [0f64; 4];
         quantizeBatch(input.as_ptr(), output.as_mut_ptr(), 4, 100.0); // 2 decimals
@@ -214,7 +182,6 @@ mod tests {
 
     #[test]
     fn quantize_batch_negative_values() {
-        let _g = crate::test_lock::LOCK.lock().unwrap();
         let input = [-1.5f64, -0.005, -100.999];
         let mut output = [0f64; 3];
         quantizeBatch(input.as_ptr(), output.as_mut_ptr(), 3, 10.0); // 1 decimal
