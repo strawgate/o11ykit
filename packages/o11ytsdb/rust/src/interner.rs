@@ -1,56 +1,45 @@
-// ── String interner: FNV-1a hash, linear probing ────────────────────
+// ── String interner extern "C" shims ────────────────────────────────
 //
-// WASM-side string deduplication for metric names and label keys/values.
-// Capacity: 200K unique strings, 8 MB total bytes, 512K hash table slots.
+// The pure-Rust interner lives in packages/o11y-codec-rt/interner/.
+// This file owns the WASM-side static-mut storage (8 MB byte arena,
+// 200K offset table, 512K hash table) that the workspace `Interner`
+// borrows on each call.
+
+use o11y_codec_rt_interner::{Interner, EMPTY};
 
 const INTERN_MAX_STRINGS: usize = 200_000;
 const INTERN_MAX_BYTES: usize = 8 * 1024 * 1024;
 const INTERN_TABLE_SIZE: usize = 1 << 19;
-const INTERN_EMPTY: u32 = u32::MAX;
 
 static mut INTERN_BYTES: [u8; INTERN_MAX_BYTES] = [0; INTERN_MAX_BYTES];
 static mut INTERN_OFFSETS: [u32; INTERN_MAX_STRINGS + 1] = [0; INTERN_MAX_STRINGS + 1];
-static mut INTERN_TABLE: [u32; INTERN_TABLE_SIZE] = [INTERN_EMPTY; INTERN_TABLE_SIZE];
+static mut INTERN_TABLE: [u32; INTERN_TABLE_SIZE] = [EMPTY; INTERN_TABLE_SIZE];
 static mut INTERN_HASHES: [u32; INTERN_TABLE_SIZE] = [0; INTERN_TABLE_SIZE];
 static mut INTERN_COUNT: u32 = 0;
 static mut INTERN_BYTES_USED: u32 = 0;
 
-#[inline(always)]
-fn fnv1a32(bytes: &[u8]) -> u32 {
-    let mut hash: u32 = 0x811c9dc5;
-    for &b in bytes {
-        hash ^= b as u32;
-        hash = hash.wrapping_mul(0x01000193);
+/// Build an `Interner` borrowing the static-mut backing store. Single-
+/// threaded use only — wasm32 cdylib runs single-threaded by design.
+#[allow(static_mut_refs)]
+fn with_interner<R>(f: impl FnOnce(&mut Interner<'_>) -> R) -> R {
+    // SAFETY: single-threaded WASM cdylib; one borrow at a time per call.
+    let mut interner = unsafe {
+        Interner::new(
+            &mut INTERN_BYTES,
+            &mut INTERN_OFFSETS,
+            &mut INTERN_TABLE,
+            &mut INTERN_HASHES,
+            &mut INTERN_COUNT,
+            &mut INTERN_BYTES_USED,
+        )
     }
-    hash
-}
-
-#[inline(always)]
-unsafe fn intern_equals(id: u32, bytes: &[u8]) -> bool {
-    let start = INTERN_OFFSETS[id as usize] as usize;
-    let end = INTERN_OFFSETS[id as usize + 1] as usize;
-    if end - start != bytes.len() {
-        return false;
-    }
-    for i in 0..bytes.len() {
-        if INTERN_BYTES[start + i] != bytes[i] {
-            return false;
-        }
-    }
-    true
+    .expect("interner buffer shapes are statically valid");
+    f(&mut interner)
 }
 
 #[no_mangle]
 pub extern "C" fn internerReset() {
-    unsafe {
-        INTERN_COUNT = 0;
-        INTERN_BYTES_USED = 0;
-        INTERN_OFFSETS[0] = 0;
-        for i in 0..INTERN_TABLE_SIZE {
-            INTERN_TABLE[i] = INTERN_EMPTY;
-            INTERN_HASHES[i] = 0;
-        }
-    }
+    with_interner(|i| i.reset());
 }
 
 #[no_mangle]
@@ -59,38 +48,7 @@ pub extern "C" fn internerIntern(ptr: *const u8, len: u32) -> u32 {
         return u32::MAX;
     }
     let input = unsafe { core::slice::from_raw_parts(ptr, len as usize) };
-    let hash = fnv1a32(input);
-    let mask = (INTERN_TABLE_SIZE - 1) as u32;
-    let mut slot = hash & mask;
-
-    unsafe {
-        loop {
-            let existing = INTERN_TABLE[slot as usize];
-            if existing == INTERN_EMPTY {
-                let id = INTERN_COUNT;
-                if id as usize >= INTERN_MAX_STRINGS {
-                    return u32::MAX;
-                }
-                let start = INTERN_BYTES_USED as usize;
-                let end = start + input.len();
-                if end > INTERN_MAX_BYTES {
-                    return u32::MAX;
-                }
-                INTERN_BYTES[start..end].copy_from_slice(input);
-                INTERN_OFFSETS[id as usize] = INTERN_BYTES_USED;
-                INTERN_BYTES_USED = end as u32;
-                INTERN_OFFSETS[id as usize + 1] = INTERN_BYTES_USED;
-                INTERN_TABLE[slot as usize] = id;
-                INTERN_HASHES[slot as usize] = hash;
-                INTERN_COUNT += 1;
-                return id;
-            }
-            if INTERN_HASHES[slot as usize] == hash && intern_equals(existing, input) {
-                return existing;
-            }
-            slot = (slot + 1) & mask;
-        }
-    }
+    with_interner(|i| i.intern(input).unwrap_or(u32::MAX))
 }
 
 #[no_mangle]
@@ -98,20 +56,18 @@ pub extern "C" fn internerResolve(id: u32, out_ptr: *mut u8, out_cap: u32) -> u3
     if out_ptr.is_null() {
         return 0;
     }
-    unsafe {
-        if id >= INTERN_COUNT {
-            return 0;
+    with_interner(|i| match i.resolve(id) {
+        Some(bytes) => {
+            if bytes.len() > out_cap as usize {
+                return 0;
+            }
+            // SAFETY: caller-supplied pointer with a declared capacity.
+            let out = unsafe { core::slice::from_raw_parts_mut(out_ptr, bytes.len()) };
+            out.copy_from_slice(bytes);
+            bytes.len() as u32
         }
-        let start = INTERN_OFFSETS[id as usize] as usize;
-        let end = INTERN_OFFSETS[id as usize + 1] as usize;
-        let len = end - start;
-        if len > out_cap as usize {
-            return 0;
-        }
-        let out = core::slice::from_raw_parts_mut(out_ptr, len);
-        out.copy_from_slice(&INTERN_BYTES[start..end]);
-        len as u32
-    }
+        None => 0,
+    })
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
@@ -146,7 +102,7 @@ mod tests {
         internerReset();
         let id1 = reset_and_intern(b"metric.cpu");
         let id2 = reset_and_intern(b"metric.cpu");
-        assert_eq!(id1, id2, "same string should return same id");
+        assert_eq!(id1, id2);
     }
 
     #[test]
@@ -161,34 +117,10 @@ mod tests {
     }
 
     #[test]
-    fn intern_reset_clears_state() {
-        let _g = crate::test_lock::LOCK.lock().unwrap();
-        internerReset();
-        reset_and_intern(b"before_reset");
-        internerReset();
-        // After reset, resolving id 0 should fail.
-        let len = internerResolve(0, [0u8; 64].as_mut_ptr(), 64);
-        assert_eq!(len, 0);
-        // New intern should get id 0.
-        let id = reset_and_intern(b"after_reset");
-        assert_eq!(id, 0);
-        assert_eq!(resolve_to_vec(id), b"after_reset");
-    }
-
-    #[test]
     fn intern_null_ptr_returns_max() {
         let _g = crate::test_lock::LOCK.lock().unwrap();
         let id = internerIntern(core::ptr::null(), 5);
         assert_eq!(id, u32::MAX);
-    }
-
-    #[test]
-    fn resolve_invalid_id() {
-        let _g = crate::test_lock::LOCK.lock().unwrap();
-        internerReset();
-        let mut buf = [0u8; 64];
-        let len = internerResolve(999, buf.as_mut_ptr(), 64);
-        assert_eq!(len, 0);
     }
 
     #[test]
@@ -199,43 +131,10 @@ mod tests {
     }
 
     #[test]
-    fn intern_empty_string() {
+    fn resolve_invalid_id() {
         let _g = crate::test_lock::LOCK.lock().unwrap();
         internerReset();
-        let id = reset_and_intern(b"");
-        assert_eq!(id, 0);
-        assert_eq!(resolve_to_vec(id), b"");
-    }
-
-    #[test]
-    fn intern_many_strings() {
-        let _g = crate::test_lock::LOCK.lock().unwrap();
-        internerReset();
-        let mut ids = std::vec::Vec::new();
-        for i in 0u32..100 {
-            let s = std::format!("metric_{i:04}");
-            let id = internerIntern(s.as_ptr(), s.len() as u32);
-            assert_ne!(id, u32::MAX);
-            ids.push((id, s));
-        }
-        // Verify all resolve correctly.
-        for (id, s) in &ids {
-            assert_eq!(resolve_to_vec(*id), s.as_bytes());
-        }
-        // Verify dedup — intern same strings again.
-        for (id, s) in &ids {
-            let id2 = internerIntern(s.as_ptr(), s.len() as u32);
-            assert_eq!(*id, id2);
-        }
-    }
-
-    #[test]
-    fn fnv1a32_basic() {
-        let _g = crate::test_lock::LOCK.lock().unwrap();
-        // Known FNV-1a values.
-        assert_eq!(fnv1a32(b""), 0x811c9dc5);
-        let h1 = fnv1a32(b"a");
-        let h2 = fnv1a32(b"b");
-        assert_ne!(h1, h2, "different inputs should hash differently");
+        let len = internerResolve(999, [0u8; 64].as_mut_ptr(), 64);
+        assert_eq!(len, 0);
     }
 }

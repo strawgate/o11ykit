@@ -295,6 +295,10 @@ already live in `core/` (`extract_packed`, `BitWriter::write_bits`).
   `delta_alp_decode_range`, `decode_values_alp`, dispatcher.
   Scratch buffers stack-allocated (worst case ~50 KB on the wasm32
   1 MB stack). ✅
+- `packages/o11y-codec-rt/interner/` — string interner (FNV-1a hash +
+  open-addressing linear probing). `Interner<'a>` borrows caller-
+  supplied storage so the workspace stays `#![no_std]` / allocator-
+  free. Each engine sizes its own buffers. ✅
 - `packages/o11ytsdb/rust/Cargo.toml` depends on `core` + `xor-delta`
   + `alp`. ✅
 - `packages/o11ytsdb/rust/src/{gorilla,timestamp,delta_alp}.rs` reduced
