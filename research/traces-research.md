@@ -78,11 +78,12 @@ Eliminates repeated decode cost for hot queries (3.2ms → 1.6ms per trace looku
 | Metric | Value | Notes |
 |--------|-------|-------|
 | Storage efficiency | ~50 B/span | 10-40× vs raw OTLP JSON |
-| Encode throughput | 363 ops/s (1K spans) | 2.8ms per 1K spans |
-| Decode throughput | 511 ops/s (1K spans) | 2.0ms per 1K spans |
-| Query by trace_id | 224 ops/s | With bloom filter pruning |
-| Tree assembly | 4,539 ops/s (200 spans) | Adjacency list → tree |
-| Critical path | 18,783 ops/s (50 spans) | Greedy latest-end DFS |
+| Encode throughput | 1,227 ops/s (1K spans) | 0.82ms per 1K spans |
+| Decode throughput | 1,138 ops/s (1K spans) | 0.88ms per 1K spans |
+| Query by trace_id | 339 ops/s | With bloom filter pruning + decode cache |
+| Query by time range | 237 ops/s | Zone map + predicate filtering |
+| Tree assembly | 10,068 ops/s (200 spans) | Adjacency list → tree |
+| Critical path | 40,579 ops/s (50 spans) | Greedy latest-end DFS |
 | Bloom FPR | <0.1% | 10 bits/element, 7 hashes |
 | Chunk prune rate | ~95%+ | For trace_id lookups |
 

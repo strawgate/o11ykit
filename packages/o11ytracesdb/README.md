@@ -12,7 +12,7 @@ Part of the **o11ykit** suite — browser-native databases for metrics, traces, 
 | **o11ytracesdb** | **Traces** | **Dictionary + nested set + bloom filter** |
 
 **Status:** production-ready core. 10-section columnar codec, ingest, query,
-trace assembly, structural queries — 80 passing tests, comprehensive benchmarks.
+trace assembly, structural queries, memory eviction — 85 passing tests.
 
 ## Why
 
@@ -85,16 +85,19 @@ Embedded, serverless, single-process — like SQLite, but for distributed traces
 
 ## Performance
 
-Benchmarks on Apple Silicon (M-series), no WASM acceleration:
+Benchmarks on Apple Silicon (M-series), pure TypeScript (no WASM acceleration):
 
 | Operation | Throughput | Latency (mean) |
 |-----------|-----------|----------------|
-| Encode 1K spans | 363 ops/s | 2.8 ms |
-| Decode 1K spans | 511 ops/s | 2.0 ms |
-| Ingest 1K spans | 312 ops/s | 3.2 ms |
-| Query by trace_id | 224 ops/s | 4.5 ms |
-| Tree assembly (200 spans) | 4,539 ops/s | 0.22 ms |
-| Critical path (50 spans) | 18,783 ops/s | 0.05 ms |
+| Encode 1K spans | 1,227 ops/s | 0.82 ms |
+| Decode 1K spans | 1,138 ops/s | 0.88 ms |
+| Ingest 1K spans | 355 ops/s | 2.8 ms |
+| Query by trace_id | 339 ops/s | 3.0 ms |
+| Query by time range | 237 ops/s | 4.2 ms |
+| Tree assembly (200 spans) | 10,068 ops/s | 0.10 ms |
+| Critical path (50 spans) | 40,579 ops/s | 0.025 ms |
+
+Encode/decode throughput scales linearly: 10K spans at 119/104 ops/s.
 
 ## Key Design Decisions
 
@@ -197,6 +200,23 @@ const edges = computeServiceGraph(allSpans);
 const traceIds = extractTraceIds(spans); // hex strings for o11ylogsdb queries
 ```
 
+## Memory Budget
+
+For browser use cases, configure resource limits to prevent OOM:
+
+```typescript
+const store = new TraceStore({
+  chunkSize: 1024,
+  maxPayloadBytes: 50 * 1024 * 1024, // 50 MB budget
+  maxChunks: 500,                     // max 500 chunks
+  ttlMs: 5 * 60 * 1000,              // evict after 5 minutes
+});
+
+// Eviction is FIFO — oldest chunks go first
+const stats = store.stats();
+console.log(`${stats.evictedChunks} chunks evicted, ${stats.evictedSpans} spans dropped`);
+```
+
 ## Roadmap
 
 | Feature | Status |
@@ -213,6 +233,7 @@ const traceIds = extractTraceIds(spans); // hex strings for o11ylogsdb queries
 | Critical path computation | ✅ Done |
 | Nested set encoding | ✅ Done |
 | Cross-signal correlation (RED, service graph) | ✅ Done |
+| Memory budget + TTL eviction | ✅ Done |
 | Dedicated attribute columns | 🔜 Planned |
 | WASM-accelerated codec | 🔜 Planned |
 | ZSTD compression layer | 🔜 Planned |
