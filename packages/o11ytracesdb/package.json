@@ -1,0 +1,50 @@
+{
+  "name": "o11ytracesdb",
+  "version": "0.0.0",
+  "description": "Browser-native traces database for OpenTelemetry span data — SQLite for traces in the browser.",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "opentelemetry",
+    "otlp",
+    "traces",
+    "spans",
+    "distributed-tracing",
+    "compression",
+    "columnar",
+    "browser",
+    "embedded-database",
+    "observability",
+    "bloom-filter",
+    "nested-set"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "wasm",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "stardb": "0.0.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
