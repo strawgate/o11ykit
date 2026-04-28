@@ -149,6 +149,20 @@ export class FlatStore implements StorageBackend {
     return bytes;
   }
 
+  /** Return chunk-level metadata for the storage explorer UI. */
+  getChunkInfo(id: SeriesId): Record<string, unknown> {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+    const s = this.series[id]!;
+    return {
+      frozen: [],
+      hot: {
+        count: s.count,
+        rawBytes: s.count * 16,
+        allocatedBytes: s.timestamps.byteLength + s.values.byteLength,
+      },
+    };
+  }
+
   // ── Internal ──
 
   private grow(s: FlatSeries): void {

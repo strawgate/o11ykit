@@ -201,6 +201,31 @@ export class ChunkedStore implements StorageBackend {
     return bytes;
   }
 
+  /** Return chunk-level metadata for the storage explorer UI. */
+  getChunkInfo(id: SeriesId): Record<string, unknown> {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+    const s = this.series[id]!;
+    return {
+      frozen: s.frozen.map((c, i) => ({
+        index: i,
+        compressedBytes: c.compressed.byteLength,
+        count: c.count,
+        minT: c.minT,
+        maxT: c.maxT,
+        rawBytes: c.count * 16,
+        ratio: (c.count * 16) / c.compressed.byteLength,
+        compressed: c.compressed,
+      })),
+      hot: {
+        count: s.hot.count,
+        rawBytes: s.hot.count * 16,
+        allocatedBytes: s.hot.timestamps.byteLength + s.hot.values.byteLength,
+        timestamps: s.hot.timestamps.subarray(0, s.hot.count),
+        values: s.hot.values.subarray(0, s.hot.count),
+      },
+    };
+  }
+
   // ── Internal ──
 
   private freeze(s: ChunkedSeries): void {

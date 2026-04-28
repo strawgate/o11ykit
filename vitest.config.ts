@@ -1,6 +1,12 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      o11ytsdb: resolve(__dirname, "packages/o11ytsdb/src/index.ts"),
+    },
+  },
   test: {
     include: ["packages/*/test/**/*.test.ts", "site/**/*.test.js"],
     exclude: [

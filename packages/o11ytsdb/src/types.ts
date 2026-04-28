@@ -213,6 +213,9 @@ export interface QueryOpts {
   agg?: AggFn;
   transform?: TransformOp;
   groupBy?: string[];
+  /** Maximum number of data points to return. When set, an effective step is
+   *  computed so the result has at most this many points. */
+  maxPoints?: number;
 }
 
 export interface SeriesResult {
