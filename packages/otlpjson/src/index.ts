@@ -984,7 +984,7 @@ export function* iterSpans(document: OtlpTracesDocument): Generator<SpanRecord> 
           scope,
           traceId: span.traceId ?? null,
           spanId: span.spanId ?? null,
-          parentSpanId: span.parentSpanId || null,
+          parentSpanId: span.parentSpanId ?? null,
           name: span.name ?? null,
           kind: span.kind ?? null,
           startTimeUnixNano,
