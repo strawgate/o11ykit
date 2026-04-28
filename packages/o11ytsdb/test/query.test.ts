@@ -507,9 +507,9 @@ describe("ScanEngine", () => {
     // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(2);
-    // Each bucket has only one point: dt=0 → rate=0
-    expect(s.values[0]).toBe(0);
-    expect(s.values[1]).toBe(0);
+    // Each bucket has only one point: can't compute rate → NaN
+    expect(s.values[0]).toBeNaN();
+    expect(s.values[1]).toBeNaN();
   });
 
   it("step aggregation rate with empty bucket produces NaN", () => {
@@ -527,9 +527,9 @@ describe("ScanEngine", () => {
     // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(3);
-    expect(s.values[0]).toBe(0); // single point → rate=0
-    expect(s.values[1]).toBeNaN(); // empty bucket → NaN
-    expect(s.values[2]).toBe(0); // single point → rate=0
+    expect(s.values[0]).toBeNaN(); // single point → can't compute rate
+    expect(s.values[1]).toBeNaN(); // empty bucket → can't compute rate
+    expect(s.values[2]).toBeNaN(); // single point → can't compute rate
   });
 
   // ── stepAggregate edge cases ───────────────────────────────────────

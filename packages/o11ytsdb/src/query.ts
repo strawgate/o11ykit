@@ -1441,6 +1441,10 @@ function _stepAggregateRate(
     }
   }
   for (let i = 0; i < bucketCount; i++) {
+    if (readNumberAt(counts, i, "bucket count") < 2) {
+      values[i] = NaN;
+      continue;
+    }
     if (isIncrease) {
       const delta =
         readNumberAt(lastVal, i, "last value") - readNumberAt(firstVal, i, "first value");
@@ -1532,7 +1536,7 @@ function _stepAggregateIrate(
   }
   for (let i = 0; i < bucketCount; i++) {
     if (readNumberAt(secondTs, i, "second timestamp") === -Infinity) {
-      values[i] = 0; // Only one or zero samples — can't compute rate
+      values[i] = NaN; // Only one or zero samples — can't compute rate
     } else {
       const delta =
         readNumberAt(lastVal, i, "last value") - readNumberAt(secondVal, i, "second value");
