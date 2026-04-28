@@ -4,7 +4,7 @@
 import { aggregateResults, buildQueryPreview, executeQuery } from "./query-model.js";
 import { $, debounce, el, formatDurationNs, formatNum, shortTraceId } from "./utils.js";
 
-let allSpans = [];
+let store = null;
 let serviceNames = [];
 let onTraceSelect = null;
 let currentMode = "traces";
@@ -12,8 +12,8 @@ let currentMode = "traces";
 /**
  * Initialize the query builder.
  */
-export function initQueryBuilder(spans, svcNames, callbacks = {}) {
-  allSpans = spans;
+export function initQueryBuilder(chunkStore, svcNames, callbacks = {}) {
+  store = chunkStore;
   serviceNames = svcNames;
   onTraceSelect = callbacks.onTraceSelect || null;
 
@@ -27,8 +27,8 @@ export function initQueryBuilder(spans, svcNames, callbacks = {}) {
   updatePreview();
 }
 
-export function updateQueryData(spans, svcNames) {
-  allSpans = spans;
+export function updateQueryData(chunkStore, svcNames) {
+  store = chunkStore;
   serviceNames = svcNames;
   populateServiceDropdown();
 }
@@ -271,16 +271,23 @@ function updatePreview() {
 // ── Execute Query ────────────────────────────────────────────────────
 
 function runQuery() {
-  const opts = buildOpts();
-  const result = executeQuery(allSpans, opts);
-
-  const aggOpts = getAggOpts();
-  if (aggOpts) {
-    const aggResult = aggregateResults(result.traces, aggOpts);
-    showAggResults(aggResult, result);
-  } else {
-    showTraceResults(result);
+  const panel = $("#queryResultsPanel");
+  if (panel) {
+    panel.innerHTML = '<div class="query-loading">Querying…</div>';
   }
+  // Yield to browser to paint loading state before heavy computation
+  setTimeout(() => {
+    const opts = buildOpts();
+    const result = executeQuery(store, opts);
+
+    const aggOpts = getAggOpts();
+    if (aggOpts) {
+      const aggResult = aggregateResults(result.traces, aggOpts);
+      showAggResults(aggResult, result);
+    } else {
+      showTraceResults(result);
+    }
+  }, 0);
 }
 
 function showTraceResults(result) {
@@ -289,12 +296,16 @@ function showTraceResults(result) {
   panel.innerHTML = "";
 
   // Stats
+  const pruneInfo =
+    result.chunksPruned !== undefined
+      ? `, ${result.chunksScanned} chunks scanned, ${result.chunksPruned} pruned`
+      : "";
   const stats = el(
     "div",
     { className: "query-stats" },
     el("span", {}, `${result.traceCount} traces`),
     el("span", {}, `${formatNum(result.matchedSpans)} matched spans`),
-    el("span", {}, `${result.elapsed.toFixed(1)}ms`)
+    el("span", {}, `${result.elapsed.toFixed(1)}ms${pruneInfo}`)
   );
   panel.appendChild(stats);
 

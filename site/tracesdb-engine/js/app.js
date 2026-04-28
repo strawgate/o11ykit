@@ -3,6 +3,7 @@
 // Single entry point. Manages scenario loading, progressive section reveal,
 // fork routing, tab nav, and wires all explorer modules together.
 
+import { TraceStore } from "o11ytracesdb";
 import {
   estimateScenarioBytes,
   estimateScenarioSpans,
@@ -31,6 +32,7 @@ import { renderLegend, renderWaterfall } from "./waterfall.js";
 
 let _selectedScenario = null;
 let generatedData = null;
+let traceStore = null;
 let waterfallCleanup = null;
 let _storagePopulated = false;
 let _tracesPopulated = false;
@@ -210,6 +212,22 @@ async function generateTraces(scenarioId, overrides = {}) {
 
   const genTime = performance.now() - t0;
 
+  // Ingest spans into real TraceStore (columnar encoding + bloom filters)
+  traceStore = new TraceStore({ chunkSize: 1024 });
+  const byService = new Map();
+  for (const span of generatedData.spans) {
+    const svc = spanServiceName(span);
+    if (!byService.has(svc)) byService.set(svc, []);
+    byService.get(svc).push(span);
+  }
+  for (const [svc, svcSpans] of byService) {
+    const resource = generatedData.resources?.[svc] || {
+      attributes: [{ key: "service.name", value: svc }],
+    };
+    traceStore.append(resource, { name: "demo" }, svcSpans);
+  }
+  traceStore.flush();
+
   // Update card state
   if (card) {
     card.classList.remove("loading");
@@ -239,7 +257,6 @@ function showIngestStats(genTime) {
   const compressedBytes = Math.round(rawBytes * 0.35);
   const bytesPerSpan = Math.round(compressedBytes / generatedData.spans.length);
   const ratio = compressedBytes > 0 ? (rawBytes / compressedBytes).toFixed(1) : "—";
-  const jsObjectBytes = generatedData.spans.length * 40;
   const memorySaving = ((1 - bytesPerSpan / 40) * 100).toFixed(0);
 
   container.innerHTML = "";
@@ -333,7 +350,7 @@ function revealQuery(scroll = false) {
   if (!generatedData) return;
   if (!_queryPopulated) {
     _queryPopulated = true;
-    initQueryBuilder(generatedData.spans, generatedData.serviceNames, {
+    initQueryBuilder(traceStore, generatedData.serviceNames, {
       onTraceSelect: showWaterfall,
     });
   }

@@ -77,7 +77,10 @@ dev-uplot:
 
 pages-build:
 	BASE_PATH=$(BASE_PATH) $(NPM) run build --workspace @otlpkit/example-demo
+	BASE_PATH=/o11ykit/tracesdb-engine/ npx vite build site/tracesdb-engine
 	rm -rf .site
 	mkdir -p .site/otlpkit
 	cp -R site/* .site/
+	rm -rf .site/tracesdb-engine/js .site/tracesdb-engine/dist
+	cp -R site/tracesdb-engine/dist/* .site/tracesdb-engine/
 	cp -R examples/demo/dist/* .site/otlpkit/

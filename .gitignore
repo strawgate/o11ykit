@@ -33,3 +33,4 @@ research/**/target/
 research/**/cloud-artifacts/
 research/**/fanout-manifest.json
 error.log
+site/tracesdb-engine/dist/

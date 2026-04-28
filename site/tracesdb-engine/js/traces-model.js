@@ -1,6 +1,6 @@
 // @ts-nocheck
 // ── Traces Model — RED metrics, anomaly detection, insights ─────────
-import { spanServiceName } from "./utils.js";
+import { hexFromBytes, spanServiceName } from "./utils.js";
 
 /**
  * Compute RED (Rate, Error, Duration) metrics per service.
@@ -55,13 +55,24 @@ export function computeServiceMetrics(spans, serviceNames) {
   }
 
   for (const m of metrics.values()) {
-    m.durations.sort((a, b) => a - b);
+    // For large datasets, use reservoir sampling for percentile estimation
+    if (m.durations.length > 10000) {
+      // Partial sort: only sort a sample for percentiles
+      const sample = reservoirSample(m.durations, 10000);
+      sample.sort((a, b) => a - b);
+      m.p50DurationNs = percentile(sample, 0.5);
+      m.p95DurationNs = percentile(sample, 0.95);
+      m.p99DurationNs = percentile(sample, 0.99);
+      m.maxDurationNs = m.durations.reduce((max, d) => Math.max(max, d), 0);
+    } else {
+      m.durations.sort((a, b) => a - b);
+      m.p50DurationNs = percentile(m.durations, 0.5);
+      m.p95DurationNs = percentile(m.durations, 0.95);
+      m.p99DurationNs = percentile(m.durations, 0.99);
+      m.maxDurationNs = m.durations.length > 0 ? m.durations[m.durations.length - 1] : 0;
+    }
     m.errorRate = m.spanCount > 0 ? m.errorCount / m.spanCount : 0;
     m.avgDurationNs = m.spanCount > 0 ? Number(m.totalDurationNs) / m.spanCount : 0;
-    m.p50DurationNs = percentile(m.durations, 0.5);
-    m.p95DurationNs = percentile(m.durations, 0.95);
-    m.p99DurationNs = percentile(m.durations, 0.99);
-    m.maxDurationNs = m.durations.length > 0 ? m.durations[m.durations.length - 1] : 0;
   }
 
   return metrics;
@@ -71,6 +82,15 @@ function percentile(sorted, p) {
   if (sorted.length === 0) return 0;
   const idx = Math.ceil(sorted.length * p) - 1;
   return sorted[Math.max(0, idx)];
+}
+
+function reservoirSample(arr, k) {
+  const reservoir = arr.slice(0, k);
+  for (let i = k; i < arr.length; i++) {
+    const j = Math.floor(Math.random() * (i + 1));
+    if (j < k) reservoir[j] = arr[i];
+  }
+  return reservoir;
 }
 
 /**
@@ -201,7 +221,8 @@ export function generateInsights(serviceMetrics) {
 export function groupByTrace(spans) {
   const map = new Map();
   for (const span of spans) {
-    const tid = typeof span.traceId === "string" ? span.traceId : String(span.traceId);
+    const tid =
+      span.traceId instanceof Uint8Array ? hexFromBytes(span.traceId) : String(span.traceId);
     if (!map.has(tid)) map.set(tid, []);
     map.get(tid).push(span);
   }
