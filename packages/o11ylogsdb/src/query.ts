@@ -172,6 +172,9 @@ function freshStats(): QueryStats {
 }
 
 function nowMillis(): number {
+  if (typeof performance !== "undefined" && performance.now) {
+    return performance.now();
+  }
   return Number(process.hrtime.bigint()) / 1_000_000;
 }
 

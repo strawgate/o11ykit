@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>o11ylogsdb — Browser-Native Log Database Engine</title>
+    <meta
+      name="description"
+      content="Interactive documentation for o11ylogsdb: a browser-native log database with Drain template extraction, FSST compression, typed columnar codecs, and real-time query engine. Generate millions of logs and query them live."
+    />
+    <meta name="theme-color" content="#11110F" />
+    <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
+    <base href="/o11ykit/logsdb-engine/" />
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/demo.css" />
+    <link rel="modulepreload" href="js/app.js" />
+  </head>
+  <body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <main id="main-content" class="page">
+
+      <!-- ─── Top Bar ─────────────────────────────────────────── -->
+      <header class="topbar">
+        <a class="brand" href="/o11ykit/"><img class="brand-mark" src="/o11ykit/logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
+        <nav class="topnav" aria-label="Primary">
+          <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
+          <a href="/o11ykit/tsdb-engine/">TSDB</a>
+          <a href="/o11ykit/tracesdb-engine/">TracesDB</a>
+          <a href="/o11ykit/logsdb-engine/" aria-current="page">LogsDB</a>
+          <a href="/o11ykit/benchkit/">Benchkit</a>
+          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+      </header>
+
+      <!-- ─── Hero ────────────────────────────────────────────── -->
+      <section class="hero">
+        <p class="eyebrow">o11ylogsdb engine</p>
+        <h1>A log database<br/>that runs in your browser.</h1>
+        <p class="lede">
+          Generate realistic observability log datasets, inspect byte-level storage
+          efficiency, and query them in real-time. Drain template extraction + typed
+          columnar codecs achieve 20–60× compression over raw OTLP/JSON.
+        </p>
+        <div class="hero-actions">
+          <a class="cta cta-primary" href="#section-dataset">Launch Live Demo ↓</a>
+          <a class="cta" href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ylogsdb" target="_blank" rel="noreferrer">
+            Browse Source
+          </a>
+        </div>
+      </section>
+
+      <!-- ─── Dataset ─────────────────────────────────────────── -->
+      <section id="section-dataset" class="dataset-section">
+        <h2>Generate Dataset</h2>
+        <p class="muted">Choose a dataset size. Records are generated deterministically from a realistic microservices workload (6 services, templated + structured + free-text bodies).</p>
+        <div id="dataset-buttons" class="dataset-buttons"></div>
+        <div id="gen-progress" hidden>
+          <div id="gen-status"></div>
+          <div class="progress-track"><div id="gen-bar" class="progress-fill"></div></div>
+        </div>
+      </section>
+
+      <!-- ─── Stats ───────────────────────────────────────────── -->
+      <div id="stats-panel" class="stats-panel" hidden>
+        <div class="stat-item">
+          <span id="stat-logs" class="stat-value">—</span>
+          <span class="stat-label">Total Logs</span>
+        </div>
+        <div class="stat-item">
+          <span id="stat-bytes-per-log" class="stat-value">—</span>
+          <span class="stat-label">Storage Efficiency</span>
+        </div>
+        <div class="stat-item">
+          <span id="stat-compression" class="stat-value">—</span>
+          <span class="stat-label">Compression</span>
+        </div>
+        <div class="stat-item">
+          <span id="stat-streams" class="stat-value">—</span>
+          <span class="stat-label">Streams</span>
+        </div>
+        <div class="stat-item">
+          <span id="stat-chunks" class="stat-value">—</span>
+          <span class="stat-label">Chunks</span>
+        </div>
+        <div class="stat-item">
+          <span id="stat-total-bytes" class="stat-value">—</span>
+          <span class="stat-label">Total Size</span>
+        </div>
+        <div class="stat-item">
+          <span id="stat-ingest-rate" class="stat-value">—</span>
+          <span class="stat-label">Ingest Rate</span>
+        </div>
+        <div class="stat-item">
+          <span id="stat-gen-time" class="stat-value">—</span>
+          <span class="stat-label">Total Time</span>
+        </div>
+      </div>
+
+      <!-- ─── Tabbed Panels ───────────────────────────────────── -->
+      <div id="tabs-panel" class="tabs-panel" hidden>
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="storage">Storage Explorer</button>
+          <button class="tab-btn" data-tab="logs">Logs Explorer</button>
+          <button class="tab-btn" data-tab="query">Query Builder</button>
+        </div>
+
+        <!-- Storage Explorer -->
+        <div id="panel-storage" class="tab-content">
+          <h3>Per-Service Storage Breakdown</h3>
+          <div id="service-breakdown"></div>
+          <h3 style="margin-top:1.5rem">Chunks</h3>
+          <div id="chunk-list"></div>
+        </div>
+
+        <!-- Logs Explorer -->
+        <div id="panel-logs" class="tab-content" hidden>
+          <div id="logs-loading" class="muted" hidden>Analyzing...</div>
+          <h3>Service Health</h3>
+          <div id="service-health"></div>
+          <div id="error-clusters"></div>
+          <div id="template-analysis"></div>
+        </div>
+
+        <!-- Query Builder -->
+        <div id="panel-query" class="tab-content" hidden>
+          <h3>Query Builder</h3>
+          <p class="muted">Build a query against the log store. The engine uses zone-map pruning on time range and severity to skip chunks without decoding.</p>
+          <div id="query-form"></div>
+          <div id="query-results"></div>
+        </div>
+      </div>
+
+      <!-- ─── Footer ──────────────────────────────────────────── -->
+      <footer style="padding: 2rem 0; text-align: center; border-top: 1px solid var(--panel-border); margin-top: 2rem;">
+        <p class="muted">
+          o11ylogsdb · Part of <a href="/o11ykit/">o11ykit</a> · 
+          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
+        </p>
+      </footer>
+
+    </main>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
