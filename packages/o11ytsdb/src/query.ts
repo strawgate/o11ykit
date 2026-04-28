@@ -771,6 +771,8 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
       return { timestamps, values };
     }
     if (fn === "irate") {
+      // values[0] cannot be computed - no previous point for first sample
+      values[0] = NaN;
       for (let i = 1; i < src.timestamps.length; i++) {
         const currentValue = readNumberAt(src.values, i, "point value");
         const previousValue = readNumberAt(src.values, i - 1, "point value");
@@ -778,7 +780,8 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
         const previousTimestamp = readBigIntAt(src.timestamps, i - 1, "point timestamp");
         const delta = currentValue - previousValue;
         const dt = Number(currentTimestamp - previousTimestamp) / 1000;
-        values[i] = dt > 0 ? (delta >= 0 ? delta : currentValue) / dt : 0;
+        // irate needs 2 samples with different timestamps - NaN if dt <= 0
+        values[i] = dt > 0 ? (delta >= 0 ? delta : currentValue) / dt : NaN;
       }
     } else if (fn === "delta") {
       // Raw difference — no counter-reset handling
@@ -799,7 +802,7 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
           const previousTimestamp = readBigIntAt(src.timestamps, i - 1, "point timestamp");
           const dt = Number(currentTimestamp - previousTimestamp) / 1000;
           const delta = currentValue - previousValue;
-          values[i] = dt > 0 ? (delta >= 0 ? delta : currentValue) / dt : 0;
+          values[i] = dt > 0 ? (delta >= 0 ? delta : currentValue) / dt : NaN;
         }
       }
     }

@@ -201,7 +201,7 @@ describe("ScanEngine", () => {
     });
     const s = result.series[0];
     expect(s).toBeDefined();
-    expect(s.values[0]).toBe(0);
+    expect(s.values[0]).toBeNaN(); // irate cannot compute first point - no previous sample
     expect(s.values[1]).toBeCloseTo(0.0001);
     expect(s.values[2]).toBeCloseTo(0.0001);
     expect(s.values[3]).toBeCloseTo(0.0001);
