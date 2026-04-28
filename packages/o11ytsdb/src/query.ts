@@ -537,6 +537,16 @@ function streamStepAggregateByGroup(
 
 function createStepState(fn: SimpleStepAgg, step: bigint, minT: bigint, maxT: bigint) {
   const bucketCountBig = (maxT - minT) / step + 1n;
+  if (bucketCountBig <= 0n) {
+    const timestamps = new BigInt64Array(0);
+    const values = new Float64Array(0);
+    return {
+      addPart() {},
+      finish() {
+        return { timestamps, values };
+      },
+    };
+  }
   if (bucketCountBig > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new RangeError(
       `bucket count ${bucketCountBig} exceeds Number.MAX_SAFE_INTEGER; step=${step} range=${maxT - minT}`
@@ -751,6 +761,8 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
       return { timestamps, values };
     }
     if (fn === "irate") {
+      // values[0] cannot be computed - no previous point for first sample
+      values[0] = NaN;
       for (let i = 1; i < src.timestamps.length; i++) {
         const currentValue = readNumberAt(src.values, i, "point value");
         const previousValue = readNumberAt(src.values, i - 1, "point value");
@@ -758,16 +770,20 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
         const previousTimestamp = readBigIntAt(src.timestamps, i - 1, "point timestamp");
         const delta = currentValue - previousValue;
         const dt = Number(currentTimestamp - previousTimestamp) / 1000;
-        values[i] = dt > 0 ? (delta >= 0 ? delta : currentValue) / dt : 0;
+        // irate needs 2 samples with different timestamps - NaN if dt <= 0
+        values[i] = dt > 0 ? (delta >= 0 ? delta : currentValue) / dt : NaN;
       }
     } else if (fn === "delta") {
-      // Raw difference — no counter-reset handling
+      // values[0] cannot be computed - no previous point for first sample
+      values[0] = NaN;
       for (let i = 1; i < src.timestamps.length; i++) {
         const currentValue = readNumberAt(src.values, i, "point value");
         const previousValue = readNumberAt(src.values, i - 1, "point value");
         values[i] = currentValue - previousValue;
       }
     } else {
+      // values[0] cannot be computed - no previous point for first sample
+      values[0] = NaN;
       for (let i = 1; i < src.timestamps.length; i++) {
         const currentValue = readNumberAt(src.values, i, "point value");
         const previousValue = readNumberAt(src.values, i - 1, "point value");
@@ -779,7 +795,7 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
           const previousTimestamp = readBigIntAt(src.timestamps, i - 1, "point timestamp");
           const dt = Number(currentTimestamp - previousTimestamp) / 1000;
           const delta = currentValue - previousValue;
-          values[i] = dt > 0 ? (delta >= 0 ? delta : currentValue) / dt : 0;
+          values[i] = dt > 0 ? (delta >= 0 ? delta : currentValue) / dt : NaN;
         }
       }
     }
@@ -1459,7 +1475,7 @@ function _stepAggregateRate(
       const dt =
         (readNumberAt(lastTs, i, "last timestamp") - readNumberAt(firstTs, i, "first timestamp")) /
         1000;
-      values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : 0;
+      values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : NaN;
     }
   }
 }
@@ -1544,7 +1560,7 @@ function _stepAggregateIrate(
         (readNumberAt(lastTs, i, "last timestamp") -
           readNumberAt(secondTs, i, "second timestamp")) /
         1000;
-      values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : 0;
+      values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : NaN;
     }
   }
 }

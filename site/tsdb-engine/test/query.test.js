@@ -256,8 +256,8 @@ describe("ScanEngine", () => {
         agg: "rate",
       });
       // The real engine computes rate = delta / (dt_ns / 1000)
-      // rate[0] = 0 (first point has no previous)
-      expect(result.series[0].values[0]).toBeCloseTo(0);
+      // rate[0] = NaN (first point has no previous to compute rate from)
+      expect(result.series[0].values[0]).toBeNaN();
       // rate[1] = (100-0) / (1e9/1000) = 100 / 1e6 = 0.0001
       expect(result.series[0].values[1]).toBeCloseTo(0.0001);
       // rate[2] = (250-100) / (1e9/1000) = 150 / 1e6 = 0.00015
