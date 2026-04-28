@@ -7,22 +7,30 @@ import {
 } from "o11ytsdb";
 
 let _wasmCodecs = null;
+let _wasmLoadPromise = null;
 
 export let wasmReady = false;
 
 export async function loadWasm() {
   if (wasmReady) return true;
-  try {
-    const wasmUrl = new URL("../o11ytsdb.wasm", import.meta.url).href;
-    const module = await WebAssembly.compileStreaming(fetch(wasmUrl));
-    _wasmCodecs = await initWasmCodecs(module);
-    wasmReady = true;
-    return true;
-  } catch (e) {
-    console.warn("WASM load failed:", e);
-    wasmReady = false;
-    return false;
-  }
+  if (_wasmLoadPromise) return _wasmLoadPromise;
+  _wasmLoadPromise = (async () => {
+    try {
+      const wasmUrl = new URL("../o11ytsdb.wasm", import.meta.url).href;
+      const module = await WebAssembly.compileStreaming(fetch(wasmUrl));
+      _wasmCodecs = await initWasmCodecs(module);
+      wasmReady = true;
+      return true;
+    } catch (e) {
+      console.warn("WASM load failed:", e);
+      _wasmCodecs = null;
+      wasmReady = false;
+      return false;
+    } finally {
+      _wasmLoadPromise = null;
+    }
+  })();
+  return _wasmLoadPromise;
 }
 
 function createF64PlainCodec() {
