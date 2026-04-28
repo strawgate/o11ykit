@@ -7,7 +7,6 @@ import {
 } from "o11ytsdb";
 
 let _wasmCodecs = null;
-let _wasmReady = false;
 
 export let wasmReady = false;
 
