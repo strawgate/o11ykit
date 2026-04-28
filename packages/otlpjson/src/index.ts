@@ -514,6 +514,14 @@ export function detectSignal(document: unknown): Signal | null {
   return null;
 }
 
+/**
+ * Parse OTLP JSON from a string or already-parsed object.
+ * Validates that the document is a known OTLP signal type (metrics, traces, logs).
+ *
+ * @example
+ * const doc = parseOtlpJson('{"resourceMetrics": [...]}');
+ * const doc = parseOtlpJson(JSON.parse(text));
+ */
 export function parseOtlpJson(input: unknown): OtlpDocument {
   const document = typeof input === "string" ? (JSON.parse(input) as unknown) : input;
   const signal = detectSignal(document);
@@ -523,6 +531,13 @@ export function parseOtlpJson(input: unknown): OtlpDocument {
   return document as OtlpDocument;
 }
 
+/**
+ * Parse a single line of NDJSON/JSONL into an OTLP document.
+ * Returns null for empty or whitespace-only lines.
+ *
+ * @example
+ * const doc = parseOtlpJsonLine('{"resourceMetrics": [...]}');
+ */
 export function parseOtlpJsonLine(line: string): OtlpDocument | null {
   const trimmed = line.trim();
   if (trimmed.length === 0) {
@@ -531,6 +546,13 @@ export function parseOtlpJsonLine(line: string): OtlpDocument | null {
   return parseOtlpJson(trimmed);
 }
 
+/**
+ * Parse NDJSON/JSONL text into an array of OTLP documents.
+ * Filters out empty lines automatically.
+ *
+ * @example
+ * const docs = parseOtlpJsonLines('{"resourceMetrics": [...]}\n{"resourceSpans": [...]}');
+ */
 export function parseOtlpJsonLines(input: string): OtlpDocument[] {
   return input
     .split(/\r?\n/u)
@@ -966,6 +988,20 @@ export function collectMetricPoints(document: OtlpMetricsDocument): MetricPointR
   return [...iterMetricPoints(document)];
 }
 
+/**
+ * Lazily iterate over spans in an OTLP traces document.
+ *
+ * Each yielded SpanRecord includes:
+ * - Normalized timestamps (unix nano as string)
+ * - Flattened resource and scope attributes
+ * - Computed durationNanos
+ * - Events and links with flattened attributes
+ *
+ * @example
+ * for (const span of iterSpans(doc)) {
+ *   console.log(span.name, span.traceId);
+ * }
+ */
 export function* iterSpans(document: OtlpTracesDocument): Generator<SpanRecord> {
   if (!isTracesDocument(document)) {
     throw new TypeError("Expected OTLP traces document.");
@@ -984,7 +1020,7 @@ export function* iterSpans(document: OtlpTracesDocument): Generator<SpanRecord> 
           scope,
           traceId: span.traceId ?? null,
           spanId: span.spanId ?? null,
-          parentSpanId: span.parentSpanId || null,
+          parentSpanId: span.parentSpanId ?? null,
           name: span.name ?? null,
           kind: span.kind ?? null,
           startTimeUnixNano,
@@ -1013,10 +1049,33 @@ export function* iterSpans(document: OtlpTracesDocument): Generator<SpanRecord> 
   }
 }
 
+/**
+ * Collect all spans from an OTLP traces document into an array.
+ *
+ * Convenience wrapper around iterSpans() that materializes all records.
+ * For high-throughput processing, use iterSpans() directly to avoid allocation.
+ *
+ * @example
+ * const spans = collectSpans(document);
+ * console.log(spans.length);
+ */
 export function collectSpans(document: OtlpTracesDocument): SpanRecord[] {
   return [...iterSpans(document)];
 }
 
+/**
+ * Lazily iterate over log records in an OTLP logs document.
+ *
+ * Each yielded LogRecord includes:
+ * - Normalized timestamps (unix nano as string)
+ * - Flattened resource and scope attributes
+ * - Body value converted to plain JavaScript
+ *
+ * @example
+ * for (const log of iterLogRecords(doc)) {
+ *   console.log(log.body, log.severityText);
+ * }
+ */
 export function* iterLogRecords(document: OtlpLogsDocument): Generator<LogRecord> {
   if (!isLogsDocument(document)) {
     throw new TypeError("Expected OTLP logs document.");
@@ -1046,6 +1105,16 @@ export function* iterLogRecords(document: OtlpLogsDocument): Generator<LogRecord
   }
 }
 
+/**
+ * Collect all log records from an OTLP logs document into an array.
+ *
+ * Convenience wrapper around iterLogRecords() that materializes all records.
+ * For high-throughput processing, use iterLogRecords() directly to avoid allocation.
+ *
+ * @example
+ * const logs = collectLogRecords(document);
+ * console.log(logs.length);
+ */
 export function collectLogRecords(document: OtlpLogsDocument): LogRecord[] {
   return [...iterLogRecords(document)];
 }
