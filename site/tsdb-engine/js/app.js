@@ -14,12 +14,7 @@ import { ScanEngine } from "./query.js";
 import { createQueryBuilderController } from "./query-builder-controller.js";
 import { formatEffectiveStepStat, summarizeStepResolution } from "./query-builder-model.js";
 import { buildStorageExplorer, refreshActiveChunkDetail } from "./storage-explorer.js";
-import {
-  FlatStore,
-  createRowGroupStore,
-  createColumnStore,
-  loadWasm,
-} from "./stores.js";
+import { createColumnStore, createRowGroupStore, FlatStore, loadWasm } from "./stores.js";
 import { autoSelectQueryStep, escapeHtml, formatNum } from "./utils.js";
 
 const CHUNK_SIZE = 640;
@@ -513,7 +508,7 @@ const datasetController = createDatasetController({
     _lastIngestTime = ingestTime;
     onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs);
   },
-  onLiveUpdate(store, _scenario, appends) {
+  onLiveUpdate(store, _scenario, _appends) {
     // 1. Always update storage stats if visible (these are light)
     const storageSection = document.getElementById("section-storage");
     if (_storagePopulated && storageSection && !storageSection.hidden) {

@@ -67,7 +67,7 @@ export function createRowGroupStore(chunkSize = DEFAULT_CHUNK_SIZE) {
     chunkSize,
     () => 0,
     DEFAULT_LRU_CAPACITY,
-    ROWGROUP_BACKEND_NAME,
+    ROWGROUP_BACKEND_NAME
   );
 }
 
