@@ -181,8 +181,8 @@ describe("ScanEngine", () => {
     // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(4);
-    // First rate is 0 (no previous)
-    expect(s.values[0]).toBe(0);
+    // First rate is NaN (no previous point to compute delta)
+    expect(s.values[0]).toBeNaN();
     // Subsequent: 100 / (1e9/1000) = 100 / 1e6 = 0.0001
     expect(s.values[1]).toBeCloseTo(0.0001);
   });
@@ -201,7 +201,7 @@ describe("ScanEngine", () => {
     });
     const s = result.series[0];
     expect(s).toBeDefined();
-    expect(s.values[0]).toBe(0);
+    expect(s.values[0]).toBeNaN(); // irate cannot compute first point - no previous sample
     expect(s.values[1]).toBeCloseTo(0.0001);
     expect(s.values[2]).toBeCloseTo(0.0001);
     expect(s.values[3]).toBeCloseTo(0.0001);
@@ -491,10 +491,10 @@ describe("ScanEngine", () => {
     expect(s.values[1]).toBeCloseTo(200);
   });
 
-  it("step aggregation rate with single point per bucket produces 0", () => {
+  it("step aggregation rate with single point per bucket produces NaN", () => {
     const store = new FlatStore();
     const id = store.getOrCreateSeries(makeLabels("counter"));
-    // One point per bucket → dt=0 → rate=0
+    // One point per bucket → dt=0 → can't compute rate → NaN
     store.append(id, 0n, 100);
     store.append(id, 5_000n, 200);
     const result = engine.query(store, {
@@ -532,6 +532,76 @@ describe("ScanEngine", () => {
     expect(s.values[2]).toBeNaN(); // single point → can't compute rate
   });
 
+  it("rate handles counter decrease/reset correctly", () => {
+    const store = new FlatStore();
+    const id = store.getOrCreateSeries(makeLabels("counter"));
+    // Counter that decreases from 100 to 50 at 1-second intervals
+    // Timestamps are in nanoseconds, so 1 second = 1_000_000_000n
+    store.append(id, 0n, 100);
+    store.append(id, 1_000_000_000n, 50);
+    const result = engine.query(store, {
+      metric: "counter",
+      start: 0n,
+      end: 5_000_000_000n,
+      agg: "rate",
+    });
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const s = result.series[0]!;
+    expect(s.values[0]).toBeNaN(); // first point has no previous
+    // Counter reset: delta = 50 - 100 = -50, Prometheus uses last value (50)
+    // dt = 1e9 ns / 1000 = 1e6 ms per second
+    // rate = 50 / 1e6 = 0.00005
+    expect(s.values[1]).toBeCloseTo(0.00005);
+  });
+
+  it("increase handles counter decrease/reset correctly", () => {
+    const store = new FlatStore();
+    const id = store.getOrCreateSeries(makeLabels("counter"));
+    // Counter that decreases from 100 to 50 (counter reset)
+    store.append(id, 0n, 100);
+    store.append(id, 1_000n, 50);
+    const result = engine.query(store, {
+      metric: "counter",
+      start: 0n,
+      end: 5_000n,
+      agg: "increase",
+    });
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const s = result.series[0]!;
+    expect(s.values[0]).toBeNaN(); // first point has no previous
+    // Counter reset: delta = 50 - 100 = -50, Prometheus uses last value (50)
+    expect(s.values[1]).toBeCloseTo(50);
+  });
+
+  it("step aggregation rate handles counter decrease/reset correctly", () => {
+    const store = new FlatStore();
+    const id = store.getOrCreateSeries(makeLabels("counter"));
+    // Counter that decreases within a step bucket
+    // Timestamps are in nanoseconds
+    store.append(id, 0n, 100);
+    store.append(id, 500_000_000n, 50); // counter reset at t=0.5s
+    store.append(id, 1_000_000_000n, 80);
+    store.append(id, 1_500_000_000n, 130);
+    const result = engine.query(store, {
+      metric: "counter",
+      start: 0n,
+      end: 2_000_000_000n,
+      agg: "rate",
+      step: 1_000_000_000n,
+    });
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const s = result.series[0]!;
+    // bucket 0 (t=0): values 100, 50 → counter reset from 100 to 50
+    //   Prometheus uses lastVal=50 for counter reset
+    //   dt = 0.5s = 500000000/1000 = 500000
+    //   rate = 50 / 500000 = 0.0001
+    expect(s.values[0]).toBeCloseTo(0.0001);
+    // bucket 1 (t=1s): values 80, 130 → normal increase
+    //   delta = 130 - 80 = 50, dt = 0.5s = 500000
+    //   rate = 50 / 500000 = 0.0001
+    expect(s.values[1]).toBeCloseTo(0.0001);
+  });
+
   // ── stepAggregate edge cases ───────────────────────────────────────
 
   it("step aggregation with single point produces one bucket", () => {
@@ -545,9 +615,7 @@ describe("ScanEngine", () => {
       agg: "sum",
       step: 3_000n,
     });
-    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.timestamps.length).toBe(1);
-    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[0]).toBe(42);
   });
 
