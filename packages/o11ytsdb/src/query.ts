@@ -744,6 +744,12 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
       );
     }
     const src = materializeRangeOwned(readItemAt(ranges, 0, "range"));
+    // Prometheus-compatible: if only 1 sample, cannot compute rate/irate/delta/increase.
+    // Set first point to NaN to indicate "cannot compute" (unlike 0 which means "rate is zero").
+    if (src.timestamps.length < 2) {
+      values[0] = NaN;
+      return { timestamps, values };
+    }
     if (fn === "irate") {
       for (let i = 1; i < src.timestamps.length; i++) {
         const currentValue = readNumberAt(src.values, i, "point value");
