@@ -355,7 +355,7 @@ export class ScanEngine implements QueryEngine {
       // Cross-series aggregation on the transformed results.
       const series: SeriesResult[] = [];
       for (const [, group] of groups) {
-const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end);
+        const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end);
         series.push({
           labels: group.labels,
           timestamps: result.timestamps,
@@ -442,7 +442,7 @@ const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end
     // Aggregate each group.
     const series: SeriesResult[] = [];
     for (const [, group] of groups) {
-        const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end);
+      const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end);
       series.push({
         labels: group.labels,
         timestamps: result.timestamps,
