@@ -328,7 +328,7 @@ export class ScanEngine implements QueryEngine {
           };
         } else {
           // Temporal transform: use aggregate (handles rate/delta/etc.)
-          transformed = aggregate(parts, opts.transform, opts.step);
+          transformed = aggregate(parts, opts.transform, opts.step, opts.start, opts.end);
         }
 
         const labels = storage.labels(id) ?? new Map();
@@ -355,7 +355,7 @@ export class ScanEngine implements QueryEngine {
       // Cross-series aggregation on the transformed results.
       const series: SeriesResult[] = [];
       for (const [, group] of groups) {
-        const result = aggregate(group.ranges, opts.agg, opts.step);
+const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end);
         series.push({
           labels: group.labels,
           timestamps: result.timestamps,
@@ -383,7 +383,7 @@ export class ScanEngine implements QueryEngine {
             };
           } else {
             // Temporal transform: use aggregate (handles rate/delta/etc.)
-            result = aggregate([data], opts.transform, opts.step);
+            result = aggregate([data], opts.transform, opts.step, opts.start, opts.end);
           }
         }
 
@@ -442,7 +442,7 @@ export class ScanEngine implements QueryEngine {
     // Aggregate each group.
     const series: SeriesResult[] = [];
     for (const [, group] of groups) {
-      const result = aggregate(group.ranges, opts.agg, opts.step);
+        const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end);
       series.push({
         labels: group.labels,
         timestamps: result.timestamps,
@@ -662,7 +662,13 @@ function aggFinalize(values: Float64Array, counts: Float64Array, fn: AggFn): voi
   }
 }
 
-function aggregate(ranges: TimeRange[], fn: AggFn, step?: bigint): TimeRange {
+function aggregate(
+  ranges: TimeRange[],
+  fn: AggFn,
+  step?: bigint,
+  start?: bigint,
+  end?: bigint
+): TimeRange {
   if (ranges.length === 0) {
     return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
   }
@@ -679,7 +685,11 @@ function aggregate(ranges: TimeRange[], fn: AggFn, step?: bigint): TimeRange {
   }
 
   // Step-aligned bucketing.
-  return stepAggregate(ranges, fn, step);
+  // start and end are required for step aggregation to determine bucket boundaries.
+  if (start === undefined || end === undefined) {
+    throw new Error("step aggregation requires start and end parameters");
+  }
+  return stepAggregate(ranges, fn, step, start, end);
 }
 
 function materializeRange(range: TimeRange): TimeRange {
@@ -812,38 +822,51 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
  */
 const _le = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1;
 
-function stepAggregate(ranges: TimeRange[], fn: AggFn, step: bigint): TimeRange {
-  // Find time bounds (account for both sample-bearing and stats-only parts).
-  let minT = BigInt("9223372036854775807");
-  let maxT = -minT;
+function stepAggregate(
+  ranges: TimeRange[],
+  fn: AggFn,
+  step: bigint,
+  start: bigint,
+  end: bigint
+): TimeRange {
+  // Use query range [start, end) for bucket boundaries, not data min/max.
+  // This ensures consistent buckets even with sparse data.
+  // Validate chunk bounds early to maintain error behavior for incomplete bounds.
+  // Handle empty data case: if no data at all, return empty.
+  let hasData = false;
   for (let ri = 0; ri < ranges.length; ri++) {
     const r = readItemAt(ranges, ri, "range");
-    const chunkBounds = readChunkBounds(r, ri);
-    if (r.timestamps.length > 0) {
-      const firstTimestamp = readBigIntAt(r.timestamps, 0, "range timestamp");
-      const lastTimestamp = readBigIntAt(r.timestamps, r.timestamps.length - 1, "range timestamp");
-      if (firstTimestamp < minT) minT = firstTimestamp;
-      if (lastTimestamp > maxT) maxT = lastTimestamp;
-    } else if (hasChunkStats(r) && chunkBounds) {
-      const [chunkMinT, chunkMaxT] = chunkBounds;
-      if (chunkMinT < minT) minT = chunkMinT;
-      if (chunkMaxT > maxT) maxT = chunkMaxT;
+    // This validates that chunk bounds are complete if present.
+    if (hasChunkStats(r)) {
+      readChunkBounds(r, ri); // throws if bounds incomplete
+    }
+    if (r.timestamps.length > 0 || hasChunkStats(r)) {
+      hasData = true;
     }
   }
 
-  if (minT > maxT) {
+  if (!hasData) {
     return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
   }
 
-  const bucketCount = Number((maxT - minT) / step) + 1;
+  // Bucket count based on query range [start, end) with given step.
+  // We want buckets at start, start+step, start+2*step, ...
+  // The number of buckets = ceil((end - start) / step)
+  const bucketCount = Number((end - start + step - 1n) / step);
+  if (bucketCount <= 0) {
+    return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };
+  }
+
   const timestamps = new BigInt64Array(bucketCount);
   const values = new Float64Array(bucketCount);
   const counts = new Float64Array(bucketCount);
 
   for (let i = 0; i < bucketCount; i++) {
-    timestamps[i] = minT + BigInt(i) * step;
+    timestamps[i] = start + BigInt(i) * step;
   }
 
+  // minT is the query start, used for computing relative bucket indices from data timestamps.
+  const minT = start;
   const minTN = Number(minT);
   const stepN = Number(step);
 
