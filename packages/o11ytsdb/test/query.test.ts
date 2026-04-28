@@ -491,10 +491,10 @@ describe("ScanEngine", () => {
     expect(s.values[1]).toBeCloseTo(200);
   });
 
-  it("step aggregation rate with single point per bucket produces 0", () => {
+  it("step aggregation rate with single point per bucket produces NaN", () => {
     const store = new FlatStore();
     const id = store.getOrCreateSeries(makeLabels("counter"));
-    // One point per bucket → dt=0 → rate=0
+    // One point per bucket → dt=0 → can't compute rate → NaN
     store.append(id, 0n, 100);
     store.append(id, 5_000n, 200);
     const result = engine.query(store, {
@@ -547,24 +547,15 @@ describe("ScanEngine", () => {
     });
     // Query range [0, 10000) with step 3000 produces ceil(10000/3000) = 4 buckets
     // at timestamps 0, 3000, 6000, 9000
-    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.timestamps.length).toBe(4);
-    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(Number(result.series[0]!.timestamps[0])).toBe(0);
-    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(Number(result.series[0]!.timestamps[1])).toBe(3000);
-    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(Number(result.series[0]!.timestamps[2])).toBe(6000);
-    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(Number(result.series[0]!.timestamps[3])).toBe(9000);
     // Empty buckets have sum = 0, point at t=5000 falls in bucket 1 (3000-6000)
-    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[0]).toBe(0); // bucket 0: empty
-    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[1]).toBe(42); // bucket 1: contains t=5000
-    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[2]).toBe(0); // bucket 2: empty
-    // biome-ignore lint/style/noNonNullAssertion: test code
     expect(result.series[0]!.values[3]).toBe(0); // bucket 3: empty
   });
 

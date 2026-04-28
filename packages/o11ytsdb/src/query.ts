@@ -355,7 +355,7 @@ export class ScanEngine implements QueryEngine {
       // Cross-series aggregation on the transformed results.
       const series: SeriesResult[] = [];
       for (const [, group] of groups) {
-const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end);
+        const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end);
         series.push({
           labels: group.labels,
           timestamps: result.timestamps,
@@ -442,7 +442,7 @@ const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end
     // Aggregate each group.
     const series: SeriesResult[] = [];
     for (const [, group] of groups) {
-        const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end);
+      const result = aggregate(group.ranges, opts.agg, opts.step, opts.start, opts.end);
       series.push({
         labels: group.labels,
         timestamps: result.timestamps,
@@ -537,6 +537,16 @@ function streamStepAggregateByGroup(
 
 function createStepState(fn: SimpleStepAgg, step: bigint, minT: bigint, maxT: bigint) {
   const bucketCountBig = (maxT - minT) / step + 1n;
+  if (bucketCountBig <= 0n) {
+    const timestamps = new BigInt64Array(0);
+    const values = new Float64Array(0);
+    return {
+      addPart() {},
+      finish() {
+        return { timestamps, values };
+      },
+    };
+  }
   if (bucketCountBig > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new RangeError(
       `bucket count ${bucketCountBig} exceeds Number.MAX_SAFE_INTEGER; step=${step} range=${maxT - minT}`
