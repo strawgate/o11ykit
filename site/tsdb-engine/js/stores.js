@@ -59,12 +59,17 @@ export class FlatStore extends _FlatStore {
   }
 }
 
-export function createRowGroupStore(chunkSize = 640) {
+const DEFAULT_CHUNK_SIZE = 640;
+const DEFAULT_LRU_CAPACITY = 32;
+const ROWGROUP_BACKEND_NAME = "RowGroupStore";
+const COLUMN_BACKEND_NAME = "ColumnStore (ALP)";
+
+export function createRowGroupStore(chunkSize = DEFAULT_CHUNK_SIZE) {
   const valuesCodec = _wasmCodecs?.xorValuesCodec ?? createF64PlainCodec();
-  return new _RowGroupStore(valuesCodec, chunkSize, () => 0, 32, "RowGroupStore");
+  return new _RowGroupStore(valuesCodec, chunkSize, () => 0, DEFAULT_LRU_CAPACITY, ROWGROUP_BACKEND_NAME);
 }
 
-export function createColumnStore(chunkSize = 640) {
+export function createColumnStore(chunkSize = DEFAULT_CHUNK_SIZE) {
   const valuesCodec = _wasmCodecs?.valuesCodec ?? createF64PlainCodec();
   const tsCodec = _wasmCodecs?.tsCodec;
   const rangeCodec = _wasmCodecs?.rangeCodec;
@@ -82,8 +87,8 @@ export function createColumnStore(chunkSize = 640) {
       }
       return id;
     },
-    32,
-    "ColumnStore (ALP)",
+    DEFAULT_LRU_CAPACITY,
+    COLUMN_BACKEND_NAME,
     tsCodec,
     rangeCodec
   );
