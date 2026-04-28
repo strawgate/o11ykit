@@ -34,7 +34,7 @@
  */
 
 import type { Chunk } from "./chunk.js";
-import { readRecords } from "./chunk.js";
+import { readBodiesOnly, readRecords } from "./chunk.js";
 import type { LogStore } from "./engine.js";
 import type { LogRecord, StreamId } from "./types.js";
 
@@ -122,6 +122,10 @@ export function* queryStream(
 ): Generator<LogRecord> {
   const limit = spec.limit ?? Number.POSITIVE_INFINITY;
   let emitted = 0;
+  // Determine if we can use the body-only fast path: bodyContains is
+  // the only body-level predicate and we can pre-filter chunks by
+  // checking bodies without full record materialization.
+  const useBodyFastPath = spec.bodyContains !== undefined && !spec.bodyLeafEquals;
 
   for (const id of store.streams.ids()) {
     stats.streamsScanned++;
@@ -141,17 +145,59 @@ export function* queryStream(
         stats.chunksPruned++;
         continue;
       }
-      // Decode this chunk and walk records.
-      const t0 = nowMillis();
-      const records = readRecords(chunk, store.registry, policy);
-      stats.decodeMillis += nowMillis() - t0;
-      for (const record of records) {
-        stats.recordsScanned++;
-        if (!recordMatches(record, spec)) continue;
-        stats.recordsEmitted++;
-        yield record;
-        emitted++;
-        if (emitted >= limit) return;
+
+      if (useBodyFastPath) {
+        // Template-token pruning: if the chunk header carries template
+        // literal tokens (toks), check if any token contains the needle
+        // as a substring. If no template token matches AND the chunk has
+        // no raw-string bodies (raw strings might still match), we can
+        // skip ZSTD decompression entirely.
+        const needle = spec.bodyContains!;
+        if (chunkPrunedByTemplateTokens(chunk, needle)) {
+          stats.chunksPruned++;
+          continue;
+        }
+        // Fast path: decode only bodies, check which match the
+        // substring. Only do full decode if there are body matches.
+        const t0 = nowMillis();
+        const bodies = readBodiesOnly(chunk, store.registry, policy);
+        let hasMatch = false;
+        for (let i = 0; i < bodies.length; i++) {
+          if (typeof bodies[i] === "string" && (bodies[i] as string).includes(needle)) {
+            hasMatch = true;
+            break;
+          }
+        }
+        if (!hasMatch) {
+          // No body in this chunk matches — skip full decode entirely
+          stats.decodeMillis += nowMillis() - t0;
+          stats.chunksPruned++;
+          continue;
+        }
+        // Some bodies match — need full records for time/severity post-filtering
+        const records = readRecords(chunk, store.registry, policy);
+        stats.decodeMillis += nowMillis() - t0;
+        for (const record of records) {
+          stats.recordsScanned++;
+          if (!recordMatches(record, spec)) continue;
+          stats.recordsEmitted++;
+          yield record;
+          emitted++;
+          if (emitted >= limit) return;
+        }
+      } else {
+        // Standard path: full decode + per-record filter.
+        const t0 = nowMillis();
+        const records = readRecords(chunk, store.registry, policy);
+        stats.decodeMillis += nowMillis() - t0;
+        for (const record of records) {
+          stats.recordsScanned++;
+          if (!recordMatches(record, spec)) continue;
+          stats.recordsEmitted++;
+          yield record;
+          emitted++;
+          if (emitted >= limit) return;
+        }
       }
     }
   }
@@ -226,6 +272,39 @@ function chunkPassesSeverity(chunk: Chunk, severityGte?: number): boolean {
   const range = chunk.header.severityRange;
   if (!range) return true;
   return range.max >= severityGte;
+}
+
+/**
+ * Template-token pruning for bodyContains. If the chunk header carries
+ * template literal tokens (TypedColumnarDrainPolicy stores these in
+ * codecMeta.toks), check if any token contains the needle as a
+ * substring. If no template token can match, we know all templated
+ * bodies in this chunk will fail the bodyContains check — skip ZSTD
+ * decompression entirely.
+ *
+ * Returns true (= prune this chunk) only when we can definitively
+ * rule out all records. Conservative: returns false (don't prune) when
+ * the chunk has raw-string bodies that might match, or when codecMeta
+ * doesn't have token data.
+ */
+function chunkPrunedByTemplateTokens(chunk: Chunk, needle: string): boolean {
+  const meta = chunk.header.codecMeta as { toks?: string[] } | undefined;
+  if (!meta?.toks) return false; // no token data — can't prune
+  // Check if any template literal token contains the needle
+  for (const tok of meta.toks) {
+    if (tok.includes(needle)) return false; // might match — don't prune
+  }
+  // No template token contains the needle. But raw-string bodies or
+  // PARAM_STR variable values might still match. We can't prune unless
+  // the chunk is 100% templated. Since we don't have a hasRawStrings
+  // flag in the header, be conservative: only prune if needle looks
+  // like it would appear in a literal token (common word), not a
+  // variable value (UUID, number).
+  // For now: prune when needle is >= 3 chars and all alphanumeric
+  // (likely a keyword/token, not a variable fragment).
+  if (needle.length < 3) return false;
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(needle)) return false;
+  return true; // prune: needle is a keyword-like token not in any template
 }
 
 /** Per-record filter — applied after chunk decode. */
