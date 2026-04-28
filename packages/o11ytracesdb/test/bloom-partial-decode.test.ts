@@ -278,16 +278,18 @@ describe("Event delta timestamps", () => {
 
 describe("Query engine bloom filter pruning", () => {
   it("prunes chunks that don't contain the target trace ID", () => {
-    const store = new TraceStore({ chunkSize: 4 });
+    const store = new TraceStore({ chunkSize: 8 });
     const resource = { attributes: [{ key: "service.name", value: "svc" }] };
     const scope = { name: "test", version: "1.0.0" };
 
-    // Create two batches that will be in separate chunks
-    const targetTraceId = randomBytes(16);
-    const otherTraceId = randomBytes(16);
+    // Create two batches with distinct trace IDs — each fills one chunk
+    const targetTraceId = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+    const otherTraceId = new Uint8Array([
+      255, 254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 244, 243, 242, 241, 240,
+    ]);
 
-    const targetSpans = Array.from({ length: 4 }, () => makeSpan({ traceId: targetTraceId }));
-    const otherSpans = Array.from({ length: 4 }, () => makeSpan({ traceId: otherTraceId }));
+    const targetSpans = Array.from({ length: 8 }, () => makeSpan({ traceId: targetTraceId }));
+    const otherSpans = Array.from({ length: 8 }, () => makeSpan({ traceId: otherTraceId }));
 
     store.append(resource, scope, targetSpans);
     store.append(resource, scope, otherSpans);
@@ -301,7 +303,7 @@ describe("Query engine bloom filter pruning", () => {
     // Query for the target trace ID — bloom filter should prune at least one chunk
     const result = queryTraces(store, { traceId: targetTraceId });
     expect(result.traces.length).toBe(1);
-    expect(result.traces[0]!.spans.length).toBe(4);
+    expect(result.traces[0]!.spans.length).toBe(8);
     expect(result.chunksPruned).toBeGreaterThan(0);
   });
 
