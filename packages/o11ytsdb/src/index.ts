@@ -22,6 +22,8 @@ export {
   toTsdbWideTableModel,
 } from "./adapters.js";
 export { BackpressureController } from "./backpressure.js";
+// Storage backends
+export { ChunkedStore } from "./chunked-store.js";
 export type { DecodedChunk } from "./codec.js";
 // Codec — XOR-delta (Gorilla) compression
 export {
@@ -34,8 +36,6 @@ export {
   encodeChunk,
   floatToBits,
 } from "./codec.js";
-// Storage backends
-export { ChunkedStore } from "./chunked-store.js";
 export { ColumnStore } from "./column-store.js";
 export { FlatStore } from "./flat-store.js";
 export type {

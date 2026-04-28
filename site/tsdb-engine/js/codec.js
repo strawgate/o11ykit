@@ -31,6 +31,7 @@ export { BitReader, BitWriter, bitsToFloat, clz64, ctz64, decodeChunk, encodeChu
  * Decode a XOR-delta chunk and return per-sample bit annotations.
  * Returns { timestamps, values, bitMap } where bitMap[i] describes
  * the bit range for sample i's timestamp and value encoding.
+ * @param {Uint8Array} buf
  */
 export function decodeChunkAnnotated(buf) {
   if (buf.length === 0) {
@@ -110,7 +111,7 @@ export function decodeChunkAnnotated(buf) {
     const delta = prevDelta + dod;
     timestamps[i] = prevTs + delta;
     prevDelta = delta;
-    prevTs = timestamps[i];
+    prevTs = /** @type {bigint} */ (timestamps[i]);
     const tsEnd = r.totalBits;
 
     // ── Value ──

@@ -1,5 +1,5 @@
-import { defineConfig } from "vite";
 import { resolve } from "node:path";
+import { defineConfig } from "vite";
 
 export default defineConfig({
   base: process.env.BASE_PATH ?? "/o11ykit/tsdb-engine/",
@@ -22,18 +22,9 @@ export default defineConfig({
         "learn/index": resolve(__dirname, "learn/index.html"),
         "learn/alp": resolve(__dirname, "learn/alp/index.html"),
         "learn/chunk-stats": resolve(__dirname, "learn/chunk-stats/index.html"),
-        "learn/delta-of-delta": resolve(
-          __dirname,
-          "learn/delta-of-delta/index.html"
-        ),
-        "learn/query-engine": resolve(
-          __dirname,
-          "learn/query-engine/index.html"
-        ),
-        "learn/string-interning": resolve(
-          __dirname,
-          "learn/string-interning/index.html"
-        ),
+        "learn/delta-of-delta": resolve(__dirname, "learn/delta-of-delta/index.html"),
+        "learn/query-engine": resolve(__dirname, "learn/query-engine/index.html"),
+        "learn/string-interning": resolve(__dirname, "learn/string-interning/index.html"),
         "learn/xor-delta": resolve(__dirname, "learn/xor-delta/index.html"),
       },
     },

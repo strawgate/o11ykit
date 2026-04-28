@@ -250,7 +250,8 @@ export class ScanEngine implements QueryEngine {
     if (opts.maxPoints) {
       const effectiveStep = resolveStep(opts.step, opts.start, opts.end, opts.maxPoints);
       if (effectiveStep !== opts.step) {
-        opts = { ...opts, step: effectiveStep };
+        const { step: _drop, ...rest } = opts;
+        opts = effectiveStep != null ? { ...rest, step: effectiveStep } : rest;
       }
     }
 
