@@ -1,20 +1,19 @@
-/* ─── TracesDB Engine — Base Variables & Reset ───────────────────── */
+/* ─── TracesDB Engine — Theme Overrides ─────────────────────────────── */
 
 :root {
-  /* brand / accent — matches parent --otlp */
+  /* Override global accent color for TracesDB */
+  --signal: #e85d1a;
+  --signal-2: #ff8a50;
+  --signal-3: rgba(232, 93, 26, 0.15);
+
+  /* Engine-specific palette */
   --traces: #e85d1a;
   --traces-light: #ff8a50;
   --traces-soft: rgba(232, 93, 26, 0.15);
   --traces-glow: rgba(232, 93, 26, 0.35);
   --traces-dim: rgba(232, 93, 26, 0.08);
 
-  /* sister accent colors from parent styles.css */
-  --accent-otlp: #e85d1a;
-  --accent-tsdb: #7c3aed;
-  --accent-octo: #058d75;
-  --accent-bench: #1259e0;
-
-  /* service palette (12 distinct services) */
+  /* Services */
   --svc-0: #06b6d4;
   --svc-1: #8b5cf6;
   --svc-2: #f59e0b;
@@ -28,22 +27,22 @@
   --svc-10: #a78bfa;
   --svc-11: #fb923c;
 
-  /* status */
+  /* Status */
   --status-ok: #10b981;
   --status-error: #ef4444;
   --status-unset: #6b7280;
 
-  /* dark panels */
+  /* Dark theme (used in explorers) */
   --dark-bg: #0a1929;
   --dark-surface: #0f2640;
   --dark-surface-alt: #132d4a;
-  --dark-border: rgba(96, 165, 250, 0.18);
-  --dark-border-strong: rgba(96, 165, 250, 0.35);
+  --dark-border: rgba(232, 93, 26, 0.18);
+  --dark-border-strong: rgba(232, 93, 26, 0.35);
   --dark-text: #e2e8f0;
   --dark-muted: #94a3b8;
   --dark-accent: #60a5fa;
 
-  /* byte explorer section colors */
+  /* Region colors */
   --region-header: #e85d1a;
   --region-timestamps: #06b6d4;
   --region-durations: #10b981;
@@ -56,11 +55,11 @@
   --region-links: #14b8a6;
   --region-bloom: #a78bfa;
 
-  /* highlight / selection */
+  /* Highlight */
   --highlight-primary: #3b82f6;
   --highlight-bg: rgba(59, 130, 246, 0.15);
 
-  /* z-index scale */
+  /* Z-index */
   --z-cell: 1;
   --z-highlight: 2;
   --z-hover: 3;
@@ -68,17 +67,17 @@
   --z-decode-panel: 10;
   --z-tooltip: 50;
 
-  /* badges for storage modes */
+  /* Badges */
   --badge-hot-bg: rgba(239, 68, 68, 0.15);
   --badge-hot-text: #fca5a5;
   --badge-frozen-bg: rgba(96, 165, 250, 0.15);
   --badge-frozen-text: #93c5fd;
 }
 
-/* ─── Section intro ──────────────────────────────────────────────── */
+/* ─── Section Intro ──────────────────────────────────────────────────── */
 .section-intro {
   margin: 0 0 18px;
-  color: var(--ink-soft);
+  color: var(--ink-2);
   max-width: 72ch;
   font-size: 16px;
   line-height: 1.5;
