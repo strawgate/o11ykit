@@ -13,6 +13,7 @@
  * - Service graph computation from inter-service spans
  */
 
+import { bytesToHex } from "stardb";
 import type { Resource, SpanRecord, Trace } from "./types.js";
 import { StatusCode } from "./types.js";
 
@@ -268,16 +269,6 @@ export function defaultServiceName(span: SpanRecord, resource?: Resource): strin
     }
   }
   return undefined;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  let hex = "";
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i];
-    if (b === undefined) continue;
-    hex += (b >> 4).toString(16) + (b & 0xf).toString(16);
-  }
-  return hex;
 }
 
 // ─── Trace ID Correlation ────────────────────────────────────────────

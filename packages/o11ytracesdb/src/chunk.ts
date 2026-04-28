@@ -20,6 +20,7 @@
  * for resource attributes.
  */
 
+import { bytesToHex } from "stardb";
 import { bloomToBase64, createBloomFilter } from "./bloom.js";
 import type { SpanRecord } from "./types.js";
 
@@ -286,14 +287,4 @@ function compareBigintField(a: SpanRecord, b: SpanRecord): number {
     : a.startTimeUnixNano > b.startTimeUnixNano
       ? 1
       : 0;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  let hex = "";
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i];
-    if (b === undefined) continue;
-    hex += ((b >> 4) & 0xf).toString(16) + (b & 0xf).toString(16);
-  }
-  return hex;
 }

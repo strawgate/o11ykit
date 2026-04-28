@@ -1,0 +1,46 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.{ts,js}"],
+      "ignore": ["coverage/**", ".site/**", "octo11y/**"]
+    },
+    "packages/otlpjson": {
+      "entry": ["src/index.ts"],
+      "ignoreDependencies": ["typescript"]
+    },
+    "packages/query": {
+      "entry": ["src/index.ts"],
+      "ignoreDependencies": ["typescript"]
+    },
+    "packages/views": {
+      "entry": ["src/index.ts"],
+      "ignoreDependencies": ["typescript"]
+    },
+    "packages/adapters": {
+      "entry": ["src/index.ts"],
+      "ignoreDependencies": ["typescript"]
+    },
+    "packages/stardb": {
+      "entry": ["src/index.ts"],
+      "ignoreDependencies": ["typescript"]
+    },
+    "packages/o11ytsdb": {
+      "entry": ["src/index.ts"],
+      "ignore": ["bench/**"],
+      "ignoreDependencies": ["typescript"]
+    },
+    "packages/o11ylogsdb": {
+      "entry": ["src/index.ts"],
+      "ignore": ["bench/**"],
+      "ignoreDependencies": ["typescript"]
+    },
+    "packages/o11ytracesdb": {
+      "entry": ["src/index.ts"],
+      "ignore": ["bench/**"],
+      "ignoreDependencies": ["typescript"]
+    }
+  },
+  "ignore": ["**/dist/**", "**/node_modules/**", "octo11y/**"],
+  "ignoreDependencies": ["@biomejs/biome", "husky", "lint-staged", "knip"]
+}

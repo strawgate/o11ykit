@@ -28,6 +28,10 @@ const RUNTIME_EXPORTS = [
   "rawCodec",
   "rawInt64Codec",
   "ZstdCodec",
+  "StreamRegistry",
+  "bytesToHex",
+  "hexToBytes",
+  "nowMillis",
 ] as const;
 
 describe("stardb public API", () => {

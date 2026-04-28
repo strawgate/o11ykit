@@ -13,6 +13,7 @@ export {
   rawInt64Codec,
   ZstdCodec,
 } from "./codec-baseline.js";
+export { StreamRegistry } from "./stream.js";
 export type {
   AnyValue,
   InstrumentationScope,
@@ -21,3 +22,4 @@ export type {
   SeverityText,
   StreamId,
 } from "./types.js";
+export { bytesToHex, hexToBytes, nowMillis } from "./utils.js";

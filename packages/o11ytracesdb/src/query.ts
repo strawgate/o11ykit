@@ -11,6 +11,7 @@
  * - Error flag (skip chunks without errors when filtering for errors)
  */
 
+import { hexToBytes } from "stardb";
 import { bloomFromBase64, bloomMayContain } from "./bloom.js";
 import type { Chunk } from "./chunk.js";
 import { computeNestedSets } from "./chunk.js";
@@ -56,14 +57,6 @@ function hexFromBytes(bytes: Uint8Array): string {
     hex += HEX_LUT[b] ?? "";
   }
   return hex;
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
 }
 
 // ─── Query execution ─────────────────────────────────────────────────

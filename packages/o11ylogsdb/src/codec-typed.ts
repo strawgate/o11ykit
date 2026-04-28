@@ -29,6 +29,7 @@
  *   - Same `ChunkPolicy` plug-in surface as the existing policies.
  */
 
+import { bytesToHex, hexToBytes } from "stardb";
 import type { ChunkPolicy } from "./chunk.js";
 import { Drain, PARAM_STR, tokenize } from "./drain.js";
 import type { AnyValue, KeyValue, LogRecord, SeverityText } from "./types.js";
@@ -527,22 +528,6 @@ function bytesToUuid(b: Uint8Array): string {
 }
 
 // ── Sidecar helpers (small JSON for non-modeled fields) ──────────────
-
-function bytesToHex(b: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < b.length; i++) {
-    out += (b[i] as number).toString(16).padStart(2, "0");
-  }
-  return out;
-}
-
-function hexToBytes(s: string): Uint8Array {
-  const out = new Uint8Array(s.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = Number.parseInt(s.substring(i * 2, i * 2 + 2), 16);
-  }
-  return out;
-}
 
 function anyValueToJson(v: AnyValue): unknown {
   if (v === null) return null;
