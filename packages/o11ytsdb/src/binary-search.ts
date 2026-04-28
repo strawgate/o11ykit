@@ -1,24 +1,6 @@
 import type { TimeRange } from "./types.js";
 
-export function lowerBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    if (arr[mid]! < target) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
-export function upperBound(arr: BigInt64Array, target: bigint, lo: number, hi: number): number {
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    if (arr[mid]! <= target) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
+export { lowerBound, upperBound } from "stardb";
 
 export function concatRanges(parts: TimeRange[]): TimeRange {
   if (parts.length === 0) {

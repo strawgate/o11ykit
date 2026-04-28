@@ -33,7 +33,7 @@
  * against the *normalized* form.
  */
 
-import { nowMillis, timeRangeOverlaps } from "stardb";
+import { nowMillis, timeRangeOverlaps, uint8IndexOf } from "stardb";
 import type { Chunk } from "./chunk.js";
 import { readRecords, readRecordsFilteredFromRaw, readRecordsFromRaw } from "./chunk.js";
 import type { LogStore } from "./engine.js";
@@ -287,32 +287,6 @@ function rawPayloadContains(raw: Uint8Array, needle: string): boolean {
     needleCache.set(needle, needleBytes);
   }
   return uint8IndexOf(raw, needleBytes) !== -1;
-}
-
-/** Portable Uint8Array substring search (works in browser + Node). */
-function uint8IndexOf(haystack: Uint8Array, needle: Uint8Array): number {
-  // Use Buffer.includes when available (Node) — it's SIMD-optimized
-  if (typeof globalThis.Buffer !== "undefined") {
-    const hBuf = globalThis.Buffer.from(haystack.buffer, haystack.byteOffset, haystack.byteLength);
-    return hBuf.indexOf(
-      globalThis.Buffer.from(needle.buffer, needle.byteOffset, needle.byteLength)
-    );
-  }
-  // Browser fallback: simple byte-at-a-time search
-  const hLen = haystack.length;
-  const nLen = needle.length;
-  if (nLen === 0) return 0;
-  if (nLen > hLen) return -1;
-  const first = needle[0] as number;
-  const limit = hLen - nLen;
-  outer: for (let i = 0; i <= limit; i++) {
-    if (haystack[i] !== first) continue;
-    for (let j = 1; j < nLen; j++) {
-      if (haystack[i + j] !== needle[j]) continue outer;
-    }
-    return i;
-  }
-  return -1;
 }
 
 /** Per-record filter — applied after chunk decode. */

@@ -127,3 +127,50 @@ export function timeRangeOverlaps(
   if (queryTo !== undefined && chunkMin >= queryTo) return false;
   return true;
 }
+
+/** Portable Uint8Array substring search (works in browser + Node). */
+export function uint8IndexOf(haystack: Uint8Array, needle: Uint8Array): number {
+  // Use Buffer.indexOf when available (Node) — it's SIMD-optimized
+  if (typeof globalThis.Buffer !== "undefined") {
+    const hBuf = globalThis.Buffer.from(haystack.buffer, haystack.byteOffset, haystack.byteLength);
+    return hBuf.indexOf(
+      globalThis.Buffer.from(needle.buffer, needle.byteOffset, needle.byteLength)
+    );
+  }
+  // Browser fallback: simple byte-at-a-time search
+  const hLen = haystack.length;
+  const nLen = needle.length;
+  if (nLen === 0) return 0;
+  if (nLen > hLen) return -1;
+  const first = needle[0] as number;
+  const limit = hLen - nLen;
+  outer: for (let i = 0; i <= limit; i++) {
+    if (haystack[i] !== first) continue;
+    for (let j = 1; j < nLen; j++) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return i;
+  }
+  return -1;
+}
+
+/**
+ * Build a frequency-sorted dictionary from an iterable of strings.
+ * Returns the dictionary (most frequent first) and an O(1) string→index lookup map.
+ */
+export function buildDictWithIndex(values: Iterable<string>): {
+  dict: string[];
+  index: Map<string, number>;
+} {
+  const counts = new Map<string, number>();
+  for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+  const dict = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1]) // most frequent first
+    .map(([value]) => value);
+  const index = new Map<string, number>();
+  for (let i = 0; i < dict.length; i++) {
+    const val = dict[i];
+    if (val !== undefined) index.set(val, i);
+  }
+  return { dict, index };
+}

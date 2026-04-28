@@ -4,6 +4,9 @@
  * Public API surface.
  */
 
+export type { InternId } from "stardb";
+// String interner + inverted index
+export { BackpressureController, Interner } from "stardb";
 export type {
   TsdbAdapterOptions,
   TsdbLatestValueModel,
@@ -21,7 +24,6 @@ export {
   toTsdbLineSeriesModel,
   toTsdbWideTableModel,
 } from "./adapters.js";
-export { BackpressureController } from "./backpressure.js";
 // Storage backends
 export { ChunkedStore } from "./chunked-store.js";
 export type { DecodedChunk } from "./codec.js";
@@ -51,9 +53,6 @@ export {
   ingestOtlpObject,
   parseOtlpToSamples,
 } from "./ingest.js";
-export type { InternId } from "./interner.js";
-// String interner + inverted index
-export { Interner } from "./interner.js";
 // Label index — shared label management for storage backends
 export { LabelIndex } from "./label-index.js";
 export { MemPostings } from "./postings.js";
