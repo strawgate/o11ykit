@@ -1580,7 +1580,7 @@ function _stepAggregateIrate(
         (readNumberAt(lastTs, i, "last timestamp") -
           readNumberAt(secondTs, i, "second timestamp")) /
         1000;
-      values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : 0;
+      values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : NaN;
     }
   }
 }
