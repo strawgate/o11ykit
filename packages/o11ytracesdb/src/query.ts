@@ -11,7 +11,7 @@
  * - Error flag (skip chunks without errors when filtering for errors)
  */
 
-import { anyValueEquals, bytesEqual, bytesToHex, hexToBytes } from "stardb";
+import { anyValueEquals, bytesEqual, bytesToHex, hexToBytes, timeRangeOverlaps } from "stardb";
 import { bloomFromBase64, bloomMayContain } from "./bloom.js";
 import type { Chunk } from "./chunk.js";
 import { computeNestedSets } from "./chunk.js";
@@ -495,12 +495,15 @@ function canPruneChunk(
   }
 
   // Time range pruning
-  if (opts.startTimeNano !== undefined) {
-    if (BigInt(h.maxTimeNano) < opts.startTimeNano) return true;
-  }
-  if (opts.endTimeNano !== undefined) {
-    if (BigInt(h.minTimeNano) > opts.endTimeNano) return true;
-  }
+  if (
+    !timeRangeOverlaps(
+      BigInt(h.minTimeNano),
+      BigInt(h.maxTimeNano),
+      opts.startTimeNano,
+      opts.endTimeNano
+    )
+  )
+    return true;
 
   // Error filter pruning
   if (opts.statusCode === 2 && !h.hasError) return true;

@@ -33,7 +33,7 @@
  * against the *normalized* form.
  */
 
-import { nowMillis } from "stardb";
+import { nowMillis, timeRangeOverlaps } from "stardb";
 import type { Chunk } from "./chunk.js";
 import { readRecords, readRecordsFromRaw } from "./chunk.js";
 import type { LogStore } from "./engine.js";
@@ -234,12 +234,12 @@ function streamMatches(store: LogStore, id: StreamId, spec: QuerySpec): boolean 
  */
 function chunkOverlapsRange(chunk: Chunk, range: QuerySpec["range"]): boolean {
   if (!range) return true;
-  const minNano = BigInt(chunk.header.timeRange.minNano);
-  const maxNano = BigInt(chunk.header.timeRange.maxNano);
-  // Overlap: chunk.max >= range.from && chunk.min < range.to
-  if (maxNano < range.from) return false;
-  if (minNano >= range.to) return false;
-  return true;
+  return timeRangeOverlaps(
+    BigInt(chunk.header.timeRange.minNano),
+    BigInt(chunk.header.timeRange.maxNano),
+    range.from,
+    range.to
+  );
 }
 
 /**

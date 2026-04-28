@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   bytesEqual,
   bytesToHex,
+  bytesToUuid,
   fnv1aBytes,
   hexToBytes,
   nowMillis,
   StreamRegistry,
+  timeRangeOverlaps,
+  uuidToBytes,
 } from "../src/index.js";
 
 describe("StreamRegistry (shared)", () => {
@@ -207,5 +210,80 @@ describe("bytesEqual", () => {
 
   it("returns true for empty arrays", () => {
     expect(bytesEqual(new Uint8Array(0), new Uint8Array(0))).toBe(true);
+  });
+});
+
+describe("bytesToUuid / uuidToBytes", () => {
+  it("formats 16 bytes as canonical UUID string", () => {
+    const bytes = new Uint8Array([
+      0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66, 0x55, 0x44, 0x00,
+      0x00,
+    ]);
+    expect(bytesToUuid(bytes)).toBe("550e8400-e29b-41d4-a716-446655440000");
+  });
+
+  it("round-trips through uuidToBytes", () => {
+    const uuid = "550e8400-e29b-41d4-a716-446655440000";
+    const bytes = uuidToBytes(uuid);
+    expect(bytesToUuid(bytes)).toBe(uuid);
+  });
+
+  it("uuidToBytes handles no-dash format", () => {
+    const noDash = "550e8400e29b41d4a716446655440000";
+    const withDash = "550e8400-e29b-41d4-a716-446655440000";
+    expect(uuidToBytes(noDash)).toEqual(uuidToBytes(withDash));
+  });
+
+  it("handles all-zeros UUID", () => {
+    const bytes = new Uint8Array(16);
+    expect(bytesToUuid(bytes)).toBe("00000000-0000-0000-0000-000000000000");
+  });
+
+  it("handles all-ff UUID", () => {
+    const bytes = new Uint8Array(16).fill(0xff);
+    expect(bytesToUuid(bytes)).toBe("ffffffff-ffff-ffff-ffff-ffffffffffff");
+  });
+});
+
+describe("timeRangeOverlaps", () => {
+  it("returns true when ranges fully overlap", () => {
+    expect(timeRangeOverlaps(100n, 200n, 50n, 250n)).toBe(true);
+  });
+
+  it("returns true when chunk contains query range", () => {
+    expect(timeRangeOverlaps(50n, 250n, 100n, 200n)).toBe(true);
+  });
+
+  it("returns true when ranges partially overlap", () => {
+    expect(timeRangeOverlaps(100n, 200n, 150n, 250n)).toBe(true);
+    expect(timeRangeOverlaps(100n, 200n, 50n, 150n)).toBe(true);
+  });
+
+  it("returns false when chunk is entirely before query", () => {
+    expect(timeRangeOverlaps(100n, 200n, 300n, 400n)).toBe(false);
+  });
+
+  it("returns false when chunk is entirely after query", () => {
+    expect(timeRangeOverlaps(300n, 400n, 100n, 200n)).toBe(false);
+  });
+
+  it("returns false when chunk.max == queryFrom - 1 (exclusive)", () => {
+    expect(timeRangeOverlaps(100n, 199n, 200n, 300n)).toBe(false);
+  });
+
+  it("returns false when chunk.min == queryTo (half-open)", () => {
+    expect(timeRangeOverlaps(200n, 300n, 100n, 200n)).toBe(false);
+  });
+
+  it("returns true when queryFrom is undefined", () => {
+    expect(timeRangeOverlaps(100n, 200n, undefined, 300n)).toBe(true);
+  });
+
+  it("returns true when queryTo is undefined", () => {
+    expect(timeRangeOverlaps(100n, 200n, 50n, undefined)).toBe(true);
+  });
+
+  it("returns true when both bounds are undefined", () => {
+    expect(timeRangeOverlaps(100n, 200n, undefined, undefined)).toBe(true);
   });
 });

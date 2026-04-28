@@ -29,11 +29,17 @@
  *   - Same `ChunkPolicy` plug-in surface as the existing policies.
  */
 
-import { ByteBuf, ByteReader, bytesToHex, hexToBytes } from "stardb";
+import { ByteBuf, ByteReader, bytesToHex, bytesToUuid, hexToBytes, uuidToBytes } from "stardb";
 import type { ChunkPolicy } from "./chunk.js";
-import { anyValueToJson, extractVarsAgainstTemplate, jsonToAnyValue } from "./codec-utils.js";
+import {
+  applySidecar,
+  encodeSidecar,
+  extractVarsAgainstTemplate,
+  jsonToAnyValue,
+  type SidecarEntry,
+} from "./codec-utils.js";
 import { Drain, PARAM_STR, tokenize } from "./drain.js";
-import type { AnyValue, KeyValue, LogRecord, SeverityText } from "./types.js";
+import type { AnyValue, LogRecord, SeverityText } from "./types.js";
 
 // Body kinds (same enum as ColumnarDrainPolicy).
 const KIND_RAW_STRING = 0;
@@ -297,103 +303,6 @@ function tsShape(id: number): TimestampShape {
   return s;
 }
 
-/** Parse a canonical lowercase UUID string into 16 bytes. */
-function uuidToBytes(s: string): Uint8Array {
-  // Format: 8-4-4-4-12 hex chars = 36 chars. Strip dashes → 32 hex
-  // chars → 16 bytes.
-  const out = new Uint8Array(16);
-  let cur = 0;
-  for (let i = 0; i < s.length; i++) {
-    const ch = s.charCodeAt(i);
-    if (ch === 0x2d) continue; // dash
-    const hi = hexNibble(ch);
-    i++;
-    const lo = hexNibble(s.charCodeAt(i));
-    out[cur++] = (hi << 4) | lo;
-  }
-  return out;
-}
-
-/** Parse a 32-hex-char UUID-no-dash string into 16 bytes. */
-function uuidNodashToBytes(s: string): Uint8Array {
-  const out = new Uint8Array(16);
-  for (let i = 0; i < 16; i++) {
-    out[i] = (hexNibble(s.charCodeAt(i * 2)) << 4) | hexNibble(s.charCodeAt(i * 2 + 1));
-  }
-  return out;
-}
-
-/** Format 16 bytes as 32 lowercase hex chars (no dashes). */
-// Hex-byte lookup table: BYTE_TO_HEX[b] = "00".."ff". Avoids two
-// per-byte string allocations + the array.join in the per-record
-// hot path. Built once at module load.
-const BYTE_TO_HEX: string[] = (() => {
-  const out = new Array<string>(256);
-  const hex = "0123456789abcdef";
-  for (let b = 0; b < 256; b++) {
-    out[b] = (hex[b >> 4] as string) + (hex[b & 0xf] as string);
-  }
-  return out;
-})();
-
-function bytesToUuidNodash(b: Uint8Array): string {
-  // Direct concat with the precomputed byte-to-hex table.
-  return (
-    BYTE_TO_HEX[b[0] as number]! +
-    BYTE_TO_HEX[b[1] as number]! +
-    BYTE_TO_HEX[b[2] as number]! +
-    BYTE_TO_HEX[b[3] as number]! +
-    BYTE_TO_HEX[b[4] as number]! +
-    BYTE_TO_HEX[b[5] as number]! +
-    BYTE_TO_HEX[b[6] as number]! +
-    BYTE_TO_HEX[b[7] as number]! +
-    BYTE_TO_HEX[b[8] as number]! +
-    BYTE_TO_HEX[b[9] as number]! +
-    BYTE_TO_HEX[b[10] as number]! +
-    BYTE_TO_HEX[b[11] as number]! +
-    BYTE_TO_HEX[b[12] as number]! +
-    BYTE_TO_HEX[b[13] as number]! +
-    BYTE_TO_HEX[b[14] as number]! +
-    BYTE_TO_HEX[b[15] as number]!
-  );
-}
-
-function hexNibble(ch: number): number {
-  if (ch >= 0x30 && ch <= 0x39) return ch - 0x30;
-  if (ch >= 0x61 && ch <= 0x66) return ch - 0x61 + 10;
-  if (ch >= 0x41 && ch <= 0x46) return ch - 0x41 + 10;
-  return 0;
-}
-
-/** Format 16 bytes as canonical lowercase UUID — 8-4-4-4-12. */
-function bytesToUuid(b: Uint8Array): string {
-  // Direct concat. CPU profile : bytesToUuid was 11.4 %
-  // of decode self-time on OpenStack 500K-record stores because
-  // each call did 16 array.push pairs + 4 dash inserts + a join.
-  return (
-    BYTE_TO_HEX[b[0] as number]! +
-    BYTE_TO_HEX[b[1] as number]! +
-    BYTE_TO_HEX[b[2] as number]! +
-    BYTE_TO_HEX[b[3] as number]! +
-    "-" +
-    BYTE_TO_HEX[b[4] as number]! +
-    BYTE_TO_HEX[b[5] as number]! +
-    "-" +
-    BYTE_TO_HEX[b[6] as number]! +
-    BYTE_TO_HEX[b[7] as number]! +
-    "-" +
-    BYTE_TO_HEX[b[8] as number]! +
-    BYTE_TO_HEX[b[9] as number]! +
-    "-" +
-    BYTE_TO_HEX[b[10] as number]! +
-    BYTE_TO_HEX[b[11] as number]! +
-    BYTE_TO_HEX[b[12] as number]! +
-    BYTE_TO_HEX[b[13] as number]! +
-    BYTE_TO_HEX[b[14] as number]! +
-    BYTE_TO_HEX[b[15] as number]!
-  );
-}
-
 // ── Encode ───────────────────────────────────────────────────────────
 
 function encode(
@@ -612,7 +521,7 @@ function encode(
   for (const row of templatedRows) {
     for (let s = 0; s < row.vars.length; s++) {
       if (typeOf(row.templateId, s) !== SLOT_UUID_NODASH) continue;
-      buf.writeBytes(uuidNodashToBytes(row.vars[s] as string));
+      buf.writeBytes(hexToBytes(row.vars[s] as string));
     }
   }
   // Pass 6: SLOT_PREFIXED_UUID
@@ -642,59 +551,7 @@ function encode(
   }
 
   // Sidecar (same shape as ColumnarDrainPolicy).
-  const sidecarLines: string[] = [];
-  let sidecarHasContent = false;
-  for (let i = 0; i < n; i++) {
-    const r = records[i] as LogRecord;
-    const side: Record<string, unknown> = {};
-    if (kinds[i] === KIND_OTHER) {
-      side.b = anyValueToJson(r.body);
-      sidecarHasContent = true;
-    }
-    if (r.severityText && r.severityText !== "INFO") {
-      side.st = r.severityText;
-      sidecarHasContent = true;
-    }
-    if (r.attributes && r.attributes.length > 0) {
-      side.a = r.attributes.map((kv: KeyValue) => ({
-        k: kv.key,
-        v: anyValueToJson(kv.value),
-      }));
-      sidecarHasContent = true;
-    }
-    if (r.observedTimeUnixNano !== undefined) {
-      side.o = r.observedTimeUnixNano.toString();
-      sidecarHasContent = true;
-    }
-    if (r.flags !== undefined) {
-      side.f = r.flags;
-      sidecarHasContent = true;
-    }
-    if (r.traceId) {
-      side.ti = bytesToHex(r.traceId);
-      sidecarHasContent = true;
-    }
-    if (r.spanId) {
-      side.si = bytesToHex(r.spanId);
-      sidecarHasContent = true;
-    }
-    if (r.eventName) {
-      side.e = r.eventName;
-      sidecarHasContent = true;
-    }
-    if (r.droppedAttributesCount) {
-      side.d = r.droppedAttributesCount;
-      sidecarHasContent = true;
-    }
-    sidecarLines.push(JSON.stringify(side));
-  }
-  if (!sidecarHasContent) {
-    buf.writeUvarint(0);
-  } else {
-    const sidecar = enc.encode(`${sidecarLines.join("\n")}\n`);
-    buf.writeUvarint(sidecar.length);
-    buf.writeBytes(sidecar);
-  }
+  encodeSidecar(records, kinds, buf);
 
   const meta: TypedColumnarChunkMeta = { v: 3, drain: true };
   // Collect distinct literal tokens from templates for bodyContains pruning.
@@ -879,7 +736,7 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
     const vars = allVars[i] as string[];
     for (let s = 0; s < nVars; s++) {
       if (types[s] !== SLOT_UUID_NODASH) continue;
-      vars[s] = bytesToUuidNodash(cur.readBytes(16));
+      vars[s] = bytesToHex(cur.readBytes(16));
     }
   }
   // Pass 6: SLOT_PREFIXED_UUID
@@ -945,7 +802,7 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
   const out: LogRecord[] = new Array(n);
   let templatedCursor = 0;
   for (let i = 0; i < n; i++) {
-    const side = sidecarMap.get(i) ?? {};
+    const side = (sidecarMap.get(i) ?? {}) as SidecarEntry;
     let body: AnyValue;
     if (kinds[i] === KIND_RAW_STRING) {
       body = rawStringByRecord.get(i) ?? "";
@@ -957,21 +814,11 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
     const rec: LogRecord = {
       timeUnixNano: timestamps[i] as bigint,
       severityNumber: severities[i] as number,
-      severityText: ((side.st as SeverityText) ?? "INFO") as SeverityText,
+      severityText: "INFO",
       body,
-      attributes: side.a
-        ? (side.a as Array<{ k: string; v: unknown }>).map((kv) => ({
-            key: kv.k,
-            value: jsonToAnyValue(kv.v),
-          }))
-        : [],
+      attributes: [],
     };
-    if (side.o !== undefined) rec.observedTimeUnixNano = BigInt(side.o as string);
-    if (side.f !== undefined) rec.flags = side.f as number;
-    if (side.ti) rec.traceId = hexToBytes(side.ti as string);
-    if (side.si) rec.spanId = hexToBytes(side.si as string);
-    if (side.e) rec.eventName = side.e as string;
-    if (side.d) rec.droppedAttributesCount = side.d as number;
+    applySidecar(rec, side);
     out[i] = rec;
   }
   return out;
@@ -1131,7 +978,7 @@ function decodeBodies(buf: Uint8Array, expectedN: number): AnyValue[] {
     const vars = allVars[i] as string[];
     for (let s = 0; s < nVars; s++) {
       if (types[s] !== SLOT_UUID_NODASH) continue;
-      vars[s] = bytesToUuidNodash(cur.readBytes(16));
+      vars[s] = bytesToHex(cur.readBytes(16));
     }
   }
   // Pass 6: SLOT_PREFIXED_UUID

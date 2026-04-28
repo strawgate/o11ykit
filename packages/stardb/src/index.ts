@@ -27,4 +27,13 @@ export type {
   StreamId,
   StreamKey,
 } from "./types.js";
-export { bytesEqual, bytesToHex, fnv1aBytes, hexToBytes, nowMillis } from "./utils.js";
+export {
+  bytesEqual,
+  bytesToHex,
+  bytesToUuid,
+  fnv1aBytes,
+  hexToBytes,
+  nowMillis,
+  timeRangeOverlaps,
+  uuidToBytes,
+} from "./utils.js";

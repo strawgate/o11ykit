@@ -46,11 +46,17 @@
  * to single spaces; everything else is bit-exact).
  */
 
-import { ByteBuf, ByteReader, bytesToHex, hexToBytes } from "stardb";
+import { ByteBuf, ByteReader } from "stardb";
 import type { ChunkPolicy } from "./chunk.js";
-import { anyValueToJson, extractVarsAgainstTemplate, jsonToAnyValue } from "./codec-utils.js";
+import {
+  applySidecar,
+  encodeSidecar,
+  extractVarsAgainstTemplate,
+  jsonToAnyValue,
+  type SidecarEntry,
+} from "./codec-utils.js";
 import { Drain, tokenize } from "./drain.js";
-import type { AnyValue, KeyValue, LogRecord, SeverityText } from "./types.js";
+import type { AnyValue, LogRecord } from "./types.js";
 
 // ── Body-kind tags ───────────────────────────────────────────────────
 
@@ -274,59 +280,8 @@ function encode(
     }
   }
 
-  // Sidecar NDJSON for everything we don't model.
-  const sidecarLines: string[] = [];
-  let sidecarHasContent = false;
-  for (let i = 0; i < n; i++) {
-    const r = records[i] as LogRecord;
-    const side: Record<string, unknown> = {};
-    if (kinds[i] === KIND_OTHER) {
-      side.b = anyValueToJson(r.body);
-      sidecarHasContent = true;
-    }
-    if (r.severityText && r.severityText !== "INFO") {
-      side.st = r.severityText;
-      sidecarHasContent = true;
-    }
-    if (r.attributes && r.attributes.length > 0) {
-      side.a = r.attributes.map((kv) => ({ k: kv.key, v: anyValueToJson(kv.value) }));
-      sidecarHasContent = true;
-    }
-    if (r.observedTimeUnixNano !== undefined) {
-      side.o = r.observedTimeUnixNano.toString();
-      sidecarHasContent = true;
-    }
-    if (r.flags !== undefined) {
-      side.f = r.flags;
-      sidecarHasContent = true;
-    }
-    if (r.traceId) {
-      side.ti = bytesToHex(r.traceId);
-      sidecarHasContent = true;
-    }
-    if (r.spanId) {
-      side.si = bytesToHex(r.spanId);
-      sidecarHasContent = true;
-    }
-    if (r.eventName) {
-      side.e = r.eventName;
-      sidecarHasContent = true;
-    }
-    if (r.droppedAttributesCount) {
-      side.d = r.droppedAttributesCount;
-      sidecarHasContent = true;
-    }
-    sidecarLines.push(JSON.stringify(side));
-  }
-  // If absolutely nothing in the sidecar, emit a single zero-length
-  // marker (varint 0). Otherwise, emit the whole NDJSON stream.
-  if (!sidecarHasContent) {
-    buf.writeUvarint(0);
-  } else {
-    const sidecar = enc.encode(`${sidecarLines.join("\n")}\n`);
-    buf.writeUvarint(sidecar.length);
-    buf.writeBytes(sidecar);
-  }
+  // Sidecar NDJSON for everything we don't model in columnar columns.
+  encodeSidecar(records, kinds, buf);
 
   return {
     payload: buf.finish(),
@@ -421,17 +376,7 @@ function decode(buf: Uint8Array, expectedN: number, meta: ColumnarChunkMeta): Lo
   const out: LogRecord[] = new Array(n);
   for (let i = 0; i < n; i++) {
     const sideStr = sidecarLines.length === 0 ? "{}" : (sidecarLines[i] as string);
-    const side = JSON.parse(sideStr) as {
-      b?: unknown;
-      st?: string;
-      a?: Array<{ k: string; v: unknown }>;
-      o?: string;
-      f?: number;
-      ti?: string;
-      si?: string;
-      e?: string;
-      d?: number;
-    };
+    const side = JSON.parse(sideStr) as SidecarEntry;
     let body: AnyValue;
     const k = kinds[i] as number;
     if (k === KIND_RAW_STRING) {
@@ -441,22 +386,14 @@ function decode(buf: Uint8Array, expectedN: number, meta: ColumnarChunkMeta): Lo
     } else {
       body = jsonToAnyValue(side.b ?? null);
     }
-    const attributes: KeyValue[] = side.a
-      ? side.a.map((kv) => ({ key: kv.k, value: jsonToAnyValue(kv.v) }))
-      : [];
     const rec: LogRecord = {
       timeUnixNano: timestamps[i] as bigint,
       severityNumber: severities[i] as number,
-      severityText: (side.st ?? "INFO") as SeverityText | string,
+      severityText: "INFO",
       body,
-      attributes,
+      attributes: [],
     };
-    if (side.o !== undefined) rec.observedTimeUnixNano = BigInt(side.o);
-    if (side.f !== undefined) rec.flags = side.f;
-    if (side.ti) rec.traceId = hexToBytes(side.ti);
-    if (side.si) rec.spanId = hexToBytes(side.si);
-    if (side.e) rec.eventName = side.e;
-    if (side.d) rec.droppedAttributesCount = side.d;
+    applySidecar(rec, side);
     out[i] = rec;
   }
   return out;
