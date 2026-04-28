@@ -564,6 +564,35 @@ describe("@otlpkit/otlpjson", () => {
     expect(() => makeEnvelope({ invalid: true } as never)).toThrowError(TypeError);
   });
 
+  it("preserves empty string parentSpanId for root spans", () => {
+    const doc = {
+      resourceSpans: [
+        {
+          resource: { attributes: [] },
+          scopeSpans: [
+            {
+              scope: { name: "test", version: "1.0.0" },
+              spans: [
+                {
+                  traceId: "abc",
+                  spanId: "def",
+                  parentSpanId: "",
+                  name: "root-span",
+                  kind: 1,
+                  startTimeUnixNano: "1000000000",
+                  endTimeUnixNano: "2000000000",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const spans = [...iterSpans(doc as never)];
+    expect(spans).toHaveLength(1);
+    expect(spans[0]?.parentSpanId).toBe("");
+  });
+
   it("covers primitive conversion and timestamp fallbacks", () => {
     expect(attributeValueToJs("plain")).toBe("plain");
     expect(attributeValueToJs(null)).toBeNull();
