@@ -19,6 +19,34 @@ import type {
   TimeRange,
 } from "./types.js";
 
+type PointwiseTransform = "abs" | "ceil" | "floor" | "sqrt";
+
+function isPointwiseTransform(fn: string): fn is PointwiseTransform {
+  return fn === "abs" || fn === "ceil" || fn === "floor" || fn === "sqrt";
+}
+
+function applyPointwiseTransform(fn: PointwiseTransform, values: Float64Array): Float64Array {
+  const result = new Float64Array(values.length);
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i] as number;
+    switch (fn) {
+      case "abs":
+        result[i] = Math.abs(v);
+        break;
+      case "ceil":
+        result[i] = Math.ceil(v);
+        break;
+      case "floor":
+        result[i] = Math.floor(v);
+        break;
+      case "sqrt":
+        result[i] = Math.sqrt(v);
+        break;
+    }
+  }
+  return result;
+}
+
 function readNumberAt(arr: ArrayLike<number>, index: number, label: string): number {
   const value = arr[index];
   if (value === undefined) {
@@ -286,7 +314,22 @@ export class ScanEngine implements QueryEngine {
         for (const p of parts) scannedSamples += chunkSampleCount(p);
 
         // Apply per-series transform → step-aligned bucketed result.
-        const transformed = aggregate(parts, opts.transform, opts.step);
+        let transformed: TimeRange;
+        if (isPointwiseTransform(opts.transform)) {
+          // Pointwise transform: apply directly to values (no step alignment)
+          // Concatenate all parts first, then apply transform
+          const first = parts[0];
+          if (!first) continue; // no data
+          const concatenated = parts.length === 1 ? first : concatenateRanges(parts);
+          const materialized = materializeRangeOwned(concatenated);
+          transformed = {
+            timestamps: materialized.timestamps,
+            values: applyPointwiseTransform(opts.transform, materialized.values),
+          };
+        } else {
+          // Temporal transform: use aggregate (handles rate/delta/etc.)
+          transformed = aggregate(parts, opts.transform, opts.step);
+        }
 
         const labels = storage.labels(id) ?? new Map();
         const groupKey = opts.groupBy
@@ -331,7 +374,17 @@ export class ScanEngine implements QueryEngine {
 
         let result: TimeRange = data;
         if (opts.transform) {
-          result = aggregate([data], opts.transform, opts.step);
+          if (isPointwiseTransform(opts.transform)) {
+            // Pointwise transform: apply directly to values (no step alignment needed)
+            const materialized = materializeRangeOwned(data);
+            result = {
+              timestamps: materialized.timestamps,
+              values: applyPointwiseTransform(opts.transform, materialized.values),
+            };
+          } else {
+            // Temporal transform: use aggregate (handles rate/delta/etc.)
+            result = aggregate([data], opts.transform, opts.step);
+          }
         }
 
         series.push({
@@ -651,6 +704,26 @@ function materializeRangeOwned(range: TimeRange): TimeRange {
     timestamps: materialized.timestamps.slice(),
     values: materialized.values.slice(),
   };
+}
+
+function concatenateRanges(ranges: TimeRange[]): TimeRange {
+  let totalTimestamps = 0;
+  let totalValues = 0;
+  for (const r of ranges) {
+    totalTimestamps += r.timestamps.length;
+    totalValues += r.values.length;
+  }
+  const timestamps = new BigInt64Array(totalTimestamps);
+  const values = new Float64Array(totalValues);
+  let tOffset = 0;
+  let vOffset = 0;
+  for (const r of ranges) {
+    timestamps.set(r.timestamps, tOffset);
+    values.set(r.values, vOffset);
+    tOffset += r.timestamps.length;
+    vOffset += r.values.length;
+  }
+  return { timestamps, values };
 }
 
 function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
