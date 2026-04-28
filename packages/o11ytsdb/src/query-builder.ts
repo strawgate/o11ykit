@@ -276,6 +276,13 @@ export class QueryBuilder {
     if (metric == null) throw new Error("query().metric() is required");
     if (start == null || end == null) throw new Error("query().range() is required");
 
+    if (transforms.length > 1) {
+      throw new Error(
+        `Multiple transforms are not yet supported. Got: ${transforms.join(" → ")}. ` +
+          `Use a single transform (e.g., rate()) or a transform with aggregation (e.g., rate().sumBy()).`
+      );
+    }
+
     if (step != null && agg == null && !isStepTransform(transforms.at(-1))) {
       throw new Error("step() requires an aggregation or a step-aligned transform (rate, increase, irate, delta)");
     }

@@ -147,7 +147,8 @@ function resolveAggFn(
   if (transforms.length > 1) {
     throw new Error(
       `Transform '${transforms.join(" → ")}' is not yet supported by the executor. ` +
-        `Supported: rate(), increase(), irate(), delta() (with optional subsequent aggregation).`
+        `Supported: single pointwise transforms (abs, ceil, floor, sqrt) and ` +
+        `temporal transforms rate(), increase(), irate(), delta() (with optional subsequent aggregation).`
     );
   }
 

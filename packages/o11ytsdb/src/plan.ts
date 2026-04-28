@@ -24,7 +24,7 @@ export interface PlanMatcher {
 
 /**
  * Per-series transform functions (applied before aggregation).
- * Temporal transforms (rate, increase, irate, delta) require step alignment.
+ * Temporal transforms (rate, increase, irate, delta) are step-aware.
  * Pointwise transforms (abs, ceil, floor, sqrt) are applied sample-by-sample.
  */
 export type TransformFn =
