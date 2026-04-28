@@ -1080,6 +1080,320 @@ function reconstruct(template: readonly string[], vars: readonly string[]): stri
   return out;
 }
 
+// ── Filtered decode (selective sidecar) ──────────────────────────────
+
+/**
+ * Decode only records whose body matches `needle` (substring search).
+ *
+ * Performs the same binary column parse as `decode()` but:
+ *   1. Reconstructs body strings and tests them against `needle`
+ *   2. Only JSON.parse()s sidecar lines for matching records
+ *   3. Only constructs LogRecord objects for matching records
+ *
+ * The sidecar is the most expensive decode phase (~47% of full-decode
+ * CPU). By skipping JSON.parse for non-matching records, a 26%-hit
+ * bodyContains query saves ~35% of sidecar cost per chunk.
+ *
+ * Template-literal shortcut: for needles without spaces, if any
+ * template literal token contains the needle, all records with that
+ * template definitely match (skips the .includes() check per record).
+ */
+function decodeFilteredByNeedle(
+  buf: Uint8Array,
+  expectedN: number,
+  _meta: TypedColumnarChunkMeta,
+  needle: string
+): LogRecord[] {
+  const cur = new ByteReader(buf);
+  const n = cur.readUvarint();
+  if (n !== expectedN) {
+    throw new Error(`typed: count mismatch payload=${n} header=${expectedN}`);
+  }
+  // timestamps (needed for output records)
+  const timestamps = new BigInt64Array(n);
+  let prevTs = 0n;
+  for (let i = 0; i < n; i++) {
+    const dt = cur.readZigzagVarint();
+    prevTs = prevTs + dt;
+    timestamps[i] = prevTs;
+  }
+  // severities
+  const severities = new Uint8Array(n);
+  for (let i = 0; i < n; i++) severities[i] = cur.readU8();
+  // kinds
+  const kinds = new Uint8Array(cur.readBytes(n));
+  // template dictionary
+  const nTemplates = cur.readUvarint();
+  const templateById = new Map<number, string[]>();
+  const dec = new TextDecoder();
+  for (let t = 0; t < nTemplates; t++) {
+    const id = cur.readUvarint();
+    const len = cur.readUvarint();
+    const tplStr = dec.decode(cur.readBytes(len));
+    templateById.set(
+      id,
+      tplStr.split(/\s+/).filter((s) => s.length > 0)
+    );
+  }
+  // Template-literal shortcut: for space-free needles, identify templates
+  // whose literal tokens contain the needle. Records with these templates
+  // definitely match without needing per-record .includes().
+  const needleHasSpace = needle.includes(" ");
+  const tplDefiniteMatch = new Set<number>();
+  if (!needleHasSpace) {
+    for (const [tplId, tokens] of templateById) {
+      for (const tok of tokens) {
+        if (tok !== PARAM_STR && tok.includes(needle)) {
+          tplDefiniteMatch.add(tplId);
+          break;
+        }
+      }
+    }
+  }
+  // slot-type table (same parse as decode)
+  interface DecodedSlot {
+    type: number;
+    prefix?: string;
+    timestampShapeId?: number;
+  }
+  const slotTypeMap = new Map<string, DecodedSlot>();
+  const nSlotTypes = cur.readUvarint();
+  for (let i = 0; i < nSlotTypes; i++) {
+    const tplId = cur.readUvarint();
+    const slotIdx = cur.readUvarint();
+    const type = cur.readU8();
+    const entry: DecodedSlot = { type };
+    if (type === SLOT_PREFIXED_INT64 || type === SLOT_PREFIXED_UUID) {
+      const plen = cur.readUvarint();
+      entry.prefix = dec.decode(cur.readBytes(plen));
+    } else if (type === SLOT_TIMESTAMP_DELTA) {
+      entry.timestampShapeId = cur.readUvarint();
+    }
+    slotTypeMap.set(`${tplId}/${slotIdx}`, entry);
+  }
+  // Transpose to per-template flat arrays
+  const slotTypeArrays = new Map<number, Int8Array>();
+  const slotPrefixArrays = new Map<number, (string | undefined)[]>();
+  const slotTsShapeArrays = new Map<number, (number | undefined)[]>();
+  for (const [tplId, template] of templateById) {
+    let nVars = 0;
+    for (const t of template) if (t === PARAM_STR) nVars++;
+    if (nVars === 0) continue;
+    const types = new Int8Array(nVars);
+    const prefixes = new Array<string | undefined>(nVars);
+    const tsShapes = new Array<number | undefined>(nVars);
+    for (let s = 0; s < nVars; s++) {
+      const slot = slotTypeMap.get(`${tplId}/${s}`);
+      if (!slot) continue;
+      types[s] = slot.type;
+      if (slot.prefix !== undefined) prefixes[s] = slot.prefix;
+      if (slot.timestampShapeId !== undefined) tsShapes[s] = slot.timestampShapeId;
+    }
+    slotTypeArrays.set(tplId, types);
+    slotPrefixArrays.set(tplId, prefixes);
+    slotTsShapeArrays.set(tplId, tsShapes);
+  }
+  // raw-string bodies
+  const rawStringByRecord = new Map<number, string>();
+  for (let i = 0; i < n; i++) {
+    if (kinds[i] !== KIND_RAW_STRING) continue;
+    const len = cur.readUvarint();
+    rawStringByRecord.set(i, dec.decode(cur.readBytes(len)));
+  }
+  // templated columns
+  const templatedIndices: number[] = [];
+  for (let i = 0; i < n; i++) if (kinds[i] === KIND_TEMPLATED) templatedIndices.push(i);
+  const tplIds: number[] = new Array(templatedIndices.length);
+  for (let i = 0; i < templatedIndices.length; i++) tplIds[i] = cur.readUvarint();
+  const varCounts: number[] = new Array(templatedIndices.length);
+  for (let i = 0; i < templatedIndices.length; i++) varCounts[i] = cur.readUvarint();
+  const allVars: string[][] = templatedIndices.map(
+    (_, i) => new Array<string>(varCounts[i] as number)
+  );
+  // 7 variable-decode passes (same as decode)
+  // Pass 1: SLOT_STRING
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_STRING) continue;
+      const len = cur.readUvarint();
+      vars[s] = dec.decode(cur.readBytes(len));
+    }
+  }
+  // Pass 2: SLOT_SIGNED_INT
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_SIGNED_INT) continue;
+      vars[s] = cur.readZigzagVarint().toString();
+    }
+  }
+  // Pass 3: SLOT_PREFIXED_INT64
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const prefixes = slotPrefixArrays.get(tplId);
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_PREFIXED_INT64) continue;
+      const big = BigInt.asIntN(64, cur.readU64());
+      vars[s] = `${prefixes?.[s] ?? ""}${big.toString()}`;
+    }
+  }
+  // Pass 4: SLOT_UUID
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_UUID) continue;
+      vars[s] = bytesToUuid(cur.readBytes(16));
+    }
+  }
+  // Pass 5: SLOT_UUID_NODASH
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_UUID_NODASH) continue;
+      vars[s] = bytesToHex(cur.readBytes(16));
+    }
+  }
+  // Pass 6: SLOT_PREFIXED_UUID
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const prefixes = slotPrefixArrays.get(tplId);
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_PREFIXED_UUID) continue;
+      const bytes = cur.readBytes(16);
+      vars[s] = `${prefixes?.[s] ?? ""}${bytesToUuid(bytes)}`;
+    }
+  }
+  // Pass 7: SLOT_TIMESTAMP_DELTA
+  const tsPrev = new Map<number, bigint>();
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const tsShapeIds = slotTsShapeArrays.get(tplId);
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_TIMESTAMP_DELTA) continue;
+      const dt = cur.readZigzagVarint();
+      const key = (tplId << 16) | s;
+      const prev = tsPrev.get(key) ?? 0n;
+      const cur2 = prev + dt;
+      tsPrev.set(key, cur2);
+      const shape = tsShape(tsShapeIds?.[s] as number);
+      vars[s] = shape.format(cur2);
+    }
+  }
+  // Reconstruct templated bodies and determine matches
+  const bodyMatches = new Uint8Array(n); // 1=match
+  const templatedBodies: string[] = new Array(templatedIndices.length);
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const template = templateById.get(tplId);
+    if (!template) throw new Error(`typed: missing template id ${tplId}`);
+    // Template-literal shortcut: if this template's literals contain the
+    // needle, all records with this template match without checking the body.
+    if (tplDefiniteMatch.has(tplId)) {
+      const body = reconstruct(template, allVars[i] as string[]);
+      templatedBodies[i] = body;
+      bodyMatches[templatedIndices[i] as number] = 1;
+    } else {
+      const body = reconstruct(template, allVars[i] as string[]);
+      templatedBodies[i] = body;
+      if (body.includes(needle)) bodyMatches[templatedIndices[i] as number] = 1;
+    }
+  }
+  // Check raw-string bodies
+  for (let i = 0; i < n; i++) {
+    if (kinds[i] !== KIND_RAW_STRING) continue;
+    const body = rawStringByRecord.get(i) ?? "";
+    if (body.includes(needle)) bodyMatches[i] = 1;
+  }
+
+  // Sidecar: only JSON.parse lines for matching records (and KIND_OTHER
+  // which need sidecar to determine their body). This is the key
+  // optimization — JSON.parse is ~47% of full-decode CPU.
+  const sidecarLen = cur.readUvarint();
+  const sidecarMap = new Map<number, Record<string, unknown>>();
+  if (sidecarLen > 0) {
+    const sidecarBytes = cur.readBytes(sidecarLen);
+    const sidecarText = dec.decode(sidecarBytes);
+    // Split into lines. The encoder guarantees exactly n non-empty lines.
+    const lines = sidecarText.split("\n");
+    // Lines may have a trailing empty element after the final \n
+    for (let i = 0; i < n; i++) {
+      const line = lines[i];
+      if (!line) continue;
+      if (kinds[i] === KIND_OTHER) {
+        // Must parse to check body match
+        const side = JSON.parse(line) as Record<string, unknown>;
+        const body = jsonToAnyValue(side.b);
+        if (typeof body === "string" && body.includes(needle)) {
+          bodyMatches[i] = 1;
+          sidecarMap.set(i, side);
+        }
+        continue;
+      }
+      // Only parse sidecar for body-matching records
+      if (bodyMatches[i] === 1) {
+        sidecarMap.set(i, JSON.parse(line) as Record<string, unknown>);
+      }
+    }
+  }
+
+  // Stitch only matching records
+  const out: LogRecord[] = [];
+  let templatedCursor = 0;
+  for (let i = 0; i < n; i++) {
+    const isTemplated = kinds[i] === KIND_TEMPLATED;
+    if (isTemplated) templatedCursor++;
+    if (bodyMatches[i] !== 1) continue;
+    const side = (sidecarMap.get(i) ?? {}) as SidecarEntry;
+    let body: AnyValue;
+    if (kinds[i] === KIND_RAW_STRING) {
+      body = rawStringByRecord.get(i) ?? "";
+    } else if (isTemplated) {
+      body = templatedBodies[templatedCursor - 1] as string;
+    } else {
+      body = jsonToAnyValue(side.b);
+    }
+    const rec: LogRecord = {
+      timeUnixNano: timestamps[i] as bigint,
+      severityNumber: severities[i] as number,
+      severityText: "INFO",
+      body,
+      attributes: [],
+    };
+    applySidecar(rec, side);
+    out[i] = rec;
+  }
+  return out;
+}
+
 // ── Public policy ────────────────────────────────────────────────────
 
 export class TypedColumnarDrainPolicy implements ChunkPolicy {
@@ -1108,5 +1422,14 @@ export class TypedColumnarDrainPolicy implements ChunkPolicy {
 
   decodeBodiesOnly(buf: Uint8Array, nLogs: number, _meta: unknown): AnyValue[] {
     return decodeBodies(buf, nLogs);
+  }
+
+  decodeFilteredByBodyNeedle(
+    buf: Uint8Array,
+    nLogs: number,
+    meta: unknown,
+    needle: string
+  ): LogRecord[] {
+    return decodeFilteredByNeedle(buf, nLogs, meta as TypedColumnarChunkMeta, needle);
   }
 }

@@ -35,7 +35,7 @@
 
 import { nowMillis, timeRangeOverlaps } from "stardb";
 import type { Chunk } from "./chunk.js";
-import { readRecords, readRecordsFromRaw } from "./chunk.js";
+import { readRecords, readRecordsFilteredFromRaw, readRecordsFromRaw } from "./chunk.js";
 import type { LogStore } from "./engine.js";
 import type { LogRecord, StreamId } from "./types.js";
 
@@ -162,14 +162,21 @@ export function* queryStream(
           stats.chunksPruned++;
           continue;
         }
-        // Phase 2: Raw bytes matched — do full decode and filter inline.
-        // We skip the body-only intermediate decode because if the chunk
-        // passes the raw scan, we'll need full records anyway for yielding.
-        const records = readRecordsFromRaw(raw, chunk.header, policy);
+        // Phase 2: Filtered decode — reconstruct bodies, filter by needle,
+        // only JSON.parse sidecar lines for matching records. Returns a
+        // sparse array with matching records at their original indices.
+        const filtered = readRecordsFilteredFromRaw(raw, chunk.header, needle, policy);
         stats.decodeMillis += nowMillis() - t0;
-        for (const record of records) {
-          stats.recordsScanned++;
-          if (!recordMatches(record, spec)) continue;
+        stats.recordsScanned += chunk.header.nLogs;
+        for (let i = 0; i < filtered.length; i++) {
+          const record = filtered[i];
+          if (record === undefined) continue;
+          // Body already verified; still check time range + severity
+          if (spec.range) {
+            if (record.timeUnixNano < spec.range.from) continue;
+            if (record.timeUnixNano >= spec.range.to) continue;
+          }
+          if (spec.severityGte !== undefined && record.severityNumber < spec.severityGte) continue;
           stats.recordsEmitted++;
           yield record;
           emitted++;
