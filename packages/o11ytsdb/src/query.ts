@@ -1441,24 +1441,28 @@ function _stepAggregateRate(
     }
   }
   for (let i = 0; i < bucketCount; i++) {
-    if (isIncrease) {
-      const delta =
-        readNumberAt(lastVal, i, "last value") - readNumberAt(firstVal, i, "first value");
-      if (rawDelta) {
-        values[i] = delta; // delta(): no counter-reset handling
-      } else {
-        values[i] = delta >= 0 ? delta : readNumberAt(lastVal, i, "last value"); // counter reset: use last value
+      if (readNumberAt(counts, i, "bucket count") < 2) {
+        values[i] = NaN;
+        continue;
       }
-    } else {
-      const delta =
-        readNumberAt(lastVal, i, "last value") - readNumberAt(firstVal, i, "first value");
-      const dt =
-        (readNumberAt(lastTs, i, "last timestamp") - readNumberAt(firstTs, i, "first timestamp")) /
-        1000;
-      values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : 0;
+      if (isIncrease) {
+        const delta =
+          readNumberAt(lastVal, i, "last value") - readNumberAt(firstVal, i, "first value");
+        if (rawDelta) {
+          values[i] = delta; // delta(): no counter-reset handling
+        } else {
+          values[i] = delta >= 0 ? delta : readNumberAt(lastVal, i, "last value"); // counter reset: use last value
+        }
+      } else {
+        const delta =
+          readNumberAt(lastVal, i, "last value") - readNumberAt(firstVal, i, "first value");
+        const dt =
+          (readNumberAt(lastTs, i, "last timestamp") - readNumberAt(firstTs, i, "first timestamp")) /
+          1000;
+        values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : 0;
+      }
     }
   }
-}
 
 /**
  * Instant rate (irate) — per-bucket rate from only the last two samples.
@@ -1532,7 +1536,7 @@ function _stepAggregateIrate(
   }
   for (let i = 0; i < bucketCount; i++) {
     if (readNumberAt(secondTs, i, "second timestamp") === -Infinity) {
-      values[i] = 0; // Only one or zero samples — can't compute rate
+      values[i] = NaN; // Only one or zero samples — can't compute rate
     } else {
       const delta =
         readNumberAt(lastVal, i, "last value") - readNumberAt(secondVal, i, "second value");
