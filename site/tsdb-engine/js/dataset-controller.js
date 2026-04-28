@@ -157,13 +157,7 @@ export function createDatasetController({
     requestAnimationFrame(() => {
       setTimeout(() => {
         try {
-          const backendType = "column";
-          if (approxBytes >= LARGE_SCENARIO_WARN_BYTES) {
-            console.warn(
-              `Generating scenario ${scenario.id} with roughly ${formatApproxBytes(approxBytes)} of typed-array payload before storage overhead.`
-            );
-          }
-          const store = createStore(backendType, chunkSize);
+          const store = createStore(chunkSize);
           const metrics = [...new Set(scenario.metrics.map((m) => m.name))];
 
           if (scenario.isLive) {
@@ -195,23 +189,16 @@ export function createDatasetController({
           const t0 = performance.now();
           const seriesData = generateScenarioData(scenario);
 
-          if (backendType === "column") {
-            const ids = seriesData.map((sd) => store.getOrCreateSeries(sd.labels));
-            const numPoints = seriesData[0]?.timestamps.length || 0;
-            for (let offset = 0; offset < numPoints; offset += chunkSize) {
-              const end = Math.min(offset + chunkSize, numPoints);
-              for (let i = 0; i < seriesData.length; i++) {
-                store.appendBatch(
-                  ids[i],
-                  seriesData[i].timestamps.subarray(offset, end),
-                  seriesData[i].values.subarray(offset, end)
-                );
-              }
-            }
-          } else {
-            for (const sd of seriesData) {
-              const id = store.getOrCreateSeries(sd.labels);
-              store.appendBatch(id, sd.timestamps, sd.values);
+          const ids = seriesData.map((sd) => store.getOrCreateSeries(sd.labels));
+          const numPoints = seriesData[0]?.timestamps.length || 0;
+          for (let offset = 0; offset < numPoints; offset += chunkSize) {
+            const end = Math.min(offset + chunkSize, numPoints);
+            for (let i = 0; i < seriesData.length; i++) {
+              store.appendBatch(
+                ids[i],
+                seriesData[i].timestamps.subarray(offset, end),
+                seriesData[i].values.subarray(offset, end)
+              );
             }
           }
 
@@ -228,12 +215,12 @@ export function createDatasetController({
     });
   }
 
-  function generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs) {
+  function generateCustomData(numSeries, numPoints, pattern, intervalMs) {
     if (_activeScraperStop) {
       _activeScraperStop();
       _activeScraperStop = null;
     }
-    const store = createStore(backendType, chunkSize);
+    const store = createStore(chunkSize);
     const now = BigInt(Date.now()) * nsPerMs;
     const intervalNs = BigInt(intervalMs) * nsPerMs;
     const metricsUsed = new Set();
@@ -263,22 +250,15 @@ export function createDatasetController({
     }
 
     const t0 = performance.now();
-    if (backendType === "column") {
-      const ids = seriesData.map((sd) => store.getOrCreateSeries(sd.labels));
-      for (let offset = 0; offset < numPoints; offset += chunkSize) {
-        const end = Math.min(offset + chunkSize, numPoints);
-        for (let i = 0; i < seriesData.length; i++) {
-          store.appendBatch(
-            ids[i],
-            seriesData[i].timestamps.subarray(offset, end),
-            seriesData[i].values.subarray(offset, end)
-          );
-        }
-      }
-    } else {
-      for (const sd of seriesData) {
-        const id = store.getOrCreateSeries(sd.labels);
-        store.appendBatch(id, sd.timestamps, sd.values);
+    const ids = seriesData.map((sd) => store.getOrCreateSeries(sd.labels));
+    for (let offset = 0; offset < numPoints; offset += chunkSize) {
+      const end = Math.min(offset + chunkSize, numPoints);
+      for (let i = 0; i < seriesData.length; i++) {
+        store.appendBatch(
+          ids[i],
+          seriesData[i].timestamps.subarray(offset, end),
+          seriesData[i].values.subarray(offset, end)
+        );
       }
     }
 
@@ -294,7 +274,7 @@ export function createDatasetController({
       const numSeriesEl = document.getElementById("numSeries");
       const numPointsEl = document.getElementById("numPoints");
       const patternEl = document.getElementById("dataPattern");
-      const backendType = "column";
+
       const intervalEl = document.getElementById("sampleInterval");
       const btn = document.getElementById("btnCustomGenerate");
       if (
@@ -313,7 +293,7 @@ export function createDatasetController({
       requestAnimationFrame(() => {
         setTimeout(() => {
           try {
-            generateCustomData(numSeries, numPoints, pattern, backendType, intervalMs);
+            generateCustomData(numSeries, numPoints, pattern, intervalMs);
           } finally {
             btn.disabled = false;
             btn.textContent = "Generate Data";

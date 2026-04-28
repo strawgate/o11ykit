@@ -14,7 +14,9 @@ import { ScanEngine } from "./query.js";
 import { createQueryBuilderController } from "./query-builder-controller.js";
 import { formatEffectiveStepStat, summarizeStepResolution } from "./query-builder-model.js";
 import { buildStorageExplorer, refreshActiveChunkDetail } from "./storage-explorer.js";
-import { createColumnStore, createRowGroupStore, FlatStore, loadWasm } from "./stores.js";
+import { FlatStore } from "./stores.js";
+import { initWasmCodecs } from "o11ytsdb";
+import { RowGroupStore } from "o11ytsdb";
 import { autoSelectQueryStep, escapeHtml, formatNum } from "./utils.js";
 
 const CHUNK_SIZE = 640;
@@ -324,17 +326,45 @@ document.querySelectorAll(".explore-nav-btn").forEach((btn) => {
   });
 });
 
-function _createStore(backendType, chunkSize) {
-  let store;
-  if (backendType === "column") {
-    store = createColumnStore(chunkSize);
-  } else if (backendType === "chunked") {
-    store = createRowGroupStore(chunkSize);
-  } else {
-    store = new FlatStore();
-  }
-  store._backendType = backendType;
-  return store;
+// State for loaded WASM codecs (null means not loaded yet)
+let _wasmCodecs = null;
+
+function _createStore(chunkSize) {
+  // Use WASM codecs if available, fallback to JS
+  const valuesCodec = _wasmCodecs?.xorValuesCodec ?? createValuesCodec();
+  const tsCodec = _wasmCodecs?.tsCodec;
+  const rangeCodec = _wasmCodecs?.rangeCodec;
+
+  return new RowGroupStore(
+    valuesCodec,
+    chunkSize,
+    () => 0, // grouper function (always 0 for single chunk)
+    32,      // LRU capacity
+    "RowGroupStore",
+    tsCodec,
+    rangeCodec
+  );
+}
+
+// Pure JS fallback codec for when WASM not available
+function createValuesCodec() {
+  return {
+    name: "f64-plain",
+    encodeValues(values) {
+      const out = new Uint8Array(4 + values.byteLength);
+      new DataView(out.buffer).setUint32(0, values.length, true);
+      out.set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), 4);
+      return out;
+    },
+    decodeValues(buf) {
+      if (buf.byteLength < 4) return new Float64Array(0);
+      const n = new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint32(0, true);
+      const raw = buf.subarray(4);
+      const bytes = raw.byteLength - (raw.byteLength % 8);
+      const copy = raw.slice(0, bytes);
+      return new Float64Array(copy.buffer, copy.byteOffset, Math.min(n, Math.floor(bytes / 8)));
+    },
+  };
 }
 
 async function runQuery(options = {}) {
@@ -536,11 +566,25 @@ const datasetController = createDatasetController({
 
 // ── WASM init + auto-load ─────────────────────────────────────────────
 
-loadWasm().then((ok) => {
-  if (!ok) {
-    console.warn("WASM unavailable — ColumnStore features disabled");
+// Load WASM codecs for RowGroupStore (XOR compression, delta-of-delta timestamps, etc)
+async function loadWasm() {
+  try {
+    const wasmUrl = new URL("../o11ytsdb.wasm", import.meta.url).href;
+    const module = await WebAssembly.compileStreaming(fetch(wasmUrl));
+    _wasmCodecs = await initWasmCodecs(module);
+    wasmReady = true;
+    console.log("WASM codecs loaded successfully");
+    return true;
+  } catch (e) {
+    console.warn("WASM load failed, using JavaScript fallbacks:", e.message);
+    _wasmCodecs = null;
+    wasmReady = false;
+    return false;
   }
+}
 
+// Finish initialization
+loadWasm().then((ok) => {
   // Render scenario cards (user clicks to load — no auto-load)
   datasetController.renderScenarioCards();
   datasetController.bindCustomGenerator();
