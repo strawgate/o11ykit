@@ -604,7 +604,7 @@ describe("ScanEngine", () => {
 
   // ── stepAggregate edge cases ───────────────────────────────────────
 
-  it("step aggregation with single point produces correct buckets", () => {
+  it("step aggregation with single point produces one bucket", () => {
     const store = new FlatStore();
     const id = store.getOrCreateSeries(makeLabels("single"));
     store.append(id, 5_000n, 42);
