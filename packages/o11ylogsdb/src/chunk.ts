@@ -205,12 +205,25 @@ export function readRecords(
 ): LogRecord[] {
   const codec = registry.get(chunk.header.codecName);
   const raw = codec.decode(chunk.payload);
+  return readRecordsFromRaw(raw, chunk.header, policy);
+}
+
+/**
+ * Decode records from an already-decompressed payload buffer. Use this
+ * when the caller has already decompressed (e.g. in the query engine's
+ * raw-byte-scan path) to avoid double decompression.
+ */
+export function readRecordsFromRaw(
+  raw: Uint8Array,
+  header: ChunkHeader,
+  policy?: ChunkPolicy
+): LogRecord[] {
   if (policy?.decodePayload) {
-    return policy.decodePayload(raw, chunk.header.nLogs, chunk.header.codecMeta);
+    return policy.decodePayload(raw, header.nLogs, header.codecMeta);
   }
-  const decoded = decodeNdjsonRecords(raw, chunk.header.nLogs);
+  const decoded = decodeNdjsonRecords(raw, header.nLogs);
   if (policy?.postDecode) {
-    return policy.postDecode(decoded, chunk.header.codecMeta);
+    return policy.postDecode(decoded, header.codecMeta);
   }
   return decoded;
 }
@@ -333,8 +346,8 @@ function toJsonable(r: LogRecord): JsonableRecord {
   if (r.flags !== undefined) out.f = r.flags;
   if (r.traceId) out.ti = bytesToHex(r.traceId);
   if (r.spanId) out.si = bytesToHex(r.spanId);
-  if (r.eventName) out.e = r.eventName;
-  if (r.droppedAttributesCount) out.d = r.droppedAttributesCount;
+  if (r.eventName !== undefined) out.e = r.eventName;
+  if (r.droppedAttributesCount !== undefined) out.d = r.droppedAttributesCount;
   return out;
 }
 
@@ -353,8 +366,8 @@ function fromJsonable(j: JsonableRecord): LogRecord {
   if (j.f !== undefined) out.flags = j.f;
   if (j.ti) out.traceId = hexToBytes(j.ti);
   if (j.si) out.spanId = hexToBytes(j.si);
-  if (j.e) out.eventName = j.e;
-  if (j.d) out.droppedAttributesCount = j.d;
+  if (j.e !== undefined) out.eventName = j.e;
+  if (j.d !== undefined) out.droppedAttributesCount = j.d;
   return out;
 }
 

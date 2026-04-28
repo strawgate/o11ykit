@@ -34,7 +34,7 @@
  */
 
 import type { Chunk } from "./chunk.js";
-import { readBodiesOnly, readRecords } from "./chunk.js";
+import { readRecords, readRecordsFromRaw } from "./chunk.js";
 import type { LogStore } from "./engine.js";
 import type { LogRecord, StreamId } from "./types.js";
 
@@ -147,6 +147,7 @@ export function* queryStream(
       }
 
       if (useBodyFastPath) {
+        // biome-ignore lint/style/noNonNullAssertion: guarded by useBodyFastPath check above
         const needle = spec.bodyContains!;
         // Phase 1: Raw byte scan. Decompress and check if the needle's
         // UTF-8 bytes exist anywhere in the payload. If not, no body in
@@ -163,9 +164,7 @@ export function* queryStream(
         // Phase 2: Raw bytes matched — do full decode and filter inline.
         // We skip the body-only intermediate decode because if the chunk
         // passes the raw scan, we'll need full records anyway for yielding.
-        const records = policy?.decodePayload
-          ? policy.decodePayload(raw, chunk.header.nLogs, chunk.header.codecMeta)
-          : readRecords(chunk, store.registry, policy);
+        const records = readRecordsFromRaw(raw, chunk.header, policy);
         stats.decodeMillis += nowMillis() - t0;
         for (const record of records) {
           stats.recordsScanned++;
@@ -277,11 +276,13 @@ function chunkPassesSeverity(chunk: Chunk, severityGte?: number): boolean {
  */
 const enc = new TextEncoder();
 const needleCache = new Map<string, Uint8Array>();
+const NEEDLE_CACHE_MAX = 64;
 
 function rawPayloadContains(raw: Uint8Array, needle: string): boolean {
   let needleBytes = needleCache.get(needle);
   if (!needleBytes) {
     needleBytes = enc.encode(needle);
+    if (needleCache.size >= NEEDLE_CACHE_MAX) needleCache.clear();
     needleCache.set(needle, needleBytes);
   }
   return uint8IndexOf(raw, needleBytes) !== -1;
@@ -291,11 +292,7 @@ function rawPayloadContains(raw: Uint8Array, needle: string): boolean {
 function uint8IndexOf(haystack: Uint8Array, needle: Uint8Array): number {
   // Use Buffer.includes when available (Node) — it's SIMD-optimized
   if (typeof globalThis.Buffer !== "undefined") {
-    const hBuf = globalThis.Buffer.from(
-      haystack.buffer,
-      haystack.byteOffset,
-      haystack.byteLength
-    );
+    const hBuf = globalThis.Buffer.from(haystack.buffer, haystack.byteOffset, haystack.byteLength);
     return hBuf.indexOf(
       globalThis.Buffer.from(needle.buffer, needle.byteOffset, needle.byteLength)
     );
