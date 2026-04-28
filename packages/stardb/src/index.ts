@@ -3,6 +3,7 @@
 // interfaces and a small set of baseline implementations both
 // `o11ylogsdb` and (in time) `o11ytsdb` and `o11ytracesdb` consume.
 
+export { anyValueEquals, anyValueToJson, findAttribute, jsonToAnyValue } from "./any-value.js";
 export { ByteBuf, ByteReader } from "./binary.js";
 export type { ChunkWireOptions } from "./chunk-wire.js";
 export { chunkWireSize, deserializeChunkWire, serializeChunkWire } from "./chunk-wire.js";
@@ -24,5 +25,6 @@ export type {
   Resource,
   SeverityText,
   StreamId,
+  StreamKey,
 } from "./types.js";
 export { bytesEqual, bytesToHex, fnv1aBytes, hexToBytes, nowMillis } from "./utils.js";

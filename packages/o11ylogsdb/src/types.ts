@@ -15,9 +15,18 @@ import type {
   Resource,
   SeverityText,
   StreamId,
+  StreamKey,
 } from "stardb";
 
-export type { AnyValue, InstrumentationScope, KeyValue, Resource, SeverityText, StreamId };
+export type {
+  AnyValue,
+  InstrumentationScope,
+  KeyValue,
+  Resource,
+  SeverityText,
+  StreamId,
+  StreamKey,
+};
 
 /** Internal LogRecord shape — one row in a chunk. */
 export interface LogRecord {
@@ -43,9 +52,3 @@ export interface LogRecord {
  * codec dispatch routes accordingly.
  */
 export type BodyKind = "templated" | "freetext" | "kvlist" | "bytes" | "primitive";
-
-/** A grouping of (resource, scope) under which logs share metadata. */
-export interface StreamKey {
-  resource: Resource;
-  scope: InstrumentationScope;
-}

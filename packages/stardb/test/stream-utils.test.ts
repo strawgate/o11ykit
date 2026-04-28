@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { bytesToHex, hexToBytes, nowMillis, StreamRegistry } from "../src/index.js";
+import {
+  bytesEqual,
+  bytesToHex,
+  fnv1aBytes,
+  hexToBytes,
+  nowMillis,
+  StreamRegistry,
+} from "../src/index.js";
 
 describe("StreamRegistry (shared)", () => {
   const resource = { attributes: [{ key: "host", value: "web-1" }] };
@@ -133,5 +140,72 @@ describe("nowMillis", () => {
     await new Promise((r) => setTimeout(r, 5));
     const t2 = nowMillis();
     expect(t2).toBeGreaterThan(t1);
+  });
+});
+
+describe("fnv1aBytes", () => {
+  it("returns a u32 for empty input", () => {
+    const hash = fnv1aBytes(new Uint8Array(0));
+    // FNV offset basis for empty input
+    expect(hash).toBe(0x811c9dc5);
+  });
+
+  it("returns consistent results for same input", () => {
+    const data = new TextEncoder().encode("hello world");
+    const h1 = fnv1aBytes(data);
+    const h2 = fnv1aBytes(data);
+    expect(h1).toBe(h2);
+  });
+
+  it("returns different hashes for different inputs", () => {
+    const enc = new TextEncoder();
+    const h1 = fnv1aBytes(enc.encode("foo"));
+    const h2 = fnv1aBytes(enc.encode("bar"));
+    const h3 = fnv1aBytes(enc.encode("baz"));
+    expect(h1).not.toBe(h2);
+    expect(h1).not.toBe(h3);
+    expect(h2).not.toBe(h3);
+  });
+
+  it("produces known test vector for 'foobar'", () => {
+    // Known FNV-1a 32-bit hash for "foobar": 0xbf9cf968
+    const hash = fnv1aBytes(new TextEncoder().encode("foobar"));
+    expect(hash).toBe(0xbf9cf968);
+  });
+
+  it("always returns non-negative u32", () => {
+    const data = new TextEncoder().encode("test input that might produce negative signed int");
+    const hash = fnv1aBytes(data);
+    expect(hash).toBeGreaterThanOrEqual(0);
+    expect(hash).toBeLessThanOrEqual(0xffffffff);
+  });
+});
+
+describe("bytesEqual", () => {
+  it("returns true for identical arrays", () => {
+    const a = new Uint8Array([1, 2, 3]);
+    expect(bytesEqual(a, a)).toBe(true);
+  });
+
+  it("returns true for equal content", () => {
+    const a = new Uint8Array([1, 2, 3]);
+    const b = new Uint8Array([1, 2, 3]);
+    expect(bytesEqual(a, b)).toBe(true);
+  });
+
+  it("returns false for different lengths", () => {
+    const a = new Uint8Array([1, 2, 3]);
+    const b = new Uint8Array([1, 2]);
+    expect(bytesEqual(a, b)).toBe(false);
+  });
+
+  it("returns false for different content", () => {
+    const a = new Uint8Array([1, 2, 3]);
+    const b = new Uint8Array([1, 2, 4]);
+    expect(bytesEqual(a, b)).toBe(false);
+  });
+
+  it("returns true for empty arrays", () => {
+    expect(bytesEqual(new Uint8Array(0), new Uint8Array(0))).toBe(true);
   });
 });

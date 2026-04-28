@@ -14,6 +14,7 @@ import type {
   Resource,
   SeverityText,
   StreamId,
+  StreamKey,
   StringCodec,
 } from "../src/index.js";
 import * as stardb from "../src/index.js";
@@ -21,9 +22,13 @@ import * as stardb from "../src/index.js";
 // Single source of truth for every runtime symbol the package promises.
 // Adding or removing one without updating this list fails both tests below.
 const RUNTIME_EXPORTS = [
+  "anyValueEquals",
+  "anyValueToJson",
   "CodecRegistry",
   "defaultRegistry",
+  "findAttribute",
   "GzipCodec",
+  "jsonToAnyValue",
   "lengthPrefixStringCodec",
   "rawCodec",
   "rawInt64Codec",
@@ -61,11 +66,13 @@ describe("stardb public API", () => {
     const scope: InstrumentationScope = { name: "io.opentelemetry.sdk", version: "1.0.0" };
     const id: StreamId = 42;
     const value: AnyValue = { nested: ["a", 1, 2n, true, null, new Uint8Array([1])] };
+    const sk: StreamKey = { resource, scope };
     expect(sev).toBe("INFO");
     expect(resource.attributes[0]?.key).toBe("service.name");
     expect(scope.name).toBe("io.opentelemetry.sdk");
     expect(id).toBe(42);
     expect(value).toBeDefined();
+    expect(sk.resource).toBe(resource);
   });
 
   it("Codec / StringCodec / IntCodec interfaces are assignable from baseline impls", () => {

@@ -11,7 +11,7 @@
  * - Error flag (skip chunks without errors when filtering for errors)
  */
 
-import { bytesToHex, hexToBytes } from "stardb";
+import { anyValueEquals, bytesEqual, bytesToHex, hexToBytes } from "stardb";
 import { bloomFromBase64, bloomMayContain } from "./bloom.js";
 import type { Chunk } from "./chunk.js";
 import { computeNestedSets } from "./chunk.js";
@@ -799,53 +799,6 @@ function isDescendantByParent(
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────
-
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-function anyValueEquals(a: AnyValue, b: AnyValue): boolean {
-  if (a === b) return true;
-  if (a === null || b === null) return false;
-  if (typeof a !== typeof b) return false;
-  if (
-    typeof a === "string" ||
-    typeof a === "number" ||
-    typeof a === "bigint" ||
-    typeof a === "boolean"
-  ) {
-    return a === b;
-  }
-  if (a instanceof Uint8Array && b instanceof Uint8Array) {
-    return bytesEqual(a, b);
-  }
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      const aItem = a[i];
-      const bItem = b[i];
-      if (aItem === undefined || bItem === undefined) return false;
-      if (!anyValueEquals(aItem, bItem)) return false;
-    }
-    return true;
-  }
-  if (typeof a === "object" && typeof b === "object") {
-    const aEntries = Object.entries(a as Record<string, AnyValue>);
-    const bObj = b as Record<string, AnyValue>;
-    if (aEntries.length !== Object.keys(bObj).length) return false;
-    for (const [k, v] of aEntries) {
-      const bVal = bObj[k];
-      if (bVal === undefined) return false;
-      if (!anyValueEquals(v, bVal)) return false;
-    }
-    return true;
-  }
-  return false;
-}
 
 /** Safe bigint sort comparator for spans by startTimeUnixNano. */
 function compareBigint(a: SpanRecord, b: SpanRecord): number {
