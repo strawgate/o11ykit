@@ -1205,7 +1205,10 @@ function decodeBodies(buf: Uint8Array, expectedN: number): AnyValue[] {
   const slotPrefixArrays = new Map<number, (string | undefined)[]>();
   const slotTsShapeArrays = new Map<number, (number | undefined)[]>();
   const nSlotTypes = cur.readVarint();
-  const slotTypeMap = new Map<string, { type: number; prefix?: string; timestampShapeId?: number }>();
+  const slotTypeMap = new Map<
+    string,
+    { type: number; prefix?: string; timestampShapeId?: number }
+  >();
   for (let i = 0; i < nSlotTypes; i++) {
     const tplId = cur.readVarint();
     const slotIdx = cur.readVarint();

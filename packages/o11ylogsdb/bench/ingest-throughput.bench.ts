@@ -12,26 +12,20 @@ import {
   defaultRegistry,
   GzipCodec,
   type InstrumentationScope,
-  type LogRecord,
   LogStore,
   type Resource,
   TypedColumnarDrainPolicy,
   ZstdCodec,
 } from "../dist/index.js";
-import {
-  CORPUS_GENERATORS,
-  type SyntheticCorpusType,
-} from "./synthetic-corpora.js";
 import { nowMillis } from "./harness.js";
+import { CORPUS_GENERATORS, type SyntheticCorpusType } from "./synthetic-corpora.js";
 
 const SCOPE: InstrumentationScope = { name: "bench-ingest", version: "0.0.0" };
 const RECORD_COUNT = 100_000;
 
 function buildResource(corpusType: string): Resource {
   return {
-    attributes: [
-      { key: "service.name", value: `bench-${corpusType}` },
-    ],
+    attributes: [{ key: "service.name", value: `bench-${corpusType}` }],
   };
 }
 
@@ -92,7 +86,7 @@ function measureIngest(corpusType: SyntheticCorpusType): IngestResult {
     totalChunkBytes: stats.totalChunkBytes,
     ingestMs,
     recordsPerSecond: RECORD_COUNT / (ingestMs / 1000),
-    rawMBPerSecond: (totalRawBytes / 1_000_000) / (ingestMs / 1000),
+    rawMBPerSecond: totalRawBytes / 1_000_000 / (ingestMs / 1000),
     bytesPerLog: stats.totalChunkBytes / RECORD_COUNT,
     chunkCount: stats.chunks,
     peakHeapMB: Math.max(memBefore.heapUsed, memAfter.heapUsed) / 1_000_000,
@@ -114,7 +108,7 @@ export default async function run() {
 
   // Warmup pass
   process.stderr.write("  Warmup…\n");
-  CORPUS_GENERATORS["syslog"](1000);
+  CORPUS_GENERATORS.syslog(1000);
 
   for (const corpusType of CORPUS_TYPES) {
     process.stderr.write(`  ${corpusType}… `);

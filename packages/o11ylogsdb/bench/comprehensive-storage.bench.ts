@@ -19,18 +19,18 @@ import {
   ZstdCodec,
 } from "../dist/index.js";
 import {
-  CORPUS_GENERATORS,
-  CORPUS_SIZES,
-  type CorpusSize,
-  type SyntheticCorpusType,
-} from "./synthetic-corpora.js";
-import {
   buildReport,
   bytesPerLog,
   type CompressionResult,
   nowMillis,
   ratio as ratioFn,
 } from "./harness.js";
+import {
+  CORPUS_GENERATORS,
+  CORPUS_SIZES,
+  type CorpusSize,
+  type SyntheticCorpusType,
+} from "./synthetic-corpora.js";
 
 const SCOPE: InstrumentationScope = { name: "bench-comprehensive", version: "0.0.0" };
 
@@ -71,8 +71,7 @@ function measureRawSize(records: LogRecord[]): number {
   // Raw NDJSON size: what you'd get without any compression
   // Custom replacer handles BigInt fields
   let total = 0;
-  const replacer = (_k: string, v: unknown) =>
-    typeof v === "bigint" ? v.toString() : v;
+  const replacer = (_k: string, v: unknown) => (typeof v === "bigint" ? v.toString() : v);
   for (const r of records) {
     total += JSON.stringify(r, replacer).length + 1; // +1 for newline
   }

@@ -3,7 +3,7 @@
 // Wraps the real o11ylogsdb engine for the interactive demo.
 // Handles ingest, stats computation, and chunk-level inspection.
 
-import { LogStore, TypedColumnarDrainPolicy, query } from "o11ylogsdb";
+import { LogStore, query, TypedColumnarDrainPolicy } from "o11ylogsdb";
 
 // ── Engine Setup ─────────────────────────────────────────────────────
 
@@ -48,13 +48,11 @@ export function ingestRecords(store, records) {
   let chunksClosed = 0;
 
   for (const record of records) {
-    const serviceName = record.attributes?.find((a) => a.key === "service.name")?.value ?? "unknown";
+    const serviceName =
+      record.attributes?.find((a) => a.key === "service.name")?.value ?? "unknown";
 
     const resource = {
-      attributes: [
-        { key: "service.name", value: serviceName },
-        ...DEFAULT_RESOURCE.attributes,
-      ],
+      attributes: [{ key: "service.name", value: serviceName }, ...DEFAULT_RESOURCE.attributes],
     };
 
     const result = store.append(resource, DEFAULT_SCOPE, record);
@@ -81,7 +79,8 @@ export function getStoreStats(store) {
 
   return {
     ...stats,
-    compressionRatio: stats.totalLogs > 0 ? estimateRawSize(stats.totalLogs) / stats.totalChunkBytes : 0,
+    compressionRatio:
+      stats.totalLogs > 0 ? estimateRawSize(stats.totalLogs) / stats.totalChunkBytes : 0,
     bytesPerLogFormatted: stats.bytesPerLog.toFixed(2),
     totalMB: (stats.totalChunkBytes / (1024 * 1024)).toFixed(2),
     rawMB: (estimateRawSize(stats.totalLogs) / (1024 * 1024)).toFixed(2),
@@ -102,7 +101,8 @@ export function getChunkDetails(store) {
 
   for (const streamId of store.streams.ids()) {
     const resource = store.streams.resourceOf(streamId);
-    const serviceName = resource.attributes.find((a) => a.key === "service.name")?.value ?? "unknown";
+    const serviceName =
+      resource.attributes.find((a) => a.key === "service.name")?.value ?? "unknown";
     const streamChunks = store.streams.chunksOf(streamId);
 
     for (let i = 0; i < streamChunks.length; i++) {
@@ -126,7 +126,8 @@ export function getChunkDetails(store) {
           max: header.timeRange.maxNano,
         },
         severityRange: header.severityRange ?? null,
-        compressionRatio: header.nLogs > 0 ? (estimateRawSize(header.nLogs) / totalBytes).toFixed(1) : "0",
+        compressionRatio:
+          header.nLogs > 0 ? (estimateRawSize(header.nLogs) / totalBytes).toFixed(1) : "0",
       });
     }
   }
@@ -134,7 +135,7 @@ export function getChunkDetails(store) {
   return chunks.sort((a, b) => Number(a.timeRange.min - b.timeRange.min));
 }
 
-function estimateHeaderSize(header) {
+function estimateHeaderSize(_header) {
   // Rough estimate: JSON-serialized header is ~100-200 bytes
   return 150;
 }
@@ -148,7 +149,8 @@ export function getServiceBreakdown(store) {
 
   for (const streamId of store.streams.ids()) {
     const resource = store.streams.resourceOf(streamId);
-    const serviceName = resource.attributes.find((a) => a.key === "service.name")?.value ?? "unknown";
+    const serviceName =
+      resource.attributes.find((a) => a.key === "service.name")?.value ?? "unknown";
     const streamChunks = store.streams.chunksOf(streamId);
 
     if (!services[serviceName]) {

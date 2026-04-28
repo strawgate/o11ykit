@@ -21,7 +21,8 @@ function setSeed(s: number) {
   _seed = s;
 }
 function rand(): number {
-  let t = (_seed += 0x6d2b79f5);
+  _seed += 0x6d2b79f5;
+  let t = _seed;
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -42,7 +43,7 @@ function uuid(): string {
   return s;
 }
 function shortHex(n: number): string {
-  return Math.floor(rand() * (16 ** n))
+  return Math.floor(rand() * 16 ** n)
     .toString(16)
     .padStart(n, "0");
 }
@@ -91,13 +92,20 @@ const SYSLOG_TEMPLATES = [
 
 const USERS = ["root", "admin", "deploy", "www-data", "postgres", "nginx", "app"];
 const SERVICES = ["nginx", "postgresql", "redis", "docker", "kubelet", "containerd", "etcd"];
-const COMMANDS = ["/usr/sbin/logrotate /etc/logrotate.conf", "run-parts /etc/cron.hourly", "/usr/bin/apt-get update -q"];
+const COMMANDS = [
+  "/usr/sbin/logrotate /etc/logrotate.conf",
+  "run-parts /etc/cron.hourly",
+  "/usr/bin/apt-get update -q",
+];
 
 function fillSyslogTemplate(tmpl: string): string {
   return tmpl
     .replace(/\{pid\}/g, () => String(randInt(1000, 65535)))
     .replace(/\{user\}/g, () => pick(USERS))
-    .replace(/\{ip\}/g, () => `${randInt(10, 192)}.${randInt(0, 255)}.${randInt(0, 255)}.${randInt(1, 254)}`)
+    .replace(
+      /\{ip\}/g,
+      () => `${randInt(10, 192)}.${randInt(0, 255)}.${randInt(0, 255)}.${randInt(1, 254)}`
+    )
     .replace(/\{port\}/g, () => String(randInt(1024, 65535)))
     .replace(/\{hash\}/g, () => shortHex(40))
     .replace(/\{uptime\}/g, () => `${randInt(1, 99999)}.${randInt(100, 999)}`)
@@ -136,8 +144,13 @@ export function generateSyslogCorpus(count: number, seed = 42): LogRecord[] {
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH"];
 const HTTP_PATHS = [
-  "/api/v2/users", "/api/v2/orders", "/api/v2/products",
-  "/api/v2/checkout", "/api/v2/search", "/health", "/metrics",
+  "/api/v2/users",
+  "/api/v2/orders",
+  "/api/v2/products",
+  "/api/v2/checkout",
+  "/api/v2/search",
+  "/health",
+  "/metrics",
 ];
 const HTTP_STATUS = [200, 200, 200, 200, 201, 204, 301, 400, 401, 403, 404, 500, 502, 503];
 
@@ -248,14 +261,26 @@ const K8S_TEMPLATES = [
   'I{timestamp} {pid} {file}:{line}] "Successfully assigned {namespace}/{pod} to {node}"',
   'W{timestamp} {pid} {file}:{line}] "FailedScheduling: {reason}"',
   'E{timestamp} {pid} {file}:{line}] "Error syncing pod {podId}: {error}"',
-  "time=\"{iso}\" level={level} msg=\"{msg}\" container={container} namespace={namespace}",
+  'time="{iso}" level={level} msg="{msg}" container={container} namespace={namespace}',
   "{iso} stdout F {json_line}",
-  "level={level} ts={iso} caller={caller} msg=\"{msg}\" component={component}",
+  'level={level} ts={iso} caller={caller} msg="{msg}" component={component}',
 ];
 const K8S_NAMESPACES = ["default", "kube-system", "monitoring", "production", "staging"];
 const K8S_NODES = ["node-01", "node-02", "node-03", "node-04"];
-const K8S_PODS = ["api-deploy-7b5c4", "worker-deploy-3f2a1", "redis-0", "postgres-0", "nginx-ingress-abc12"];
-const K8S_ERRORS = ["CrashLoopBackOff", "OOMKilled", "ImagePullBackOff", "ErrImagePull", "ContainerCreating"];
+const K8S_PODS = [
+  "api-deploy-7b5c4",
+  "worker-deploy-3f2a1",
+  "redis-0",
+  "postgres-0",
+  "nginx-ingress-abc12",
+];
+const K8S_ERRORS = [
+  "CrashLoopBackOff",
+  "OOMKilled",
+  "ImagePullBackOff",
+  "ErrImagePull",
+  "ContainerCreating",
+];
 
 export function generateCloudNativeCorpus(count: number, seed = 42): LogRecord[] {
   setSeed(seed);
@@ -265,7 +290,10 @@ export function generateCloudNativeCorpus(count: number, seed = 42): LogRecord[]
     const { severityNumber, severityText } = randomSeverity();
     const tmpl = pick(K8S_TEMPLATES);
     const body = tmpl
-      .replace("{timestamp}", `${randInt(0, 1231)}${randInt(10, 12)}${randInt(10, 28)} ${randInt(10, 23)}:${randInt(10, 59)}:${randInt(10, 59)}.${randInt(100, 999)}`)
+      .replace(
+        "{timestamp}",
+        `${randInt(0, 1231)}${randInt(10, 12)}${randInt(10, 28)} ${randInt(10, 23)}:${randInt(10, 59)}:${randInt(10, 59)}.${randInt(100, 999)}`
+      )
       .replace("{pid}", String(randInt(1, 9)))
       .replace("{file}", pick(["scheduler.go", "kubelet.go", "controller.go", "pod.go"]))
       .replace("{line}", String(randInt(100, 999)))
@@ -274,14 +302,23 @@ export function generateCloudNativeCorpus(count: number, seed = 42): LogRecord[]
       .replace("{node}", pick(K8S_NODES))
       .replace("{reason}", pick(K8S_ERRORS))
       .replace("{podId}", shortHex(12))
-      .replace("{error}", pick(["context deadline exceeded", "connection refused", "no such container"]))
+      .replace(
+        "{error}",
+        pick(["context deadline exceeded", "connection refused", "no such container"])
+      )
       .replace("{iso}", new Date(Date.now() - randInt(0, 86400000)).toISOString())
       .replace("{level}", severityText.toLowerCase())
-      .replace("{msg}", pick(["container started", "health check failed", "pulling image", "sync complete"]))
+      .replace(
+        "{msg}",
+        pick(["container started", "health check failed", "pulling image", "sync complete"])
+      )
       .replace("{container}", `${pick(["api", "sidecar", "init"])}`)
       .replace("{caller}", `${pick(["main.go", "server.go", "handler.go"])}:${randInt(10, 500)}`)
       .replace("{component}", pick(["kube-scheduler", "kube-controller-manager", "kubelet"]))
-      .replace("{json_line}", JSON.stringify({ ts: Date.now(), msg: pick(["request handled", "query executed"]) }));
+      .replace(
+        "{json_line}",
+        JSON.stringify({ ts: Date.now(), msg: pick(["request handled", "query executed"]) })
+      );
 
     records.push({
       timeUnixNano: baseNs + BigInt(i) * 1_000_000_000n,
@@ -356,10 +393,13 @@ export type SyntheticCorpusType =
   | "cloud-native"
   | "mixed";
 
-export const CORPUS_GENERATORS: Record<SyntheticCorpusType, (count: number, seed?: number) => LogRecord[]> = {
-  "syslog": generateSyslogCorpus,
-  "structured": generateStructuredCorpus,
+export const CORPUS_GENERATORS: Record<
+  SyntheticCorpusType,
+  (count: number, seed?: number) => LogRecord[]
+> = {
+  syslog: generateSyslogCorpus,
+  structured: generateStructuredCorpus,
   "high-cardinality": generateHighCardinalityCorpus,
   "cloud-native": generateCloudNativeCorpus,
-  "mixed": generateMixedCorpus,
+  mixed: generateMixedCorpus,
 };

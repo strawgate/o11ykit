@@ -8,12 +8,10 @@
 import { DATASET_PRESETS, generateLogs } from "./data-gen.js";
 import { analyzeStore } from "./logs-model.js";
 import {
-  buildQuerySpec,
-  computeSeverityDistribution,
   computeServiceDistribution,
+  computeSeverityDistribution,
   createQueryState,
   executeQuery,
-  formatBody,
   formatBodyPreview,
   formatTimestamp,
   severityColor,
@@ -30,8 +28,8 @@ import {
 // ── State ─────────────────────────────────────────────────────────────
 
 let store = null;
-let genStats = null;
-let queryState = createQueryState();
+let _genStats = null;
+const queryState = createQueryState();
 let lastQueryResult = null;
 let currentTab = "storage";
 
@@ -106,7 +104,9 @@ async function generateDataset(presetKey) {
 
   // Disable buttons during generation
   const buttons = document.querySelectorAll(".dataset-btn");
-  buttons.forEach((b) => (b.disabled = true));
+  buttons.forEach((b) => {
+    b.disabled = true;
+  });
   show("gen-progress");
   setText("gen-status", "Generating log records...");
 
@@ -129,8 +129,8 @@ async function generateDataset(presetKey) {
         },
       });
 
-      genStats = result.stats;
-      const genTime = performance.now() - t0;
+      _genStats = result.stats;
+      const _genTime = performance.now() - t0;
 
       setText("gen-status", `Ingesting ${formatNum(preset.count)} records into LogStore...`);
 
@@ -158,7 +158,9 @@ async function generateDataset(presetKey) {
       // Render initial tab
       renderCurrentTab();
 
-      buttons.forEach((b) => (b.disabled = false));
+      buttons.forEach((b) => {
+        b.disabled = false;
+      });
       resolve();
     }, 10);
   });
@@ -171,7 +173,9 @@ function initTabs() {
   tabBtns.forEach((btn) => {
     btn.addEventListener("click", () => {
       currentTab = btn.dataset.tab;
-      tabBtns.forEach((b) => b.classList.toggle("active", b === btn));
+      tabBtns.forEach((b) => {
+        b.classList.toggle("active", b === btn);
+      });
       renderCurrentTab();
     });
   });
@@ -357,7 +361,10 @@ function renderQueryForm() {
       </label>
       <select id="qf-severity-val" ${!queryState.severity.enabled ? "disabled" : ""}>
         ${["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
-          .map((s) => `<option value="${s}" ${queryState.severity.min === s ? "selected" : ""}>${s}</option>`)
+          .map(
+            (s) =>
+              `<option value="${s}" ${queryState.severity.min === s ? "selected" : ""}>${s}</option>`
+          )
           .join("")}
       </select>
     </div>
@@ -452,7 +459,7 @@ function renderQueryResults(result) {
 
   // Stats bar
   const sevDist = computeSeverityDistribution(records);
-  const svcDist = computeServiceDistribution(records);
+  const _svcDist = computeServiceDistribution(records);
 
   container.innerHTML = `
     <div class="query-stats-bar">

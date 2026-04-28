@@ -153,9 +153,7 @@ function analyzeServices(store) {
     });
     services[svc].errors = errorResult.stats.recordsEmitted;
     services[svc].errorRate =
-      services[svc].logs > 0
-        ? ((services[svc].errors / services[svc].logs) * 100).toFixed(2)
-        : "0";
+      services[svc].logs > 0 ? ((services[svc].errors / services[svc].logs) * 100).toFixed(2) : "0";
   }
 
   return Object.values(services).sort((a, b) => b.logs - a.logs);

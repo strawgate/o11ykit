@@ -19,18 +19,14 @@ import {
   type InstrumentationScope,
   type LogRecord,
   LogStore,
-  query,
   type QuerySpec,
+  query,
   type Resource,
   TypedColumnarDrainPolicy,
   ZstdCodec,
 } from "../dist/index.js";
-import {
-  CORPUS_GENERATORS,
-  type SyntheticCorpusType,
-} from "./synthetic-corpora.js";
-import { nowMillis } from "./harness.js";
 import { buildProfileReport, type ProfileResult, profileEncode } from "./profile-harness.js";
+import { CORPUS_GENERATORS, type SyntheticCorpusType } from "./synthetic-corpora.js";
 
 const SCOPE: InstrumentationScope = { name: "bench-query", version: "0.0.0" };
 const RECORD_COUNT = 10_000;
@@ -217,12 +213,12 @@ export default async function run() {
 
   // Summary
   process.stderr.write("─── Query latency summary (p50 ms) ───\n");
-  process.stderr.write("  " + "query".padEnd(24));
+  process.stderr.write(`  ${"query".padEnd(24)}`);
   for (const ct of CORPUS_TYPES) process.stderr.write(ct.padEnd(16));
   process.stderr.write("\n");
 
   for (const qCase of QUERY_CASES) {
-    process.stderr.write("  " + qCase.name.padEnd(24));
+    process.stderr.write(`  ${qCase.name.padEnd(24)}`);
     for (const ct of CORPUS_TYPES) {
       const r = results.find((x) => x.corpus === ct && x.codec === qCase.name);
       const val = r ? r.timing.p50.toFixed(1) : "—";

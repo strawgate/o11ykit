@@ -152,8 +152,8 @@ export function* queryStream(
         // as a substring. If no template token matches AND the chunk has
         // no raw-string bodies (raw strings might still match), we can
         // skip ZSTD decompression entirely.
-        const needle = spec.bodyContains!;
-        if (chunkPrunedByTemplateTokens(chunk, needle)) {
+        const needle = spec.bodyContains;
+        if (needle !== undefined && chunkPrunedByTemplateTokens(chunk, needle)) {
           stats.chunksPruned++;
           continue;
         }

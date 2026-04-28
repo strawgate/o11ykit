@@ -57,7 +57,7 @@ export function buildQuerySpec(state) {
     let val = state.bodyLeafEquals.value;
     if (val === "true") val = true;
     else if (val === "false") val = false;
-    else if (!isNaN(Number(val)) && val !== "") val = Number(val);
+    else if (!Number.isNaN(Number(val)) && val !== "") val = Number(val);
     spec.bodyLeafEquals[state.bodyLeafEquals.path] = val;
   }
 
@@ -87,9 +87,8 @@ export function executeQuery(store, state) {
     stats: {
       ...result.stats,
       totalTimeMs: elapsed.toFixed(1),
-      recordsPerMs: result.stats.recordsEmitted > 0
-        ? (result.stats.recordsEmitted / elapsed).toFixed(1)
-        : "0",
+      recordsPerMs:
+        result.stats.recordsEmitted > 0 ? (result.stats.recordsEmitted / elapsed).toFixed(1) : "0",
     },
     spec,
   };
@@ -165,7 +164,7 @@ export function formatBody(body) {
 export function formatBodyPreview(body, maxLen = 120) {
   const full = typeof body === "string" ? body : JSON.stringify(body);
   if (full.length <= maxLen) return full;
-  return full.slice(0, maxLen) + "…";
+  return `${full.slice(0, maxLen)}…`;
 }
 
 /**

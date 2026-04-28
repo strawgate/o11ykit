@@ -53,7 +53,7 @@ const SERVICES = {
     severityWeights: { TRACE: 2, DEBUG: 8, INFO: 50, WARN: 25, ERROR: 12, FATAL: 3 },
     logRate: 500,
   },
-  "database": {
+  database: {
     templates: [
       "Query executed in {duration}ms: {query}",
       "Connection pool: active={active} idle={idle} waiting={waiting}",
@@ -114,14 +114,7 @@ const HTTP_PATHS = [
   "/metrics",
 ];
 const HTTP_STATUS = [200, 200, 200, 200, 201, 204, 301, 400, 401, 403, 404, 500, 502, 503];
-const IPS = [
-  "10.0.1.42",
-  "10.0.2.17",
-  "10.0.3.99",
-  "192.168.1.100",
-  "172.16.0.5",
-  "10.0.1.200",
-];
+const IPS = ["10.0.1.42", "10.0.2.17", "10.0.3.99", "192.168.1.100", "172.16.0.5", "10.0.1.200"];
 const PROVIDERS = ["stripe", "paypal", "square", "braintree"];
 const CARRIERS = ["fedex", "ups", "usps", "dhl"];
 const DB_TABLES = ["users", "orders", "products", "inventory", "sessions", "payments"];
@@ -160,7 +153,8 @@ export const DATASET_PRESETS = {
 
 let _seed = 42;
 function mulberry32() {
-  let t = (_seed += 0x6d2b79f5);
+  _seed += 0x6d2b79f5;
+  let t = _seed;
   t = Math.imul(t ^ (t >>> 15), t | 1);
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -207,7 +201,7 @@ function ip() {
 
 // ── Template Variable Generators ─────────────────────────────────────
 
-function generateTemplateVars(template, service) {
+function generateTemplateVars(template, _service) {
   const vars = {};
   if (template.includes("{method}")) vars.method = pick(HTTP_METHODS);
   if (template.includes("{path}")) vars.path = pick(HTTP_PATHS);
@@ -268,7 +262,8 @@ function generateTemplateVars(template, service) {
   if (template.includes("{topic}")) vars.topic = pick(TOPICS);
   if (template.includes("{partition}")) vars.partition = randInt(0, 15);
   if (template.includes("{offset}")) vars.offset = randInt(100000, 9999999);
-  if (template.includes("{group}")) vars.group = `cg-${pick(["orders", "notifications", "analytics"])}`;
+  if (template.includes("{group}"))
+    vars.group = `cg-${pick(["orders", "notifications", "analytics"])}`;
   if (template.includes("{msgId}")) vars.msgId = uuid();
   if (template.includes("{retries}")) vars.retries = randInt(3, 10);
   if (template.includes("{partitions}")) vars.partitions = `${randInt(0, 3)},${randInt(4, 7)}`;
@@ -282,7 +277,7 @@ function fillTemplate(template, vars) {
 
 // ── Structured (KVList) Body Generator ───────────────────────────────
 
-function generateStructuredBody(service, severity) {
+function generateStructuredBody(_service, severity) {
   const method = pick(HTTP_METHODS);
   const path = pick(HTTP_PATHS);
   const status = pick(HTTP_STATUS);
@@ -368,7 +363,8 @@ export function generateLogs(opts) {
     const progressFraction = i / count;
     const jitter = (mulberry32() - 0.5) * 0.01;
     const timeFrac = Math.max(0, Math.min(1, progressFraction + jitter));
-    const timeUnixNano = BigInt(baseTime) * nsPerMs + BigInt(Math.floor(Number(durationNs) * timeFrac));
+    const timeUnixNano =
+      BigInt(baseTime) * nsPerMs + BigInt(Math.floor(Number(durationNs) * timeFrac));
 
     // Decide body shape: 61% templated, 39% structured, <1% freetext
     const bodyRoll = mulberry32();
@@ -407,7 +403,10 @@ export function generateLogs(opts) {
       attributes.push({ key: "http.status_code", value: String(pick(HTTP_STATUS)) });
     }
     if (mulberry32() < 0.2) {
-      attributes.push({ key: "deployment.environment", value: pick(["production", "staging", "canary"]) });
+      attributes.push({
+        key: "deployment.environment",
+        value: pick(["production", "staging", "canary"]),
+      });
     }
 
     const { traceId, spanId } = generateTraceContext();
@@ -468,7 +467,8 @@ export function* generateLogBatches(opts) {
     const progressFraction = i / count;
     const jitter = (mulberry32() - 0.5) * 0.01;
     const timeFrac = Math.max(0, Math.min(1, progressFraction + jitter));
-    const timeUnixNano = BigInt(baseTime) * nsPerMs + BigInt(Math.floor(Number(durationNs) * timeFrac));
+    const timeUnixNano =
+      BigInt(baseTime) * nsPerMs + BigInt(Math.floor(Number(durationNs) * timeFrac));
 
     const bodyRoll = mulberry32();
     let body;

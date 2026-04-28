@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { generateLogs } from "../js/data-gen.js";
 import {
   buildQuerySpec,
-  computeSeverityDistribution,
   computeServiceDistribution,
+  computeSeverityDistribution,
   createQueryState,
   executeQuery,
   formatBody,

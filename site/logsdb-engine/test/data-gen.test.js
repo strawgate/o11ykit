@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { describe, expect, it } from "vitest";
-import { DATASET_PRESETS, generateLogs, generateLogBatches } from "../js/data-gen.js";
+import { DATASET_PRESETS, generateLogBatches, generateLogs } from "../js/data-gen.js";
 
 describe("data-gen", () => {
   it("produces the expected count of records", () => {
@@ -90,11 +90,14 @@ describe("data-gen", () => {
 
   it("streaming generator yields complete coverage", () => {
     const batches = [];
-    let totalRecords = 0;
-    for (const { batch, progress } of generateLogBatches({ count: 500, durationMinutes: 5, batchSize: 100 })) {
+    for (const { batch } of generateLogBatches({
+      count: 500,
+      durationMinutes: 5,
+      batchSize: 100,
+    })) {
       batches.push(batch);
-      totalRecords += batch.length;
     }
+    const totalRecords = batches.reduce((sum, b) => sum + b.length, 0);
     expect(totalRecords).toBe(500);
     expect(batches.length).toBe(5);
   });

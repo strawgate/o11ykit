@@ -2,8 +2,8 @@
 /* Inherits the o11ykit brand system from ../styles.css */
 
 :root {
-  --panel-bg: var(--paper, #F2EFE7);
-  --panel-border: var(--ink, #11110F);
+  --panel-bg: var(--paper, #f2efe7);
+  --panel-border: var(--ink, #11110f);
   --accent: var(--signal, oklch(0.66 0.16 42));
   --mono: var(--mono, "JetBrains Mono", monospace);
   --sans: var(--sans, "Inter Tight", sans-serif);
