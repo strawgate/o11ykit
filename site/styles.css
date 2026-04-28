@@ -11,20 +11,20 @@
   --rule: rgba(17, 17, 15, 0.16);
   --rule-2: rgba(17, 17, 15, 0.08);
 
-   /* Global accent — engines override this in their base.css */
-   --signal: oklch(0.66 0.16 42);
-   --signal-2: oklch(0.55 0.17 38);
-   --signal-3: oklch(0.86 0.06 60);
+  /* Global accent — engines override this in their base.css */
+  --signal: oklch(0.66 0.16 42);
+  --signal-2: oklch(0.55 0.17 38);
+  --signal-3: oklch(0.86 0.06 60);
 
-   /* Per-product accent defaults */
-   --accent-otlp: var(--signal);
-   --accent-tsdb: var(--signal);
-   --accent-octo: var(--signal-2);
-   --accent-bench: var(--ink-2);
+  /* Per-product accent defaults */
+  --accent-otlp: var(--signal);
+  --accent-tsdb: var(--signal);
+  --accent-octo: var(--signal-2);
+  --accent-bench: var(--ink-2);
 
   /* ── Typography ───────────────────────────────────────────────────────── */
-  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
+  --display: "Fraunces", "Iowan Old Style", "Georgia", serif;
   --sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
 
   /* ── Layout ──────────────────────────────────────────────────────────── */
@@ -62,6 +62,22 @@
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+body,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+dl,
+dd,
+ul,
+ol {
   margin: 0;
 }
 
@@ -88,6 +104,8 @@ img {
 a {
   color: inherit;
   text-decoration: none;
+}
+
 /* Inline code */
 code {
   font-family: var(--mono);
@@ -96,8 +114,6 @@ code {
   border: 1px solid var(--rule);
   padding: 2px 6px;
   border-radius: 4px;
-}
-
 }
 
 /* ── Typography Scale ──────────────────────────────────────────────────── */
@@ -198,66 +214,8 @@ code {
 }
 
 /* ── Buttons ───────────────────────────────────────────────────────────── */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-  border: 1px solid var(--ink);
-  padding: 10px 18px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: all var(--ease);
-  background: transparent;
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-.btn:hover {
-  background: var(--paper-2);
-  border-color: var(--ink);
-}
-
-.btn-primary {
-  background: var(--ink);
-  color: var(--paper);
-  border-color: var(--ink);
-}
-
- .btn-primary:hover {
-   background: var(--ink-2);
-   border-color: var(--ink-2);
- }
-
-/* Stamp button aliases for backward compatibility */
-.stamp {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-family: var(--mono);
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-  border: 1px solid var(--ink);
-  padding: 10px 18px;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: all var(--ease);
-  background: transparent;
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-.stamp:hover {
-  background: var(--paper-2);
-  border-color: var(--ink);
-}
-
+.btn,
+.stamp,
 .stamp-fill {
   display: inline-flex;
   align-items: center;
@@ -272,17 +230,31 @@ code {
   border-radius: var(--radius);
   cursor: pointer;
   transition: all var(--ease);
-  background: var(--ink);
-  color: var(--paper);
+  background: transparent;
+  color: var(--ink);
   white-space: nowrap;
 }
 
+.btn:hover,
+.stamp:hover {
+  background: var(--paper-2);
+  border-color: var(--ink);
+}
+
+.btn-primary,
+.stamp-fill {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.btn-primary:hover,
 .stamp-fill:hover {
   background: var(--ink-2);
   border-color: var(--ink-2);
 }
 
- .btn-secondary {
+.btn-secondary {
   background: transparent;
   color: var(--ink-2);
   border-color: var(--rule);
@@ -465,6 +437,21 @@ code {
   gap: 12px;
   justify-content: center;
   margin-bottom: 48px;
+}
+
+/* ── Tags ──────────────────────────────────────────────────────────────── */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--rule);
+  padding: 4px 10px;
+  color: var(--ink-3);
+  background: transparent;
 }
 
 /* ── Card / Panel ──────────────────────────────────────────────────────── */
@@ -697,15 +684,31 @@ section:last-of-type {
 }
 
 /* ── Accent Color Utilities ───────────────────────────────────────────── */
-.card.accent-otlp { border-left: 3px solid var(--accent-otlp); }
-.card.accent-tsdb { border-left: 3px solid var(--accent-tsdb); }
-.card.accent-octo { border-left: 3px solid var(--accent-octo); }
-.card.accent-bench { border-left: 3px solid var(--accent-bench); }
+.card.accent-otlp {
+  border-left: 3px solid var(--accent-otlp);
+}
+.card.accent-tsdb {
+  border-left: 3px solid var(--accent-tsdb);
+}
+.card.accent-octo {
+  border-left: 3px solid var(--accent-octo);
+}
+.card.accent-bench {
+  border-left: 3px solid var(--accent-bench);
+}
 
-.pipeline-stage.accent-otlp { border-top: 3px solid var(--accent-otlp); }
-.pipeline-stage.accent-tsdb { border-top: 3px solid var(--accent-tsdb); }
-.pipeline-stage.accent-octo { border-top: 3px solid var(--accent-octo); }
-.pipeline-stage.accent-bench { border-top: 3px solid var(--accent-bench); }
+.pipeline-stage.accent-otlp {
+  border-top: 3px solid var(--accent-otlp);
+}
+.pipeline-stage.accent-tsdb {
+  border-top: 3px solid var(--accent-tsdb);
+}
+.pipeline-stage.accent-octo {
+  border-top: 3px solid var(--accent-octo);
+}
+.pipeline-stage.accent-bench {
+  border-top: 3px solid var(--accent-bench);
+}
 
 /* ── Pipeline (default flex, used on product pages) ───────────────────── */
 .pipeline {
@@ -865,6 +868,11 @@ section:last-of-type {
   text-align: center;
 }
 
+.signal-link,
+.signal-text {
+  color: var(--signal);
+}
+
 .footer-grid {
   display: grid;
   grid-template-columns: 2fr repeat(4, 1fr);
@@ -1007,9 +1015,15 @@ section:last-of-type {
   display: grid;
   gap: 12px;
 }
-.grid-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-.grid-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-.grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.grid-2 {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+.grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.grid-4 {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
 
 .try-strip {
   display: grid;
