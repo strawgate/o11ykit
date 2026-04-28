@@ -784,13 +784,16 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
         values[i] = dt > 0 ? (delta >= 0 ? delta : currentValue) / dt : NaN;
       }
     } else if (fn === "delta") {
-      // Raw difference — no counter-reset handling
+      // values[0] cannot be computed - no previous point for first sample
+      values[0] = NaN;
       for (let i = 1; i < src.timestamps.length; i++) {
         const currentValue = readNumberAt(src.values, i, "point value");
         const previousValue = readNumberAt(src.values, i - 1, "point value");
         values[i] = currentValue - previousValue;
       }
     } else {
+      // values[0] cannot be computed - no previous point for first sample
+      values[0] = NaN;
       for (let i = 1; i < src.timestamps.length; i++) {
         const currentValue = readNumberAt(src.values, i, "point value");
         const previousValue = readNumberAt(src.values, i - 1, "point value");

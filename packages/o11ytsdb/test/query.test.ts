@@ -181,8 +181,8 @@ describe("ScanEngine", () => {
     // biome-ignore lint/style/noNonNullAssertion: test code
     const s = result.series[0]!;
     expect(s.timestamps.length).toBe(4);
-    // First rate is 0 (no previous)
-    expect(s.values[0]).toBe(0);
+    // First rate is NaN (no previous point to compute delta)
+    expect(s.values[0]).toBeNaN();
     // Subsequent: 100 / (1e9/1000) = 100 / 1e6 = 0.0001
     expect(s.values[1]).toBeCloseTo(0.0001);
   });
