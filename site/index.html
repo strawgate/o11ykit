@@ -3,318 +3,313 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>o11ykit — SQLite for observability, in the browser</title>
+    <title>o11ykit &middot; OTLP in. Pixels out.</title>
     <meta
       name="description"
       content="Browser-native databases for metrics, traces, and logs. Columnar compression at sub-4 bytes per point, zero-latency cross-signal correlation, and no backend required. The observability database category the browser never had."
     />
-    <meta name="theme-color" content="#f8fafb" />
+    <meta name="theme-color" content="#F2EFE7" />
     <link rel="icon" href="./logo.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Inter+Tight:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <a href="#main-content" class="skip-link">Skip to main content</a>
-    <div class="ambient" aria-hidden="true"></div>
-    <main id="main-content" class="page">
-      <header class="topbar panel">
-        <a class="brand" href="/o11ykit/"><img class="brand-mark" src="./logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
-        <nav class="topnav" aria-label="Primary">
-          <a href="#signals">Signals</a>
-          <a href="#vision">Vision</a>
-          <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
-          <a href="/o11ykit/tracesdb-engine/">TracesDB</a>
-          <a href="/o11ykit/benchkit/">Benchkit</a>
-          <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">Playground</a>
-          <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
-        </nav>
-      </header>
+    <a href="#main" class="skip-link">Skip to main content</a>
 
-      <!-- ─── Hero ────────────────────────────────────────────── -->
-      <section class="hero panel">
-        <div class="hero-lockup">
-          <img class="hero-mark" src="./logo.svg" width="48" height="48" alt="" aria-hidden="true" />
-          <span class="hero-name">o11ykit</span>
-        </div>
-        <p class="eyebrow">browser observability database</p>
-        <h1>SQLite for observability,<br/>in the browser.</h1>
-        <p class="lede">
-          Every observability SPA today is a dumb terminal — every pan, zoom, and filter
-          round-trips to a backend. o11ykit puts a real database in the browser: columnar
-          compression at <strong>sub‑4 bytes per point</strong>, instant cross-signal
-          correlation, and zero GC pressure. No Prometheus. No Elasticsearch. No backend.
-        </p>
-        <div class="hero-stats" aria-label="Key metrics">
-          <div class="hero-stat">
-            <span class="hero-stat-value">&lt;4 B</span>
-            <span class="hero-stat-label">per data point</span>
-          </div>
-          <div class="hero-stat">
-            <span class="hero-stat-value">10–15×</span>
-            <span class="hero-stat-label">less memory than JS objects</span>
-          </div>
-          <div class="hero-stat">
-            <span class="hero-stat-value">0 ms</span>
-            <span class="hero-stat-label">cross-signal correlation</span>
-          </div>
-          <div class="hero-stat">
-            <span class="hero-stat-value">3</span>
-            <span class="hero-stat-label">signal types: metrics, traces, logs</span>
-          </div>
-        </div>
-        <div class="hero-actions">
-          <a class="cta cta-primary" href="/o11ykit/tsdb-engine/">Launch TSDB Demo</a>
-          <a class="cta" href="/o11ykit/otlpkit/">OtlpKit Packages</a>
-          <a class="cta" href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">Browse Source</a>
-        </div>
-        <div class="pill-row" aria-label="Core capabilities">
-          <span class="pill">OTLP → Arrow → columnar store</span>
-          <span class="pill">ALP + XOR-delta + dictionary encoding</span>
-          <span class="pill">TypeScript + Rust→WASM</span>
-          <span class="pill">chart-agnostic adapters</span>
-          <span class="pill">zero-infrastructure</span>
-        </div>
-      </section>
+    <!-- ─── Topbar ──────────────────────────────────────────────── -->
+    <header class="topbar">
+      <a class="brand" href="/o11ykit/">
+        <img class="brand-mark" src="./logo.svg" width="20" height="20" alt="" aria-hidden="true" />
+        o11ykit
+      </a>
+      <nav class="topnav" aria-label="Primary">
+        <a href="/o11ykit/tsdb-engine/">tsdb</a>
+        <a href="/o11ykit/tracesdb-engine/">tracesdb</a>
+        <a href="/o11ykit/otlpkit-docs/">otlpkit</a>
+        <a href="/o11ykit/tsdb-engine/learn/">docs</a>
+        <a href="/o11ykit/tsdb-engine/">tsdb-engine</a>
+        <a href="/o11ykit/tracesdb-engine/">tracesdb-engine</a>
+        <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">github</a>
+        <span class="topnav-cta">
+          <a class="stamp" href="/o11ykit/tsdb-engine/">try it</a>
+        </span>
+      </nav>
+    </header>
 
-      <!-- ─── The Problem ─────────────────────────────────────── -->
-      <section class="panel callout">
-        <h3>The problem we solve</h3>
-        <p>
-          Kibana, Grafana, Datadog, and Honeycomb all treat the browser as a <em>stateless
-          renderer</em>. Every interaction re-fetches data. The JS object tax of 30–50 bytes
-          per point means dashboards crash at scale. There is no real telemetry database
-          in the browser — until now.
-        </p>
-        <p>
-          o11ykit gives observability UI builders the embedded database they've been
-          hand-rolling badly: instant pan/zoom, client-side aggregation, cross-panel shared
-          queries, and multi-million-point retention without GC pressure.
-        </p>
-      </section>
+    <main id="main">
 
-      <!-- ─── Three Signals ───────────────────────────────────── -->
-      <section id="signals" class="panel">
-        <h2>Three signals, three databases</h2>
-        <p class="section-intro">
-          One database per OTel signal type. Each specializes its compression and indexing
-          for the data model. Together, they enable zero-latency cross-signal correlation
-          in local memory.
-        </p>
-        <div class="grid grid-3">
-          <article class="card accent-tsdb">
-            <h3>o11ytsdb</h3>
-            <p class="signal-subtitle">metrics</p>
-            <p>
-              ALP encoding, delta-of-delta timestamps, XOR-delta values, WASM-accelerated
-              codecs. Sub-4 bytes per sample. Ships first — it's the simplest model and
-              delivers the headline compression number.
-            </p>
-            <div class="card-links">
-              <a href="/o11ykit/tsdb-engine/#section-dataset">Live demo</a>
-              <a href="/o11ykit/tsdb-engine/learn/">Learn hub</a>
+      <!-- ─── Hero ────────────────────────────────────────────────── -->
+      <section class="hero grid-bg">
+        <div class="hero-inner">
+          <p class="t-eyebrow">browser-native observability databases</p>
+          <h1 class="t-display hero-headline">OTLP in.<br />Pixels out.</h1>
+          <p class="hero-sub">
+            Every observability SPA today is a dumb terminal&mdash;every pan, zoom, and filter
+            round-trips to a backend. o11ykit puts a real columnar database in the browser:
+            sub-4 bytes per point, instant cross-signal correlation, zero GC pressure.
+            No Prometheus. No Elasticsearch. No backend.
+          </p>
+          <div class="hero-actions">
+            <a class="stamp-fill" href="/o11ykit/tsdb-engine/">Launch TSDB Demo</a>
+            <a class="stamp-fill" href="/o11ykit/tracesdb-engine/">Launch TracesDB Demo</a>
+            <a class="stamp" href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">Browse Source</a>
+          </div>
+
+          <!-- Pipeline diagram -->
+          <div class="pipeline">
+            <div class="pipeline-step pipeline-arrow-r">
+              <div class="pipeline-step-num">01</div>
+              <div class="pipeline-step-name">OTLP</div>
+              <div class="pipeline-step-desc">Protobuf or JSON ingest via OtlpKit</div>
             </div>
-          </article>
-          <article class="card accent-logs">
-            <h3>o11ylogsdb</h3>
-            <p class="signal-subtitle">logs</p>
-            <p>
-              Drain3-style template extraction on ingest collapses string columns 5–10×.
-              Turns "unique" messages into <code>template_id + params</code>, making
-              full-text indexing feasible in the browser. Ships second — highest user pain.
-            </p>
-            <div class="card-links">
-              <a href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ylogsdb" target="_blank" rel="noreferrer">Source</a>
+            <div class="pipeline-step pipeline-arrow-r">
+              <div class="pipeline-step-num">02</div>
+              <div class="pipeline-step-name">Arrow</div>
+              <div class="pipeline-step-desc">SIMD-aware columnar interchange</div>
             </div>
-          </article>
-          <article class="card accent-traces">
-            <h3>o11ytracesdb</h3>
-            <p class="signal-subtitle">traces</p>
-            <p>
-              Dictionary encoding collapses 90%+ of span strings to 8–16 bit integers.
-              Parent-child relationships stored as typed-array indices enable SIMD-friendly
-              critical-path computation. Ships last — most complex model.
-            </p>
-            <div class="card-links">
-              <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">Roadmap</a>
+            <div class="pipeline-step pipeline-arrow-r">
+              <div class="pipeline-step-num">03</div>
+              <div class="pipeline-step-name">o11y*db</div>
+              <div class="pipeline-step-desc">Signal-specific columnar store</div>
             </div>
-          </article>
-        </div>
-      </section>
-
-      <!-- ─── Vision: Cross-signal correlation ────────────────── -->
-      <section id="vision" class="panel">
-        <h2>The vision: zero-latency correlation</h2>
-        <p class="section-intro">
-          Today, clicking a metric spike triggers a server call to fetch traces, then another for
-          logs — hundreds of milliseconds each, plus backend credentials. With all three stores
-          co-resident in the browser:
-        </p>
-        <div class="pipeline">
-          <div class="pipeline-stage">
-            <div class="stage-icon">📈</div>
-            <div class="stage-name">Brush a spike</div>
-            <div class="stage-desc">Select a time range in o11ytsdb</div>
-          </div>
-          <div class="pipeline-arrow">→</div>
-          <div class="pipeline-stage">
-            <div class="stage-icon">🔗</div>
-            <div class="stage-name">Correlate</div>
-            <div class="stage-desc">Pass window to traces + logs in local memory</div>
-          </div>
-          <div class="pipeline-arrow">→</div>
-          <div class="pipeline-stage">
-            <div class="stage-icon">⚡</div>
-            <div class="stage-name">Render</div>
-            <div class="stage-desc">Zero network calls, instant results</div>
-          </div>
-        </div>
-        <p class="section-intro" style="margin-top: 16px;">
-          Traces generate derived RED metrics back into o11ytsdb. Metrics link to traces via
-          exemplars. Logs connect to both via trace IDs. A self-reinforcing data model.
-        </p>
-      </section>
-
-      <!-- ─── Architecture spine ──────────────────────────────── -->
-      <section class="panel">
-        <h2>Architecture</h2>
-        <p class="section-intro">
-          A shared spine connects OTLP ingestion to signal-specific stores and chart-agnostic output.
-        </p>
-        <div class="pipeline">
-          <div class="pipeline-stage">
-            <div class="stage-icon">📦</div>
-            <div class="stage-name">OTLP</div>
-            <div class="stage-desc">Protobuf or JSON ingest</div>
-          </div>
-          <div class="pipeline-arrow">→</div>
-          <div class="pipeline-stage">
-            <div class="stage-icon">🏹</div>
-            <div class="stage-name">Arrow</div>
-            <div class="stage-desc">SIMD-aware columnar interchange</div>
-          </div>
-          <div class="pipeline-arrow">→</div>
-          <div class="pipeline-stage">
-            <div class="stage-icon">🗄️</div>
-            <div class="stage-name">o11y*db</div>
-            <div class="stage-desc">Signal-specific columnar store</div>
-          </div>
-          <div class="pipeline-arrow">→</div>
-          <div class="pipeline-stage">
-            <div class="stage-icon">📊</div>
-            <div class="stage-name">Adapters</div>
-            <div class="stage-desc">uPlot, ECharts, Chart.js, Arrow out</div>
+            <div class="pipeline-step">
+              <div class="pipeline-step-num">04</div>
+              <div class="pipeline-step-name">Pixels</div>
+              <div class="pipeline-step-desc">uPlot, ECharts, Chart.js, Arrow out</div>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- ─── What we are not ─────────────────────────────────── -->
-      <section class="panel">
-        <h2>What o11ykit is not</h2>
-        <p class="section-intro">
-          Clear boundaries prevent scope creep. o11ykit sits <em>after</em> your backend, inside the UI.
-        </p>
-        <div class="grid grid-3">
-          <article class="card">
-            <h4>Not Prometheus</h4>
-            <p>We don't scrape, store long-term, or serve remote queries. We consume what Prometheus produces.</p>
-          </article>
-          <article class="card">
-            <h4>Not Elasticsearch</h4>
-            <p>We don't do distributed full-text search. We do template-aware log compression in a single tab.</p>
-          </article>
-          <article class="card">
-            <h4>Not Grafana</h4>
-            <p>We're a library, not a dashboard. We output typed arrays — what you render is your business.</p>
-          </article>
-          <article class="card">
-            <h4>Not OTel SDK</h4>
-            <p>We don't instrument your code. We store and query what your instrumentation produces.</p>
-          </article>
-          <article class="card">
-            <h4>Not DuckDB</h4>
-            <p>DuckDB-WASM is 18 MB with no metric semantics. We're &lt;5 KB with deep signal awareness.</p>
-          </article>
-          <article class="card">
-            <h4>Not a backend</h4>
-            <p>Single-user, single-tab, in-process. Complements your server-side store, never replaces it.</p>
-          </article>
+      <!-- ─── Stat Strip ──────────────────────────────────────────── -->
+      <section>
+        <div class="stat-strip">
+          <div class="stat">
+            <span class="stat-value">&lt;4 B</span>
+            <span class="stat-label">per data point</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">10-15x</span>
+            <span class="stat-label">less memory than JS objects</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">0 ms</span>
+            <span class="stat-label">cross-signal correlation</span>
+          </div>
+          <div class="stat">
+            <span class="stat-value">&lt;5 KB</span>
+            <span class="stat-label">core bundle size</span>
+          </div>
         </div>
       </section>
 
-      <!-- ─── For whom ────────────────────────────────────────── -->
-      <section class="panel">
-        <h2>Built for observability UI builders</h2>
-        <p class="section-intro">
-          If you're building a Kibana-like product, an internal dashboard, or any UI that
-          visualizes OTel data — you're hand-rolling local caches, chart transforms, and label
-          filters today. o11ykit replaces that ad-hoc layer with a real embedded database.
-        </p>
-        <div class="grid grid-2">
-          <article class="card">
-            <h4>Today (without o11ykit)</h4>
-            <p>
-              Fetch JSON → store in JS arrays (30–50 B/point) → hand-roll aggregation →
-              re-fetch on every pan/zoom → OOM at scale → 3+ server round-trips per exemplar click.
-            </p>
-          </article>
-          <article class="card accent-tsdb">
-            <h4>With o11ykit</h4>
-            <p>
-              Ingest OTLP → columnar compression (&lt;4 B/point) → streaming queries →
-              instant pan/zoom → cross-signal correlation in local memory → no network calls.
-            </p>
-          </article>
+      <!-- ─── Primitives ──────────────────────────────────────────── -->
+      <section>
+        <div class="section-inner">
+          <p class="t-eyebrow">primitives</p>
+          <h2 class="t-h2" style="margin:8px 0 8px">A toolkit, not a platform.</h2>
+          <p class="t-body" style="max-width:56ch;margin:0 0 32px">Compose your own observability stack from focused, single-purpose packages. Each does one thing. Each earns its bytes.</p>
+          <div class="primitives-grid">
+            <div class="primitive-card">
+              <span class="primitive-name">tsdb</span>
+              <span class="primitive-signal">metrics</span>
+              <p class="primitive-desc">ALP + XOR-delta + dictionary encoding. Sub-4 bytes per sample. Columnar compression purpose-built for time-series.</p>
+              <a class="primitive-link" href="/o11ykit/tsdb-engine/">demo</a>
+            </div>
+            <div class="primitive-card">
+              <span class="primitive-name">tracesdb</span>
+              <span class="primitive-signal">traces</span>
+              <p class="primitive-desc">Dictionary encoding collapses 90%+ of span strings. Typed-array parent-child indices for SIMD-friendly critical-path computation.</p>
+              <a class="primitive-link" href="/o11ykit/tracesdb-engine/">demo</a>
+            </div>
+            <div class="primitive-card">
+              <span class="primitive-name">logsdb</span>
+              <span class="primitive-signal">logs</span>
+              <p class="primitive-desc">Drain3-style template extraction collapses string columns 5-10x. Turns unique messages into template_id + params.</p>
+              <a class="primitive-link" href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">source</a>
+            </div>
+            <div class="primitive-card">
+              <span class="primitive-name">otlpkit</span>
+              <span class="primitive-signal">ingest</span>
+              <p class="primitive-desc">OTLP protobuf and JSON decoder. Zero-copy where possible. Streams directly into Arrow columnar format.</p>
+              <a class="primitive-link" href="/o11ykit/otlpkit-docs/">docs</a>
+            </div>
+            <div class="primitive-card">
+              <span class="primitive-name">benchkit</span>
+              <span class="primitive-signal">verify</span>
+              <p class="primitive-desc">Statistical benchmarking harness. If a stat appears in copy, the demo proves it live. Regression detection built in.</p>
+              <a class="primitive-link" href="/o11ykit/benchkit/">benchmarks</a>
+            </div>
+          </div>
         </div>
       </section>
 
-      <!-- ─── Try it ──────────────────────────────────────────── -->
-      <section class="panel">
-        <h2>Try it now</h2>
-        <p class="section-intro">
-          Start hands-on. The architecture docs make more sense once you've seen the engine
-          compress and query real data.
-        </p>
-        <div class="learn-strip" aria-label="Interactive experiments">
-          <a href="/o11ykit/tsdb-engine/#section-dataset">
-            <span class="learn-icon">🚀</span>
-            <span>TSDB Live Demo</span>
-          </a>
-          <a href="/o11ykit/tsdb-engine/learn/">
-            <span class="learn-icon">📚</span>
-            <span>Learn Hub</span>
-          </a>
-          <a href="/o11ykit/tsdb-engine/learn/xor-delta/">
-            <span class="learn-icon">⊕</span>
-            <span>XOR-Delta</span>
-          </a>
-          <a href="/o11ykit/tsdb-engine/learn/string-interning/">
-            <span class="learn-icon">🏷️</span>
-            <span>String Interning</span>
-          </a>
-          <a href="/o11ykit/tsdb-engine/learn/query-engine/">
-            <span class="learn-icon">🔍</span>
-            <span>Query Engine</span>
-          </a>
-          <a href="/o11ykit/otlpkit/">
-            <span class="learn-icon">📦</span>
-            <span>OtlpKit</span>
-          </a>
-          <a href="/o11ykit/benchkit/">
-            <span class="learn-icon">📏</span>
-            <span>Benchkit</span>
-          </a>
+      <!-- ─── Correlation ─────────────────────────────────────────── -->
+      <section>
+        <div class="section-inner">
+          <p class="t-eyebrow">correlation</p>
+          <h2 class="t-h2" style="margin:8px 0 8px">Three signals. One window. Zero network.</h2>
+          <p class="t-body" style="max-width:56ch;margin:0 0 32px">
+            All three stores co-resident in memory. Brush a metric spike, get matching traces and
+            logs in the same frame. No server round-trips. No credentials. No loading spinners.
+          </p>
+          <div class="correlation-grid">
+            <pre class="code-block"><span class="code-comment">// 1. Brush a time range in tsdb</span>
+const window = tsdb.query({
+  start: brushStart,
+  end:   brushEnd,
+  metric: <span class="code-signal">"http.duration"</span>
+});
+
+<span class="code-comment">// 2. Correlate: pass to traces + logs</span>
+const spans  = tracesdb.query({
+  start: window.start,
+  end:   window.end
+});
+const logs   = logsdb.query({
+  traceIds: spans.traceIds
+});
+
+<span class="code-comment">// 3. Render: zero network calls</span>
+chart.update(window.points);
+waterfall.update(spans);
+logTable.update(logs);</pre>
+            <div>
+              <h3 class="t-h3" style="margin-bottom:16px">How it works</h3>
+              <div style="display:flex;flex-direction:column;gap:16px">
+                <div>
+                  <span class="tag" style="margin-bottom:6px;display:inline-block">step 1</span>
+                  <p class="t-body" style="margin:4px 0 0">Brush a spike in your metric chart. tsdb returns the matching time window as typed arrays.</p>
+                </div>
+                <hr class="hair" />
+                <div>
+                  <span class="tag" style="margin-bottom:6px;display:inline-block">step 2</span>
+                  <p class="t-body" style="margin:4px 0 0">Pass the window to tracesdb and logsdb in local memory. Dictionary-encoded lookups, zero serialization.</p>
+                </div>
+                <hr class="hair" />
+                <div>
+                  <span class="tag" style="margin-bottom:6px;display:inline-block">step 3</span>
+                  <p class="t-body" style="margin:4px 0 0">Render all three panels in the same animation frame. Total latency: 0 ms network, sub-ms compute.</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <footer class="site-footer">
-        <p>
-          <strong>o11ykit</strong> — browser-native databases for metrics, traces, and logs.<br/>
-          Stack: <code>OTLP → Arrow → o11y*db → chart adapters</code>.
-          Not Prometheus. Not Elasticsearch. Not Grafana. Just the embedded database your UI needs.
-        </p>
-      </footer>
+      <!-- ─── Boundaries ──────────────────────────────────────────── -->
+      <section>
+        <div class="section-inner">
+          <p class="t-eyebrow">boundaries</p>
+          <h2 class="t-h2" style="margin:8px 0 8px">Six things this isn't.</h2>
+          <p class="t-body" style="max-width:56ch;margin:0 0 32px">
+            Clear boundaries prevent scope creep. o11ykit sits after your backend, inside the UI. Limits are a feature.
+          </p>
+          <div class="boundaries-grid">
+            <div class="boundary-card">
+              <h4 class="boundary-title">Not Prometheus</h4>
+              <p class="boundary-desc">We don't scrape, store long-term, or serve remote queries. We consume what Prometheus produces.</p>
+            </div>
+            <div class="boundary-card">
+              <h4 class="boundary-title">Not Elasticsearch</h4>
+              <p class="boundary-desc">We don't do distributed full-text search. We do template-aware log compression in a single tab.</p>
+            </div>
+            <div class="boundary-card">
+              <h4 class="boundary-title">Not Grafana</h4>
+              <p class="boundary-desc">We're a library, not a dashboard. We output typed arrays&mdash;what you render is your business.</p>
+            </div>
+            <div class="boundary-card">
+              <h4 class="boundary-title">Not OTel SDK</h4>
+              <p class="boundary-desc">We don't instrument your code. We store and query what your instrumentation produces.</p>
+            </div>
+            <div class="boundary-card">
+              <h4 class="boundary-title">Not DuckDB</h4>
+              <p class="boundary-desc">DuckDB-WASM is 18 MB with no metric semantics. We're &lt;5 KB with deep signal awareness.</p>
+            </div>
+            <div class="boundary-card">
+              <h4 class="boundary-title">Not a backend</h4>
+              <p class="boundary-desc">Single-user, single-tab, in-process. Complements your server-side store, never replaces it.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── Manifesto ───────────────────────────────────────────── -->
+      <section class="section-dark">
+        <div class="section-inner">
+          <p class="t-eyebrow">manifesto</p>
+          <blockquote class="manifesto-quote" style="margin-top:16px">
+            The browser is no longer a thin client. It has 8 GB, six cores, and SIMD.
+            We should stop treating it like a 1996 terminal and put a real database in there.
+          </blockquote>
+        </div>
+      </section>
+
+      <!-- ─── Final CTA ───────────────────────────────────────────── -->
+      <section class="final-cta grid-bg">
+        <div class="section-inner">
+          <p class="t-eyebrow">open source</p>
+          <h2 class="t-h1" style="margin:8px 0 16px">Star the repo. Then break it.</h2>
+          <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
+            <a class="stamp-fill" href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
+            <a class="stamp" href="/o11ykit/tsdb-engine/">TSDB Demo</a>
+            <a class="stamp" href="/o11ykit/tracesdb-engine/">TracesDB Demo</a>
+            <a class="stamp" href="/o11ykit/benchkit/">Benchmarks</a>
+          </div>
+        </div>
+      </section>
+
     </main>
+
+    <!-- ─── Footer ──────────────────────────────────────────────── -->
+    <footer class="site-footer">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <span class="footer-brand-name">o11ykit</span>
+          <span class="footer-brand-tagline">OTLP in. Pixels out.</span>
+          <span class="footer-brand-tagline">Browser-native databases for metrics, traces, and logs.</span>
+        </div>
+        <div class="footer-col">
+          <p class="footer-col-title">Primitives</p>
+          <ul>
+            <li><a href="/o11ykit/tsdb-engine/">tsdb</a></li>
+            <li><a href="/o11ykit/tracesdb-engine/">tracesdb</a></li>
+            <li><a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">logsdb</a></li>
+            <li><a href="/o11ykit/otlpkit-docs/">otlpkit</a></li>
+            <li><a href="/o11ykit/benchkit/">benchkit</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <p class="footer-col-title">Learn</p>
+          <ul>
+            <li><a href="/o11ykit/tsdb-engine/learn/">TSDB Learn Hub</a></li>
+            <li><a href="/o11ykit/tracesdb-engine/learn/">TracesDB Learn Hub</a></li>
+            <li><a href="/o11ykit/otlpkit-docs/">OtlpKit Docs</a></li>
+            <li><a href="/o11ykit/benchkit/">Benchmarks</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <p class="footer-col-title">Community</p>
+          <ul>
+            <li><a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a></li>
+            <li><a href="https://github.com/strawgate/o11ykit/issues" target="_blank" rel="noreferrer">Issues</a></li>
+            <li><a href="https://github.com/strawgate/o11ykit/discussions" target="_blank" rel="noreferrer">Discussions</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <p class="footer-col-title">The Project</p>
+          <ul>
+            <li><a href="/o11ykit/octo11y/">Octo11y</a></li>
+            <li><a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">Source</a></li>
+            <li><a href="https://github.com/strawgate/o11ykit/blob/main/LICENSE" target="_blank" rel="noreferrer">License</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        o11ykit &middot; Browser-native observability databases &middot; MIT License
+      </div>
+    </footer>
   </body>
 </html>

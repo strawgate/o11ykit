@@ -198,6 +198,29 @@ function sortedDifference(a: number[], b: number[]): number[] {
   return out;
 }
 
+/**
+ * Compute an effective step from maxPoints.
+ *
+ * When `maxPoints` is set, derives a step that ensures at most `maxPoints`
+ * data points across [start, end]. If an explicit `step` is also provided,
+ * the larger of the two wins to guarantee the point budget.
+ */
+export function resolveStep(
+  step: bigint | undefined,
+  start: bigint,
+  end: bigint,
+  maxPoints: number | undefined
+): bigint | undefined {
+  if (!maxPoints || maxPoints < 2) return step;
+  const rangeNs = end - start;
+  if (rangeNs <= 0n) return step;
+  const bucketCount = BigInt(Math.max(1, maxPoints - 1));
+  const derivedStep = (rangeNs + bucketCount - 1n) / bucketCount;
+  if (derivedStep < 1_000_000n && !step) return undefined;
+  if (!step) return derivedStep;
+  return step < derivedStep ? derivedStep : step;
+}
+
 /** Resolve a matcher against a storage backend, returning matched series IDs. */
 function matcherIds(storage: StorageBackend, m: Matcher): SeriesId[] {
   if (m.op === "=" || m.op === "!=") {
@@ -223,6 +246,15 @@ export class ScanEngine implements QueryEngine {
   readonly name = "scan";
 
   query(storage: StorageBackend, opts: QueryOpts): QueryResult {
+    // Resolve maxPoints → effective step.
+    if (opts.maxPoints) {
+      const effectiveStep = resolveStep(opts.step, opts.start, opts.end, opts.maxPoints);
+      if (effectiveStep !== opts.step) {
+        const { step: _drop, ...rest } = opts;
+        opts = effectiveStep != null ? { ...rest, step: effectiveStep } : rest;
+      }
+    }
+
     // Find matching series using sorted-array intersection (no Set allocation).
     let ids = storage.matchLabel("__name__", opts.metric);
     if (opts.matchers) {
@@ -366,6 +398,19 @@ export class ScanEngine implements QueryEngine {
     }
 
     return { series, scannedSeries: ids.length, scannedSamples };
+  }
+
+  /** Run two parallel aggregations (sum + count) for distributed average merging. */
+  queryAveragePartials(
+    storage: StorageBackend,
+    opts: QueryOpts
+  ): { sum: QueryResult; count: QueryResult } {
+    const sumOpts: QueryOpts = { ...opts, agg: "sum" as AggFn };
+    const countOpts: QueryOpts = { ...opts, agg: "count" as AggFn };
+    return {
+      sum: this.query(storage, sumOpts),
+      count: this.query(storage, countOpts),
+    };
   }
 }
 

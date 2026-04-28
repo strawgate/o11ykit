@@ -8,6 +8,7 @@ import {
   formatNum,
   formatPercent,
   hexFromBytes,
+  hexToBytes,
   serviceColor,
   shortSpanId,
   shortTraceId,
@@ -121,6 +122,23 @@ describe("shortTraceId", () => {
 describe("shortSpanId", () => {
   it("returns first 8 hex chars", () => {
     expect(shortSpanId("abcdef0123456789")).toBe("abcdef01");
+  });
+});
+
+describe("hexToBytes", () => {
+  it("converts hex string to Uint8Array", () => {
+    const result = hexToBytes("aabb00ff");
+    expect(result).toBeInstanceOf(Uint8Array);
+    expect(result.byteLength).toBe(4);
+    expect(result[0]).toBe(0xaa);
+    expect(result[1]).toBe(0xbb);
+    expect(result[2]).toBe(0x00);
+    expect(result[3]).toBe(0xff);
+  });
+
+  it("round-trips with hexFromBytes", () => {
+    const hex = "abcdef0123456789";
+    expect(hexFromBytes(hexToBytes(hex))).toBe(hex);
   });
 });
 

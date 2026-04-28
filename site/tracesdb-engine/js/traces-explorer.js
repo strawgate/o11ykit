@@ -14,6 +14,8 @@ import {
   formatDurationNs,
   formatNum,
   formatPercent,
+  hexFromBytes,
+  normalizeTraceId,
   serviceColor,
   serviceColorVar,
   shortTraceId,
@@ -240,8 +242,7 @@ function renderProblematicTraces() {
     row.addEventListener("click", () => {
       if (onTraceSelect) {
         const traceSpans = currentSpans.filter((s) => {
-          const tid = typeof s.traceId === "string" ? s.traceId : String(s.traceId);
-          return tid === problem.traceId;
+          return normalizeTraceId(s.traceId) === problem.traceId;
         });
         onTraceSelect({ traceId: problem.traceId, spans: traceSpans });
       }
@@ -270,8 +271,7 @@ function showServiceTraces(service) {
 
   for (const [traceId, _traceSpans] of traceMap) {
     const allTraceSpans = currentSpans.filter((s) => {
-      const tid = typeof s.traceId === "string" ? s.traceId : String(s.traceId);
-      return tid === traceId;
+      return normalizeTraceId(s.traceId) === traceId;
     });
     const root = allTraceSpans.find((s) => !s.parentSpanId) || allTraceSpans[0];
     const hasError = allTraceSpans.some((s) => s.statusCode === 2);
