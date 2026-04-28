@@ -22,12 +22,11 @@
       <header class="topbar panel">
         <a class="brand" href="/o11ykit/"><img class="brand-mark" src="./logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
         <nav class="topnav" aria-label="Primary">
-          <a href="#signals">Signals</a>
-          <a href="#vision">Vision</a>
+          <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
           <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
           <a href="/o11ykit/tracesdb-engine/">TracesDB</a>
+          <a href="/o11ykit/octo11y/">Octo11y</a>
           <a href="/o11ykit/benchkit/">Benchkit</a>
-          <a href="https://strawgate.com/o11ykit-playground/" target="_blank" rel="noreferrer">Playground</a>
           <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </header>
@@ -66,7 +65,7 @@
         </div>
         <div class="hero-actions">
           <a class="cta cta-primary" href="/o11ykit/tsdb-engine/">Launch TSDB Demo</a>
-          <a class="cta" href="/o11ykit/otlpkit/">OtlpKit Packages</a>
+          <a class="cta cta-primary" href="/o11ykit/tracesdb-engine/">Launch TracesDB Demo</a>
           <a class="cta" href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">Browse Source</a>
         </div>
         <div class="pill-row" aria-label="Core capabilities">
@@ -134,10 +133,11 @@
             <p>
               Dictionary encoding collapses 90%+ of span strings to 8–16 bit integers.
               Parent-child relationships stored as typed-array indices enable SIMD-friendly
-              critical-path computation. Ships last — most complex model.
+              critical-path computation. Nested sets + bloom filters for O(1) structural queries.
             </p>
             <div class="card-links">
-              <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">Roadmap</a>
+              <a href="/o11ykit/tracesdb-engine/#section-dataset">Live demo</a>
+              <a href="/o11ykit/tracesdb-engine/learn/">Learn hub</a>
             </div>
           </article>
         </div>
@@ -278,28 +278,32 @@
         </p>
         <div class="learn-strip" aria-label="Interactive experiments">
           <a href="/o11ykit/tsdb-engine/#section-dataset">
-            <span class="learn-icon">🚀</span>
+            <span class="learn-icon">📈</span>
             <span>TSDB Live Demo</span>
+          </a>
+          <a href="/o11ykit/tracesdb-engine/#section-dataset">
+            <span class="learn-icon">🔍</span>
+            <span>TracesDB Live Demo</span>
           </a>
           <a href="/o11ykit/tsdb-engine/learn/">
             <span class="learn-icon">📚</span>
-            <span>Learn Hub</span>
+            <span>TSDB Learn Hub</span>
+          </a>
+          <a href="/o11ykit/tracesdb-engine/learn/">
+            <span class="learn-icon">📚</span>
+            <span>TracesDB Learn Hub</span>
           </a>
           <a href="/o11ykit/tsdb-engine/learn/xor-delta/">
             <span class="learn-icon">⊕</span>
             <span>XOR-Delta</span>
           </a>
-          <a href="/o11ykit/tsdb-engine/learn/string-interning/">
+          <a href="/o11ykit/tracesdb-engine/learn/dictionary-encoding/">
             <span class="learn-icon">🏷️</span>
-            <span>String Interning</span>
+            <span>Dictionary Encoding</span>
           </a>
-          <a href="/o11ykit/tsdb-engine/learn/query-engine/">
-            <span class="learn-icon">🔍</span>
-            <span>Query Engine</span>
-          </a>
-          <a href="/o11ykit/otlpkit/">
+          <a href="/o11ykit/otlpkit-docs/">
             <span class="learn-icon">📦</span>
-            <span>OtlpKit</span>
+            <span>OtlpKit Docs</span>
           </a>
           <a href="/o11ykit/benchkit/">
             <span class="learn-icon">📏</span>
