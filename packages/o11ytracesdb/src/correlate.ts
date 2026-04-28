@@ -13,7 +13,7 @@
  * - Service graph computation from inter-service spans
  */
 
-import { bytesToHex } from "stardb";
+import { bytesToHex, findAttribute } from "stardb";
 import type { Resource, SpanRecord, Trace } from "./types.js";
 import { StatusCode } from "./types.js";
 
@@ -256,18 +256,12 @@ export function computeServiceGraph(
 export function defaultServiceName(span: SpanRecord, resource?: Resource): string | undefined {
   // In OTLP, service.name is a resource attribute — check resource first
   if (resource) {
-    for (const attr of resource.attributes) {
-      if (attr.key === "service.name" && typeof attr.value === "string") {
-        return attr.value;
-      }
-    }
+    const svc = findAttribute(resource.attributes, "service.name");
+    if (typeof svc === "string") return svc;
   }
   // Fall back to span attributes as a last resort
-  for (const attr of span.attributes) {
-    if (attr.key === "service.name" && typeof attr.value === "string") {
-      return attr.value;
-    }
-  }
+  const svc = findAttribute(span.attributes, "service.name");
+  if (typeof svc === "string") return svc;
   return undefined;
 }
 

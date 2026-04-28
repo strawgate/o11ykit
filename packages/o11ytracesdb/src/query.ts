@@ -11,7 +11,14 @@
  * - Error flag (skip chunks without errors when filtering for errors)
  */
 
-import { anyValueEquals, bytesEqual, bytesToHex, hexToBytes, timeRangeOverlaps } from "stardb";
+import {
+  anyValueEquals,
+  bytesEqual,
+  bytesToHex,
+  findAttribute,
+  hexToBytes,
+  timeRangeOverlaps,
+} from "stardb";
 import { bloomFromBase64, bloomMayContain } from "./bloom.js";
 import type { Chunk } from "./chunk.js";
 import { computeNestedSets } from "./chunk.js";
@@ -513,8 +520,8 @@ function canPruneChunk(
 
   // Service name pruning
   if (opts.serviceName !== undefined) {
-    const svcAttr = resource.attributes.find((a) => a.key === "service.name");
-    if (svcAttr && svcAttr.value !== opts.serviceName) return true;
+    const svc = findAttribute(resource.attributes, "service.name");
+    if (svc !== undefined && svc !== opts.serviceName) return true;
   }
 
   return false;
@@ -545,14 +552,14 @@ function matchesSpan(
     return false;
 
   if (opts.serviceName !== undefined) {
-    const svcAttr = resource.attributes.find((a) => a.key === "service.name");
-    if (!svcAttr || svcAttr.value !== opts.serviceName) return false;
+    const svc = findAttribute(resource.attributes, "service.name");
+    if (svc === undefined || svc !== opts.serviceName) return false;
   }
 
   if (opts.attributes !== undefined) {
     for (const pred of opts.attributes) {
-      const attr = span.attributes.find((a) => a.key === pred.key);
-      if (!attr || !anyValueEquals(attr.value, pred.value)) return false;
+      const val = findAttribute(span.attributes, pred.key);
+      if (val === undefined || !anyValueEquals(val, pred.value)) return false;
     }
   }
 
@@ -580,13 +587,12 @@ function toComparable(v: AnyValue): number | bigint | string | null {
  * Handles all AttributeOp values.
  */
 function matchesAttributePredicate(span: SpanRecord, pred: AttributePredicate): boolean {
-  const attr = span.attributes.find((a) => a.key === pred.key);
+  const attrVal = findAttribute(span.attributes, pred.key);
 
-  if (pred.op === "exists") return attr !== undefined;
-  if (pred.op === "notExists") return attr === undefined;
+  if (pred.op === "exists") return attrVal !== undefined;
+  if (pred.op === "notExists") return attrVal === undefined;
 
-  if (attr === undefined) return false;
-  const attrVal = attr.value;
+  if (attrVal === undefined) return false;
 
   switch (pred.op) {
     case "eq":
@@ -666,8 +672,8 @@ function matchesTraceIntrinsics(trace: Trace, filter: TraceIntrinsics): boolean 
   if (filter.rootServiceName !== undefined) {
     // service.name is a resource attribute in OTLP, not a span attribute
     if (trace.rootResource !== undefined) {
-      const svcAttr = trace.rootResource.attributes.find((a) => a.key === "service.name");
-      if (!svcAttr || svcAttr.value !== filter.rootServiceName) return false;
+      const svc = findAttribute(trace.rootResource.attributes, "service.name");
+      if (svc === undefined || svc !== filter.rootServiceName) return false;
     } else {
       // No resource attached — cannot match rootServiceName
       return false;
