@@ -1,0 +1,559 @@
+/* ── LogsDB Engine — Demo Styles ────────────────────────────────────── */
+
+/* ─── Hero & Layout ───────────────────────────────────────────────── */
+
+.page {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.hero {
+  text-align: center;
+  padding: 3rem 1rem;
+  border-bottom: 1px solid var(--panel-border);
+}
+.hero h1 {
+  font-family: var(--display);
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  margin: 0 0 1rem;
+}
+.hero .lede {
+  font-family: var(--sans);
+  font-size: 1.1rem;
+  max-width: 640px;
+  margin: 0 auto 1.5rem;
+  opacity: 0.8;
+}
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.6;
+  margin-bottom: 0.5rem;
+}
+
+/* ─── Dataset Selector ────────────────────────────────────────────── */
+
+.dataset-section {
+  padding: 2rem 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+.dataset-section h2 {
+  font-family: var(--sans);
+  font-size: 1.3rem;
+  margin: 0 0 1rem;
+}
+
+.dataset-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.dataset-btn {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    transform 0.1s;
+  font-family: var(--sans);
+  text-align: left;
+}
+.dataset-btn:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.dataset-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+.dataset-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-bottom: 0.3rem;
+}
+.dataset-desc {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+/* ─── Progress ────────────────────────────────────────────────────── */
+
+#gen-progress {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+}
+#gen-progress[hidden] {
+  display: none;
+}
+#gen-status {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+.progress-track {
+  height: 4px;
+  background: var(--panel-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  width: 0%;
+  transition: width 0.2s;
+}
+
+/* ─── Stats Panel ─────────────────────────────────────────────────── */
+
+.stats-panel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.5rem;
+  padding: 1.5rem 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+.stats-panel[hidden] {
+  display: none;
+}
+
+.stat-item {
+  text-align: center;
+  padding: 0.75rem 0.5rem;
+  border: 1px solid var(--panel-border);
+}
+.stat-value {
+  font-family: var(--mono);
+  font-size: 1.2rem;
+  font-weight: 700;
+  display: block;
+}
+.stat-label {
+  font-family: var(--sans);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.6;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+/* ─── Tab Navigation ──────────────────────────────────────────────── */
+
+.tabs-panel {
+  padding: 1rem 0;
+}
+.tabs-panel[hidden] {
+  display: none;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--panel-border);
+  border-bottom: none;
+  margin-bottom: 0;
+}
+.tab-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-right: 1px solid var(--panel-border);
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.tab-btn:last-child {
+  border-right: none;
+}
+.tab-btn:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+.tab-btn.active {
+  background: var(--panel-border);
+  color: var(--panel-bg);
+  font-weight: 600;
+}
+
+.tab-content {
+  border: 1px solid var(--panel-border);
+  padding: 1.5rem;
+  min-height: 400px;
+}
+.tab-content[hidden] {
+  display: none;
+}
+
+/* ─── Data Tables ─────────────────────────────────────────────────── */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.data-table th,
+.data-table td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--panel-border);
+  text-align: left;
+}
+.data-table th {
+  background: var(--panel-border);
+  color: var(--panel-bg);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ─── Chunk Grid ──────────────────────────────────────────────────── */
+
+.chunk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.chunk-card {
+  border: 1px solid var(--panel-border);
+  padding: 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+.chunk-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.chunk-service {
+  font-weight: 600;
+}
+.chunk-meta {
+  opacity: 0.5;
+}
+.chunk-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+.chunk-bar {
+  margin-top: 0.5rem;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 1.5px;
+  overflow: hidden;
+}
+.chunk-bar-fill {
+  height: 100%;
+  width: calc(var(--ratio) * 100%);
+  background: var(--accent);
+}
+
+/* ─── Service Cards ───────────────────────────────────────────────── */
+
+#service-health {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.service-card {
+  border: 1px solid var(--panel-border);
+  padding: 1rem;
+}
+.service-card.service-unhealthy {
+  border-color: var(--severity-error);
+  border-width: 2px;
+}
+.service-name {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+.service-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+.service-errors {
+  color: var(--severity-error);
+  opacity: 1;
+}
+
+/* ─── Error / Template Lists ──────────────────────────────────────── */
+
+.error-list,
+.template-list {
+  margin-top: 0.75rem;
+}
+
+.error-item,
+.template-item {
+  border: 1px solid var(--panel-border);
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.error-body code,
+.template-pattern {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+.error-meta {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.4rem;
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+.error-count {
+  color: var(--severity-error);
+  font-weight: 600;
+}
+.template-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.template-count {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0.6;
+}
+
+/* ─── Query Builder ───────────────────────────────────────────────── */
+
+.query-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.query-row label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 140px;
+}
+.query-row input[type="text"],
+.query-row input[type="number"],
+.query-row select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  flex: 1;
+  max-width: 250px;
+}
+.query-row input:disabled,
+.query-row select:disabled {
+  opacity: 0.4;
+}
+
+.query-actions {
+  margin-top: 1rem;
+}
+
+/* ─── Query Results ───────────────────────────────────────────────── */
+
+.query-stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.02);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  margin-bottom: 1rem;
+}
+.qs-item strong {
+  color: var(--accent);
+}
+
+.query-distributions {
+  margin-bottom: 1rem;
+}
+.dist-severity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.sev-badge {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--sev-color);
+  color: var(--sev-color);
+  border-radius: 2px;
+}
+
+/* ─── Log Table ───────────────────────────────────────────────────── */
+
+.log-table-wrap {
+  overflow-x: auto;
+}
+
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+.log-table th,
+.log-table td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  text-align: left;
+  vertical-align: top;
+}
+.log-table th {
+  background: var(--panel-border);
+  color: var(--panel-bg);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  position: sticky;
+  top: 0;
+}
+.log-time {
+  white-space: nowrap;
+  opacity: 0.7;
+}
+.log-svc code {
+  font-size: 0.7rem;
+}
+.log-body code {
+  font-size: 0.7rem;
+  word-break: break-word;
+}
+
+.sev-pill {
+  display: inline-block;
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.log-row.sev-error .log-body code {
+  color: var(--severity-error);
+}
+.log-row.sev-fatal .log-body code {
+  color: var(--severity-fatal);
+}
+
+/* ─── Utility ─────────────────────────────────────────────────────── */
+
+.muted {
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  opacity: 0.5;
+  margin: 1rem 0;
+}
+h4 {
+  font-family: var(--sans);
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+}
+[hidden] {
+  display: none;
+}
+
+/* ─── CTA Buttons ─────────────────────────────────────────────────── */
+
+.cta {
+  display: inline-block;
+  padding: 0.6rem 1.2rem;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.cta:hover {
+  background: var(--panel-border);
+  color: var(--panel-bg);
+}
+.cta-primary {
+  background: var(--panel-border);
+  color: var(--panel-bg);
+}
+.cta-primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ─── Top Bar ─────────────────────────────────────────────────────── */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--panel-border);
+  gap: 1.5rem;
+}
+.brand {
+  font-family: var(--mono);
+  font-weight: 700;
+  font-size: 0.9rem;
+  text-decoration: none;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.brand-mark {
+  width: 20px;
+  height: 20px;
+}
+.topnav {
+  display: flex;
+  gap: 1rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.topnav a {
+  text-decoration: none;
+  color: inherit;
+  opacity: 0.7;
+}
+.topnav a:hover {
+  opacity: 1;
+}
+.topnav a[aria-current="page"] {
+  opacity: 1;
+  font-weight: 600;
+  border-bottom: 2px solid var(--accent);
+}

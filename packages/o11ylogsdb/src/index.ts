@@ -22,6 +22,7 @@ export {
   ChunkBuilder,
   DefaultChunkPolicy,
   deserializeChunk,
+  readBodiesOnly,
   readRecords,
   serializeChunk,
 } from "./chunk.js";

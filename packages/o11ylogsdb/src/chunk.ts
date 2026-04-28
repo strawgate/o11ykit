@@ -22,7 +22,7 @@
  */
 
 import type { CodecRegistry } from "stardb";
-import type { InstrumentationScope, LogRecord, Resource } from "./types.js";
+import type { AnyValue, InstrumentationScope, LogRecord, Resource } from "./types.js";
 
 const MAGIC_BYTES = new Uint8Array([0x4f, 0x4c, 0x44, 0x42]); // "OLDB"
 export const CHUNK_VERSION = 1;
@@ -95,6 +95,19 @@ export interface ChunkPolicy {
    * and reconstructs the records.
    */
   decodePayload?(buf: Uint8Array, nLogs: number, meta: unknown): LogRecord[];
+
+  /**
+   * Partial decode: extract only body strings from the payload. Returns
+   * an array of body values (string or structured) without materializing
+   * full LogRecord objects — skips sidecar JSON parse, attribute
+   * reconstruction, traceId/spanId decoding, etc.
+   *
+   * Used by the query engine for `bodyContains` predicates to avoid the
+   * ~60% CPU cost of full-record materialization when only the body
+   * column is needed. Falls back to full `decodePayload` when not
+   * implemented.
+   */
+  decodeBodiesOnly?(buf: Uint8Array, nLogs: number, meta: unknown): AnyValue[];
 }
 
 /** Default policy: ZSTD-19 over the NDJSON form. Simple and decent. */
@@ -200,6 +213,31 @@ export function readRecords(
     return policy.postDecode(decoded, chunk.header.codecMeta);
   }
   return decoded;
+}
+
+/**
+ * Partial decode: extract only body values from a chunk. Skips sidecar
+ * JSON parse, attribute reconstruction, traceId/spanId, etc. For string-
+ * bodied logs this is dramatically cheaper than full `readRecords`.
+ *
+ * Falls back to full decode when the policy doesn't implement
+ * `decodeBodiesOnly`.
+ */
+export function readBodiesOnly(
+  chunk: Chunk,
+  registry: CodecRegistry,
+  policy?: ChunkPolicy
+): AnyValue[] {
+  const codec = registry.get(chunk.header.codecName);
+  const raw = codec.decode(chunk.payload);
+  if (policy?.decodeBodiesOnly) {
+    return policy.decodeBodiesOnly(raw, chunk.header.nLogs, chunk.header.codecMeta);
+  }
+  // Fallback: full decode and extract bodies
+  if (policy?.decodePayload) {
+    return policy.decodePayload(raw, chunk.header.nLogs, chunk.header.codecMeta).map((r) => r.body);
+  }
+  return decodeNdjsonRecords(raw, chunk.header.nLogs).map((r) => r.body);
 }
 
 /**
