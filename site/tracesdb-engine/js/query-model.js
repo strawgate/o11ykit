@@ -180,9 +180,14 @@ export function executeQuery(storeOrSpans, opts = {}) {
   }
   queryOpts.sortOrder = opts.sortDir || "desc";
 
-  // Increase limit when filtering locally (attributes, structural)
+  // Over-fetch when local filters will discard rows; 10× keeps result sets
+  // full in most cases without scanning the entire store.
+  const LOCAL_FILTER_INFLATION = 10;
   const requestedLimit = opts.limit || 100;
-  queryOpts.limit = hasAttrFilters || opts.structural?.type ? requestedLimit * 4 : requestedLimit;
+  queryOpts.limit =
+    hasAttrFilters || opts.structural?.type
+      ? requestedLimit * LOCAL_FILTER_INFLATION
+      : requestedLimit;
 
   // Trace-level intrinsics
   if (opts.traceIntrinsics) {
@@ -214,14 +219,15 @@ export function executeQuery(storeOrSpans, opts = {}) {
       rootSvc = spanServiceName(root);
     }
 
+    const hasError = trace.spans.some((s) => s.statusCode === 2);
     return {
       traceId: hexFromBytes(trace.traceId),
       rootService: rootSvc,
       rootSpan: root?.name || "unknown",
       spanCount: trace.spans.length,
       duration: Number(trace.durationNanos),
-      hasError: trace.spans.some((s) => s.statusCode === 2),
-      statusCode: trace.spans.some((s) => s.statusCode === 2) ? 2 : 1,
+      hasError,
+      statusCode: hasError ? 2 : 1,
       spans: trace.spans,
     };
   });

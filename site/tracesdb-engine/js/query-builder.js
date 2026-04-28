@@ -277,15 +277,22 @@ function runQuery() {
   }
   // Yield to browser to paint loading state before heavy computation
   setTimeout(() => {
-    const opts = buildOpts();
-    const result = executeQuery(store, opts);
+    try {
+      const opts = buildOpts();
+      const result = executeQuery(store, opts);
 
-    const aggOpts = getAggOpts();
-    if (aggOpts) {
-      const aggResult = aggregateResults(result.traces, aggOpts);
-      showAggResults(aggResult, result);
-    } else {
-      showTraceResults(result);
+      const aggOpts = getAggOpts();
+      if (aggOpts) {
+        const aggResult = aggregateResults(result.traces, aggOpts);
+        showAggResults(aggResult, result);
+      } else {
+        showTraceResults(result);
+      }
+    } catch (err) {
+      console.error("Query execution failed:", err);
+      if (panel) {
+        panel.innerHTML = `<div class="query-error">Query failed: ${err.message}</div>`;
+      }
     }
   }, 0);
 }

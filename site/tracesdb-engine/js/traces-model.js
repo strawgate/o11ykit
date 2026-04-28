@@ -1,6 +1,6 @@
 // @ts-nocheck
 // ── Traces Model — RED metrics, anomaly detection, insights ─────────
-import { hexFromBytes, spanServiceName } from "./utils.js";
+import { hexFromBytes, normalizeTraceId, spanServiceName } from "./utils.js";
 
 /**
  * Compute RED (Rate, Error, Duration) metrics per service.
@@ -84,10 +84,22 @@ function percentile(sorted, p) {
   return sorted[Math.max(0, idx)];
 }
 
+// Seeded PRNG (mulberry32) for deterministic reservoir sampling
+function mulberry32(seed) {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function reservoirSample(arr, k) {
+  const rand = mulberry32(arr.length);
   const reservoir = arr.slice(0, k);
   for (let i = k; i < arr.length; i++) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     if (j < k) reservoir[j] = arr[i];
   }
   return reservoir;
@@ -221,8 +233,7 @@ export function generateInsights(serviceMetrics) {
 export function groupByTrace(spans) {
   const map = new Map();
   for (const span of spans) {
-    const tid =
-      span.traceId instanceof Uint8Array ? hexFromBytes(span.traceId) : String(span.traceId);
+    const tid = normalizeTraceId(span.traceId);
     if (!map.has(tid)) map.set(tid, []);
     map.get(tid).push(span);
   }
