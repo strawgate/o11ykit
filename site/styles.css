@@ -987,6 +987,28 @@ section:last-of-type {
   color: var(--signal-3);
 }
 
+.code-panel pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.code-panel pre code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+}
+
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.regression-table {
+  min-width: 420px;
+  width: 100%;
+  border-collapse: collapse;
+}
+
 /* ── Skip Link ─────────────────────────────────────────────────────────── */
 .skip-link {
   position: absolute;
@@ -1202,10 +1224,30 @@ section:last-of-type {
   }
 
   .pipeline {
+    flex-direction: column;
     grid-template-columns: 1fr;
   }
 
+  .hero .pipeline {
+    grid-template-columns: 1fr;
+  }
+
+  .pipeline-step {
+    border-right: none;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .pipeline-step:last-child {
+    border-bottom: none;
+  }
+
+  .pipeline-arrow-r::after {
+    display: none;
+  }
+
   .pipeline-stage {
+    min-width: 0;
+    width: 100%;
     border-right: none;
     border-bottom: 1px solid var(--ink);
   }
