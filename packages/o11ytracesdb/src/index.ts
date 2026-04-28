@@ -10,6 +10,8 @@
  *   o11ytsdb (metrics) → o11ylogsdb (logs) → o11ytracesdb (traces)
  */
 
+// Bloom filter — imported from stardb shared core
+export { bloomFromBase64, bloomMayContain, bloomToBase64, createBloomFilter } from "stardb";
 export type {
   AggregationGroup,
   AggregationPipelineResult,
@@ -18,8 +20,6 @@ export type {
 } from "./aggregate.js";
 // Aggregation pipeline
 export { aggregateSpans, aggregateTraces } from "./aggregate.js";
-// Bloom filter
-export { bloomFromBase64, bloomMayContain, bloomToBase64, createBloomFilter } from "./bloom.js";
 export type { Chunk, ChunkHeader, ChunkPolicy } from "./chunk.js";
 
 // Chunk format

@@ -1,4 +1,4 @@
-import { BackpressureController } from "./backpressure.js";
+import { BackpressureController } from "stardb";
 import type { PendingSeriesSamples } from "./ingest.js";
 import type { QueryOpts, QueryResult } from "./types.js";
 import {

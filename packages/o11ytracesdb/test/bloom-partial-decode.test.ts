@@ -1,10 +1,5 @@
+import { bloomFromBase64, bloomMayContain, bloomToBase64, createBloomFilter } from "stardb";
 import { describe, expect, it } from "vitest";
-import {
-  bloomFromBase64,
-  bloomMayContain,
-  bloomToBase64,
-  createBloomFilter,
-} from "../src/bloom.js";
 import { ColumnarTracePolicy } from "../src/codec-columnar.js";
 import { TraceStore } from "../src/engine.js";
 import { queryTraces } from "../src/query.js";

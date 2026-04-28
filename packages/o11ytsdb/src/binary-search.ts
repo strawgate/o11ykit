@@ -1,7 +1,5 @@
 import type { TimeRange } from "./types.js";
 
-export { lowerBound, upperBound } from "stardb";
-
 export function concatRanges(parts: TimeRange[]): TimeRange {
   if (parts.length === 0) {
     return { timestamps: new BigInt64Array(0), values: new Float64Array(0) };

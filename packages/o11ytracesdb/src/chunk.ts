@@ -21,8 +21,13 @@
  */
 
 import type { ChunkWireOptions } from "stardb";
-import { bytesToHex, deserializeChunkWire, serializeChunkWire } from "stardb";
-import { bloomToBase64, createBloomFilter } from "./bloom.js";
+import {
+  bloomToBase64,
+  bytesToHex,
+  createBloomFilter,
+  deserializeChunkWire,
+  serializeChunkWire,
+} from "stardb";
 import type { SpanRecord } from "./types.js";
 
 // ─── Chunk Header ────────────────────────────────────────────────────

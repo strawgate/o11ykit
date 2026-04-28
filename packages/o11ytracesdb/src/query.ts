@@ -13,13 +13,14 @@
 
 import {
   anyValueEquals,
+  bloomFromBase64,
+  bloomMayContain,
   bytesEqual,
   bytesToHex,
   findAttribute,
   hexToBytes,
   timeRangeOverlaps,
 } from "stardb";
-import { bloomFromBase64, bloomMayContain } from "./bloom.js";
 import type { Chunk } from "./chunk.js";
 import { computeNestedSets } from "./chunk.js";
 import type { TraceStore } from "./engine.js";

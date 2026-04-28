@@ -4,9 +4,6 @@
  * Public API surface.
  */
 
-export type { InternId } from "stardb";
-// String interner + inverted index
-export { BackpressureController, Interner } from "stardb";
 export type {
   TsdbAdapterOptions,
   TsdbLatestValueModel,
