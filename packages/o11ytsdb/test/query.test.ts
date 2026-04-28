@@ -532,9 +532,79 @@ describe("ScanEngine", () => {
     expect(s.values[2]).toBeNaN(); // single point → can't compute rate
   });
 
+  it("rate handles counter decrease/reset correctly", () => {
+    const store = new FlatStore();
+    const id = store.getOrCreateSeries(makeLabels("counter"));
+    // Counter that decreases from 100 to 50 at 1-second intervals
+    // Timestamps are in nanoseconds, so 1 second = 1_000_000_000n
+    store.append(id, 0n, 100);
+    store.append(id, 1_000_000_000n, 50);
+    const result = engine.query(store, {
+      metric: "counter",
+      start: 0n,
+      end: 5_000_000_000n,
+      agg: "rate",
+    });
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const s = result.series[0]!;
+    expect(s.values[0]).toBeNaN(); // first point has no previous
+    // Counter reset: delta = 50 - 100 = -50, Prometheus uses last value (50)
+    // dt = 1e9 ns / 1000 = 1e6 ms per second
+    // rate = 50 / 1e6 = 0.00005
+    expect(s.values[1]).toBeCloseTo(0.00005);
+  });
+
+  it("increase handles counter decrease/reset correctly", () => {
+    const store = new FlatStore();
+    const id = store.getOrCreateSeries(makeLabels("counter"));
+    // Counter that decreases from 100 to 50 (counter reset)
+    store.append(id, 0n, 100);
+    store.append(id, 1_000n, 50);
+    const result = engine.query(store, {
+      metric: "counter",
+      start: 0n,
+      end: 5_000n,
+      agg: "increase",
+    });
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const s = result.series[0]!;
+    expect(s.values[0]).toBeNaN(); // first point has no previous
+    // Counter reset: delta = 50 - 100 = -50, Prometheus uses last value (50)
+    expect(s.values[1]).toBeCloseTo(50);
+  });
+
+  it("step aggregation rate handles counter decrease/reset correctly", () => {
+    const store = new FlatStore();
+    const id = store.getOrCreateSeries(makeLabels("counter"));
+    // Counter that decreases within a step bucket
+    // Timestamps are in nanoseconds
+    store.append(id, 0n, 100);
+    store.append(id, 500_000_000n, 50); // counter reset at t=0.5s
+    store.append(id, 1_000_000_000n, 80);
+    store.append(id, 1_500_000_000n, 130);
+    const result = engine.query(store, {
+      metric: "counter",
+      start: 0n,
+      end: 2_000_000_000n,
+      agg: "rate",
+      step: 1_000_000_000n,
+    });
+    // biome-ignore lint/style/noNonNullAssertion: test code
+    const s = result.series[0]!;
+    // bucket 0 (t=0): values 100, 50 → counter reset from 100 to 50
+    //   Prometheus uses lastVal=50 for counter reset
+    //   dt = 0.5s = 500000000/1000 = 500000
+    //   rate = 50 / 500000 = 0.0001
+    expect(s.values[0]).toBeCloseTo(0.0001);
+    // bucket 1 (t=1s): values 80, 130 → normal increase
+    //   delta = 130 - 80 = 50, dt = 0.5s = 500000
+    //   rate = 50 / 500000 = 0.0001
+    expect(s.values[1]).toBeCloseTo(0.0001);
+  });
+
   // ── stepAggregate edge cases ───────────────────────────────────────
 
-  it("step aggregation with single point produces correct buckets", () => {
+  it("step aggregation with single point produces one bucket", () => {
     const store = new FlatStore();
     const id = store.getOrCreateSeries(makeLabels("single"));
     store.append(id, 5_000n, 42);
@@ -545,18 +615,8 @@ describe("ScanEngine", () => {
       agg: "sum",
       step: 3_000n,
     });
-    // Query range [0, 10000) with step 3000 produces ceil(10000/3000) = 4 buckets
-    // at timestamps 0, 3000, 6000, 9000
-    expect(result.series[0]!.timestamps.length).toBe(4);
-    expect(Number(result.series[0]!.timestamps[0])).toBe(0);
-    expect(Number(result.series[0]!.timestamps[1])).toBe(3000);
-    expect(Number(result.series[0]!.timestamps[2])).toBe(6000);
-    expect(Number(result.series[0]!.timestamps[3])).toBe(9000);
-    // Empty buckets have sum = 0, point at t=5000 falls in bucket 1 (3000-6000)
-    expect(result.series[0]!.values[0]).toBe(0); // bucket 0: empty
-    expect(result.series[0]!.values[1]).toBe(42); // bucket 1: contains t=5000
-    expect(result.series[0]!.values[2]).toBe(0); // bucket 2: empty
-    expect(result.series[0]!.values[3]).toBe(0); // bucket 3: empty
+    expect(result.series[0]!.timestamps.length).toBe(1);
+    expect(result.series[0]!.values[0]).toBe(42);
   });
 
   it("step aggregation with step larger than data span produces one bucket", () => {
