@@ -202,7 +202,15 @@ export interface Matcher {
   value: string;
 }
 
-export type TransformOp = "rate" | "increase" | "irate" | "delta";
+export type TransformOp =
+  | "rate"
+  | "increase"
+  | "irate"
+  | "delta"
+  | "abs"
+  | "ceil"
+  | "floor"
+  | "sqrt";
 
 export interface QueryOpts {
   metric: string;
