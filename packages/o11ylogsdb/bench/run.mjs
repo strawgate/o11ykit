@@ -51,6 +51,9 @@ const modules = {
   "drain-churn": "../dist-bench/drain-churn.bench.js",
   compaction: "../dist-bench/compaction.bench.js",
   "pino-query": "../dist-bench/pino-query.bench.js",
+  "comprehensive-storage": "../dist-bench/comprehensive-storage.bench.js",
+  "comprehensive-query": "../dist-bench/comprehensive-query.bench.js",
+  "ingest-throughput": "../dist-bench/ingest-throughput.bench.js",
 };
 
 const harnessImport = await import("../dist-bench/harness.js");

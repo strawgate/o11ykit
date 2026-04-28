@@ -185,9 +185,13 @@ export interface TypedColumnarDrainPolicyConfig {
 interface TypedColumnarChunkMeta {
   v: 3;
   drain: true;
-  // slot_types live in the compressed payload, not the uncompressed
-  // chunk-header codecMeta — measurement showed ~0.5 B/log of
-  // overhead can be lost to the header. Keep meta minimal here.
+  /**
+   * Distinct literal tokens from all templates used in this chunk.
+   * Stored uncompressed in the chunk header so the query engine can
+   * prune chunks for bodyContains without ZSTD decompression.
+   * Only non-PARAM_STR tokens are included.
+   */
+  toks?: string[];
 }
 
 // ── ByteBuf / ByteCursor ─────────────────────────────────────────────
@@ -881,6 +885,15 @@ function encode(
   }
 
   const meta: TypedColumnarChunkMeta = { v: 3, drain: true };
+  // Collect distinct literal tokens from templates for bodyContains pruning.
+  // Only include non-wildcard tokens (template literals, not PARAM_STR).
+  const tokenSet = new Set<string>();
+  for (const { template } of templatesInPayload) {
+    for (const tok of template.split(/\s+/)) {
+      if (tok.length > 0 && tok !== PARAM_STR) tokenSet.add(tok);
+    }
+  }
+  if (tokenSet.size > 0) meta.toks = [...tokenSet];
   return { payload: buf.finish(), meta };
 }
 
@@ -1152,6 +1165,237 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
   return out;
 }
 
+/**
+ * Partial decode: extract only body values from the payload. Skips the
+ * sidecar JSON.parse() (which is ~40-60% of full decode CPU) and
+ * attribute/traceId/spanId reconstruction. Returns AnyValue[] in record
+ * order suitable for substring matching.
+ *
+ * For KIND_OTHER records (structured bodies stored in sidecar), we must
+ * still parse those specific sidecar lines. But for templated and
+ * raw-string bodies (the 95%+ case), zero JSON parsing occurs.
+ */
+function decodeBodies(buf: Uint8Array, expectedN: number): AnyValue[] {
+  const cur = new ByteCursor(buf);
+  const n = cur.readVarint();
+  if (n !== expectedN) {
+    throw new Error(`typed: count mismatch payload=${n} header=${expectedN}`);
+  }
+  // Skip timestamps (delta-encoded varints)
+  for (let i = 0; i < n; i++) cur.readZZVarintBig();
+  // Skip severities
+  cur.readBytes(n);
+  // kinds
+  const kinds = new Uint8Array(cur.readBytes(n));
+  // template dictionary
+  const nTemplates = cur.readVarint();
+  const templateById = new Map<number, string[]>();
+  const dec = new TextDecoder();
+  for (let t = 0; t < nTemplates; t++) {
+    const id = cur.readVarint();
+    const len = cur.readVarint();
+    const tplStr = dec.decode(cur.readBytes(len));
+    templateById.set(
+      id,
+      tplStr.split(/\s+/).filter((s) => s.length > 0)
+    );
+  }
+  // slot-type table
+  const slotTypeArrays = new Map<number, Int8Array>();
+  const slotPrefixArrays = new Map<number, (string | undefined)[]>();
+  const slotTsShapeArrays = new Map<number, (number | undefined)[]>();
+  const nSlotTypes = cur.readVarint();
+  const slotTypeMap = new Map<
+    string,
+    { type: number; prefix?: string; timestampShapeId?: number }
+  >();
+  for (let i = 0; i < nSlotTypes; i++) {
+    const tplId = cur.readVarint();
+    const slotIdx = cur.readVarint();
+    const type = cur.readByte();
+    const entry: { type: number; prefix?: string; timestampShapeId?: number } = { type };
+    if (type === SLOT_PREFIXED_INT64 || type === SLOT_PREFIXED_UUID) {
+      const plen = cur.readVarint();
+      entry.prefix = dec.decode(cur.readBytes(plen));
+    } else if (type === SLOT_TIMESTAMP_DELTA) {
+      entry.timestampShapeId = cur.readVarint();
+    }
+    slotTypeMap.set(`${tplId}/${slotIdx}`, entry);
+  }
+  // Transpose to per-template arrays (same as full decode)
+  for (const [tplId, template] of templateById) {
+    let nVars = 0;
+    for (const t of template) if (t === PARAM_STR) nVars++;
+    if (nVars === 0) continue;
+    const types = new Int8Array(nVars);
+    const prefixes = new Array<string | undefined>(nVars);
+    const tsShapes = new Array<number | undefined>(nVars);
+    for (let s = 0; s < nVars; s++) {
+      const slot = slotTypeMap.get(`${tplId}/${s}`);
+      if (!slot) continue;
+      types[s] = slot.type;
+      if (slot.prefix !== undefined) prefixes[s] = slot.prefix;
+      if (slot.timestampShapeId !== undefined) tsShapes[s] = slot.timestampShapeId;
+    }
+    slotTypeArrays.set(tplId, types);
+    slotPrefixArrays.set(tplId, prefixes);
+    slotTsShapeArrays.set(tplId, tsShapes);
+  }
+  // raw-string bodies
+  const rawStringByRecord = new Map<number, string>();
+  for (let i = 0; i < n; i++) {
+    if (kinds[i] !== KIND_RAW_STRING) continue;
+    const len = cur.readVarint();
+    rawStringByRecord.set(i, dec.decode(cur.readBytes(len)));
+  }
+  // templated columns
+  const templatedIndices: number[] = [];
+  for (let i = 0; i < n; i++) if (kinds[i] === KIND_TEMPLATED) templatedIndices.push(i);
+  const tplIds: number[] = new Array(templatedIndices.length);
+  for (let i = 0; i < templatedIndices.length; i++) tplIds[i] = cur.readVarint();
+  const varCounts: number[] = new Array(templatedIndices.length);
+  for (let i = 0; i < templatedIndices.length; i++) varCounts[i] = cur.readVarint();
+  const allVars: string[][] = templatedIndices.map(
+    (_, i) => new Array<string>(varCounts[i] as number)
+  );
+  // 7 passes (same as full decode — bodies depend on variable reconstruction)
+  // Pass 1: SLOT_STRING
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_STRING) continue;
+      const len = cur.readVarint();
+      vars[s] = dec.decode(cur.readBytes(len));
+    }
+  }
+  // Pass 2: SLOT_SIGNED_INT
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_SIGNED_INT) continue;
+      vars[s] = cur.readZZVarintBig().toString();
+    }
+  }
+  // Pass 3: SLOT_PREFIXED_INT64
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const prefixes = slotPrefixArrays.get(tplId);
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_PREFIXED_INT64) continue;
+      const big = cur.readI64LE();
+      vars[s] = `${prefixes?.[s] ?? ""}${big.toString()}`;
+    }
+  }
+  // Pass 4: SLOT_UUID
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_UUID) continue;
+      vars[s] = bytesToUuid(cur.readBytes(16));
+    }
+  }
+  // Pass 5: SLOT_UUID_NODASH
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_UUID_NODASH) continue;
+      vars[s] = bytesToUuidNodash(cur.readBytes(16));
+    }
+  }
+  // Pass 6: SLOT_PREFIXED_UUID
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const prefixes = slotPrefixArrays.get(tplId);
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_PREFIXED_UUID) continue;
+      vars[s] = `${prefixes?.[s] ?? ""}${bytesToUuid(cur.readBytes(16))}`;
+    }
+  }
+  // Pass 7: SLOT_TIMESTAMP_DELTA
+  const tsPrev = new Map<number, bigint>();
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const types = slotTypeArrays.get(tplId);
+    if (!types) continue;
+    const tsShapeIds = slotTsShapeArrays.get(tplId);
+    const nVars = varCounts[i] as number;
+    const vars = allVars[i] as string[];
+    for (let s = 0; s < nVars; s++) {
+      if (types[s] !== SLOT_TIMESTAMP_DELTA) continue;
+      const dt = cur.readZZVarintBig();
+      const key = (tplId << 16) | s;
+      const prev = tsPrev.get(key) ?? 0n;
+      const cur2 = prev + dt;
+      tsPrev.set(key, cur2);
+      const shape = tsShape(tsShapeIds?.[s] as number);
+      vars[s] = shape.format(cur2);
+    }
+  }
+  // Reconstruct templated bodies
+  const templatedBodies: string[] = new Array(templatedIndices.length);
+  for (let i = 0; i < templatedIndices.length; i++) {
+    const tplId = tplIds[i] as number;
+    const template = templateById.get(tplId);
+    if (!template) throw new Error(`typed: missing template id ${tplId}`);
+    templatedBodies[i] = reconstruct(template, allVars[i] as string[]);
+  }
+
+  // Read sidecar ONLY for KIND_OTHER records (structured bodies)
+  const hasOther = kinds.some((k) => k === KIND_OTHER);
+  let otherBodies: Map<number, AnyValue> | undefined;
+  if (hasOther) {
+    const sidecarLen = cur.readVarint();
+    if (sidecarLen > 0) {
+      const sidecarText = dec.decode(cur.readBytes(sidecarLen));
+      const lines = sidecarText.split("\n").filter((l) => l.length > 0);
+      otherBodies = new Map();
+      for (let i = 0; i < n; i++) {
+        if (kinds[i] !== KIND_OTHER) continue;
+        const side = JSON.parse(lines[i] as string) as Record<string, unknown>;
+        otherBodies.set(i, jsonToAnyValue(side.b));
+      }
+    }
+  }
+
+  // Assemble body-only output (no LogRecord construction, no attribute parse)
+  const out: AnyValue[] = new Array(n);
+  let templatedCursor = 0;
+  for (let i = 0; i < n; i++) {
+    if (kinds[i] === KIND_RAW_STRING) {
+      out[i] = rawStringByRecord.get(i) ?? "";
+    } else if (kinds[i] === KIND_TEMPLATED) {
+      out[i] = templatedBodies[templatedCursor++] as string;
+    } else {
+      out[i] = otherBodies?.get(i) ?? "";
+    }
+  }
+  return out;
+}
+
 function reconstruct(template: readonly string[], vars: readonly string[]): string {
   // Hot-path: inline string concat with a single-pass loop. The
   // earlier version built `string[]` and called `join(" ")`, which
@@ -1201,5 +1445,9 @@ export class TypedColumnarDrainPolicy implements ChunkPolicy {
 
   decodePayload(buf: Uint8Array, nLogs: number, meta: unknown): LogRecord[] {
     return decode(buf, nLogs, meta as TypedColumnarChunkMeta);
+  }
+
+  decodeBodiesOnly(buf: Uint8Array, nLogs: number, _meta: unknown): AnyValue[] {
+    return decodeBodies(buf, nLogs);
   }
 }
