@@ -408,7 +408,7 @@ function renderQueryForm() {
     </div>
 
     <div class="query-actions">
-      <button id="run-query-btn" class="cta cta-primary">Run Query</button>
+       <button id="run-query-btn" class="stamp-fill demo-btn">Run Query</button>
     </div>
   `;
 

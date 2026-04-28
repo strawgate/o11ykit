@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BackpressureController,
   ByteBuf,
@@ -15,6 +15,10 @@ import {
   uint8IndexOf,
   upperBound,
 } from "../src/index.js";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 // ─── Interner ────────────────────────────────────────────────────────
 
@@ -57,6 +61,20 @@ describe("Interner", () => {
   it("throws on invalid resolve id", () => {
     const interner = new Interner();
     expect(() => interner.resolve(99)).toThrow(/invalid intern id/);
+  });
+
+  it("grows backing storage and preserves existing ids", () => {
+    const interner = new Interner(2_000);
+    const longValue = "x".repeat(1_500);
+    const longId = interner.intern(longValue);
+
+    for (let i = 0; i < 1_500; i++) {
+      expect(interner.intern(`value-${i}`)).toBe(i + 1);
+    }
+
+    expect(interner.resolve(longId)).toBe(longValue);
+    expect(interner.resolve(interner.intern("value-1499"))).toBe("value-1499");
+    expect(interner.size).toBe(1_501);
   });
 });
 
@@ -197,6 +215,17 @@ describe("uint8IndexOf", () => {
     const haystack = enc.encode("hi");
     const needle = enc.encode("hello world");
     expect(uint8IndexOf(haystack, needle)).toBe(-1);
+  });
+
+  it("falls back to browser-style byte scanning when Buffer is unavailable", () => {
+    vi.stubGlobal("Buffer", undefined);
+
+    const haystack = enc.encode("ababa");
+    expect(uint8IndexOf(haystack, enc.encode("aba"))).toBe(0);
+    expect(uint8IndexOf(haystack, enc.encode("bab"))).toBe(1);
+    expect(uint8IndexOf(haystack, enc.encode("ac"))).toBe(-1);
+    expect(uint8IndexOf(haystack, new Uint8Array(0))).toBe(0);
+    expect(uint8IndexOf(enc.encode("hi"), enc.encode("hello"))).toBe(-1);
   });
 });
 

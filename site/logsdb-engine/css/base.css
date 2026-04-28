@@ -5,9 +5,6 @@
   --panel-bg: var(--paper, #f2efe7);
   --panel-border: var(--ink, #11110f);
   --accent: var(--signal, oklch(0.66 0.16 42));
-  --mono: var(--mono, "JetBrains Mono", monospace);
-  --sans: var(--sans, "Inter Tight", sans-serif);
-  --display: var(--display, "Fraunces", serif);
   --severity-trace: #6b7280;
   --severity-debug: #3b82f6;
   --severity-info: #10b981;

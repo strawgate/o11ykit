@@ -86,11 +86,14 @@ dev-uplot:
 
 pages-build:
 	BASE_PATH=$(BASE_PATH) $(NPM) run build --workspace @otlpkit/example-demo
+	BASE_PATH=/o11ykit/logsdb-engine/ npx vite build site/logsdb-engine
 	BASE_PATH=/o11ykit/tracesdb-engine/ npx vite build site/tracesdb-engine
 	BASE_PATH=/o11ykit/tsdb-engine/ npx vite build site/tsdb-engine
 	rm -rf .site
 	mkdir -p .site/otlpkit
 	cp -R site/* .site/
+	rm -rf .site/logsdb-engine/js .site/logsdb-engine/dist
+	cp -R site/logsdb-engine/dist/* .site/logsdb-engine/
 	rm -rf .site/tracesdb-engine/js .site/tracesdb-engine/dist
 	cp -R site/tracesdb-engine/dist/* .site/tracesdb-engine/
 	rm -rf .site/tsdb-engine/js .site/tsdb-engine/dist
