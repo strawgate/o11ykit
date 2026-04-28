@@ -13,17 +13,14 @@ import {
 import { ScanEngine } from "./query.js";
 import { createQueryBuilderController } from "./query-builder-controller.js";
 import { formatEffectiveStepStat, summarizeStepResolution } from "./query-builder-model.js";
-import {
-  deserializeWorkerResult as _deserializeWorkerResult,
-  mergeAvgWorkerResults as _mergeAvgWorkerResults,
-  mergeRawWorkerResults as _mergeRawWorkerResults,
-  mergeReductionWorkerResults as _mergeReductionWorkerResults,
-} from "./query-merge.js";
-import { QueryWorkerPool, supportsParallelQuery } from "./query-pool.js";
 import { buildStorageExplorer, refreshActiveChunkDetail } from "./storage-explorer.js";
-import { ChunkedStore, ColumnStore, FlatStore } from "./stores.js";
+import {
+  FlatStore,
+  createRowGroupStore,
+  createColumnStore,
+  loadWasm,
+} from "./stores.js";
 import { autoSelectQueryStep, escapeHtml, formatNum } from "./utils.js";
-import { loadWasm, wasmReady } from "./wasm.js";
 
 const CHUNK_SIZE = 640;
 const NS_PER_MS = 1_000_000n;
@@ -37,8 +34,6 @@ let generatedMetrics = [];
 let _lastIngestTime = 0;
 let _storagePopulated = false;
 let _queryPopulated = false;
-let queryWorkerPool = null;
-window.queryWorkerPool = null;
 let _queryRunSeq = 0;
 
 const compactNumberFormatter = new Intl.NumberFormat("en-US", {
@@ -108,15 +103,6 @@ function renderNoMatchResults(reason, queryTime, requestedStep = null) {
   if (planSection) showSection("section-query-plan");
   if (planSummary) planSummary.textContent = reason;
 
-  if (queryWorkerPool && queryWorkerPool.state?.phase !== "loading") {
-    queryWorkerPool.markComplete(reason, {
-      scannedSeries: 0,
-      scannedSamples: 0,
-      resultSeries: 0,
-      queryTimeMs: queryTime,
-    });
-  }
-
   document.getElementById("qStatScannedSeries").innerHTML = "Scanned: <strong>no matches</strong>";
   document.getElementById("qStatScannedSamples").innerHTML = "Samples: <strong>none</strong>";
   document.getElementById("qStatResultSeries").innerHTML = "Result: <strong>empty</strong>";
@@ -177,289 +163,6 @@ function onDataLoaded(store, metrics, _ingestTime, numPoints, intervalMs) {
   // Show fork in the road
   showSection("section-fork", true);
   autoSelectQueryStep(intervalMs, numPoints);
-  void _provisionQueryWorkers(store);
-}
-
-async function _provisionQueryWorkers(store) {
-  if (typeof Worker === "undefined") {
-    _renderQueryFabricMonitor({
-      phase: "fallback",
-      summary: "Worker pool unavailable in this browser.",
-      coordinator: { phase: "fallback", detail: "Falling back to main-thread query engine" },
-      workers: [],
-    });
-    return;
-  }
-
-  if (!queryWorkerPool) {
-    queryWorkerPool = new QueryWorkerPool({
-      onStateChange: _renderQueryFabricMonitor,
-    });
-    window.queryWorkerPool = queryWorkerPool;
-  }
-
-  try {
-    await queryWorkerPool.loadStore(store);
-  } catch (error) {
-    console.error("Failed to provision query workers", error);
-    queryWorkerPool.markFallback("Worker pool failed to initialize");
-  }
-}
-
-let _lastMonitorSummary = "";
-let _lastMonitorPhase = "";
-let _lastMonitorWorkersSignature = "";
-
-function _workerSampleSignature(workers) {
-  if (!workers || workers.length === 0) return "";
-  return workers.map((w) => `${w.id}:${w.sampleCount ?? 0}`).join(",");
-}
-
-function _renderQueryFabricMonitor(state) {
-  const panelEl = document.getElementById("section-query-plan");
-  const summaryEl = document.getElementById("queryExecutionSummary");
-  const statusEl = document.getElementById("queryExecutionStatus");
-  const detailsEl = document.getElementById("queryExecutionDetails");
-  const gridEl = document.getElementById("fabricGrid");
-  if (!panelEl || !summaryEl || !statusEl || !detailsEl || !gridEl) return;
-
-  panelEl.hidden = false;
-
-  const summary = _executionSummaryText(state);
-  const phase = state.phase;
-  const workersSignature = _workerSampleSignature(state.workers);
-
-  // Skip full DOM rebuild if it's just a background live update (no change in phase or summary)
-  // unless we're in 'running' phase where we want to see live worker progress.
-  if (
-    _lastMonitorSummary === summary &&
-    _lastMonitorPhase === phase &&
-    _lastMonitorWorkersSignature === workersSignature &&
-    phase !== "running" &&
-    gridEl.innerHTML !== ""
-  ) {
-    return;
-  }
-
-  _lastMonitorSummary = summary;
-  _lastMonitorPhase = phase;
-  _lastMonitorWorkersSignature = workersSignature;
-
-  summaryEl.textContent = summary;
-  statusEl.textContent = _executionStatusText(state);
-  if (state.phase === "running") detailsEl.open = true;
-
-  const cards = [];
-  const workers = state.workers || [];
-  const plan = state.plan || null;
-  const phaseSummary = _workerPhaseSummary(workers);
-  const expandWorkers =
-    state.phase === "running" || state.phase === "loading" || state.phase === "fallback";
-  cards.push(`
-    <article class="fabric-card fabric-card-coordinator phase-${escapeHtml(state.coordinator?.phase || "idle")}">
-      <div class="fabric-card-top fabric-card-top-compact">
-        <span class="fabric-role">Coordinator</span>
-        <span class="fabric-coordinator-meta">${escapeHtml(_planMeta(plan, workers.length || 0))}</span>
-      </div>
-      <div class="fabric-detail fabric-detail-compact">${escapeHtml(_coordinatorNarrative(state))}</div>
-      ${
-        workers.length
-          ? `
-      <details class="fabric-worker-toggle" ${expandWorkers ? "open" : ""}>
-        <summary class="fabric-worker-toggle-summary">
-          <span>Show ${workers.length} query workers</span>
-          <span class="fabric-worker-toggle-meta">${escapeHtml(phaseSummary)}</span>
-        </summary>
-        <div class="fabric-worker-grid">
-          ${workers
-            .map((worker) => {
-              const phase = escapeHtml(worker.phase || "idle");
-              const roleClass = escapeHtml(worker.role || "worker");
-              const roleLabel = escapeHtml(_workerRoleLabel(worker.role));
-              const taskText = escapeHtml(worker.task || "Idle");
-              const durationText =
-                worker.durationMs != null ? `${worker.durationMs.toFixed(1)} ms` : taskText;
-              const isExpanded =
-                worker.phase === "running" ||
-                worker.phase === "loading" ||
-                worker.phase === "fallback";
-              return `
-                <details class="fabric-worker-mini phase-${phase} role-${roleClass}" ${isExpanded ? "open" : ""}>
-                  <summary class="fabric-worker-mini-summary">
-                    <div class="fabric-worker-mini-top">
-                      <span class="fabric-worker-mini-name">${escapeHtml(worker.name)}</span>
-                      <span class="fabric-status">${phase}</span>
-                    </div>
-                    <div class="fabric-worker-mini-meta">
-                      <span>${roleLabel}</span>
-                      <span>${worker.seriesCount?.toLocaleString() || 0} series</span>
-                      <span>${durationText}</span>
-                    </div>
-                    <div class="fabric-meter fabric-meter-compact"><span style="width:${_workerMeterWidth(worker)}%"></span></div>
-                  </summary>
-                  <div class="fabric-worker-mini-body">
-                    <div class="fabric-detail">${escapeHtml(worker.detail || "Idle")}</div>
-                    <div class="fabric-task">${taskText}</div>
-                    <div class="fabric-metrics">
-                      <span>${worker.sampleCount?.toLocaleString() || 0} samples resident</span>
-                      <span>${worker.scannedSeries?.toLocaleString() || 0} scanned</span>
-                      <span>${worker.scannedSamples?.toLocaleString() || 0} pts</span>
-                      <span>${worker.durationMs != null ? `${worker.durationMs.toFixed(1)} ms` : "No query yet"}</span>
-                    </div>
-                  </div>
-                </details>
-              `;
-            })
-            .join("")}
-        </div>
-      </details>`
-          : ""
-      }
-    </article>
-  `);
-
-  gridEl.innerHTML = cards.join("");
-}
-
-function _executionStatusText(state) {
-  const plan = state.plan || null;
-  switch (state.phase) {
-    case "loading":
-      return plan ? `Provisioning ${_planTitle(plan)}` : "Provisioning workers";
-    case "running":
-      return "Running now";
-    case "complete":
-      return "Latest query complete";
-    case "fallback":
-      return plan?.topology === "inline" ? "Inline engine" : "Coordinator fallback";
-    case "ready":
-      return plan ? `${_planTitle(plan)} ready` : "Workers ready";
-    default:
-      return "Waiting for dataset";
-  }
-}
-
-function _executionSummaryText(state) {
-  if (state.phase === "loading") return state.summary || "Provisioning query workers…";
-  if (state.phase === "running") return state.summary || "Coordinator is fanning out query work.";
-  if (state.phase === "complete")
-    return state.summary || "Latest query finished across the worker pool.";
-  if (state.phase === "fallback") return state.summary || "Query ran on the coordinator.";
-  if (state.phase === "ready") return state.summary || "Worker pool is warm and ready.";
-  return "Load a dataset to provision query workers.";
-}
-
-function _workerMeterWidth(worker) {
-  if (worker.phase === "running") return 72;
-  if (worker.phase === "loading") return 48;
-  if (worker.phase === "complete") return 100;
-  return 18;
-}
-
-function _planTitle(plan) {
-  if (!plan) return "worker pool";
-  const topology =
-    plan.topology === "single-worker"
-      ? "single-worker"
-      : plan.topology === "split"
-        ? "split"
-        : plan.topology === "pooled"
-          ? "pooled"
-          : "inline";
-  const transport = plan.transport === "shared-frozen" ? "shared" : plan.transport;
-  return `${topology} ${transport}`;
-}
-
-function _planMeta(plan, workerCount) {
-  if (!plan) return `${workerCount} workers`;
-  const transport = plan.transport === "shared-frozen" ? "SAB" : plan.transport;
-  return `${plan.actualWorkers} workers · ${plan.topology} · ${transport}`;
-}
-
-function _workerRoleLabel(role) {
-  switch (role) {
-    case "combined-engine":
-      return "coordinator + hot + frozen";
-    case "primary-engine":
-      return "coordinator + hot";
-    case "query-shard":
-      return "frozen";
-    default:
-      return role || "worker";
-  }
-}
-
-function _workerPhaseSummary(workers) {
-  if (!workers.length) return "No workers provisioned yet.";
-
-  const counts = new Map();
-  for (const worker of workers) {
-    const phase = worker.phase || "idle";
-    counts.set(phase, (counts.get(phase) || 0) + 1);
-  }
-
-  const order = ["running", "loading", "ready", "complete", "fallback", "idle"];
-  const parts = [];
-  for (const phase of order) {
-    const count = counts.get(phase);
-    if (!count) continue;
-    parts.push(`${count} ${phase}`);
-  }
-  for (const [phase, count] of counts) {
-    if (order.includes(phase)) continue;
-    parts.push(`${count} ${phase}`);
-  }
-  return `${workers.length} workers · ${parts.join(" · ")}`;
-}
-
-function _coordinatorNarrative(state) {
-  const workers = state.workers || [];
-  const workerCount = workers.length;
-  const plan = state.plan || null;
-  if (!workerCount)
-    return (
-      plan?.reason ||
-      "Handles label matching, dispatch, and result merge once workers are provisioned."
-    );
-
-  const mergedStats = state.coordinator?.stats || null;
-  if (
-    mergedStats &&
-    mergedStats.scannedSeries === 0 &&
-    mergedStats.scannedSamples === 0 &&
-    mergedStats.resultSeries === 0
-  ) {
-    return "No series matched the current metric and label filters across the worker pool.";
-  }
-
-  const residentSeries = workers.reduce((sum, worker) => sum + (worker.seriesCount || 0), 0);
-  const matchedSeries = workers.reduce((sum, worker) => sum + (worker.scannedSeries || 0), 0);
-  const scannedSamples = workers.reduce((sum, worker) => sum + (worker.scannedSamples || 0), 0);
-  const partialSeries = workers.reduce((sum, worker) => sum + (worker.resultSeries || 0), 0);
-
-  switch (state.phase) {
-    case "loading":
-      return `Planning ${plan?.topology || "worker"} execution and partitioning ${residentSeries.toLocaleString()} series across ${workerCount} workers.`;
-    case "ready":
-      return `${plan?.reason || "Matches labels on the coordinator, then routes chunk scans and decode work across workers."} Using ${workerCount} workers in ${plan?.topology || "worker"} mode.`;
-    case "running":
-      return `Matched ${matchedSeries.toLocaleString()} of ${residentSeries.toLocaleString()} resident series and is fanning ${scannedSamples.toLocaleString()} samples out to ${workerCount} workers.`;
-    case "complete":
-      if (mergedStats) {
-        return `Matched ${mergedStats.scannedSeries.toLocaleString()} series, pushed ${mergedStats.scannedSamples.toLocaleString()} samples through ${workerCount} workers, and merged ${mergedStats.resultSeries.toLocaleString()} outputs in ${mergedStats.queryTimeMs.toFixed(1)} ms.`;
-      }
-      return `Matched ${matchedSeries.toLocaleString()} series, pushed ${scannedSamples.toLocaleString()} samples through ${workerCount} workers, and merged ${partialSeries.toLocaleString()} partial outputs.`;
-    case "fallback":
-      return "Worker fan-out is unavailable, so the coordinator is matching labels, scanning chunks, and merging locally.";
-    default:
-      return "Waiting for a dataset before matching labels and dispatching chunk scans.";
-  }
-}
-
-function _canRunOnWorkers(opts) {
-  if (!queryWorkerPool || !supportsParallelQuery(opts)) return false;
-  const phase = queryWorkerPool.state?.phase;
-  return phase === "loading" || phase === "ready" || phase === "complete";
 }
 
 // ── Metrics Explorer ──────────────────────────────────────────────────
@@ -629,15 +332,9 @@ document.querySelectorAll(".explore-nav-btn").forEach((btn) => {
 function _createStore(backendType, chunkSize) {
   let store;
   if (backendType === "column") {
-    if (!wasmReady) {
-      console.warn("WASM unavailable — falling back to ChunkedStore");
-      store = new ChunkedStore(chunkSize);
-      store._backendType = "chunked";
-      return store;
-    }
-    store = new ColumnStore(chunkSize);
+    store = createColumnStore(chunkSize);
   } else if (backendType === "chunked") {
-    store = new ChunkedStore(chunkSize);
+    store = createRowGroupStore(chunkSize);
   } else {
     store = new FlatStore();
   }
@@ -721,53 +418,8 @@ async function runQuery(options = {}) {
     transform: transform || undefined,
     matchers: activeMatchers,
   };
-  let result;
-  let workerQueryId = null;
-  let usedWorkers = false;
 
-  if (_canRunOnWorkers(queryOpts)) {
-    try {
-      const workerResponses = await queryWorkerPool.query(queryOpts);
-      if (runSeq !== _queryRunSeq) return;
-      workerQueryId = workerResponses[0]?.queryId ?? null;
-      usedWorkers = true;
-
-      if (agg === "avg") {
-        const sumResults = workerResponses.map((response) =>
-          _deserializeWorkerResult(response.sum)
-        );
-        const countResults = workerResponses.map((response) =>
-          _deserializeWorkerResult(response.count)
-        );
-        result = _mergeAvgWorkerResults(sumResults, countResults);
-      } else if (agg === "sum" || agg === "min" || agg === "max" || agg === "count") {
-        result = _mergeReductionWorkerResults(
-          workerResponses.map((response) => _deserializeWorkerResult(response.result)),
-          agg
-        );
-      } else {
-        result = _mergeRawWorkerResults(
-          workerResponses.map((response) => _deserializeWorkerResult(response.result))
-        );
-      }
-    } catch (error) {
-      if (runSeq !== _queryRunSeq) return;
-      console.error("Worker query failed", error);
-      queryWorkerPool.markFallback("Worker query failed; running on coordinator");
-    }
-  } else if (queryWorkerPool) {
-    if (runSeq !== _queryRunSeq) return;
-    queryWorkerPool.markFallback(
-      supportsParallelQuery(queryOpts)
-        ? "Worker pool warming up; running on coordinator"
-        : "This aggregation runs on the coordinator"
-    );
-  }
-
-  if (!result) {
-    result = currentEngine.query(currentStore, queryOpts);
-  }
-
+  const result = currentEngine.query(currentStore, queryOpts);
   const queryTime = performance.now() - t0;
 
   showSection("section-results");
@@ -783,19 +435,6 @@ async function runQuery(options = {}) {
     } else {
       planSummary.textContent = `${result.scannedSeries.toLocaleString()} series matched, ${result.scannedSamples.toLocaleString()} samples scanned, ${result.series.length.toLocaleString()} outputs, ${stepSummary}`;
     }
-  }
-
-  if (usedWorkers && workerQueryId !== null) {
-    queryWorkerPool.markMerged(
-      workerQueryId,
-      `${queryWorkerPool.workers.length} workers merged ${result.series.length.toLocaleString()} outputs in ${queryTime.toFixed(1)} ms`,
-      {
-        scannedSeries: result.scannedSeries,
-        scannedSamples: result.scannedSamples,
-        resultSeries: result.series.length,
-        queryTimeMs: queryTime,
-      }
-    );
   }
 
   const noMatches =
@@ -875,10 +514,6 @@ const datasetController = createDatasetController({
     onDataLoaded(store, metrics, ingestTime, numPoints, intervalMs);
   },
   onLiveUpdate(store, _scenario, appends) {
-    if (appends && queryWorkerPool) {
-      queryWorkerPool.broadcastLiveAppend(store, appends);
-    }
-
     // 1. Always update storage stats if visible (these are light)
     const storageSection = document.getElementById("section-storage");
     if (_storagePopulated && storageSection && !storageSection.hidden) {
