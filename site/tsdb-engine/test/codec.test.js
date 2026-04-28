@@ -105,12 +105,12 @@ describe("BitWriter / BitReader", () => {
 });
 
 describe("BitReader EOF", () => {
-  it("reading past the buffer returns NaN-ish values (no throw)", () => {
+  it("reading past the buffer throws a RangeError", () => {
     const r = new BitReader(new Uint8Array([0b10000000]));
     expect(r.readBit()).toBe(1); // valid
-    // Reading past end doesn't throw, it returns garbage from undefined bytes
-    const bit = r.readBit();
-    expect(typeof bit).toBe("number");
+    // After consuming all 8 bits, reading past end throws
+    for (let i = 0; i < 7; i++) r.readBit();
+    expect(() => r.readBit()).toThrow(RangeError);
   });
 });
 

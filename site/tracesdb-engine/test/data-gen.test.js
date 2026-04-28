@@ -5,6 +5,7 @@ import {
   generateScenarioData,
   SCENARIOS,
 } from "../js/data-gen.js";
+import { hexFromBytes } from "../js/utils.js";
 
 describe("SCENARIOS", () => {
   it("contains at least 5 built-in scenarios plus custom", () => {
@@ -35,10 +36,12 @@ describe("generateScenarioData", () => {
   it("generates spans with correct ID lengths", async () => {
     const result = await generateScenarioData("database-heavy", { targetSpans: 30 });
     for (const span of result.spans) {
-      // traceId: 16 bytes = 32 hex chars
-      expect(span.traceId).toHaveLength(32);
-      // spanId: 8 bytes = 16 hex chars
-      expect(span.spanId).toHaveLength(16);
+      // traceId: 16 bytes
+      expect(span.traceId).toBeInstanceOf(Uint8Array);
+      expect(span.traceId.byteLength).toBe(16);
+      // spanId: 8 bytes
+      expect(span.spanId).toBeInstanceOf(Uint8Array);
+      expect(span.spanId.byteLength).toBe(8);
     }
   });
 
@@ -46,13 +49,16 @@ describe("generateScenarioData", () => {
     const result = await generateScenarioData("microservices", { targetSpans: 80 });
     const spansByTrace = new Map();
     for (const span of result.spans) {
-      if (!spansByTrace.has(span.traceId)) spansByTrace.set(span.traceId, new Set());
-      spansByTrace.get(span.traceId).add(span.spanId);
+      const tid = hexFromBytes(span.traceId);
+      if (!spansByTrace.has(tid)) spansByTrace.set(tid, new Set());
+      spansByTrace.get(tid).add(hexFromBytes(span.spanId));
     }
 
     for (const span of result.spans) {
       if (span.parentSpanId) {
-        expect(spansByTrace.get(span.traceId).has(span.parentSpanId)).toBe(true);
+        const tid = hexFromBytes(span.traceId);
+        const pid = hexFromBytes(span.parentSpanId);
+        expect(spansByTrace.get(tid).has(pid)).toBe(true);
       }
     }
   });

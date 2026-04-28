@@ -48,6 +48,18 @@ export function hexFromBytes(buf) {
   return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+export function normalizeTraceId(id) {
+  return id instanceof Uint8Array ? hexFromBytes(id) : String(id);
+}
+
+export function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
 export function formatHexByte(val) {
   return val.toString(16).padStart(2, "0");
 }

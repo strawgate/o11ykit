@@ -51,11 +51,27 @@ jobs:
           BASE_PATH: /o11ykit/experiences/dashboard/
         run: npm run build --workspace=@benchkit/dashboard
 
+      - name: Build tracesdb engine site
+        env:
+          BASE_PATH: /o11ykit/tracesdb-engine/
+        run: npx vite build site/tracesdb-engine
+
+      - name: Build tsdb engine site
+        env:
+          BASE_PATH: /o11ykit/tsdb-engine/
+        run: npx vite build site/tsdb-engine
+
       - name: Assemble site artifact
         run: |
           rm -rf .site
           mkdir -p .site/otlpkit .site/experiences/dashboard
           cp -R site/* .site/
+          # Replace raw tracesdb-engine with Vite-built version
+          rm -rf .site/tracesdb-engine/js .site/tracesdb-engine/dist
+          cp -R site/tracesdb-engine/dist/* .site/tracesdb-engine/
+          # Replace raw tsdb-engine with Vite-built version
+          rm -rf .site/tsdb-engine/js .site/tsdb-engine/dist
+          cp -R site/tsdb-engine/dist/* .site/tsdb-engine/
           cp -R examples/demo/dist/* .site/otlpkit/
           cp -R octo11y/packages/dashboard/dist/* .site/experiences/dashboard/
 

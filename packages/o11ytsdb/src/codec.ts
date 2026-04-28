@@ -120,6 +120,11 @@ export class BitReader {
     }
     return value;
   }
+
+  /** Total bits read so far. */
+  get bitsRead(): number {
+    return this.bytePos * 8 + this.bitPos;
+  }
 }
 
 // ── Float64 ↔ Bits (BigInt) ─────────────────────────────────────────
@@ -127,14 +132,14 @@ export class BitReader {
 const f64Buf = new ArrayBuffer(8);
 const f64View = new DataView(f64Buf);
 
-function floatToBits(f: number): bigint {
+export function floatToBits(f: number): bigint {
   f64View.setFloat64(0, f, false); // big-endian
   const hi = f64View.getUint32(0, false);
   const lo = f64View.getUint32(4, false);
   return (BigInt(hi) << 32n) | BigInt(lo >>> 0);
 }
 
-function bitsToFloat(bits: bigint): number {
+export function bitsToFloat(bits: bigint): number {
   const hi = Number((bits >> 32n) & 0xffffffffn);
   const lo = Number(bits & 0xffffffffn);
   f64View.setUint32(0, hi, false);
@@ -143,7 +148,7 @@ function bitsToFloat(bits: bigint): number {
 }
 
 /** Count leading zeros of a 64-bit BigInt. */
-function clz64(x: bigint): number {
+export function clz64(x: bigint): number {
   if (x === 0n) return 64;
   let n = 0;
   if ((x & 0xffffffff00000000n) === 0n) {
@@ -173,7 +178,7 @@ function clz64(x: bigint): number {
 }
 
 /** Count trailing zeros of a 64-bit BigInt. */
-function ctz64(x: bigint): number {
+export function ctz64(x: bigint): number {
   if (x === 0n) return 64;
   let n = 0;
   if ((x & 0xffffffffn) === 0n) {

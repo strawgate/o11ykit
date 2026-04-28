@@ -193,7 +193,7 @@ function randomId(len) {
   return buf;
 }
 
-function randomHexId(len) {
+function _randomHexId(len) {
   const buf = randomId(len);
   return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -350,7 +350,7 @@ function generateTrace(
   baseTime,
   cascadeErrors
 ) {
-  const traceId = randomHexId(16);
+  const traceId = randomId(16);
   const spans = [];
   let errorCascading = false;
 
@@ -359,7 +359,7 @@ function generateTrace(
     if (!svc) return;
 
     const opName = pick(svc.ops);
-    const spanId = randomHexId(8);
+    const spanId = randomId(8);
 
     const [minLat, maxLat] = svc.latencyMs;
     const baseDur = gaussianRand((minLat + maxLat) / 2, (maxLat - minLat) / 4);
@@ -373,14 +373,13 @@ function generateTrace(
     const span = {
       traceId,
       spanId,
-      parentSpanId: parentId || "",
+      parentSpanId: parentId,
       name: opName,
       kind: currentDepth === 0 ? 2 : serviceName === "database" || serviceName === "cache" ? 3 : 1,
       startTimeUnixNano: startNs,
       endTimeUnixNano: startNs + durationNs,
       durationNanos: durationNs,
       statusCode: hasError ? 2 : 1,
-      resource: buildResourceAttrs(serviceName),
       attributes: buildSpanAttrs(serviceName, opName, hasError, currentDepth),
       events: buildEvents(hasError, startNs, durationNs),
       links: [],
@@ -405,7 +404,7 @@ function generateTrace(
   const rootCandidates = serviceNames.filter(
     (s) => s === "gateway" || s === "auth" || serviceNames.indexOf(s) < 3
   );
-  makeSpan(pick(rootCandidates), "", 0, baseTime);
+  makeSpan(pick(rootCandidates), undefined, 0, baseTime);
   return spans;
 }
 
@@ -522,6 +521,12 @@ export async function generateScenarioData(scenarioId, options = {}, onProgress 
     serviceDefs[name] = SERVICES[name] || SERVICES.gateway;
   }
 
+  // Build one resource per service (shared across all spans for that service)
+  const resources = {};
+  for (const name of serviceNames) {
+    resources[name] = { attributes: buildResourceAttrs(name) };
+  }
+
   const targetSpans = meta.targetSpans || 100_000;
   const depth = meta.depth || 3;
   const width = meta.width || 3;
@@ -581,6 +586,7 @@ export async function generateScenarioData(scenarioId, options = {}, onProgress 
     traceCount: traceIdx,
     serviceCount: serviceNames.length,
     serviceNames,
+    resources,
   };
 }
 

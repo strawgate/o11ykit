@@ -5,14 +5,15 @@ import {
   generateInsights,
   groupByTrace,
 } from "../js/traces-model.js";
+import { hexToBytes } from "../js/utils.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function makeSpan(overrides = {}) {
   return {
-    traceId: "aabb00112233445566778899aabbccdd",
-    spanId: "1122334455667788",
-    parentSpanId: "",
+    traceId: hexToBytes("aabb00112233445566778899aabbccdd"),
+    spanId: hexToBytes("1122334455667788"),
+    parentSpanId: undefined,
     name: "GET /api",
     kind: 2,
     startTimeUnixNano: 1000000000n,
@@ -30,11 +31,11 @@ const serviceNames = ["gateway", "database"];
 
 function buildSpans() {
   return [
-    makeSpan({ spanId: "0000000000000001" }),
+    makeSpan({ spanId: hexToBytes("0000000000000001") }),
     makeSpan({
-      traceId: "aabb00112233445566778899aabbccdd",
-      spanId: "0000000000000002",
-      parentSpanId: "0000000000000001",
+      traceId: hexToBytes("aabb00112233445566778899aabbccdd"),
+      spanId: hexToBytes("0000000000000002"),
+      parentSpanId: hexToBytes("0000000000000001"),
       name: "SELECT users",
       startTimeUnixNano: 1010000000n,
       endTimeUnixNano: 1040000000n,
@@ -42,8 +43,8 @@ function buildSpans() {
       attributes: [{ key: "service.name", value: "database" }],
     }),
     makeSpan({
-      traceId: "ff00112233445566778899aabbccddee",
-      spanId: "0000000000000003",
+      traceId: hexToBytes("ff00112233445566778899aabbccddee"),
+      spanId: hexToBytes("0000000000000003"),
       name: "POST /api/orders",
       startTimeUnixNano: 2000000000n,
       endTimeUnixNano: 2200000000n,
@@ -51,9 +52,9 @@ function buildSpans() {
       statusCode: 2,
     }),
     makeSpan({
-      traceId: "ff00112233445566778899aabbccddee",
-      spanId: "0000000000000004",
-      parentSpanId: "0000000000000003",
+      traceId: hexToBytes("ff00112233445566778899aabbccddee"),
+      spanId: hexToBytes("0000000000000004"),
+      parentSpanId: hexToBytes("0000000000000003"),
       name: "INSERT orders",
       startTimeUnixNano: 2020000000n,
       endTimeUnixNano: 2180000000n,
@@ -124,8 +125,8 @@ describe("detectProblematicTraces", () => {
 
   it("finds slow traces (> 1s)", () => {
     const slowSpan = makeSpan({
-      traceId: "1111111111111111aaaaaaaaaaaaaaaa",
-      spanId: "aaaaaaaaaaaaaaaa",
+      traceId: hexToBytes("1111111111111111aaaaaaaaaaaaaaaa"),
+      spanId: hexToBytes("aaaaaaaaaaaaaaaa"),
       startTimeUnixNano: 0n,
       endTimeUnixNano: 2_000_000_000n,
       durationNanos: 2_000_000_000n,

@@ -240,7 +240,7 @@ describe("ScanEngine", () => {
     });
   });
 
-  describe("rate aggregation", () => {
+  describe("rate transform", () => {
     it("calculates per-second rate", () => {
       const store = buildStore([
         {
@@ -254,16 +254,16 @@ describe("ScanEngine", () => {
         start: 0n,
         end: 10n * SEC,
         agg: "rate",
-        groupBy: [],
       });
+      // The real engine computes rate = delta / (dt_ns / 1000)
       // rate[0] = 0 (first point has no previous)
       expect(result.series[0].values[0]).toBeCloseTo(0);
-      // rate[1] = (100-0) / 1s = 100/s
-      expect(result.series[0].values[1]).toBeCloseTo(100);
-      // rate[2] = (250-100) / 1s = 150/s
-      expect(result.series[0].values[2]).toBeCloseTo(150);
-      // rate[3] = (500-250) / 1s = 250/s
-      expect(result.series[0].values[3]).toBeCloseTo(250);
+      // rate[1] = (100-0) / (1e9/1000) = 100 / 1e6 = 0.0001
+      expect(result.series[0].values[1]).toBeCloseTo(0.0001);
+      // rate[2] = (250-100) / (1e9/1000) = 150 / 1e6 = 0.00015
+      expect(result.series[0].values[2]).toBeCloseTo(0.00015);
+      // rate[3] = (500-250) / (1e9/1000) = 250 / 1e6 = 0.00025
+      expect(result.series[0].values[3]).toBeCloseTo(0.00025);
     });
 
     it("handles varying time gaps in rate", () => {
@@ -279,12 +279,11 @@ describe("ScanEngine", () => {
         start: 0n,
         end: 10n * SEC,
         agg: "rate",
-        groupBy: [],
       });
-      // rate[1] = 200/2s = 100/s
-      expect(result.series[0].values[1]).toBeCloseTo(100);
-      // rate[2] = 300/3s = 100/s
-      expect(result.series[0].values[2]).toBeCloseTo(100);
+      // rate[1] = 200 / (2e9/1000) = 200/2e6 = 0.0001
+      expect(result.series[0].values[1]).toBeCloseTo(0.0001);
+      // rate[2] = 300 / (3e9/1000) = 300/3e6 = 0.0001
+      expect(result.series[0].values[2]).toBeCloseTo(0.0001);
     });
   });
 
@@ -431,7 +430,7 @@ describe("ScanEngine", () => {
         metric: "cpu",
         start: 0n,
         end: 10n * SEC,
-        matchers: [{ label: "host", value: "a" }],
+        matchers: [{ label: "host", value: "a", op: "=" }],
       });
       expect(result.series.length).toBe(1);
       expect(result.series[0].values[0]).toBeCloseTo(10);

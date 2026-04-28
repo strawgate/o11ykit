@@ -592,6 +592,70 @@ export class ColumnStore implements StorageBackend {
     return bytes;
   }
 
+  /** Return chunk-level metadata for the storage explorer UI. */
+  getChunkInfo(id: SeriesId): Record<string, unknown> {
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+    const s = this.allSeries[id]!;
+    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+    const group = this.groups[s.groupId]!;
+    const fc = s.frozen;
+
+    const frozen: Record<string, unknown>[] = [];
+    for (let i = 0; i < fc.count; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+      const tsChunkIndex = fc.tsIndices[i]!;
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+      const tsChunk = group.frozenTimestamps[tsChunkIndex]!;
+      // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
+      const valBlob = fc.blobs[i]!;
+      const valBytes = valBlob.byteLength;
+      const tsBytes = tsChunk.compressed
+        ? tsChunk.compressed.byteLength
+        : (tsChunk.timestamps?.byteLength ?? 0);
+      const sharedTsSeries = group.members.length;
+      const amortizedTsBytes = tsBytes / sharedTsSeries;
+      const totalCompressed = valBytes + amortizedTsBytes;
+      const rawBytes = tsChunk.count * 16;
+      frozen.push({
+        index: i,
+        compressedBytes: Math.round(totalCompressed),
+        valuesBytes: valBytes,
+        timestampBytes: tsBytes,
+        sharedTsSeries,
+        amortizedTsBytes: Math.round(amortizedTsBytes),
+        count: tsChunk.count,
+        minT: tsChunk.minT,
+        maxT: tsChunk.maxT,
+        rawBytes,
+        ratio: rawBytes / totalCompressed,
+        compressedValues: valBlob,
+        tsChunkCompressed: tsChunk.compressed ?? null,
+      });
+    }
+
+    const hotCount = s.hot.count;
+    return {
+      frozen,
+      hot: {
+        count: hotCount,
+        rawBytes: hotCount * 16,
+        allocatedBytes:
+          s.hot.values.byteLength +
+          group.hotTimestamps.byteLength / Math.max(1, group.members.length),
+        timestamps: group.hotTimestamps.subarray(0, hotCount),
+        values: s.hot.values.subarray(0, hotCount),
+      },
+      _isColumnStore: true,
+      _groupMembers: group.members.length,
+      _sharedTsChunks: group.frozenTimestamps.length,
+      _sharedTsTotalBytes: group.frozenTimestamps.reduce(
+        (acc, tc) =>
+          acc + (tc.compressed ? tc.compressed.byteLength : (tc.timestamps?.byteLength ?? 0)),
+        0
+      ),
+    };
+  }
+
   // ── Internal ──
 
   private maybeFreeze(group: SeriesGroup): void {

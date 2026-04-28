@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { aggregateResults, buildQueryPreview, executeQuery } from "../js/query-model.js";
+import { hexToBytes } from "../js/utils.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function makeSpan(overrides = {}) {
   return {
-    traceId: "aabb00112233445566778899aabbccdd",
-    spanId: "1122334455667788",
-    parentSpanId: "",
+    traceId: hexToBytes("aabb00112233445566778899aabbccdd"),
+    spanId: hexToBytes("1122334455667788"),
+    parentSpanId: undefined,
     name: "GET /api/users",
     kind: 2,
     startTimeUnixNano: 1000000000n,
@@ -26,11 +27,11 @@ function makeSpan(overrides = {}) {
 
 function buildTestSpans() {
   return [
-    makeSpan({ spanId: "0000000000000001" }),
+    makeSpan({ spanId: hexToBytes("0000000000000001") }),
     makeSpan({
-      traceId: "aabb00112233445566778899aabbccdd",
-      spanId: "0000000000000002",
-      parentSpanId: "0000000000000001",
+      traceId: hexToBytes("aabb00112233445566778899aabbccdd"),
+      spanId: hexToBytes("0000000000000002"),
+      parentSpanId: hexToBytes("0000000000000001"),
       name: "SELECT users",
       kind: 3,
       startTimeUnixNano: 1010000000n,
@@ -42,8 +43,8 @@ function buildTestSpans() {
       ],
     }),
     makeSpan({
-      traceId: "ff00112233445566778899aabbccddee",
-      spanId: "0000000000000003",
+      traceId: hexToBytes("ff00112233445566778899aabbccddee"),
+      spanId: hexToBytes("0000000000000003"),
       name: "POST /api/orders",
       startTimeUnixNano: 2000000000n,
       endTimeUnixNano: 2200000000n,
@@ -55,9 +56,9 @@ function buildTestSpans() {
       ],
     }),
     makeSpan({
-      traceId: "ff00112233445566778899aabbccddee",
-      spanId: "0000000000000004",
-      parentSpanId: "0000000000000003",
+      traceId: hexToBytes("ff00112233445566778899aabbccddee"),
+      spanId: hexToBytes("0000000000000004"),
+      parentSpanId: hexToBytes("0000000000000003"),
       name: "INSERT orders",
       kind: 3,
       startTimeUnixNano: 2020000000n,

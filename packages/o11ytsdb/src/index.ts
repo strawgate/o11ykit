@@ -22,15 +22,21 @@ export {
   toTsdbWideTableModel,
 } from "./adapters.js";
 export { BackpressureController } from "./backpressure.js";
+// Storage backends
+export { ChunkedStore } from "./chunked-store.js";
 export type { DecodedChunk } from "./codec.js";
 // Codec — XOR-delta (Gorilla) compression
 export {
   BitReader,
   BitWriter,
+  bitsToFloat,
+  clz64,
+  ctz64,
   decodeChunk,
   encodeChunk,
+  floatToBits,
 } from "./codec.js";
-// Storage backends
+export { ColumnStore } from "./column-store.js";
 export { FlatStore } from "./flat-store.js";
 export type {
   IngestResult,
@@ -52,7 +58,7 @@ export { Interner } from "./interner.js";
 export { LabelIndex } from "./label-index.js";
 export { MemPostings } from "./postings.js";
 // Query engine
-export { ScanEngine } from "./query.js";
+export { resolveStep, ScanEngine } from "./query.js";
 export { RowGroupStore } from "./row-group-store.js";
 export { computeStats } from "./stats.js";
 export { TieredRowGroupStore } from "./tiered-row-group-store.js";
@@ -71,6 +77,7 @@ export type {
   QueryResult,
   RangeDecodeCodec,
   RangeDecodeResult,
+  SeriesAppend,
   SeriesId,
   SeriesResult,
   StorageBackend,

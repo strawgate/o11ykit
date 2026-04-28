@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { buildByteExplorerData, buildStorageModel } from "../js/storage-model.js";
+import { hexToBytes } from "../js/utils.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function makeSpan(overrides = {}) {
   return {
-    traceId: "aabb00112233445566778899aabbccdd",
-    spanId: "1122334455667788",
-    parentSpanId: "",
+    traceId: hexToBytes("aabb00112233445566778899aabbccdd"),
+    spanId: hexToBytes("1122334455667788"),
+    parentSpanId: undefined,
     name: "GET /api",
     kind: 2,
     startTimeUnixNano: 1000000000n,
@@ -24,7 +25,7 @@ function makeSpan(overrides = {}) {
 function buildSpans(count, service = "gateway") {
   return Array.from({ length: count }, (_, i) =>
     makeSpan({
-      spanId: i.toString(16).padStart(16, "0"),
+      spanId: hexToBytes(i.toString(16).padStart(16, "0")),
       name: i % 2 === 0 ? "GET /api" : "POST /api",
       attributes: [{ key: "service.name", value: service }],
     })
