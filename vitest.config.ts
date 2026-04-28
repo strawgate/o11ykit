@@ -4,7 +4,14 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "@otlpkit/adapters": resolve(__dirname, "packages/adapters/src/index.ts"),
+      "@otlpkit/otlpjson": resolve(__dirname, "packages/otlpjson/src/index.ts"),
+      "@otlpkit/query": resolve(__dirname, "packages/query/src/index.ts"),
+      "@otlpkit/views": resolve(__dirname, "packages/views/src/index.ts"),
       o11ytsdb: resolve(__dirname, "packages/o11ytsdb/src/index.ts"),
+      o11ylogsdb: resolve(__dirname, "packages/o11ylogsdb/src/index.ts"),
+      o11ytracesdb: resolve(__dirname, "packages/o11ytracesdb/src/index.ts"),
+      stardb: resolve(__dirname, "packages/stardb/src/index.ts"),
     },
   },
   test: {
