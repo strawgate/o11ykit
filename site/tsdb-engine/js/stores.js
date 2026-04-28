@@ -60,6 +60,9 @@ const DEFAULT_LRU_CAPACITY = 32;
 const ROWGROUP_BACKEND_NAME = "RowGroupStore";
 const COLUMN_BACKEND_NAME = "ColumnStore (ALP)";
 
+/**
+ * @deprecated For benchmark comparisons only. Use RowGroupStore directly.
+ */
 export function createRowGroupStore(chunkSize = DEFAULT_CHUNK_SIZE) {
   const valuesCodec = _wasmCodecs?.xorValuesCodec ?? createF64PlainCodec();
   return new _RowGroupStore(
@@ -71,6 +74,9 @@ export function createRowGroupStore(chunkSize = DEFAULT_CHUNK_SIZE) {
   );
 }
 
+/**
+ * @deprecated For benchmark comparisons only. Use RowGroupStore directly.
+ */
 export function createColumnStore(chunkSize = DEFAULT_CHUNK_SIZE) {
   const valuesCodec = _wasmCodecs?.valuesCodec ?? createF64PlainCodec();
   const tsCodec = _wasmCodecs?.tsCodec;
