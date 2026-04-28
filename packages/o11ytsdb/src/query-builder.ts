@@ -284,7 +284,9 @@ export class QueryBuilder {
     }
 
     if (step != null && agg == null && !isStepTransform(transforms.at(-1))) {
-      throw new Error("step() requires an aggregation or a step-aligned transform (rate, increase, irate, delta)");
+      throw new Error(
+        "step() requires an aggregation or a step-aligned transform (rate, increase, irate, delta)"
+      );
     }
 
     let node: PlanNode = { kind: "select", metric, matchers };
