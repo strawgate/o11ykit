@@ -163,7 +163,11 @@ export function* queryStream(
         const bodies = readBodiesOnly(chunk, store.registry, policy);
         let hasMatch = false;
         for (let i = 0; i < bodies.length; i++) {
-          if (typeof bodies[i] === "string" && needle !== undefined && (bodies[i] as string).includes(needle)) {
+          if (
+            typeof bodies[i] === "string" &&
+            needle !== undefined &&
+            (bodies[i] as string).includes(needle)
+          ) {
             hasMatch = true;
             break;
           }
