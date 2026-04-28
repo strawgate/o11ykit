@@ -19,7 +19,7 @@
 
 import type { CodecRegistry } from "stardb";
 import { defaultRegistry } from "stardb";
-import type { ChunkPolicy } from "./chunk.js";
+import type { Chunk, ChunkPolicy } from "./chunk.js";
 import { ChunkBuilder, chunkWireSize, DefaultChunkPolicy, readRecords } from "./chunk.js";
 import type { BodyClassifier } from "./classify.js";
 import { defaultClassifier } from "./classify.js";
@@ -90,6 +90,13 @@ export class LogStore {
    */
   private policyByStream: Map<StreamId, ChunkPolicy> = new Map();
   private chunksClosed: number = 0;
+
+  /**
+   * Decode cache: avoids re-decompressing immutable chunks on repeated
+   * queries. WeakMap ensures entries are GC'd when chunks are evicted.
+   * Pattern borrowed from o11ytracesdb/src/engine.ts.
+   */
+  private readonly _decodeCache = new WeakMap<Chunk, LogRecord[]>();
 
   constructor(config: LogStoreConfig = {}) {
     this.registry = config.registry ?? defaultRegistry();
@@ -171,10 +178,24 @@ export class LogStore {
    */
   *iterRecords(): Generator<{ streamId: StreamId; records: LogRecord[] }> {
     for (const id of this.streams.ids()) {
-      const policy = this.policyFor(id);
       for (const chunk of this.streams.chunksOf(id)) {
-        yield { streamId: id, records: readRecords(chunk, this.registry, policy) };
+        yield { streamId: id, records: this.decodeChunk(id, chunk) };
       }
     }
+  }
+
+  /**
+   * Decode a chunk's records, using the internal decode cache to avoid
+   * redundant ZSTD decompression on repeated reads. Chunks are
+   * immutable after freeze so the cached value never goes stale.
+   */
+  decodeChunk(streamId: StreamId, chunk: Chunk): LogRecord[] {
+    let cached = this._decodeCache.get(chunk);
+    if (!cached) {
+      const policy = this.policyFor(streamId);
+      cached = readRecords(chunk, this.registry, policy);
+      this._decodeCache.set(chunk, cached);
+    }
+    return cached;
   }
 }

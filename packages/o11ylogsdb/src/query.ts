@@ -34,10 +34,8 @@
  */
 
 import type { Chunk } from "./chunk.js";
-import { readRecords } from "./chunk.js";
 import type { LogStore } from "./engine.js";
 import type { LogRecord, StreamId } from "./types.js";
-
 // ── Public types ─────────────────────────────────────────────────────
 
 export interface QuerySpec {
@@ -130,7 +128,6 @@ export function* queryStream(
       continue;
     }
     const chunks = store.streams.chunksOf(id);
-    const policy = store.policyFor(id);
     for (const chunk of chunks) {
       stats.chunksScanned++;
       if (!chunkOverlapsRange(chunk, spec.range)) {
@@ -141,9 +138,9 @@ export function* queryStream(
         stats.chunksPruned++;
         continue;
       }
-      // Decode this chunk and walk records.
+      // Decode this chunk (cache-backed: no redundant ZSTD decode).
       const t0 = nowMillis();
-      const records = readRecords(chunk, store.registry, policy);
+      const records = store.decodeChunk(id, chunk);
       stats.decodeMillis += nowMillis() - t0;
       for (const record of records) {
         stats.recordsScanned++;
