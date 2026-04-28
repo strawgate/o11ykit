@@ -1,12 +1,10 @@
 import { defaultRegistry } from "stardb";
 import { describe, expect, it } from "vitest";
-
-import { ChunkBuilder, readBodiesOnly, readRecords } from "../src/chunk.js";
-import { TypedColumnarDrainPolicy } from "../src/codec-typed.js";
-import { DefaultChunkPolicy } from "../src/chunk.js";
-import { DrainChunkPolicy } from "../src/codec-drain.js";
-import { ColumnarDrainPolicy, ColumnarRawPolicy } from "../src/codec-columnar.js";
 import type { ChunkPolicy } from "../src/chunk.js";
+import { ChunkBuilder, DefaultChunkPolicy, readBodiesOnly, readRecords } from "../src/chunk.js";
+import { ColumnarDrainPolicy, ColumnarRawPolicy } from "../src/codec-columnar.js";
+import { DrainChunkPolicy } from "../src/codec-drain.js";
+import { TypedColumnarDrainPolicy } from "../src/codec-typed.js";
 import type { InstrumentationScope, LogRecord, Resource } from "../src/types.js";
 
 const resource: Resource = { attributes: [{ key: "service.name", value: "test" }] };

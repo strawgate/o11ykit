@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { StreamRegistry } from "../src/stream.js";
-import type { Resource, InstrumentationScope, StreamId } from "../src/types.js";
+import { describe, expect, it } from "vitest";
 import type { Chunk } from "../src/chunk.js";
+import { StreamRegistry } from "../src/stream.js";
+import type { InstrumentationScope, Resource, StreamId } from "../src/types.js";
 
 function fakeChunk(): Chunk {
   return {

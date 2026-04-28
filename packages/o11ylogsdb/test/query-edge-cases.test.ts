@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { LogStore } from "../src/engine.js";
+import { describe, expect, it } from "vitest";
 import { TypedColumnarDrainPolicy } from "../src/codec-typed.js";
+import { LogStore } from "../src/engine.js";
 import { query, queryStream } from "../src/query.js";
-import type { LogRecord, Resource, InstrumentationScope } from "../src/types.js";
+import type { InstrumentationScope, LogRecord, Resource } from "../src/types.js";
 
 const resource: Resource = { attributes: [{ key: "svc", value: "test" }] };
 const scope: InstrumentationScope = { name: "test" };
@@ -113,7 +113,9 @@ describe("query: bodyLeafEquals edge cases", () => {
       kvRecord({ req: { headers: { host: "other.com" } } }),
     ];
     const store = makeStore(records);
-    const { records: hits } = query(store, { bodyLeafEquals: { "body.req.headers.host": "example.com" } });
+    const { records: hits } = query(store, {
+      bodyLeafEquals: { "body.req.headers.host": "example.com" },
+    });
     expect(hits).toHaveLength(1);
   });
 
@@ -125,7 +127,10 @@ describe("query: bodyLeafEquals edge cases", () => {
   });
 
   it("path hitting null intermediate returns no match", () => {
-    const records = [kvRecord({ req: null as unknown as string }), kvRecord({ req: { method: "GET" } })];
+    const records = [
+      kvRecord({ req: null as unknown as string }),
+      kvRecord({ req: { method: "GET" } }),
+    ];
     const store = makeStore(records);
     const { records: hits } = query(store, { bodyLeafEquals: { "body.req.method": "GET" } });
     expect(hits).toHaveLength(1);

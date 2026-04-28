@@ -1,7 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { LogStore } from "../src/engine.js";
+import { describe, expect, it } from "vitest";
 import { TypedColumnarDrainPolicy } from "../src/codec-typed.js";
-import type { LogRecord, Resource, InstrumentationScope } from "../src/types.js";
+import type { IngestStats } from "../src/engine.js";
+import { LogStore } from "../src/engine.js";
+import type { InstrumentationScope, LogRecord, Resource } from "../src/types.js";
 
 const resource: Resource = { attributes: [{ key: "service", value: "test" }] };
 const scope: InstrumentationScope = { name: "test-scope" };
@@ -60,7 +61,7 @@ describe("LogStore flush edge cases", () => {
   it("chunksClosed counter increments correctly across auto-freeze and manual flush", () => {
     const store = new LogStore({ rowsPerChunk: 4 });
     // First 4 records auto-freeze a chunk
-    let lastStats;
+    let lastStats: IngestStats | undefined;
     for (let i = 0; i < 4; i++) lastStats = store.append(resource, scope, rec(i));
     expect(lastStats!.chunksClosed).toBe(1);
 

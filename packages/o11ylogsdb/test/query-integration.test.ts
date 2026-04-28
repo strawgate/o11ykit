@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
-import { LogStore } from "../src/engine.js";
+import { defaultRegistry } from "stardb";
+import { describe, expect, it } from "vitest";
 import { DefaultChunkPolicy, readRecords, readRecordsFromRaw } from "../src/chunk.js";
 import { TypedColumnarDrainPolicy } from "../src/codec-typed.js";
+import { LogStore } from "../src/engine.js";
 import { query, queryStream } from "../src/query.js";
-import { defaultRegistry } from "stardb";
-import type { LogRecord, Resource, InstrumentationScope } from "../src/types.js";
+import type { InstrumentationScope, LogRecord, Resource } from "../src/types.js";
 
 const resource: Resource = { attributes: [{ key: "svc", value: "test" }] };
 const scope: InstrumentationScope = { name: "test" };
@@ -18,7 +18,8 @@ describe("readRecordsFromRaw: correctness", () => {
   it("produces identical results to readRecords for NDJSON policy", () => {
     const policy = new DefaultChunkPolicy("zstd-3");
     const store = new LogStore({ rowsPerChunk: 16, policy });
-    for (let i = 0; i < 10; i++) store.append(resource, scope, textRecord(`line ${i}`, 9, BigInt(i)));
+    for (let i = 0; i < 10; i++)
+      store.append(resource, scope, textRecord(`line ${i}`, 9, BigInt(i)));
     store.flush();
 
     const chunks = store.streams.chunksOf(store.streams.ids()[0]!);
@@ -38,7 +39,8 @@ describe("readRecordsFromRaw: correctness", () => {
   it("produces identical results to readRecords for TypedColumnar policy", () => {
     const policy = new TypedColumnarDrainPolicy();
     const store = new LogStore({ rowsPerChunk: 16, policyFactory: () => policy });
-    for (let i = 0; i < 10; i++) store.append(resource, scope, textRecord(`log event ${i}`, 9, BigInt(i * 1000)));
+    for (let i = 0; i < 10; i++)
+      store.append(resource, scope, textRecord(`log event ${i}`, 9, BigInt(i * 1000)));
     store.flush();
 
     const chunks = store.streams.chunksOf(store.streams.ids()[0]!);
@@ -73,7 +75,8 @@ describe("query engine: body fast path uses readRecordsFromRaw", () => {
 
   it("bodyContains + limit on NDJSON store", () => {
     const store = new LogStore({ rowsPerChunk: 16 });
-    for (let i = 0; i < 50; i++) store.append(resource, scope, textRecord(`event ${i}`, 9, BigInt(i)));
+    for (let i = 0; i < 50; i++)
+      store.append(resource, scope, textRecord(`event ${i}`, 9, BigInt(i)));
     store.flush();
 
     const { records: hits, stats } = query(store, { bodyContains: "event", limit: 5 });
@@ -83,7 +86,8 @@ describe("query engine: body fast path uses readRecordsFromRaw", () => {
 
   it("bodyContains with no matches skips all chunks via raw scan", () => {
     const store = new LogStore({ rowsPerChunk: 16 });
-    for (let i = 0; i < 50; i++) store.append(resource, scope, textRecord(`line ${i}`, 9, BigInt(i)));
+    for (let i = 0; i < 50; i++)
+      store.append(resource, scope, textRecord(`line ${i}`, 9, BigInt(i)));
     store.flush();
 
     const { records: hits, stats } = query(store, { bodyContains: "NONEXISTENT_xyz" });
@@ -134,8 +138,18 @@ describe("query engine: resourceEquals stream pruning", () => {
 
   it("resourceEquals with multiple keys requires all to match", () => {
     const store = new LogStore({ rowsPerChunk: 16 });
-    const r1: Resource = { attributes: [{ key: "service", value: "api" }, { key: "env", value: "prod" }] };
-    const r2: Resource = { attributes: [{ key: "service", value: "api" }, { key: "env", value: "dev" }] };
+    const r1: Resource = {
+      attributes: [
+        { key: "service", value: "api" },
+        { key: "env", value: "prod" },
+      ],
+    };
+    const r2: Resource = {
+      attributes: [
+        { key: "service", value: "api" },
+        { key: "env", value: "dev" },
+      ],
+    };
     store.append(r1, scope, textRecord("prod api", 9, 1n));
     store.append(r2, scope, textRecord("dev api", 9, 2n));
     store.flush();
@@ -164,13 +178,18 @@ describe("query engine: queryStream generator behavior", () => {
       policyFactory: () => new TypedColumnarDrainPolicy(),
     });
     // 20 records → 5 chunks of 4
-    for (let i = 0; i < 20; i++) store.append(resource, scope, textRecord(`line ${i}`, 9, BigInt(i)));
+    for (let i = 0; i < 20; i++)
+      store.append(resource, scope, textRecord(`line ${i}`, 9, BigInt(i)));
     store.flush();
 
     const stats = {
-      streamsScanned: 0, streamsPruned: 0,
-      chunksScanned: 0, chunksPruned: 0,
-      recordsScanned: 0, recordsEmitted: 0, decodeMillis: 0,
+      streamsScanned: 0,
+      streamsPruned: 0,
+      chunksScanned: 0,
+      chunksPruned: 0,
+      recordsScanned: 0,
+      recordsEmitted: 0,
+      decodeMillis: 0,
     };
     const gen = queryStream(store, { limit: 3 }, stats);
     const results = [...gen];
@@ -182,7 +201,8 @@ describe("query engine: queryStream generator behavior", () => {
 
   it("generator yields records in chunk order", () => {
     const store = new LogStore({ rowsPerChunk: 4 });
-    for (let i = 0; i < 12; i++) store.append(resource, scope, textRecord(`line ${i}`, 9, BigInt(i)));
+    for (let i = 0; i < 12; i++)
+      store.append(resource, scope, textRecord(`line ${i}`, 9, BigInt(i)));
     store.flush();
 
     const results = [...queryStream(store, {})];

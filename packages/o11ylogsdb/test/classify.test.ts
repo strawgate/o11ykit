@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { defaultClassifier, TemplatedClassifier } from "../src/classify.js";
+import { describe, expect, it } from "vitest";
 import type { TemplateExtractor } from "../src/classify.js";
+import { defaultClassifier, TemplatedClassifier } from "../src/classify.js";
 import type { LogRecord } from "../src/types.js";
 
 function makeRecord(body: unknown): LogRecord {

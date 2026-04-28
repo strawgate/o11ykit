@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-
-import { LogStore } from "../src/engine.js";
-import { query, queryStream, type QuerySpec } from "../src/query.js";
 import { TypedColumnarDrainPolicy } from "../src/codec-typed.js";
+import { LogStore } from "../src/engine.js";
+import { type QuerySpec, query, queryStream } from "../src/query.js";
 import type { InstrumentationScope, LogRecord, Resource } from "../src/types.js";
 
 const scope: InstrumentationScope = { name: "test-scope" };

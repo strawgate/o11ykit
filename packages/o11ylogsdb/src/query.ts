@@ -35,7 +35,7 @@
 
 import { nowMillis, timeRangeOverlaps, uint8IndexOf } from "stardb";
 import type { Chunk } from "./chunk.js";
-import { readRecords, readRecordsFilteredFromRaw, readRecordsFromRaw } from "./chunk.js";
+import { readRecords, readRecordsFilteredFromRaw } from "./chunk.js";
 import type { LogStore } from "./engine.js";
 import type { LogRecord, StreamId } from "./types.js";
 

@@ -1,11 +1,11 @@
-import { describe, it, expect } from "vitest";
-import { LogStore } from "../src/engine.js";
-import { TypedColumnarDrainPolicy } from "../src/codec-typed.js";
-import { query } from "../src/query.js";
-import { compactChunk } from "../src/compact.js";
 import { defaultRegistry } from "stardb";
+import { describe, expect, it } from "vitest";
 import { ChunkBuilder, DefaultChunkPolicy, readRecords } from "../src/chunk.js";
-import type { LogRecord, Resource, InstrumentationScope } from "../src/types.js";
+import { TypedColumnarDrainPolicy } from "../src/codec-typed.js";
+import { compactChunk } from "../src/compact.js";
+import { LogStore } from "../src/engine.js";
+import { query } from "../src/query.js";
+import type { InstrumentationScope, LogRecord, Resource } from "../src/types.js";
 
 const resource: Resource = { attributes: [{ key: "svc", value: "test" }] };
 const scope: InstrumentationScope = { name: "test" };
@@ -44,7 +44,8 @@ describe("compact: codec diversity", () => {
     const registry = defaultRegistry();
     const policy = new DefaultChunkPolicy("zstd-19");
     const builder = new ChunkBuilder(resource, scope, policy, registry);
-    for (let i = 0; i < 32; i++) builder.append(rec(`log entry number ${i} with some padding text`, 9, BigInt(i)));
+    for (let i = 0; i < 32; i++)
+      builder.append(rec(`log entry number ${i} with some padding text`, 9, BigInt(i)));
     const chunk = builder.freeze();
 
     const result = compactChunk(chunk, registry, "zstd-3");
@@ -149,7 +150,11 @@ describe("compact + query integration", () => {
       policyFactory: () => new TypedColumnarDrainPolicy(),
     });
     for (let i = 0; i < 20; i++) {
-      store.append(resource, scope, rec(`user ${i % 2 === 0 ? "login" : "logout"} event`, i < 10 ? 9 : 17, BigInt(i * 100)));
+      store.append(
+        resource,
+        scope,
+        rec(`user ${i % 2 === 0 ? "login" : "logout"} event`, i < 10 ? 9 : 17, BigInt(i * 100))
+      );
     }
     store.flush();
 

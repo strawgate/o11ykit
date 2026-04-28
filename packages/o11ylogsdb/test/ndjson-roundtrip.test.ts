@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { LogStore } from "../src/engine.js";
-import { ChunkBuilder, DefaultChunkPolicy, readRecords } from "../src/chunk.js";
 import { defaultRegistry } from "stardb";
-import type { LogRecord, Resource, InstrumentationScope } from "../src/types.js";
+import { describe, expect, it } from "vitest";
+import { ChunkBuilder, DefaultChunkPolicy, readRecords } from "../src/chunk.js";
+import { LogStore } from "../src/engine.js";
+import type { InstrumentationScope, LogRecord, Resource } from "../src/types.js";
 
 const resource: Resource = { attributes: [{ key: "svc", value: "test" }] };
 const scope: InstrumentationScope = { name: "test" };
@@ -225,7 +225,9 @@ describe("LogStore: full pipeline round-trip with all fields", () => {
     ]);
     expect(decoded.droppedAttributesCount).toBe(3);
     expect(decoded.flags).toBe(1);
-    expect(decoded.traceId).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]));
+    expect(decoded.traceId).toEqual(
+      new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16])
+    );
     expect(decoded.spanId).toEqual(new Uint8Array([10, 20, 30, 40, 50, 60, 70, 80]));
     expect(decoded.eventName).toBe("http.error");
   });

@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-
+import { TypedColumnarDrainPolicy } from "../src/codec-typed.js";
 import { LogStore } from "../src/engine.js";
 import { query } from "../src/query.js";
-import { TypedColumnarDrainPolicy } from "../src/codec-typed.js";
 import type { InstrumentationScope, LogRecord, Resource } from "../src/types.js";
 
 const scope: InstrumentationScope = { name: "test-scope" };
@@ -56,7 +55,11 @@ function build10kStore(): {
       severity = i % 10 < 3 ? 13 : 9;
     }
 
-    store.append(resource, scope, rec({ timeUnixNano: BigInt(i * 1000), body, severityNumber: severity }));
+    store.append(
+      resource,
+      scope,
+      rec({ timeUnixNano: BigInt(i * 1000), body, severityNumber: severity })
+    );
   }
   store.flush();
   return { store, resources, rareCount, commonCount };
