@@ -20,7 +20,8 @@
  * for resource attributes.
  */
 
-import { bytesToHex } from "stardb";
+import type { ChunkWireOptions } from "stardb";
+import { bytesToHex, deserializeChunkWire, serializeChunkWire } from "stardb";
 import { bloomToBase64, createBloomFilter } from "./bloom.js";
 import type { SpanRecord } from "./types.js";
 
@@ -56,10 +57,13 @@ export interface Chunk {
   payload: Uint8Array;
 }
 
-// ─── Wire format constants ───────────────────────────────────────────
+// ─── Wire format ─────────────────────────────────────────────────────
 
-const MAGIC = new Uint8Array([0x4f, 0x54, 0x44, 0x42]); // "OTDB"
-const SCHEMA_VERSION = 1;
+const CHUNK_WIRE_OPTS: ChunkWireOptions = {
+  magic: new Uint8Array([0x4f, 0x54, 0x44, 0x42]), // "OTDB"
+  version: 1,
+  name: "o11ytracesdb",
+};
 
 // ─── Serialization ───────────────────────────────────────────────────
 
@@ -69,18 +73,7 @@ const SCHEMA_VERSION = 1;
  * @returns Binary representation including magic, version, header, and payload.
  */
 export function serializeChunk(chunk: Chunk): Uint8Array {
-  const headerJson = JSON.stringify(chunk.header);
-  const headerBytes = new TextEncoder().encode(headerJson);
-  const totalLen = 4 + 1 + 4 + headerBytes.length + chunk.payload.length;
-  const out = new Uint8Array(totalLen);
-  const view = new DataView(out.buffer);
-
-  out.set(MAGIC, 0);
-  out[4] = SCHEMA_VERSION;
-  view.setUint32(5, headerBytes.length, true);
-  out.set(headerBytes, 9);
-  out.set(chunk.payload, 9 + headerBytes.length);
-  return out;
+  return serializeChunkWire(chunk.header, chunk.payload, CHUNK_WIRE_OPTS);
 }
 
 /**
@@ -89,22 +82,7 @@ export function serializeChunk(chunk: Chunk): Uint8Array {
  * @returns The deserialized chunk with header and payload.
  */
 export function deserializeChunk(buf: Uint8Array): Chunk {
-  if (buf.length < 9) throw new Error("o11ytracesdb: chunk too small");
-  if (buf[0] !== 0x4f || buf[1] !== 0x54 || buf[2] !== 0x44 || buf[3] !== 0x42) {
-    throw new Error("o11ytracesdb: invalid chunk magic (expected OTDB)");
-  }
-  if (buf[4] !== SCHEMA_VERSION) {
-    throw new Error(`o11ytracesdb: unsupported schema version ${buf[4]}`);
-  }
-  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  const headerLen = view.getUint32(5, true);
-  const headerEnd = 9 + headerLen;
-  if (buf.length < headerEnd) throw new Error("o11ytracesdb: truncated header");
-
-  const headerJson = new TextDecoder().decode(buf.subarray(9, headerEnd));
-  const header: ChunkHeader = JSON.parse(headerJson);
-  const payload = buf.subarray(headerEnd);
-  return { header, payload };
+  return deserializeChunkWire<ChunkHeader>(buf, CHUNK_WIRE_OPTS);
 }
 
 // ─── Chunk Builder ───────────────────────────────────────────────────

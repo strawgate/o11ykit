@@ -19,207 +19,9 @@
  * for partial decode (e.g. decode only IDs for trace assembly).
  */
 
+import { ByteBuf, ByteReader } from "stardb";
 import type { ChunkPolicy } from "./chunk.js";
 import type { AnyValue, KeyValue, SpanEvent, SpanLink, SpanRecord, StatusCode } from "./types.js";
-
-// ─── Shared text codec singletons (avoid per-call allocation) ────────
-
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
-
-// ─── ByteBuf — growable write buffer ─────────────────────────────────
-
-export class ByteBuf {
-  buf: Uint8Array;
-  view: DataView;
-  pos = 0;
-
-  constructor(initialCapacity = 4096) {
-    this.buf = new Uint8Array(initialCapacity);
-    this.view = new DataView(this.buf.buffer);
-  }
-
-  ensure(needed: number): void {
-    if (this.pos + needed <= this.buf.length) return;
-    let newCap = this.buf.length * 2;
-    while (newCap < this.pos + needed) newCap *= 2;
-    const next = new Uint8Array(newCap);
-    next.set(this.buf);
-    this.buf = next;
-    this.view = new DataView(this.buf.buffer);
-  }
-
-  writeU8(v: number): void {
-    this.ensure(1);
-    this.buf[this.pos++] = v;
-  }
-
-  writeU16(v: number): void {
-    this.ensure(2);
-    this.view.setUint16(this.pos, v, true);
-    this.pos += 2;
-  }
-
-  writeU32(v: number): void {
-    this.ensure(4);
-    this.view.setUint32(this.pos, v, true);
-    this.pos += 4;
-  }
-
-  writeFloat64(v: number): void {
-    this.ensure(8);
-    this.view.setFloat64(this.pos, v, true);
-    this.pos += 8;
-  }
-
-  writeVarint(value: bigint): void {
-    // ZigZag encode then unsigned varint
-    const zigzag = value < 0n ? -value * 2n - 1n : value * 2n;
-    let v = zigzag;
-    do {
-      this.ensure(1);
-      let byte = Number(v & 0x7fn);
-      v >>= 7n;
-      if (v > 0n) byte |= 0x80;
-      this.buf[this.pos++] = byte;
-    } while (v > 0n);
-  }
-
-  writeUvarint(value: number): void {
-    let v = value >>> 0;
-    do {
-      this.ensure(1);
-      let byte = v & 0x7f;
-      v >>>= 7;
-      if (v > 0) byte |= 0x80;
-      this.buf[this.pos++] = byte;
-    } while (v > 0);
-  }
-
-  writeBytes(data: Uint8Array): void {
-    this.ensure(data.length);
-    this.buf.set(data, this.pos);
-    this.pos += data.length;
-  }
-
-  writeString(s: string): void {
-    const encoded = textEncoder.encode(s);
-    this.writeUvarint(encoded.length);
-    this.writeBytes(encoded);
-  }
-
-  /** Reserve space for a u32 section length, return the offset to backpatch. */
-  reserveSectionLength(): number {
-    const offset = this.pos;
-    this.writeU32(0); // placeholder
-    return offset;
-  }
-
-  /** Backpatch a section length at the given offset. */
-  patchSectionLength(offset: number): void {
-    const len = this.pos - offset - 4;
-    this.view.setUint32(offset, len, true);
-  }
-
-  finish(): Uint8Array {
-    return this.buf.subarray(0, this.pos);
-  }
-}
-
-// ─── ByteReader — sequential reader ──────────────────────────────────
-
-export class ByteReader {
-  private view: DataView;
-  pos = 0;
-
-  constructor(private buf: Uint8Array) {
-    this.view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  }
-
-  readU8(): number {
-    const v = this.buf[this.pos];
-    if (v === undefined) throw new RangeError("o11ytracesdb: unexpected end of buffer");
-    this.pos++;
-    return v;
-  }
-
-  readU16(): number {
-    const v = this.view.getUint16(this.pos, true);
-    this.pos += 2;
-    return v;
-  }
-
-  readU32(): number {
-    const v = this.view.getUint32(this.pos, true);
-    this.pos += 4;
-    return v;
-  }
-
-  readFloat64(): number {
-    const v = this.view.getFloat64(this.pos, true);
-    this.pos += 8;
-    return v;
-  }
-
-  readVarint(): bigint {
-    let result = 0n;
-    let shift = 0n;
-    let byte: number;
-    do {
-      const nextByte = this.buf[this.pos];
-      if (nextByte === undefined) throw new RangeError("o11ytracesdb: unexpected end of buffer");
-      this.pos++;
-      byte = nextByte;
-      result |= BigInt(byte & 0x7f) << shift;
-      shift += 7n;
-    } while (byte & 0x80);
-    // ZigZag decode
-    return (result >> 1n) ^ -(result & 1n);
-  }
-
-  readUvarint(): number {
-    let result = 0;
-    let shift = 0;
-    let byte: number;
-    do {
-      const nextByte = this.buf[this.pos];
-      if (nextByte === undefined) throw new RangeError("o11ytracesdb: unexpected end of buffer");
-      this.pos++;
-      byte = nextByte;
-      result |= (byte & 0x7f) << shift;
-      shift += 7;
-    } while (byte & 0x80);
-    return result >>> 0;
-  }
-
-  readBytes(n: number): Uint8Array {
-    if (this.pos + n > this.buf.length) {
-      throw new RangeError(
-        `o11ytracesdb: truncated read: need ${n} bytes at offset ${this.pos}, buffer length ${this.buf.length}`
-      );
-    }
-    const slice = this.buf.subarray(this.pos, this.pos + n);
-    this.pos += n;
-    return slice;
-  }
-
-  readString(): string {
-    const len = this.readUvarint();
-    const bytes = this.readBytes(len);
-    return textDecoder.decode(bytes);
-  }
-
-  /** Number of unread bytes remaining in the buffer. */
-  get remaining(): number {
-    return this.buf.length - this.pos;
-  }
-
-  /** Read a length-prefixed section, return a sub-reader over it. */
-  readSection(): Uint8Array {
-    const len = this.readU32();
-    return this.readBytes(len);
-  }
-}
 
 // ─── Dictionary builder ──────────────────────────────────────────────
 
@@ -321,13 +123,13 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       for (const s of spans) {
         const startDelta = s.startTimeUnixNano - prevStart;
         const startDoD = startDelta - prevStartDelta;
-        out.writeVarint(startDoD);
+        out.writeZigzagVarint(startDoD);
         prevStartDelta = startDelta;
         prevStart = s.startTimeUnixNano;
 
         const endDelta = s.endTimeUnixNano - prevEnd;
         const endDoD = endDelta - prevEndDelta;
-        out.writeVarint(endDoD);
+        out.writeZigzagVarint(endDoD);
         prevEndDelta = endDelta;
         prevEnd = s.endTimeUnixNano;
       }
@@ -337,7 +139,7 @@ export class ColumnarTracePolicy implements ChunkPolicy {
     // Section 1: Durations (zigzag-varint)
     {
       const off = out.reserveSectionLength();
-      for (const s of spans) out.writeVarint(s.durationNanos);
+      for (const s of spans) out.writeZigzagVarint(s.durationNanos);
       out.patchSectionLength(off);
     }
 
@@ -446,7 +248,7 @@ export class ColumnarTracePolicy implements ChunkPolicy {
         for (const evt of s.events) {
           // Store as delta from span start for better compression
           const timeDelta = evt.timeUnixNano - s.startTimeUnixNano;
-          out.writeVarint(timeDelta);
+          out.writeZigzagVarint(timeDelta);
           out.writeString(evt.name);
           out.writeUvarint(evt.attributes.length);
           for (const attr of evt.attributes) {
@@ -496,9 +298,9 @@ export class ColumnarTracePolicy implements ChunkPolicy {
         const left = s.nestedSetLeft ?? 0;
         const right = s.nestedSetRight ?? 0;
         const parent = s.nestedSetParent ?? 0;
-        out.writeVarint(BigInt(left - prevLeft));
-        out.writeVarint(BigInt(right - prevRight));
-        out.writeVarint(BigInt(parent - prevParent));
+        out.writeZigzagVarint(BigInt(left - prevLeft));
+        out.writeZigzagVarint(BigInt(right - prevRight));
+        out.writeZigzagVarint(BigInt(parent - prevParent));
         prevLeft = left;
         prevRight = right;
         prevParent = parent;
@@ -549,14 +351,14 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       let prevEnd = 0n;
       let prevEndDelta = 0n;
       for (let i = 0; i < n; i++) {
-        const startDoD = tsSection.readVarint();
+        const startDoD = tsSection.readZigzagVarint();
         const startDelta = prevStartDelta + startDoD;
         const st = prevStart + startDelta;
         startTimes[i] = st;
         prevStartDelta = startDelta;
         prevStart = st;
 
-        const endDoD = tsSection.readVarint();
+        const endDoD = tsSection.readZigzagVarint();
         const endDelta = prevEndDelta + endDoD;
         const et = prevEnd + endDelta;
         endTimes[i] = et;
@@ -569,7 +371,7 @@ export class ColumnarTracePolicy implements ChunkPolicy {
     const durSection = new ByteReader(reader.readSection());
     const durations = new Array<bigint>(n);
     for (let i = 0; i < n; i++) {
-      durations[i] = durSection.readVarint();
+      durations[i] = durSection.readZigzagVarint();
     }
 
     // Section 2: IDs (zero-copy: use slice() for owned copies without retaining parent buffer)
@@ -644,7 +446,7 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       const evtCount = evtSection.readUvarint();
       const events: SpanEvent[] = new Array(evtCount);
       for (let j = 0; j < evtCount; j++) {
-        const timeDelta = evtSection.readVarint();
+        const timeDelta = evtSection.readZigzagVarint();
         const timeUnixNano = (startTimes[i] ?? 0n) + timeDelta;
         const name = evtSection.readString();
         const attrCount = evtSection.readUvarint();
@@ -690,9 +492,9 @@ export class ColumnarTracePolicy implements ChunkPolicy {
       let prevRight = 0;
       let prevParent = 0;
       for (let i = 0; i < n; i++) {
-        prevLeft += Number(nestedSetSection.readVarint());
-        prevRight += Number(nestedSetSection.readVarint());
-        prevParent += Number(nestedSetSection.readVarint());
+        prevLeft += Number(nestedSetSection.readZigzagVarint());
+        prevRight += Number(nestedSetSection.readZigzagVarint());
+        prevParent += Number(nestedSetSection.readZigzagVarint());
         nestedSetLefts[i] = prevLeft;
         nestedSetRights[i] = prevRight;
         nestedSetParents[i] = prevParent;
@@ -883,7 +685,7 @@ function encodeAnyValue(buf: ByteBuf, value: AnyValue, valIndex: Map<string, num
     }
   } else if (typeof value === "bigint") {
     buf.writeU8(ValueTag.INT);
-    buf.writeVarint(value);
+    buf.writeZigzagVarint(value);
   } else if (typeof value === "number") {
     buf.writeU8(ValueTag.DOUBLE);
     buf.writeFloat64(value);
@@ -918,7 +720,7 @@ function decodeAnyValue(reader: ByteReader, valDict: string[]): AnyValue {
     case ValueTag.STRING_RAW:
       return reader.readString();
     case ValueTag.INT:
-      return reader.readVarint();
+      return reader.readZigzagVarint();
     case ValueTag.DOUBLE:
       return reader.readFloat64();
     case ValueTag.BOOL_TRUE:

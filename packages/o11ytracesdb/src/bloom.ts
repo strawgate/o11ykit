@@ -4,6 +4,8 @@
  * Target: ~10 bits/element → ~0.1% false positive rate.
  */
 
+import { bytesToHex, fnv1aBytes } from "stardb";
+
 /**
  * Create a bloom filter for the given set of trace IDs.
  * Returns a Uint8Array bitmap that can be stored in the chunk header.
@@ -24,7 +26,7 @@ export function createBloomFilter(traceIds: Uint8Array[], bitsPerElement = 10): 
   const unique = new Set<string>();
   const uniqueIds: Uint8Array[] = [];
   for (const id of traceIds) {
-    const hex = bufToHex(id);
+    const hex = bytesToHex(id);
     if (!unique.has(hex)) {
       unique.add(hex);
       uniqueIds.push(id);
@@ -95,16 +97,6 @@ export function bloomFromBase64(b64: string): Uint8Array {
 
 // ─── Internal hash functions ────────────────────────────────────────
 
-/** FNV-1a 32-bit hash over a byte array. */
-function fnv1a32(data: Uint8Array): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < data.length; i++) {
-    hash ^= data[i] ?? 0;
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
 /** Murmur-inspired hash for the second hash function. */
 function murmur32(data: Uint8Array): number {
   let h = 0x9747b28c;
@@ -128,15 +120,5 @@ function murmur32(data: Uint8Array): number {
  * from which k hash functions can be derived as h1 + i*h2.
  */
 function dualHash(traceId: Uint8Array): [number, number] {
-  return [fnv1a32(traceId), murmur32(traceId)];
-}
-
-function bufToHex(buf: Uint8Array): string {
-  let hex = "";
-  for (let i = 0; i < buf.length; i++) {
-    const b = buf[i];
-    if (b === undefined) continue;
-    hex += ((b >> 4) & 0xf).toString(16) + (b & 0xf).toString(16);
-  }
-  return hex;
+  return [fnv1aBytes(traceId), murmur32(traceId)];
 }

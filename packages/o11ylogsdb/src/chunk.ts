@@ -21,11 +21,16 @@
  * over the result. M3/M4 replace this with a proper per-column form.
  */
 
-import type { CodecRegistry } from "stardb";
-import { bytesToHex, hexToBytes } from "stardb";
+import type { ChunkWireOptions, CodecRegistry } from "stardb";
+import { bytesToHex, deserializeChunkWire, hexToBytes, serializeChunkWire } from "stardb";
+import { anyValueToJson, jsonToAnyValue } from "./codec-utils.js";
 import type { AnyValue, InstrumentationScope, LogRecord, Resource } from "./types.js";
 
-const MAGIC_BYTES = new Uint8Array([0x4f, 0x4c, 0x44, 0x42]); // "OLDB"
+const CHUNK_WIRE_OPTS: ChunkWireOptions = {
+  magic: new Uint8Array([0x4f, 0x4c, 0x44, 0x42]), // "OLDB"
+  version: 1,
+  name: "o11ylogsdb",
+};
 export const CHUNK_VERSION = 1;
 
 export interface ChunkHeader {
@@ -262,41 +267,17 @@ export function readBodiesOnly(
  */
 export function chunkWireSize(chunk: Chunk): number {
   const headerJson = new TextEncoder().encode(JSON.stringify(chunk.header));
-  return MAGIC_BYTES.length + 1 + 4 + headerJson.length + chunk.payload.length;
+  return 4 + 1 + 4 + headerJson.length + chunk.payload.length;
 }
 
 /** Serialize a chunk to the wire format. */
 export function serializeChunk(chunk: Chunk): Uint8Array {
-  const headerJson = new TextEncoder().encode(JSON.stringify(chunk.header));
-  const totalLen = MAGIC_BYTES.length + 1 + 4 + headerJson.length + chunk.payload.length;
-  const out = new Uint8Array(totalLen);
-  let cursor = 0;
-  out.set(MAGIC_BYTES, cursor);
-  cursor += MAGIC_BYTES.length;
-  out[cursor++] = CHUNK_VERSION;
-  const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
-  view.setUint32(cursor, headerJson.length, true);
-  cursor += 4;
-  out.set(headerJson, cursor);
-  cursor += headerJson.length;
-  out.set(chunk.payload, cursor);
-  return out;
+  return serializeChunkWire(chunk.header, chunk.payload, CHUNK_WIRE_OPTS);
 }
 
 /** Parse the wire format back to a Chunk. */
 export function deserializeChunk(buf: Uint8Array): Chunk {
-  for (let i = 0; i < MAGIC_BYTES.length; i++) {
-    if (buf[i] !== MAGIC_BYTES[i]) throw new Error("o11ylogsdb: bad chunk magic");
-  }
-  const version = buf[4];
-  if (version !== CHUNK_VERSION) {
-    throw new Error(`o11ylogsdb: unsupported chunk version ${version}`);
-  }
-  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  const headerLen = view.getUint32(5, true);
-  const headerJson = new TextDecoder().decode(buf.subarray(9, 9 + headerLen));
-  const header: ChunkHeader = JSON.parse(headerJson);
-  const payload = buf.subarray(9 + headerLen);
+  const { header, payload } = deserializeChunkWire<ChunkHeader>(buf, CHUNK_WIRE_OPTS);
   if (payload.length !== header.payloadBytes) {
     throw new Error(
       `o11ylogsdb: payload length mismatch (${payload.length} vs ${header.payloadBytes})`
@@ -370,32 +351,4 @@ function fromJsonable(j: JsonableRecord): LogRecord {
   if (j.e !== undefined) out.eventName = j.e;
   if (j.d !== undefined) out.droppedAttributesCount = j.d;
   return out;
-}
-
-function anyValueToJson(v: import("./types.js").AnyValue): unknown {
-  if (v === null) return null;
-  if (typeof v === "bigint") return { $bi: v.toString() };
-  if (v instanceof Uint8Array) return { $b: bytesToHex(v) };
-  if (Array.isArray(v)) return v.map(anyValueToJson);
-  if (typeof v === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v)) out[k] = anyValueToJson(val);
-    return out;
-  }
-  return v;
-}
-
-function jsonToAnyValue(j: unknown): import("./types.js").AnyValue {
-  if (j === null) return null;
-  if (typeof j === "object" && j !== null) {
-    const obj = j as Record<string, unknown>;
-    if (typeof obj.$bi === "string") return BigInt(obj.$bi);
-    if (typeof obj.$b === "string") return hexToBytes(obj.$b);
-    if (Array.isArray(j)) return j.map(jsonToAnyValue);
-    const out: Record<string, import("./types.js").AnyValue> = {};
-    for (const [k, v] of Object.entries(obj)) out[k] = jsonToAnyValue(v);
-    return out;
-  }
-  // string | number | boolean
-  return j as import("./types.js").AnyValue;
 }

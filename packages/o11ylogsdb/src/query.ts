@@ -33,6 +33,7 @@
  * against the *normalized* form.
  */
 
+import { nowMillis } from "stardb";
 import type { Chunk } from "./chunk.js";
 import { readRecords, readRecordsFromRaw } from "./chunk.js";
 import type { LogStore } from "./engine.js";
@@ -204,13 +205,6 @@ function freshStats(): QueryStats {
     recordsEmitted: 0,
     decodeMillis: 0,
   };
-}
-
-function nowMillis(): number {
-  if (typeof performance !== "undefined" && performance.now) {
-    return performance.now();
-  }
-  return Number(process.hrtime.bigint()) / 1_000_000;
 }
 
 /**

@@ -3,6 +3,9 @@
 // interfaces and a small set of baseline implementations both
 // `o11ylogsdb` and (in time) `o11ytsdb` and `o11ytracesdb` consume.
 
+export { ByteBuf, ByteReader } from "./binary.js";
+export type { ChunkWireOptions } from "./chunk-wire.js";
+export { chunkWireSize, deserializeChunkWire, serializeChunkWire } from "./chunk-wire.js";
 export type { Codec, IntCodec, StringCodec } from "./codec.js";
 export { CodecRegistry } from "./codec.js";
 export {
@@ -22,4 +25,4 @@ export type {
   SeverityText,
   StreamId,
 } from "./types.js";
-export { bytesToHex, hexToBytes, nowMillis } from "./utils.js";
+export { bytesEqual, bytesToHex, fnv1aBytes, hexToBytes, nowMillis } from "./utils.js";

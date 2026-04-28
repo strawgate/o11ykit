@@ -77,7 +77,7 @@ describe("Chunk wire format (serialize/deserialize)", () => {
     buf[2] = 0x44;
     buf[3] = 0x42; // OTDB
     buf[4] = 99; // bad version
-    expect(() => deserializeChunk(buf)).toThrow("unsupported schema version");
+    expect(() => deserializeChunk(buf)).toThrow("unsupported chunk version");
   });
 
   it("handles chunk with error spans", () => {

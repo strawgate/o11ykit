@@ -11,7 +11,7 @@
  * - Error flag (skip chunks without errors when filtering for errors)
  */
 
-import { hexToBytes } from "stardb";
+import { bytesToHex, hexToBytes } from "stardb";
 import { bloomFromBase64, bloomMayContain } from "./bloom.js";
 import type { Chunk } from "./chunk.js";
 import { computeNestedSets } from "./chunk.js";
@@ -42,21 +42,6 @@ function isSafePattern(pattern: string): boolean {
   // Reject excessive alternations that could cause exponential backtracking
   if (/(\|[^|]{0,20}){10,}/.test(pattern)) return false;
   return true;
-}
-
-// ─── Hex lookup table (pre-computed for 0-255) ──────────────────────
-
-const HEX_LUT: string[] = new Array(256);
-for (let i = 0; i < 256; i++) HEX_LUT[i] = i.toString(16).padStart(2, "0");
-
-function hexFromBytes(bytes: Uint8Array): string {
-  let hex = "";
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i];
-    if (b === undefined) continue;
-    hex += HEX_LUT[b] ?? "";
-  }
-  return hex;
 }
 
 // ─── Query execution ─────────────────────────────────────────────────
@@ -219,7 +204,7 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
     for (const span of spans) {
       spansExamined++;
       if (matchesSpan(span, opts, resource)) {
-        matchingTraceIds.add(hexFromBytes(span.traceId));
+        matchingTraceIds.add(bytesToHex(span.traceId));
       }
     }
   }
@@ -255,7 +240,7 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
 
       const spans = store.decodeChunk(chunk);
       for (const span of spans) {
-        const traceHex = hexFromBytes(span.traceId);
+        const traceHex = bytesToHex(span.traceId);
         if (!matchingTraceIds.has(traceHex)) continue;
 
         let group = allSpansByTrace.get(traceHex);
@@ -373,17 +358,17 @@ export function buildSpanTree(spans: readonly SpanRecord[]): SpanNode[] {
 
   // Create nodes
   for (const span of spans) {
-    const id = hexFromBytes(span.spanId);
+    const id = bytesToHex(span.spanId);
     nodes.set(id, { span, children: [], selfTimeNanos: 0n, depth: 0 });
   }
 
   // Link parent → child
   for (const span of spans) {
-    const id = hexFromBytes(span.spanId);
+    const id = bytesToHex(span.spanId);
     const node = nodes.get(id);
     if (!node) continue;
     if (span.parentSpanId !== undefined) {
-      const parentId = hexFromBytes(span.parentSpanId);
+      const parentId = bytesToHex(span.parentSpanId);
       const parentNode = nodes.get(parentId);
       if (parentNode) {
         parentNode.children.push(node);
@@ -735,7 +720,7 @@ function matchesStructuralPredicate(
   if (leftSpans.length === 0 || rightSpans.length === 0) return false;
 
   const spanByHex = new Map<string, SpanRecord>();
-  for (const s of spans) spanByHex.set(hexFromBytes(s.spanId), s);
+  for (const s of spans) spanByHex.set(bytesToHex(s.spanId), s);
 
   for (const a of leftSpans) {
     for (const b of rightSpans) {
@@ -804,7 +789,7 @@ function isDescendantByParent(
   const visited = new Set<string>();
   let current: SpanRecord | undefined = descendant;
   while (current?.parentSpanId !== undefined) {
-    const parentHex = hexFromBytes(current.parentSpanId);
+    const parentHex = bytesToHex(current.parentSpanId);
     if (visited.has(parentHex)) return false;
     if (bytesEqual(current.parentSpanId, ancestor.spanId)) return true;
     visited.add(parentHex);

@@ -29,8 +29,9 @@
  *   - Same `ChunkPolicy` plug-in surface as the existing policies.
  */
 
-import { bytesToHex, hexToBytes } from "stardb";
+import { ByteBuf, ByteReader, bytesToHex, hexToBytes } from "stardb";
 import type { ChunkPolicy } from "./chunk.js";
+import { anyValueToJson, extractVarsAgainstTemplate, jsonToAnyValue } from "./codec-utils.js";
 import { Drain, PARAM_STR, tokenize } from "./drain.js";
 import type { AnyValue, KeyValue, LogRecord, SeverityText } from "./types.js";
 
@@ -193,140 +194,6 @@ interface TypedColumnarChunkMeta {
    * Only non-PARAM_STR tokens are included.
    */
   toks?: string[];
-}
-
-// ── ByteBuf / ByteCursor ─────────────────────────────────────────────
-//
-// Growable single-buffer writer. The previous implementation pushed a
-// fresh Uint8Array per call (pushByte → 1-byte alloc, pushVarint →
-// up-to-5-byte alloc) into a chunks list, then concat'd them in
-// finish(). On OpenStack-2k that pattern showed up as ~5% of total CPU
-// (pushVarint 1.1%, finish 0.7%) plus GC pressure from tens of
-// thousands of micro-allocs.
-//
-// This version writes into a single Uint8Array, growing 2× when full.
-// Each push is one bounds check + one or a few byte writes. finish()
-// is a single subarray.
-class ByteBuf {
-  private buf: Uint8Array;
-  private view: DataView;
-  private len: number = 0;
-
-  constructor(initialCapacity: number = 1024) {
-    this.buf = new Uint8Array(initialCapacity);
-    this.view = new DataView(this.buf.buffer);
-  }
-
-  private ensureCapacity(extra: number): void {
-    const required = this.len + extra;
-    if (required <= this.buf.length) return;
-    let newCap = this.buf.length * 2;
-    while (newCap < required) newCap *= 2;
-    const next = new Uint8Array(newCap);
-    next.set(this.buf.subarray(0, this.len));
-    this.buf = next;
-    this.view = new DataView(this.buf.buffer);
-  }
-
-  pushByte(b: number): void {
-    if (this.len >= this.buf.length) this.ensureCapacity(1);
-    this.buf[this.len++] = b & 0xff;
-  }
-  pushBytes(b: Uint8Array): void {
-    this.ensureCapacity(b.length);
-    this.buf.set(b, this.len);
-    this.len += b.length;
-  }
-  pushU64LE(n: bigint): void {
-    this.ensureCapacity(8);
-    this.view.setBigUint64(this.len, n, true);
-    this.len += 8;
-  }
-  pushI64LE(n: bigint): void {
-    this.ensureCapacity(8);
-    this.view.setBigInt64(this.len, n, true);
-    this.len += 8;
-  }
-  pushVarint(n: number): void {
-    // Worst case 5 bytes for u32; ensure once.
-    this.ensureCapacity(5);
-    while (n >= 0x80) {
-      this.buf[this.len++] = (n & 0x7f) | 0x80;
-      n >>>= 7;
-    }
-    this.buf[this.len++] = n & 0x7f;
-  }
-  pushZZVarintBig(v: bigint): void {
-    // ZigZag-encode then varint. Worst case 10 bytes for a u64.
-    this.ensureCapacity(10);
-    let zz = (v << 1n) ^ (v >> 63n);
-    while (zz >= 0x80n) {
-      this.buf[this.len++] = Number(zz & 0x7fn) | 0x80;
-      zz >>= 7n;
-    }
-    this.buf[this.len++] = Number(zz);
-  }
-  finish(): Uint8Array {
-    return this.buf.subarray(0, this.len);
-  }
-}
-
-class ByteCursor {
-  private cur: number = 0;
-  constructor(private readonly buf: Uint8Array) {}
-  remaining(): number {
-    return this.buf.length - this.cur;
-  }
-  readByte(): number {
-    if (this.cur >= this.buf.length) throw new Error("typed: read past end");
-    return this.buf[this.cur++] as number;
-  }
-  readBytes(len: number): Uint8Array {
-    const end = this.cur + len;
-    if (end > this.buf.length) throw new Error("typed: read past end");
-    const out = this.buf.subarray(this.cur, end);
-    this.cur = end;
-    return out;
-  }
-  readU64LE(): bigint {
-    if (this.cur + 8 > this.buf.length) throw new Error("typed: read past end");
-    const v = new DataView(this.buf.buffer, this.buf.byteOffset + this.cur, 8).getBigUint64(
-      0,
-      true
-    );
-    this.cur += 8;
-    return v;
-  }
-  readI64LE(): bigint {
-    if (this.cur + 8 > this.buf.length) throw new Error("typed: read past end");
-    const v = new DataView(this.buf.buffer, this.buf.byteOffset + this.cur, 8).getBigInt64(0, true);
-    this.cur += 8;
-    return v;
-  }
-  readVarint(): number {
-    let v = 0;
-    let shift = 0;
-    while (true) {
-      const b = this.readByte();
-      v |= (b & 0x7f) << shift;
-      if (!(b & 0x80)) return v;
-      shift += 7;
-      if (shift > 28) throw new Error("typed: varint overflow");
-    }
-  }
-  readZZVarintBig(): bigint {
-    let v = 0n;
-    let shift = 0n;
-    while (true) {
-      const b = BigInt(this.readByte());
-      v |= (b & 0x7fn) << shift;
-      if ((b & 0x80n) === 0n) {
-        return (v >> 1n) ^ -(v & 1n);
-      }
-      shift += 7n;
-      if (shift > 70n) throw new Error("typed: zigzag varint overflow");
-    }
-  }
 }
 
 // ── Slot-type detection ──────────────────────────────────────────────
@@ -527,46 +394,6 @@ function bytesToUuid(b: Uint8Array): string {
   );
 }
 
-// ── Sidecar helpers (small JSON for non-modeled fields) ──────────────
-
-function anyValueToJson(v: AnyValue): unknown {
-  if (v === null) return null;
-  if (typeof v === "bigint") return { $bi: v.toString() };
-  if (v instanceof Uint8Array) return { $b: bytesToHex(v) };
-  if (Array.isArray(v)) return v.map(anyValueToJson);
-  if (typeof v === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v)) out[k] = anyValueToJson(val);
-    return out;
-  }
-  return v;
-}
-
-function jsonToAnyValue(j: unknown): AnyValue {
-  if (j === null) return null;
-  if (typeof j === "object" && j !== null) {
-    const obj = j as Record<string, unknown>;
-    if (typeof obj.$bi === "string") return BigInt(obj.$bi);
-    if (typeof obj.$b === "string") return hexToBytes(obj.$b);
-    if (Array.isArray(j)) return j.map(jsonToAnyValue);
-    const out: Record<string, AnyValue> = {};
-    for (const [k, v] of Object.entries(obj)) out[k] = jsonToAnyValue(v);
-    return out;
-  }
-  return j as AnyValue;
-}
-
-function extractVarsAgainstTemplate(
-  template: readonly string[],
-  tokens: readonly string[]
-): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < template.length; i++) {
-    if (template[i] === PARAM_STR) out.push(tokens[i] ?? "");
-  }
-  return out;
-}
-
 // ── Encode ───────────────────────────────────────────────────────────
 
 function encode(
@@ -578,20 +405,20 @@ function encode(
 } {
   const n = records.length;
   const buf = new ByteBuf();
-  buf.pushVarint(n);
+  buf.writeUvarint(n);
 
   // Timestamps: delta-of-prior + ZigZag + varint (same as columnar).
   let prevTs = 0n;
   for (let i = 0; i < n; i++) {
     const ts = (records[i] as LogRecord).timeUnixNano;
-    buf.pushZZVarintBig(ts - prevTs);
+    buf.writeZigzagVarint(ts - prevTs);
     prevTs = ts;
   }
 
   // Severity numbers: u8 × n.
   for (let i = 0; i < n; i++) {
     const s = (records[i] as LogRecord).severityNumber;
-    buf.pushByte(s & 0xff);
+    buf.writeU8(s & 0xff);
   }
 
   // Pass 1: ingest every string body so Drain templates stabilize.
@@ -635,16 +462,16 @@ function encode(
       kinds[i] = KIND_RAW_STRING;
     }
   }
-  buf.pushBytes(kinds);
+  buf.writeBytes(kinds);
 
   // Embed template dictionary inside the payload.
   const enc = new TextEncoder();
-  buf.pushVarint(templatesInPayload.length);
+  buf.writeUvarint(templatesInPayload.length);
   for (const t of templatesInPayload) {
-    buf.pushVarint(t.id);
+    buf.writeUvarint(t.id);
     const tb = enc.encode(t.template);
-    buf.pushVarint(tb.length);
-    buf.pushBytes(tb);
+    buf.writeUvarint(tb.length);
+    buf.writeBytes(tb);
   }
   // Slot-type entries are emitted into the payload (post template
   // dict, pre raw-string bodies) so the chunk header stays tiny.
@@ -659,8 +486,8 @@ function encode(
     if (kinds[i] !== KIND_RAW_STRING) continue;
     const r = records[i] as LogRecord;
     const bytes = enc.encode(r.body as string);
-    buf.pushVarint(bytes.length);
-    buf.pushBytes(bytes);
+    buf.writeUvarint(bytes.length);
+    buf.writeBytes(bytes);
   }
 
   // ── Templated bodies — pass 2: gather (template_id, vars[]) per record ──
@@ -715,26 +542,26 @@ function encode(
   //   SLOT_TIMESTAMP_DELTA:
   //     varint timestamp_shape_id
   //   (other types carry no payload)
-  buf.pushVarint(slotTypeMap.size);
+  buf.writeUvarint(slotTypeMap.size);
   for (const [key, slot] of slotTypeMap) {
     const [tplStr, slotStr] = key.split("/");
-    buf.pushVarint(Number(tplStr));
-    buf.pushVarint(Number(slotStr));
-    buf.pushByte(slot.type);
+    buf.writeUvarint(Number(tplStr));
+    buf.writeUvarint(Number(slotStr));
+    buf.writeU8(slot.type);
     if (slot.type === SLOT_PREFIXED_INT64 || slot.type === SLOT_PREFIXED_UUID) {
       const pb = enc.encode(slot.prefix as string);
-      buf.pushVarint(pb.length);
-      buf.pushBytes(pb);
+      buf.writeUvarint(pb.length);
+      buf.writeBytes(pb);
     } else if (slot.type === SLOT_TIMESTAMP_DELTA) {
-      buf.pushVarint(slot.timestampShapeId as number);
+      buf.writeUvarint(slot.timestampShapeId as number);
     }
   }
 
   // ── Emit templated columns ──
   // template_ids column
-  for (const row of templatedRows) buf.pushVarint(row.templateId);
+  for (const row of templatedRows) buf.writeUvarint(row.templateId);
   // var-count column
-  for (const row of templatedRows) buf.pushVarint(row.vars.length);
+  for (const row of templatedRows) buf.writeUvarint(row.vars.length);
 
   // var-bytes section, emitted homogeneously by slot type to give
   // ZSTD long contiguous runs of one byte-shape. Six back-to-back
@@ -753,15 +580,15 @@ function encode(
       if (typeOf(row.templateId, s) !== SLOT_STRING) continue;
       const v = row.vars[s] as string;
       const bytes = enc.encode(v);
-      buf.pushVarint(bytes.length);
-      buf.pushBytes(bytes);
+      buf.writeUvarint(bytes.length);
+      buf.writeBytes(bytes);
     }
   }
   // Pass 2: SLOT_SIGNED_INT
   for (const row of templatedRows) {
     for (let s = 0; s < row.vars.length; s++) {
       if (typeOf(row.templateId, s) !== SLOT_SIGNED_INT) continue;
-      buf.pushZZVarintBig(BigInt(row.vars[s] as string));
+      buf.writeZigzagVarint(BigInt(row.vars[s] as string));
     }
   }
   // Pass 3: SLOT_PREFIXED_INT64 (residual after stripping the per-slot prefix)
@@ -771,21 +598,21 @@ function encode(
       if (slot?.type !== SLOT_PREFIXED_INT64) continue;
       const v = row.vars[s] as string;
       const residual = v.substring((slot.prefix as string).length);
-      buf.pushI64LE(BigInt(residual));
+      buf.writeU64(BigInt.asUintN(64, BigInt(residual)));
     }
   }
   // Pass 4: SLOT_UUID
   for (const row of templatedRows) {
     for (let s = 0; s < row.vars.length; s++) {
       if (typeOf(row.templateId, s) !== SLOT_UUID) continue;
-      buf.pushBytes(uuidToBytes(row.vars[s] as string));
+      buf.writeBytes(uuidToBytes(row.vars[s] as string));
     }
   }
   // Pass 5: SLOT_UUID_NODASH
   for (const row of templatedRows) {
     for (let s = 0; s < row.vars.length; s++) {
       if (typeOf(row.templateId, s) !== SLOT_UUID_NODASH) continue;
-      buf.pushBytes(uuidNodashToBytes(row.vars[s] as string));
+      buf.writeBytes(uuidNodashToBytes(row.vars[s] as string));
     }
   }
   // Pass 6: SLOT_PREFIXED_UUID
@@ -795,7 +622,7 @@ function encode(
       if (slot?.type !== SLOT_PREFIXED_UUID) continue;
       const v = row.vars[s] as string;
       const residual = v.substring((slot.prefix as string).length);
-      buf.pushBytes(uuidToBytes(residual));
+      buf.writeBytes(uuidToBytes(residual));
     }
   }
   // Pass 7: SLOT_TIMESTAMP_DELTA. Per-(template, slot) delta chain.
@@ -809,7 +636,7 @@ function encode(
       const cur = shape.parse(v);
       const key = `${row.templateId}/${s}`;
       const prev = tsPrev.get(key) ?? 0n;
-      buf.pushZZVarintBig(cur - prev);
+      buf.writeZigzagVarint(cur - prev);
       tsPrev.set(key, cur);
     }
   }
@@ -862,11 +689,11 @@ function encode(
     sidecarLines.push(JSON.stringify(side));
   }
   if (!sidecarHasContent) {
-    buf.pushVarint(0);
+    buf.writeUvarint(0);
   } else {
     const sidecar = enc.encode(`${sidecarLines.join("\n")}\n`);
-    buf.pushVarint(sidecar.length);
-    buf.pushBytes(sidecar);
+    buf.writeUvarint(sidecar.length);
+    buf.writeBytes(sidecar);
   }
 
   const meta: TypedColumnarChunkMeta = { v: 3, drain: true };
@@ -885,8 +712,8 @@ function encode(
 // ── Decode ───────────────────────────────────────────────────────────
 
 function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMeta): LogRecord[] {
-  const cur = new ByteCursor(buf);
-  const n = cur.readVarint();
+  const cur = new ByteReader(buf);
+  const n = cur.readUvarint();
   if (n !== expectedN) {
     throw new Error(`typed: count mismatch payload=${n} header=${expectedN}`);
   }
@@ -894,22 +721,22 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
   const timestamps = new BigInt64Array(n);
   let prevTs = 0n;
   for (let i = 0; i < n; i++) {
-    const dt = cur.readZZVarintBig();
+    const dt = cur.readZigzagVarint();
     prevTs = prevTs + dt;
     timestamps[i] = prevTs;
   }
   // severities
   const severities = new Uint8Array(n);
-  for (let i = 0; i < n; i++) severities[i] = cur.readByte();
+  for (let i = 0; i < n; i++) severities[i] = cur.readU8();
   // kinds
   const kinds = new Uint8Array(cur.readBytes(n));
   // template dictionary
-  const nTemplates = cur.readVarint();
+  const nTemplates = cur.readUvarint();
   const templateById = new Map<number, string[]>();
   const dec = new TextDecoder();
   for (let t = 0; t < nTemplates; t++) {
-    const id = cur.readVarint();
-    const len = cur.readVarint();
+    const id = cur.readUvarint();
+    const len = cur.readUvarint();
     const tplStr = dec.decode(cur.readBytes(len));
     templateById.set(
       id,
@@ -933,17 +760,17 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
     timestampShapeId?: number;
   }
   const slotTypeMap = new Map<string, DecodedSlot>();
-  const nSlotTypes = cur.readVarint();
+  const nSlotTypes = cur.readUvarint();
   for (let i = 0; i < nSlotTypes; i++) {
-    const tplId = cur.readVarint();
-    const slotIdx = cur.readVarint();
-    const type = cur.readByte();
+    const tplId = cur.readUvarint();
+    const slotIdx = cur.readUvarint();
+    const type = cur.readU8();
     const entry: DecodedSlot = { type };
     if (type === SLOT_PREFIXED_INT64 || type === SLOT_PREFIXED_UUID) {
-      const plen = cur.readVarint();
+      const plen = cur.readUvarint();
       entry.prefix = dec.decode(cur.readBytes(plen));
     } else if (type === SLOT_TIMESTAMP_DELTA) {
-      entry.timestampShapeId = cur.readVarint();
+      entry.timestampShapeId = cur.readUvarint();
     }
     slotTypeMap.set(`${tplId}/${slotIdx}`, entry);
   }
@@ -978,16 +805,16 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
   const rawStringByRecord = new Map<number, string>();
   for (let i = 0; i < n; i++) {
     if (kinds[i] !== KIND_RAW_STRING) continue;
-    const len = cur.readVarint();
+    const len = cur.readUvarint();
     rawStringByRecord.set(i, dec.decode(cur.readBytes(len)));
   }
   // templated columns
   const templatedIndices: number[] = [];
   for (let i = 0; i < n; i++) if (kinds[i] === KIND_TEMPLATED) templatedIndices.push(i);
   const tplIds: number[] = new Array(templatedIndices.length);
-  for (let i = 0; i < templatedIndices.length; i++) tplIds[i] = cur.readVarint();
+  for (let i = 0; i < templatedIndices.length; i++) tplIds[i] = cur.readUvarint();
   const varCounts: number[] = new Array(templatedIndices.length);
-  for (let i = 0; i < templatedIndices.length; i++) varCounts[i] = cur.readVarint();
+  for (let i = 0; i < templatedIndices.length; i++) varCounts[i] = cur.readUvarint();
   // Homogeneous var-bytes section: same 7-pass order encode used.
   const allVars: string[][] = templatedIndices.map(
     (_, i) => new Array<string>(varCounts[i] as number)
@@ -1001,7 +828,7 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
     const vars = allVars[i] as string[];
     for (let s = 0; s < nVars; s++) {
       if (types[s] !== SLOT_STRING) continue;
-      const len = cur.readVarint();
+      const len = cur.readUvarint();
       vars[s] = dec.decode(cur.readBytes(len));
     }
   }
@@ -1014,7 +841,7 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
     const vars = allVars[i] as string[];
     for (let s = 0; s < nVars; s++) {
       if (types[s] !== SLOT_SIGNED_INT) continue;
-      vars[s] = cur.readZZVarintBig().toString();
+      vars[s] = cur.readZigzagVarint().toString();
     }
   }
   // Pass 3: SLOT_PREFIXED_INT64 (residual i64; prepend the slot prefix)
@@ -1027,7 +854,7 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
     const vars = allVars[i] as string[];
     for (let s = 0; s < nVars; s++) {
       if (types[s] !== SLOT_PREFIXED_INT64) continue;
-      const big = cur.readI64LE();
+      const big = BigInt.asIntN(64, cur.readU64());
       vars[s] = `${prefixes?.[s] ?? ""}${big.toString()}`;
     }
   }
@@ -1083,7 +910,7 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
     const vars = allVars[i] as string[];
     for (let s = 0; s < nVars; s++) {
       if (types[s] !== SLOT_TIMESTAMP_DELTA) continue;
-      const dt = cur.readZZVarintBig();
+      const dt = cur.readZigzagVarint();
       const key = (tplId << 16) | s;
       const prev = tsPrev.get(key) ?? 0n;
       const cur2 = prev + dt;
@@ -1101,7 +928,7 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
     templatedBodies[i] = reconstruct(template, allVars[i] as string[]);
   }
   // sidecar
-  const sidecarLen = cur.readVarint();
+  const sidecarLen = cur.readUvarint();
   const sidecarMap = new Map<number, Record<string, unknown>>();
   if (sidecarLen > 0) {
     const sidecarText = dec.decode(cur.readBytes(sidecarLen));
@@ -1161,24 +988,24 @@ function decode(buf: Uint8Array, expectedN: number, _meta: TypedColumnarChunkMet
  * raw-string bodies (the 95%+ case), zero JSON parsing occurs.
  */
 function decodeBodies(buf: Uint8Array, expectedN: number): AnyValue[] {
-  const cur = new ByteCursor(buf);
-  const n = cur.readVarint();
+  const cur = new ByteReader(buf);
+  const n = cur.readUvarint();
   if (n !== expectedN) {
     throw new Error(`typed: count mismatch payload=${n} header=${expectedN}`);
   }
   // Skip timestamps (delta-encoded varints)
-  for (let i = 0; i < n; i++) cur.readZZVarintBig();
+  for (let i = 0; i < n; i++) cur.readZigzagVarint();
   // Skip severities
   cur.readBytes(n);
   // kinds
   const kinds = new Uint8Array(cur.readBytes(n));
   // template dictionary
-  const nTemplates = cur.readVarint();
+  const nTemplates = cur.readUvarint();
   const templateById = new Map<number, string[]>();
   const dec = new TextDecoder();
   for (let t = 0; t < nTemplates; t++) {
-    const id = cur.readVarint();
-    const len = cur.readVarint();
+    const id = cur.readUvarint();
+    const len = cur.readUvarint();
     const tplStr = dec.decode(cur.readBytes(len));
     templateById.set(
       id,
@@ -1189,21 +1016,21 @@ function decodeBodies(buf: Uint8Array, expectedN: number): AnyValue[] {
   const slotTypeArrays = new Map<number, Int8Array>();
   const slotPrefixArrays = new Map<number, (string | undefined)[]>();
   const slotTsShapeArrays = new Map<number, (number | undefined)[]>();
-  const nSlotTypes = cur.readVarint();
+  const nSlotTypes = cur.readUvarint();
   const slotTypeMap = new Map<
     string,
     { type: number; prefix?: string; timestampShapeId?: number }
   >();
   for (let i = 0; i < nSlotTypes; i++) {
-    const tplId = cur.readVarint();
-    const slotIdx = cur.readVarint();
-    const type = cur.readByte();
+    const tplId = cur.readUvarint();
+    const slotIdx = cur.readUvarint();
+    const type = cur.readU8();
     const entry: { type: number; prefix?: string; timestampShapeId?: number } = { type };
     if (type === SLOT_PREFIXED_INT64 || type === SLOT_PREFIXED_UUID) {
-      const plen = cur.readVarint();
+      const plen = cur.readUvarint();
       entry.prefix = dec.decode(cur.readBytes(plen));
     } else if (type === SLOT_TIMESTAMP_DELTA) {
-      entry.timestampShapeId = cur.readVarint();
+      entry.timestampShapeId = cur.readUvarint();
     }
     slotTypeMap.set(`${tplId}/${slotIdx}`, entry);
   }
@@ -1230,16 +1057,16 @@ function decodeBodies(buf: Uint8Array, expectedN: number): AnyValue[] {
   const rawStringByRecord = new Map<number, string>();
   for (let i = 0; i < n; i++) {
     if (kinds[i] !== KIND_RAW_STRING) continue;
-    const len = cur.readVarint();
+    const len = cur.readUvarint();
     rawStringByRecord.set(i, dec.decode(cur.readBytes(len)));
   }
   // templated columns
   const templatedIndices: number[] = [];
   for (let i = 0; i < n; i++) if (kinds[i] === KIND_TEMPLATED) templatedIndices.push(i);
   const tplIds: number[] = new Array(templatedIndices.length);
-  for (let i = 0; i < templatedIndices.length; i++) tplIds[i] = cur.readVarint();
+  for (let i = 0; i < templatedIndices.length; i++) tplIds[i] = cur.readUvarint();
   const varCounts: number[] = new Array(templatedIndices.length);
-  for (let i = 0; i < templatedIndices.length; i++) varCounts[i] = cur.readVarint();
+  for (let i = 0; i < templatedIndices.length; i++) varCounts[i] = cur.readUvarint();
   const allVars: string[][] = templatedIndices.map(
     (_, i) => new Array<string>(varCounts[i] as number)
   );
@@ -1253,7 +1080,7 @@ function decodeBodies(buf: Uint8Array, expectedN: number): AnyValue[] {
     const vars = allVars[i] as string[];
     for (let s = 0; s < nVars; s++) {
       if (types[s] !== SLOT_STRING) continue;
-      const len = cur.readVarint();
+      const len = cur.readUvarint();
       vars[s] = dec.decode(cur.readBytes(len));
     }
   }
@@ -1266,7 +1093,7 @@ function decodeBodies(buf: Uint8Array, expectedN: number): AnyValue[] {
     const vars = allVars[i] as string[];
     for (let s = 0; s < nVars; s++) {
       if (types[s] !== SLOT_SIGNED_INT) continue;
-      vars[s] = cur.readZZVarintBig().toString();
+      vars[s] = cur.readZigzagVarint().toString();
     }
   }
   // Pass 3: SLOT_PREFIXED_INT64
@@ -1279,7 +1106,7 @@ function decodeBodies(buf: Uint8Array, expectedN: number): AnyValue[] {
     const vars = allVars[i] as string[];
     for (let s = 0; s < nVars; s++) {
       if (types[s] !== SLOT_PREFIXED_INT64) continue;
-      const big = cur.readI64LE();
+      const big = BigInt.asIntN(64, cur.readU64());
       vars[s] = `${prefixes?.[s] ?? ""}${big.toString()}`;
     }
   }
@@ -1331,7 +1158,7 @@ function decodeBodies(buf: Uint8Array, expectedN: number): AnyValue[] {
     const vars = allVars[i] as string[];
     for (let s = 0; s < nVars; s++) {
       if (types[s] !== SLOT_TIMESTAMP_DELTA) continue;
-      const dt = cur.readZZVarintBig();
+      const dt = cur.readZigzagVarint();
       const key = (tplId << 16) | s;
       const prev = tsPrev.get(key) ?? 0n;
       const cur2 = prev + dt;
@@ -1353,7 +1180,7 @@ function decodeBodies(buf: Uint8Array, expectedN: number): AnyValue[] {
   const hasOther = kinds.some((k) => k === KIND_OTHER);
   let otherBodies: Map<number, AnyValue> | undefined;
   if (hasOther) {
-    const sidecarLen = cur.readVarint();
+    const sidecarLen = cur.readUvarint();
     if (sidecarLen > 0) {
       const sidecarText = dec.decode(cur.readBytes(sidecarLen));
       const lines = sidecarText.split("\n").filter((l) => l.length > 0);
