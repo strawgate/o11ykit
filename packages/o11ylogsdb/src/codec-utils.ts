@@ -43,7 +43,7 @@ const enc = new TextEncoder();
  */
 export function encodeSidecar(
   records: readonly LogRecord[],
-  kinds: readonly number[],
+  kinds: ArrayLike<number>,
   buf: ByteBuf
 ): void {
   const n = records.length;
