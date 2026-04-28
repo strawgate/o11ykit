@@ -2,9 +2,10 @@ SHELL := /bin/bash
 NPM ?= npm
 BASE_PATH ?= /o11ykit/otlpkit/
 
-.PHONY: install lint format typecheck site-typecheck test test-e2e build check check-release check-all clean clean-all
+.PHONY: install lint format typecheck site-typecheck test test-fast test-e2e build check check-release check-all clean clean-all
 .PHONY: dev-demo dev-chartjs dev-echarts dev-recharts dev-uplot pages-build
 .PHONY: octo11y-install octo11y-lint octo11y-test octo11y-build octo11y-check
+.PHONY: knip
 
 install:
 	$(NPM) ci
@@ -24,11 +25,19 @@ site-typecheck:
 test:
 	$(NPM) run test
 
+# Fast unit tests (no coverage, no E2E)
+test-fast:
+	npx vitest run --no-coverage
+
 test-e2e:
 	$(NPM) run test:e2e
 
 build:
 	$(NPM) run build
+
+# Dead code / unused export analysis
+knip:
+	npx knip
 
 check:
 	$(NPM) run check

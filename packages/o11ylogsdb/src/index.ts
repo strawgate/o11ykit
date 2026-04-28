@@ -24,6 +24,7 @@ export {
   deserializeChunk,
   readBodiesOnly,
   readRecords,
+  readRecordsFromRaw,
   serializeChunk,
 } from "./chunk.js";
 export type { BodyClassifier, TemplateExtractor } from "./classify.js";

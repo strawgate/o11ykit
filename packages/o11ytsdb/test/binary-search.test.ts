@@ -1,5 +1,6 @@
+import { lowerBound, upperBound } from "stardb";
 import { describe, expect, it } from "vitest";
-import { concatRanges, lowerBound, upperBound } from "../src/binary-search.js";
+import { concatRanges } from "../src/binary-search.js";
 import type { TimeRange } from "../src/types.js";
 
 describe("binary-search", () => {

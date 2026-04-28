@@ -8,9 +8,16 @@
  * to the traces engine.
  */
 
-import type { AnyValue, InstrumentationScope, KeyValue, Resource, StreamId } from "stardb";
+import type {
+  AnyValue,
+  InstrumentationScope,
+  KeyValue,
+  Resource,
+  StreamId,
+  StreamKey,
+} from "stardb";
 
-export type { AnyValue, InstrumentationScope, KeyValue, Resource, StreamId };
+export type { AnyValue, InstrumentationScope, KeyValue, Resource, StreamId, StreamKey };
 
 // ─── Span Kind (OTLP SpanKind enum) ─────────────────────────────────
 
@@ -117,14 +124,6 @@ export interface SpanRecord {
   nestedSetRight?: number;
   /** Numeric parent ID (nestedSetLeft of parent span, 0 for roots). */
   nestedSetParent?: number;
-}
-
-// ─── Stream Key ──────────────────────────────────────────────────────
-
-/** A grouping of (resource, scope) under which spans share metadata. */
-export interface StreamKey {
-  resource: Resource;
-  scope: InstrumentationScope;
 }
 
 // ─── Query-related types ─────────────────────────────────────────────

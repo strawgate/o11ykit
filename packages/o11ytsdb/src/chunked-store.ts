@@ -10,7 +10,8 @@
  * with. Smaller chunks = less decode work per query but more overhead.
  */
 
-import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
+import { lowerBound, upperBound } from "stardb";
+import { concatRanges } from "./binary-search.js";
 import { LabelIndex } from "./label-index.js";
 import type { Codec, Labels, SeriesAppend, SeriesId, StorageBackend, TimeRange } from "./types.js";
 

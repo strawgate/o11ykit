@@ -56,7 +56,6 @@ export class BackpressureController {
   dispose(): void {
     this.disposed = true;
     for (const waiter of this.waiters) {
-      // Call waiter so the promise settles; it will reject due to disposed flag
       waiter();
     }
     this.waiters.length = 0;

@@ -1,37 +1,39 @@
 /**
- * BF8 — a compact bloom filter optimized for trace ID lookups.
+ * BF8 — a compact bloom filter optimized for byte-array key lookups.
  * Uses 7 hash functions derived from two base hashes (double hashing).
  * Target: ~10 bits/element → ~0.1% false positive rate.
  */
 
+import { bytesToHex, fnv1aBytes } from "./utils.js";
+
 /**
- * Create a bloom filter for the given set of trace IDs.
- * Returns a Uint8Array bitmap that can be stored in the chunk header.
+ * Create a bloom filter for the given set of byte-array keys.
+ * Returns a Uint8Array bitmap that can be stored in a chunk header.
  *
- * @param traceIds — array of 16-byte trace IDs
+ * @param keys — array of Uint8Array keys (e.g. 16-byte trace IDs)
  * @param bitsPerElement — bits per element (default 10 for ~0.1% FPR)
  */
-export function createBloomFilter(traceIds: Uint8Array[], bitsPerElement = 10): Uint8Array {
+export function createBloomFilter(keys: Uint8Array[], bitsPerElement = 10): Uint8Array {
   const MAX_BITS_PER_ELEMENT = 32;
   if (!Number.isFinite(bitsPerElement) || bitsPerElement <= 0) {
     throw new RangeError(
-      `o11ytracesdb: bitsPerElement must be a positive finite number, got ${bitsPerElement}`
+      `stardb: bitsPerElement must be a positive finite number, got ${bitsPerElement}`
     );
   }
   const safeBpe = Math.min(bitsPerElement, MAX_BITS_PER_ELEMENT);
 
-  // Deduplicate trace IDs
+  // Deduplicate keys
   const unique = new Set<string>();
-  const uniqueIds: Uint8Array[] = [];
-  for (const id of traceIds) {
-    const hex = bufToHex(id);
+  const uniqueKeys: Uint8Array[] = [];
+  for (const key of keys) {
+    const hex = bytesToHex(key);
     if (!unique.has(hex)) {
       unique.add(hex);
-      uniqueIds.push(id);
+      uniqueKeys.push(key);
     }
   }
 
-  const nElements = uniqueIds.length;
+  const nElements = uniqueKeys.length;
   if (nElements === 0) return new Uint8Array(0);
 
   const nBits = Math.max(8, nElements * safeBpe);
@@ -40,8 +42,8 @@ export function createBloomFilter(traceIds: Uint8Array[], bitsPerElement = 10): 
   const filter = new Uint8Array(nBytes);
   const k = 7; // number of hash functions
 
-  for (const id of uniqueIds) {
-    const [h1, h2] = dualHash(id);
+  for (const key of uniqueKeys) {
+    const [h1, h2] = dualHash(key);
     for (let i = 0; i < k; i++) {
       const bit = ((h1 + i * h2) >>> 0) % effectiveBits;
       const byteIdx = bit >>> 3;
@@ -53,15 +55,15 @@ export function createBloomFilter(traceIds: Uint8Array[], bitsPerElement = 10): 
 }
 
 /**
- * Test if a trace ID might be in the bloom filter.
+ * Test if a key might be in the bloom filter.
  * Returns false if definitely not present, true if possibly present.
  */
-export function bloomMayContain(filter: Uint8Array, traceId: Uint8Array): boolean {
+export function bloomMayContain(filter: Uint8Array, key: Uint8Array): boolean {
   if (filter.length === 0) return true; // empty filter = no filtering
   const nBits = filter.length * 8;
   const k = 7;
 
-  const [h1, h2] = dualHash(traceId);
+  const [h1, h2] = dualHash(key);
   for (let i = 0; i < k; i++) {
     const bit = ((h1 + i * h2) >>> 0) % nBits;
     const bitmapByte = filter[bit >>> 3];
@@ -70,9 +72,7 @@ export function bloomMayContain(filter: Uint8Array, traceId: Uint8Array): boolea
   return true;
 }
 
-/**
- * Serialize a bloom filter to a base64 string (for JSON chunk header).
- */
+/** Serialize a bloom filter to a base64 string (for JSON chunk headers). */
 export function bloomToBase64(filter: Uint8Array): string {
   let binary = "";
   for (let i = 0; i < filter.length; i++) {
@@ -81,9 +81,7 @@ export function bloomToBase64(filter: Uint8Array): string {
   return btoa(binary);
 }
 
-/**
- * Deserialize a bloom filter from base64 string.
- */
+/** Deserialize a bloom filter from base64 string. */
 export function bloomFromBase64(b64: string): Uint8Array {
   const binary = atob(b64);
   const filter = new Uint8Array(binary.length);
@@ -94,16 +92,6 @@ export function bloomFromBase64(b64: string): Uint8Array {
 }
 
 // ─── Internal hash functions ────────────────────────────────────────
-
-/** FNV-1a 32-bit hash over a byte array. */
-function fnv1a32(data: Uint8Array): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < data.length; i++) {
-    hash ^= data[i] ?? 0;
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
 
 /** Murmur-inspired hash for the second hash function. */
 function murmur32(data: Uint8Array): number {
@@ -127,16 +115,6 @@ function murmur32(data: Uint8Array): number {
  * Double hashing: returns two independent 32-bit hash values
  * from which k hash functions can be derived as h1 + i*h2.
  */
-function dualHash(traceId: Uint8Array): [number, number] {
-  return [fnv1a32(traceId), murmur32(traceId)];
-}
-
-function bufToHex(buf: Uint8Array): string {
-  let hex = "";
-  for (let i = 0; i < buf.length; i++) {
-    const b = buf[i];
-    if (b === undefined) continue;
-    hex += ((b >> 4) & 0xf).toString(16) + (b & 0xf).toString(16);
-  }
-  return hex;
+function dualHash(key: Uint8Array): [number, number] {
+  return [fnv1aBytes(key), murmur32(key)];
 }

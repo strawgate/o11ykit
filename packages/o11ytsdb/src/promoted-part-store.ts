@@ -1,4 +1,5 @@
-import { concatRanges, lowerBound, upperBound } from "./binary-search.js";
+import { lowerBound, upperBound } from "stardb";
+import { concatRanges } from "./binary-search.js";
 import type {
   RowGroupStorePromotedChunk,
   RowGroupStorePromotedLaneWindow,

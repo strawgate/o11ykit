@@ -46,9 +46,17 @@
  * to single spaces; everything else is bit-exact).
  */
 
+import { ByteBuf, ByteReader } from "stardb";
 import type { ChunkPolicy } from "./chunk.js";
-import { Drain, PARAM_STR, tokenize } from "./drain.js";
-import type { AnyValue, KeyValue, LogRecord, SeverityText } from "./types.js";
+import {
+  applySidecar,
+  encodeSidecar,
+  extractVarsAgainstTemplate,
+  jsonToAnyValue,
+  type SidecarEntry,
+} from "./codec-utils.js";
+import { Drain, tokenize } from "./drain.js";
+import type { AnyValue, LogRecord } from "./types.js";
 
 // ── Body-kind tags ───────────────────────────────────────────────────
 
@@ -82,130 +90,6 @@ interface ColumnarChunkMeta {
   v: 1;
   /** Whether bodies were templated (Drain) or kept raw. */
   drain: boolean;
-}
-
-// ── Helpers: varint ──────────────────────────────────────────────────
-//
-// Growable single-buffer writer. See codec-typed.ts ByteBuf for the
-// rationale (CPU profile, 2026-04-26).
-class ByteBuf {
-  private buf: Uint8Array;
-  private view: DataView;
-  private len: number = 0;
-
-  constructor(initialCapacity: number = 1024) {
-    this.buf = new Uint8Array(initialCapacity);
-    this.view = new DataView(this.buf.buffer);
-  }
-
-  private ensureCapacity(extra: number): void {
-    const required = this.len + extra;
-    if (required <= this.buf.length) return;
-    let newCap = this.buf.length * 2;
-    while (newCap < required) newCap *= 2;
-    const next = new Uint8Array(newCap);
-    next.set(this.buf.subarray(0, this.len));
-    this.buf = next;
-    this.view = new DataView(this.buf.buffer);
-  }
-
-  pushByte(b: number): void {
-    if (this.len >= this.buf.length) this.ensureCapacity(1);
-    this.buf[this.len++] = b & 0xff;
-  }
-  pushBytes(b: Uint8Array): void {
-    this.ensureCapacity(b.length);
-    this.buf.set(b, this.len);
-    this.len += b.length;
-  }
-  pushU64LE(n: bigint): void {
-    this.ensureCapacity(8);
-    this.view.setBigUint64(this.len, n, true);
-    this.len += 8;
-  }
-  pushVarint(n: number): void {
-    if (!Number.isFinite(n) || n < 0) throw new Error("varint must be non-negative");
-    this.ensureCapacity(5);
-    let x = n >>> 0;
-    while (x >= 0x80) {
-      this.buf[this.len++] = (x & 0x7f) | 0x80;
-      x >>>= 7;
-    }
-    this.buf[this.len++] = x & 0x7f;
-  }
-  /** ZigZag-then-varint encode for signed BigInt (delta path). */
-  pushZigZagVarintBig(n: bigint): void {
-    this.ensureCapacity(10);
-    const zz = (n << 1n) ^ (n >> 63n);
-    let x = zz;
-    while (x >= 0x80n) {
-      this.buf[this.len++] = Number(x & 0x7fn) | 0x80;
-      x >>= 7n;
-    }
-    this.buf[this.len++] = Number(x & 0x7fn);
-  }
-  finish(): Uint8Array {
-    return this.buf.subarray(0, this.len);
-  }
-  get length(): number {
-    return this.len;
-  }
-}
-
-class ByteCursor {
-  private cursor = 0;
-  constructor(private readonly buf: Uint8Array) {}
-  get pos(): number {
-    return this.cursor;
-  }
-  remaining(): number {
-    return this.buf.length - this.cursor;
-  }
-  readByte(): number {
-    if (this.cursor >= this.buf.length) throw new Error("columnar: read past end");
-    return this.buf[this.cursor++] as number;
-  }
-  readBytes(n: number): Uint8Array {
-    const end = this.cursor + n;
-    if (end > this.buf.length) throw new Error("columnar: read past end");
-    const out = this.buf.subarray(this.cursor, end);
-    this.cursor = end;
-    return out;
-  }
-  readU64LE(): bigint {
-    const end = this.cursor + 8;
-    if (end > this.buf.length) throw new Error("columnar: read past end");
-    const view = new DataView(this.buf.buffer, this.buf.byteOffset + this.cursor, 8);
-    const v = view.getBigUint64(0, true);
-    this.cursor = end;
-    return v;
-  }
-  readVarint(): number {
-    let result = 0;
-    let shift = 0;
-    while (true) {
-      const b = this.readByte();
-      result |= (b & 0x7f) << shift;
-      if ((b & 0x80) === 0) break;
-      shift += 7;
-      if (shift > 28) throw new Error("columnar: varint overflow");
-    }
-    return result >>> 0;
-  }
-  readZigZagVarintBig(): bigint {
-    let result = 0n;
-    let shift = 0n;
-    while (true) {
-      const b = this.readByte();
-      result |= BigInt(b & 0x7f) << shift;
-      if ((b & 0x80) === 0) break;
-      shift += 7n;
-      if (shift > 70n) throw new Error("columnar: varint overflow");
-    }
-    // Reverse zigzag: (n >>> 1) ^ -(n & 1)
-    const lsb = result & 1n;
-    return (result >> 1n) ^ -lsb;
-  }
 }
 
 // ── Encode / decode ──────────────────────────────────────────────────
@@ -266,7 +150,7 @@ function encode(
 } {
   const n = records.length;
   const buf = new ByteBuf();
-  buf.pushVarint(n);
+  buf.writeUvarint(n);
 
   // timestamps as delta-of-prior + ZigZag + varint. Monotonic
   // timestamps reduce to 1-byte varints (delta < 128 ns scaled-down,
@@ -275,14 +159,14 @@ function encode(
   let prevTs = 0n;
   for (let i = 0; i < n; i++) {
     const ts = (records[i] as LogRecord).timeUnixNano;
-    buf.pushZigZagVarintBig(ts - prevTs);
+    buf.writeZigzagVarint(ts - prevTs);
     prevTs = ts;
   }
 
   // severity numbers
   for (let i = 0; i < n; i++) {
     const s = (records[i] as LogRecord).severityNumber;
-    buf.pushByte(s & 0xff);
+    buf.writeU8(s & 0xff);
   }
 
   // Classify each record's body.
@@ -337,16 +221,16 @@ function encode(
       kinds[i] = KIND_RAW_STRING;
     }
   }
-  buf.pushBytes(kinds);
+  buf.writeBytes(kinds);
 
   // Embed the per-chunk template dictionary inside the payload.
   const enc = new TextEncoder();
-  buf.pushVarint(templatesInPayload.length);
+  buf.writeUvarint(templatesInPayload.length);
   for (const t of templatesInPayload) {
-    buf.pushVarint(t.id);
+    buf.writeUvarint(t.id);
     const tb = enc.encode(t.template);
-    buf.pushVarint(tb.length);
-    buf.pushBytes(tb);
+    buf.writeUvarint(tb.length);
+    buf.writeBytes(tb);
   }
 
   // Raw-string bodies, in original record order.
@@ -354,8 +238,8 @@ function encode(
     if (kinds[i] !== KIND_RAW_STRING) continue;
     const r = records[i] as LogRecord;
     const bytes = enc.encode(r.body as string);
-    buf.pushVarint(bytes.length);
-    buf.pushBytes(bytes);
+    buf.writeUvarint(bytes.length);
+    buf.writeBytes(bytes);
   }
 
   // Templated bodies. We emit (template_id, vars) per record.
@@ -380,9 +264,9 @@ function encode(
       varsByRecord.push(vars);
     }
     // template_ids column
-    for (const id of tplIds) buf.pushVarint(id);
+    for (const id of tplIds) buf.writeUvarint(id);
     // var-count column
-    for (const v of varsByRecord) buf.pushVarint(v.length);
+    for (const v of varsByRecord) buf.writeUvarint(v.length);
     // var bytes column: per-var varint length + utf-8.
     // Laid out record-major: r0.var0, r0.var1, r1.var0, ... ZSTD can
     // still find cross-row repetition because identical tokens recur
@@ -390,65 +274,14 @@ function encode(
     for (const vs of varsByRecord) {
       for (const v of vs) {
         const bytes = enc.encode(v);
-        buf.pushVarint(bytes.length);
-        buf.pushBytes(bytes);
+        buf.writeUvarint(bytes.length);
+        buf.writeBytes(bytes);
       }
     }
   }
 
-  // Sidecar NDJSON for everything we don't model.
-  const sidecarLines: string[] = [];
-  let sidecarHasContent = false;
-  for (let i = 0; i < n; i++) {
-    const r = records[i] as LogRecord;
-    const side: Record<string, unknown> = {};
-    if (kinds[i] === KIND_OTHER) {
-      side.b = anyValueToJson(r.body);
-      sidecarHasContent = true;
-    }
-    if (r.severityText && r.severityText !== "INFO") {
-      side.st = r.severityText;
-      sidecarHasContent = true;
-    }
-    if (r.attributes && r.attributes.length > 0) {
-      side.a = r.attributes.map((kv) => ({ k: kv.key, v: anyValueToJson(kv.value) }));
-      sidecarHasContent = true;
-    }
-    if (r.observedTimeUnixNano !== undefined) {
-      side.o = r.observedTimeUnixNano.toString();
-      sidecarHasContent = true;
-    }
-    if (r.flags !== undefined) {
-      side.f = r.flags;
-      sidecarHasContent = true;
-    }
-    if (r.traceId) {
-      side.ti = bytesToHex(r.traceId);
-      sidecarHasContent = true;
-    }
-    if (r.spanId) {
-      side.si = bytesToHex(r.spanId);
-      sidecarHasContent = true;
-    }
-    if (r.eventName) {
-      side.e = r.eventName;
-      sidecarHasContent = true;
-    }
-    if (r.droppedAttributesCount) {
-      side.d = r.droppedAttributesCount;
-      sidecarHasContent = true;
-    }
-    sidecarLines.push(JSON.stringify(side));
-  }
-  // If absolutely nothing in the sidecar, emit a single zero-length
-  // marker (varint 0). Otherwise, emit the whole NDJSON stream.
-  if (!sidecarHasContent) {
-    buf.pushVarint(0);
-  } else {
-    const sidecar = enc.encode(`${sidecarLines.join("\n")}\n`);
-    buf.pushVarint(sidecar.length);
-    buf.pushBytes(sidecar);
-  }
+  // Sidecar NDJSON for everything we don't model in columnar columns.
+  encodeSidecar(records, kinds, buf);
 
   return {
     payload: buf.finish(),
@@ -457,8 +290,8 @@ function encode(
 }
 
 function decode(buf: Uint8Array, expectedN: number, meta: ColumnarChunkMeta): LogRecord[] {
-  const cur = new ByteCursor(buf);
-  const n = cur.readVarint();
+  const cur = new ByteReader(buf);
+  const n = cur.readUvarint();
   if (n !== expectedN) {
     throw new Error(`columnar: count mismatch payload=${n} header=${expectedN}`);
   }
@@ -466,7 +299,7 @@ function decode(buf: Uint8Array, expectedN: number, meta: ColumnarChunkMeta): Lo
   const timestamps = new BigInt64Array(n);
   let prevTs = 0n;
   for (let i = 0; i < n; i++) {
-    const delta = cur.readZigZagVarintBig();
+    const delta = cur.readZigzagVarint();
     prevTs = prevTs + delta;
     timestamps[i] = prevTs;
   }
@@ -478,10 +311,10 @@ function decode(buf: Uint8Array, expectedN: number, meta: ColumnarChunkMeta): Lo
   // template dictionary (embedded in the payload now).
   const dec = new TextDecoder();
   const tplDict = new Map<number, string[]>();
-  const nTemplates = cur.readVarint();
+  const nTemplates = cur.readUvarint();
   for (let k = 0; k < nTemplates; k++) {
-    const id = cur.readVarint();
-    const len = cur.readVarint();
+    const id = cur.readUvarint();
+    const len = cur.readUvarint();
     const template = dec.decode(cur.readBytes(len));
     tplDict.set(
       id,
@@ -493,7 +326,7 @@ function decode(buf: Uint8Array, expectedN: number, meta: ColumnarChunkMeta): Lo
   const rawBodyByRecord = new Map<number, string>();
   for (let i = 0; i < n; i++) {
     if ((kinds[i] as number) !== KIND_RAW_STRING) continue;
-    const len = cur.readVarint();
+    const len = cur.readUvarint();
     rawBodyByRecord.set(i, dec.decode(cur.readBytes(len)));
   }
 
@@ -506,9 +339,9 @@ function decode(buf: Uint8Array, expectedN: number, meta: ColumnarChunkMeta): Lo
   if (templatedIndices.length > 0) {
     if (!meta.drain) throw new Error("columnar: templated rows but meta.drain=false");
     const tplIds: number[] = [];
-    for (let k = 0; k < templatedIndices.length; k++) tplIds.push(cur.readVarint());
+    for (let k = 0; k < templatedIndices.length; k++) tplIds.push(cur.readUvarint());
     const varCounts: number[] = [];
-    for (let k = 0; k < templatedIndices.length; k++) varCounts.push(cur.readVarint());
+    for (let k = 0; k < templatedIndices.length; k++) varCounts.push(cur.readUvarint());
     for (let k = 0; k < templatedIndices.length; k++) {
       const recIdx = templatedIndices[k] as number;
       const tplId = tplIds[k] as number;
@@ -519,7 +352,7 @@ function decode(buf: Uint8Array, expectedN: number, meta: ColumnarChunkMeta): Lo
       }
       const vars: string[] = [];
       for (let v = 0; v < nv; v++) {
-        const len = cur.readVarint();
+        const len = cur.readUvarint();
         vars.push(dec.decode(cur.readBytes(len)));
       }
       templatedBodyByRecord.set(recIdx, Drain.reconstruct(template, vars));
@@ -527,7 +360,7 @@ function decode(buf: Uint8Array, expectedN: number, meta: ColumnarChunkMeta): Lo
   }
 
   // Sidecar
-  const sidecarLen = cur.readVarint();
+  const sidecarLen = cur.readUvarint();
   const sidecarBuf = cur.readBytes(sidecarLen);
   const sidecarLines: string[] =
     sidecarLen === 0
@@ -543,17 +376,7 @@ function decode(buf: Uint8Array, expectedN: number, meta: ColumnarChunkMeta): Lo
   const out: LogRecord[] = new Array(n);
   for (let i = 0; i < n; i++) {
     const sideStr = sidecarLines.length === 0 ? "{}" : (sidecarLines[i] as string);
-    const side = JSON.parse(sideStr) as {
-      b?: unknown;
-      st?: string;
-      a?: Array<{ k: string; v: unknown }>;
-      o?: string;
-      f?: number;
-      ti?: string;
-      si?: string;
-      e?: string;
-      d?: number;
-    };
+    const side = JSON.parse(sideStr) as SidecarEntry;
     let body: AnyValue;
     const k = kinds[i] as number;
     if (k === KIND_RAW_STRING) {
@@ -563,22 +386,14 @@ function decode(buf: Uint8Array, expectedN: number, meta: ColumnarChunkMeta): Lo
     } else {
       body = jsonToAnyValue(side.b ?? null);
     }
-    const attributes: KeyValue[] = side.a
-      ? side.a.map((kv) => ({ key: kv.k, value: jsonToAnyValue(kv.v) }))
-      : [];
     const rec: LogRecord = {
       timeUnixNano: timestamps[i] as bigint,
       severityNumber: severities[i] as number,
-      severityText: (side.st ?? "INFO") as SeverityText | string,
+      severityText: "INFO",
       body,
-      attributes,
+      attributes: [],
     };
-    if (side.o !== undefined) rec.observedTimeUnixNano = BigInt(side.o);
-    if (side.f !== undefined) rec.flags = side.f;
-    if (side.ti) rec.traceId = hexToBytes(side.ti);
-    if (side.si) rec.spanId = hexToBytes(side.si);
-    if (side.e) rec.eventName = side.e;
-    if (side.d) rec.droppedAttributesCount = side.d;
+    applySidecar(rec, side);
     out[i] = rec;
   }
   return out;
@@ -628,58 +443,4 @@ export class ColumnarRawPolicy implements ChunkPolicy {
   decodePayload(buf: Uint8Array, nLogs: number, meta: unknown): LogRecord[] {
     return decode(buf, nLogs, meta as ColumnarChunkMeta);
   }
-}
-
-// ── Helpers ──────────────────────────────────────────────────────────
-
-function extractVarsAgainstTemplate(
-  template: readonly string[],
-  tokens: readonly string[]
-): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < template.length; i++) {
-    if (template[i] === PARAM_STR) out.push(tokens[i] ?? "");
-  }
-  return out;
-}
-
-function anyValueToJson(v: AnyValue): unknown {
-  if (v === null) return null;
-  if (typeof v === "bigint") return { $bi: v.toString() };
-  if (v instanceof Uint8Array) return { $b: bytesToHex(v) };
-  if (Array.isArray(v)) return v.map(anyValueToJson);
-  if (typeof v === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v)) out[k] = anyValueToJson(val);
-    return out;
-  }
-  return v;
-}
-
-function jsonToAnyValue(j: unknown): AnyValue {
-  if (j === null) return null;
-  if (typeof j === "object" && j !== null) {
-    const obj = j as Record<string, unknown>;
-    if (typeof obj.$bi === "string") return BigInt(obj.$bi);
-    if (typeof obj.$b === "string") return hexToBytes(obj.$b);
-    if (Array.isArray(j)) return j.map(jsonToAnyValue);
-    const out: Record<string, AnyValue> = {};
-    for (const [k, v] of Object.entries(obj)) out[k] = jsonToAnyValue(v);
-    return out;
-  }
-  return j as AnyValue;
-}
-
-function bytesToHex(b: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < b.length; i++) out += (b[i] as number).toString(16).padStart(2, "0");
-  return out;
-}
-
-function hexToBytes(s: string): Uint8Array {
-  const out = new Uint8Array(s.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = Number.parseInt(s.substring(i * 2, i * 2 + 2), 16);
-  }
-  return out;
 }

@@ -24,7 +24,7 @@
  *     future M0/M1 world).
  */
 
-import type { CodecRegistry } from "stardb";
+import { type CodecRegistry, nowMillis } from "stardb";
 import type { Chunk } from "./chunk.js";
 
 export interface CompactStats {
@@ -83,8 +83,4 @@ export function compactChunk(
       encodeMillis: t2 - t1,
     },
   };
-}
-
-function nowMillis(): number {
-  return Number(process.hrtime.bigint()) / 1_000_000;
 }
