@@ -25,16 +25,12 @@
         o11ykit
       </a>
       <nav class="topnav" aria-label="Primary">
-        <a href="/o11ykit/tsdb-engine/">tsdb</a>
-        <a href="/o11ykit/tracesdb-engine/">tracesdb</a>
-        <a href="/o11ykit/otlpkit-docs/">otlpkit</a>
-        <a href="/o11ykit/tsdb-engine/learn/">docs</a>
-        <a href="/o11ykit/tsdb-engine/">tsdb-engine</a>
-        <a href="/o11ykit/tracesdb-engine/">tracesdb-engine</a>
-        <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">github</a>
-        <span class="topnav-cta">
-          <a class="stamp" href="/o11ykit/tsdb-engine/">try it</a>
-        </span>
+        <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
+        <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+        <a href="/o11ykit/tracesdb-engine/">TracesDB</a>
+        <a href="/o11ykit/octo11y/">Octo11y</a>
+        <a href="/o11ykit/benchkit/">Benchkit</a>
+        <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
       </nav>
     </header>
 
@@ -66,8 +62,8 @@
             </div>
             <div class="pipeline-step pipeline-arrow-r">
               <div class="pipeline-step-num">02</div>
-              <div class="pipeline-step-name">Arrow</div>
-              <div class="pipeline-step-desc">SIMD-aware columnar interchange</div>
+              <div class="pipeline-step-name">Encoding</div>
+              <div class="pipeline-step-desc">XOR-delta + ALP columnar compression</div>
             </div>
             <div class="pipeline-step pipeline-arrow-r">
               <div class="pipeline-step-num">03</div>
@@ -77,7 +73,7 @@
             <div class="pipeline-step">
               <div class="pipeline-step-num">04</div>
               <div class="pipeline-step-name">Pixels</div>
-              <div class="pipeline-step-desc">uPlot, ECharts, Chart.js, Arrow out</div>
+              <div class="pipeline-step-desc">uPlot, ECharts, Chart.js output</div>
             </div>
           </div>
         </div>
@@ -95,7 +91,7 @@
             <span class="stat-label">less memory than JS objects</span>
           </div>
           <div class="stat">
-            <span class="stat-value">0 ms</span>
+            <span class="stat-value">Local</span>
             <span class="stat-label">cross-signal correlation</span>
           </div>
           <div class="stat">
@@ -133,7 +129,7 @@
             <div class="primitive-card">
               <span class="primitive-name">otlpkit</span>
               <span class="primitive-signal">ingest</span>
-              <p class="primitive-desc">OTLP protobuf and JSON decoder. Zero-copy where possible. Streams directly into Arrow columnar format.</p>
+              <p class="primitive-desc">OTLP protobuf and JSON decoder. Zero-copy where possible. Streams directly into o11y*db columnar format.</p>
               <a class="primitive-link" href="/o11ykit/otlpkit-docs/">docs</a>
             </div>
             <div class="primitive-card">
