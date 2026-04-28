@@ -711,7 +711,7 @@ function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
   const counts = new Float64Array(timestamps.length);
 
   for (const r of ranges) {
-    const materialized = materializeRange(r);
+    const materialized = materializeRangeOwned(r);
     // Simple: assume aligned timestamps. Real engine would merge-sort.
     const len = Math.min(materialized.values.length, timestamps.length);
     for (let i = 0; i < len; i++) {
