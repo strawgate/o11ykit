@@ -160,26 +160,9 @@ export function* queryStream(
           stats.chunksPruned++;
           continue;
         }
-        // Phase 2: Raw bytes matched — could be a false positive (needle
-        // bytes in template dict or metadata). Do proper body decode and
-        // per-record check.
-        const bodies = policy?.decodeBodiesOnly
-          ? policy.decodeBodiesOnly(raw, chunk.header.nLogs, chunk.header.codecMeta)
-          : readBodiesOnly(chunk, store.registry, policy);
-        let hasMatch = false;
-        for (let i = 0; i < bodies.length; i++) {
-          if (typeof bodies[i] === "string" && (bodies[i] as string).includes(needle)) {
-            hasMatch = true;
-            break;
-          }
-        }
-        if (!hasMatch) {
-          // False positive from raw scan — no actual body matches
-          stats.decodeMillis += nowMillis() - t0;
-          stats.chunksPruned++;
-          continue;
-        }
-        // Some bodies match — need full records for time/severity post-filtering
+        // Phase 2: Raw bytes matched — do full decode and filter inline.
+        // We skip the body-only intermediate decode because if the chunk
+        // passes the raw scan, we'll need full records anyway for yielding.
         const records = policy?.decodePayload
           ? policy.decodePayload(raw, chunk.header.nLogs, chunk.header.codecMeta)
           : readRecords(chunk, store.registry, policy);
