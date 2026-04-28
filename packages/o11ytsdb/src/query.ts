@@ -286,7 +286,9 @@ export class ScanEngine implements QueryEngine {
         if (isPointwiseTransform(opts.transform)) {
           // Pointwise transform: apply directly to values (no step alignment)
           // Concatenate all parts first, then apply transform
-          const concatenated = parts.length === 1 ? parts[0] : concatenateRanges(parts);
+          const first = parts[0];
+          if (!first) continue; // no data
+          const concatenated = parts.length === 1 ? first : concatenateRanges(parts);
           const materialized = materializeRangeOwned(concatenated);
           transformed = {
             timestamps: materialized.timestamps,
@@ -657,6 +659,26 @@ function materializeRangeOwned(range: TimeRange): TimeRange {
     timestamps: materialized.timestamps.slice(),
     values: materialized.values.slice(),
   };
+}
+
+function concatenateRanges(ranges: TimeRange[]): TimeRange {
+  let totalTimestamps = 0;
+  let totalValues = 0;
+  for (const r of ranges) {
+    totalTimestamps += r.timestamps.length;
+    totalValues += r.values.length;
+  }
+  const timestamps = new BigInt64Array(totalTimestamps);
+  const values = new Float64Array(totalValues);
+  let tOffset = 0;
+  let vOffset = 0;
+  for (const r of ranges) {
+    timestamps.set(r.timestamps, tOffset);
+    values.set(r.values, vOffset);
+    tOffset += r.timestamps.length;
+    vOffset += r.values.length;
+  }
+  return { timestamps, values };
 }
 
 function pointAggregate(ranges: TimeRange[], fn: AggFn): TimeRange {
