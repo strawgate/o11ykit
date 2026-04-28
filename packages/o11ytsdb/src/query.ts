@@ -1441,28 +1441,28 @@ function _stepAggregateRate(
     }
   }
   for (let i = 0; i < bucketCount; i++) {
-      if (readNumberAt(counts, i, "bucket count") < 2) {
-        values[i] = NaN;
-        continue;
-      }
-      if (isIncrease) {
-        const delta =
-          readNumberAt(lastVal, i, "last value") - readNumberAt(firstVal, i, "first value");
-        if (rawDelta) {
-          values[i] = delta; // delta(): no counter-reset handling
-        } else {
-          values[i] = delta >= 0 ? delta : readNumberAt(lastVal, i, "last value"); // counter reset: use last value
-        }
+    if (readNumberAt(counts, i, "bucket count") < 2) {
+      values[i] = NaN;
+      continue;
+    }
+    if (isIncrease) {
+      const delta =
+        readNumberAt(lastVal, i, "last value") - readNumberAt(firstVal, i, "first value");
+      if (rawDelta) {
+        values[i] = delta; // delta(): no counter-reset handling
       } else {
-        const delta =
-          readNumberAt(lastVal, i, "last value") - readNumberAt(firstVal, i, "first value");
-        const dt =
-          (readNumberAt(lastTs, i, "last timestamp") - readNumberAt(firstTs, i, "first timestamp")) /
-          1000;
-        values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : 0;
+        values[i] = delta >= 0 ? delta : readNumberAt(lastVal, i, "last value"); // counter reset: use last value
       }
+    } else {
+      const delta =
+        readNumberAt(lastVal, i, "last value") - readNumberAt(firstVal, i, "first value");
+      const dt =
+        (readNumberAt(lastTs, i, "last timestamp") - readNumberAt(firstTs, i, "first timestamp")) /
+        1000;
+      values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : 0;
     }
   }
+}
 
 /**
  * Instant rate (irate) — per-bucket rate from only the last two samples.
