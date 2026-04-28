@@ -1478,7 +1478,6 @@ function _stepAggregateRate(
       values[i] = dt > 0 ? (delta >= 0 ? delta : readNumberAt(lastVal, i, "last value")) / dt : NaN;
     }
   }
-}
 
 /**
  * Instant rate (irate) — per-bucket rate from only the last two samples.
