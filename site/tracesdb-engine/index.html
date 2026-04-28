@@ -28,7 +28,7 @@
     <main id="main-content" class="page">
 
       <!-- ─── Top Bar ─────────────────────────────────────────── -->
-      <header class="topbar panel">
+      <header class="topbar">
         <a class="brand" href="/o11ykit/"><img class="brand-mark" src="/o11ykit/logo.svg" width="20" height="20" alt="" aria-hidden="true" />o11ykit</a>
         <nav class="topnav" aria-label="Primary">
           <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
@@ -41,10 +41,10 @@
       </header>
 
       <!-- ─── Hero ────────────────────────────────────────────── -->
-      <section class="hero panel">
-        <span class="hero-eyebrow">o11ytracesdb engine</span>
+      <section class="hero grid-bg">
+        <span class="t-eyebrow">o11ytracesdb engine</span>
         <h1>A distributed traces database<br/>that runs <em>in your browser</em>.</h1>
-        <p class="hero-subtitle">SQLite for observability — embedded, serverless, zero network calls.</p>
+        <p class="hero-sub">SQLite for observability — embedded, serverless, zero network calls.</p>
         <p class="hero-lede">
           Store hundreds of thousands of OpenTelemetry spans at <strong>&lt;30 bytes/span</strong> using
           columnar compression and dictionary encoding. Query with structural operators, explore with
@@ -65,11 +65,11 @@
           </div>
         </div>
         <div class="hero-actions">
-          <button type="button" class="cta cta-primary" id="heroLaunch">🚀 Launch Demo</button>
-          <a class="cta cta-secondary" href="learn/">Learn How It Works</a>
-          <a class="cta cta-secondary" href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ytracesdb" target="_blank" rel="noreferrer">
-            Browse Source
-          </a>
+          <button type="button" class="stamp-fill" id="heroLaunch">🚀 Launch Demo</button>
+           <a class="stamp" href="learn/">Learn How It Works</a>
+           <a class="stamp" href="https://github.com/strawgate/o11ykit/tree/main/packages/o11ytracesdb" target="_blank" rel="noreferrer">
+             Browse Source
+           </a>
         </div>
       </section>
 
@@ -520,11 +520,13 @@
       </section>
 
       <!-- ─── Footer ──────────────────────────────────────────── -->
-      <footer class="panel" style="text-align:center; padding:16px; font-size:13px; color:var(--ink-muted)">
-        <strong>o11ytracesdb</strong> · Part of <a href="/o11ykit/" style="color:var(--traces)">o11ykit</a> ·
-        Browser-native databases for <a href="/o11ykit/tsdb-engine/" style="color:var(--accent-tsdb)">metrics</a>,
-        <span style="color:var(--traces)">traces</span>, and logs ·
-        <a href="https://github.com/strawgate/o11ykit" style="color:var(--traces)">GitHub</a>
+      <footer class="site-footer">
+        <p>
+          <strong>o11ytracesdb</strong> · Part of <a href="/o11ykit/">o11ykit</a> ·
+          Browser-native databases for <a href="/o11ykit/tsdb-engine/" class="signal-link">metrics</a>,
+          <span class="signal-text">traces</span> and logs ·
+          <a href="https://github.com/strawgate/o11ykit" class="signal-link">GitHub</a>
+        </p>
       </footer>
 
     </main>

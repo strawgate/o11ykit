@@ -61,6 +61,7 @@ GitHub Pages publishes a small portal:
 - `/o11ykit/otlpkit/` OtlpKit incident-story site
 - `/o11ykit/octo11y/` Octo11y guide and pipeline walkthrough
 - `/o11ykit/benchkit/` Benchkit demo and regression-automation handoff
+- `/o11ykit/logsdb-engine/` LogsDB engine site and interactive log storage/query demo
 
 ## Development
 
