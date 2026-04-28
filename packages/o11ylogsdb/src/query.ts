@@ -278,33 +278,48 @@ function chunkPassesSeverity(chunk: Chunk, severityGte?: number): boolean {
  * Template-token pruning for bodyContains. If the chunk header carries
  * template literal tokens (TypedColumnarDrainPolicy stores these in
  * codecMeta.toks), check if any token contains the needle as a
- * substring. If no template token can match, we know all templated
- * bodies in this chunk will fail the bodyContains check — skip ZSTD
- * decompression entirely.
+ * substring. If no template token can match AND the chunk metadata
+ * confirms zero raw-string bodies, we can skip ZSTD decompression.
  *
- * Returns true (= prune this chunk) only when we can definitively
- * rule out all records. Conservative: returns false (don't prune) when
- * the chunk has raw-string bodies that might match, or when codecMeta
- * doesn't have token data.
+ * SOUNDNESS: We can only prune when BOTH conditions hold:
+ *   1. No template literal token contains the needle
+ *   2. The chunk has zero raw-string bodies (rawCount === 0)
+ *
+ * Even when pruning, variable values (PARAM_STR slots) could still
+ * contain the needle — but those aren't part of template *literals*.
+ * The body is reconstructed as: literal + variable + literal + ...
+ * So if no literal contains the needle AND the needle doesn't span a
+ * literal/variable boundary, we'd need to also check variable columns.
+ * Since checking variables requires decompression anyway, template-
+ * token pruning is only effective for needles that MUST appear in a
+ * template literal (not in a variable slot) to produce a match.
+ *
+ * CONSERVATIVE: returns false (don't prune) when unsure.
  */
 function chunkPrunedByTemplateTokens(chunk: Chunk, needle: string): boolean {
-  const meta = chunk.header.codecMeta as { toks?: string[] } | undefined;
+  const meta = chunk.header.codecMeta as { toks?: string[]; rawCount?: number } | undefined;
   if (!meta?.toks) return false; // no token data — can't prune
+
+  // If there are raw-string bodies, they could contain anything
+  if (meta.rawCount === undefined || meta.rawCount > 0) return false;
+
   // Check if any template literal token contains the needle
   for (const tok of meta.toks) {
     if (tok.includes(needle)) return false; // might match — don't prune
   }
-  // No template token contains the needle. But raw-string bodies or
-  // PARAM_STR variable values might still match. We can't prune unless
-  // the chunk is 100% templated. Since we don't have a hasRawStrings
-  // flag in the header, be conservative: only prune if needle looks
-  // like it would appear in a literal token (common word), not a
-  // variable value (UUID, number).
-  // For now: prune when needle is >= 3 chars and all alphanumeric
-  // (likely a keyword/token, not a variable fragment).
-  if (needle.length < 3) return false;
-  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(needle)) return false;
-  return true; // prune: needle is a keyword-like token not in any template
+
+  // No template token contains the needle AND there are zero raw strings.
+  // However, the reconstructed body is: tok0 + var0 + tok1 + var1 + ...
+  // If the needle could span a tok/var boundary, we can't prune.
+  // Safe to prune only if the needle can't be split across boundaries.
+  // Since we don't track variable values at the header level, we can
+  // NOT safely prune — variable values might contain the needle.
+  // Template-token pruning is only sound for needles that match a
+  // complete template token (not a substring of a variable).
+  //
+  // DISABLED: This optimization requires bloom filters or variable-
+  // value token sets in the header to be sound. For now, return false.
+  return false;
 }
 
 /** Per-record filter — applied after chunk decode. */
