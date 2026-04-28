@@ -1,5 +1,5 @@
+import { BackpressureController } from "stardb";
 import { describe, expect, it } from "vitest";
-import { BackpressureController } from "../src/backpressure.js";
 
 describe("BackpressureController", () => {
   // ── Construction ────────────────────────────────────────────────

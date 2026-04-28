@@ -19,7 +19,8 @@
  */
 
 import type { ChunkPolicy } from "./chunk.js";
-import { Drain, PARAM_STR, tokenize } from "./drain.js";
+import { extractVarsAgainstTemplate } from "./codec-utils.js";
+import { Drain, tokenize } from "./drain.js";
 import type { AnyValue, LogRecord } from "./types.js";
 
 interface TemplateEntry {
@@ -162,17 +163,6 @@ function parseMeta(meta: unknown): Map<number, string[]> | undefined {
         entry.template.split(/\s+/).filter((s) => s.length > 0)
       );
     }
-  }
-  return out;
-}
-
-function extractVarsAgainstTemplate(
-  template: readonly string[],
-  tokens: readonly string[]
-): string[] {
-  const out: string[] = [];
-  for (let i = 0; i < template.length; i++) {
-    if (template[i] === PARAM_STR) out.push(tokens[i] ?? "");
   }
   return out;
 }

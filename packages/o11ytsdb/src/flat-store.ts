@@ -9,7 +9,7 @@
  * baseline. Everything else should beat it on memory.
  */
 
-import { lowerBound, upperBound } from "./binary-search.js";
+import { lowerBound, upperBound } from "stardb";
 import { LabelIndex } from "./label-index.js";
 import type { Labels, SeriesAppend, SeriesId, StorageBackend, TimeRange } from "./types.js";
 

@@ -8,7 +8,8 @@
  * summary statistics without a second scan of the store.
  */
 
-import type { KeyValue, SpanRecord, Trace } from "./types.js";
+import { findAttribute } from "stardb";
+import type { SpanRecord, Trace } from "./types.js";
 
 // ─── Aggregation result types ────────────────────────────────────────
 
@@ -83,9 +84,9 @@ function extractNumber(item: Trace | SpanRecord, field: string): number | bigint
     default: {
       // Try attribute lookup: "span.http.status_code" or just "http.status_code"
       const key = field.startsWith("span.") ? field.slice(5) : field;
-      const attr = span.attributes.find((a: KeyValue) => a.key === key);
-      if (attr !== undefined && typeof attr.value === "number") return attr.value;
-      if (attr !== undefined && typeof attr.value === "bigint") return attr.value; // keep as bigint
+      const val = findAttribute(span.attributes, key);
+      if (val !== undefined && typeof val === "number") return val;
+      if (val !== undefined && typeof val === "bigint") return val; // keep as bigint
       return null;
     }
   }
@@ -97,9 +98,9 @@ function extractGroupKey(item: Trace | SpanRecord, field: string): string {
     switch (field) {
       case "rootService": {
         const svc =
-          item.rootResource?.attributes.find((a: KeyValue) => a.key === "service.name") ??
-          item.rootSpan?.attributes.find((a: KeyValue) => a.key === "service.name");
-        return svc ? String(svc.value) : item.rootSpan ? "<unknown>" : "<no root>";
+          (item.rootResource && findAttribute(item.rootResource.attributes, "service.name")) ??
+          (item.rootSpan && findAttribute(item.rootSpan.attributes, "service.name"));
+        return svc ? String(svc) : item.rootSpan ? "<unknown>" : "<no root>";
       }
       case "rootName":
         return item.rootSpan?.name ?? "<no root>";
@@ -120,8 +121,8 @@ function extractGroupKey(item: Trace | SpanRecord, field: string): string {
       );
     default: {
       const key = field.startsWith("span.") ? field.slice(5) : field;
-      const attr = span.attributes.find((a: KeyValue) => a.key === key);
-      return attr !== undefined ? String(attr.value) : "<missing>";
+      const val = findAttribute(span.attributes, key);
+      return val !== undefined ? String(val) : "<missing>";
     }
   }
 }

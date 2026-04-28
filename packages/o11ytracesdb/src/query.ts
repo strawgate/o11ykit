@@ -11,7 +11,16 @@
  * - Error flag (skip chunks without errors when filtering for errors)
  */
 
-import { bloomFromBase64, bloomMayContain } from "./bloom.js";
+import {
+  anyValueEquals,
+  bloomFromBase64,
+  bloomMayContain,
+  bytesEqual,
+  bytesToHex,
+  findAttribute,
+  hexToBytes,
+  timeRangeOverlaps,
+} from "stardb";
 import type { Chunk } from "./chunk.js";
 import { computeNestedSets } from "./chunk.js";
 import type { TraceStore } from "./engine.js";
@@ -41,29 +50,6 @@ function isSafePattern(pattern: string): boolean {
   // Reject excessive alternations that could cause exponential backtracking
   if (/(\|[^|]{0,20}){10,}/.test(pattern)) return false;
   return true;
-}
-
-// ─── Hex lookup table (pre-computed for 0-255) ──────────────────────
-
-const HEX_LUT: string[] = new Array(256);
-for (let i = 0; i < 256; i++) HEX_LUT[i] = i.toString(16).padStart(2, "0");
-
-function hexFromBytes(bytes: Uint8Array): string {
-  let hex = "";
-  for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i];
-    if (b === undefined) continue;
-    hex += HEX_LUT[b] ?? "";
-  }
-  return hex;
-}
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
 }
 
 // ─── Query execution ─────────────────────────────────────────────────
@@ -226,7 +212,7 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
     for (const span of spans) {
       spansExamined++;
       if (matchesSpan(span, opts, resource)) {
-        matchingTraceIds.add(hexFromBytes(span.traceId));
+        matchingTraceIds.add(bytesToHex(span.traceId));
       }
     }
   }
@@ -262,7 +248,7 @@ function queryTracesGeneral(store: TraceStore, opts: TraceQueryOpts): TraceQuery
 
       const spans = store.decodeChunk(chunk);
       for (const span of spans) {
-        const traceHex = hexFromBytes(span.traceId);
+        const traceHex = bytesToHex(span.traceId);
         if (!matchingTraceIds.has(traceHex)) continue;
 
         let group = allSpansByTrace.get(traceHex);
@@ -380,17 +366,17 @@ export function buildSpanTree(spans: readonly SpanRecord[]): SpanNode[] {
 
   // Create nodes
   for (const span of spans) {
-    const id = hexFromBytes(span.spanId);
+    const id = bytesToHex(span.spanId);
     nodes.set(id, { span, children: [], selfTimeNanos: 0n, depth: 0 });
   }
 
   // Link parent → child
   for (const span of spans) {
-    const id = hexFromBytes(span.spanId);
+    const id = bytesToHex(span.spanId);
     const node = nodes.get(id);
     if (!node) continue;
     if (span.parentSpanId !== undefined) {
-      const parentId = hexFromBytes(span.parentSpanId);
+      const parentId = bytesToHex(span.parentSpanId);
       const parentNode = nodes.get(parentId);
       if (parentNode) {
         parentNode.children.push(node);
@@ -517,12 +503,15 @@ function canPruneChunk(
   }
 
   // Time range pruning
-  if (opts.startTimeNano !== undefined) {
-    if (BigInt(h.maxTimeNano) < opts.startTimeNano) return true;
-  }
-  if (opts.endTimeNano !== undefined) {
-    if (BigInt(h.minTimeNano) > opts.endTimeNano) return true;
-  }
+  if (
+    !timeRangeOverlaps(
+      BigInt(h.minTimeNano),
+      BigInt(h.maxTimeNano),
+      opts.startTimeNano,
+      opts.endTimeNano
+    )
+  )
+    return true;
 
   // Error filter pruning
   if (opts.statusCode === 2 && !h.hasError) return true;
@@ -532,8 +521,8 @@ function canPruneChunk(
 
   // Service name pruning
   if (opts.serviceName !== undefined) {
-    const svcAttr = resource.attributes.find((a) => a.key === "service.name");
-    if (svcAttr && svcAttr.value !== opts.serviceName) return true;
+    const svc = findAttribute(resource.attributes, "service.name");
+    if (svc !== undefined && svc !== opts.serviceName) return true;
   }
 
   return false;
@@ -564,14 +553,14 @@ function matchesSpan(
     return false;
 
   if (opts.serviceName !== undefined) {
-    const svcAttr = resource.attributes.find((a) => a.key === "service.name");
-    if (!svcAttr || svcAttr.value !== opts.serviceName) return false;
+    const svc = findAttribute(resource.attributes, "service.name");
+    if (svc === undefined || svc !== opts.serviceName) return false;
   }
 
   if (opts.attributes !== undefined) {
     for (const pred of opts.attributes) {
-      const attr = span.attributes.find((a) => a.key === pred.key);
-      if (!attr || !anyValueEquals(attr.value, pred.value)) return false;
+      const val = findAttribute(span.attributes, pred.key);
+      if (val === undefined || !anyValueEquals(val, pred.value)) return false;
     }
   }
 
@@ -599,13 +588,12 @@ function toComparable(v: AnyValue): number | bigint | string | null {
  * Handles all AttributeOp values.
  */
 function matchesAttributePredicate(span: SpanRecord, pred: AttributePredicate): boolean {
-  const attr = span.attributes.find((a) => a.key === pred.key);
+  const attrVal = findAttribute(span.attributes, pred.key);
 
-  if (pred.op === "exists") return attr !== undefined;
-  if (pred.op === "notExists") return attr === undefined;
+  if (pred.op === "exists") return attrVal !== undefined;
+  if (pred.op === "notExists") return attrVal === undefined;
 
-  if (attr === undefined) return false;
-  const attrVal = attr.value;
+  if (attrVal === undefined) return false;
 
   switch (pred.op) {
     case "eq":
@@ -685,8 +673,8 @@ function matchesTraceIntrinsics(trace: Trace, filter: TraceIntrinsics): boolean 
   if (filter.rootServiceName !== undefined) {
     // service.name is a resource attribute in OTLP, not a span attribute
     if (trace.rootResource !== undefined) {
-      const svcAttr = trace.rootResource.attributes.find((a) => a.key === "service.name");
-      if (!svcAttr || svcAttr.value !== filter.rootServiceName) return false;
+      const svc = findAttribute(trace.rootResource.attributes, "service.name");
+      if (svc === undefined || svc !== filter.rootServiceName) return false;
     } else {
       // No resource attached — cannot match rootServiceName
       return false;
@@ -742,7 +730,7 @@ function matchesStructuralPredicate(
   if (leftSpans.length === 0 || rightSpans.length === 0) return false;
 
   const spanByHex = new Map<string, SpanRecord>();
-  for (const s of spans) spanByHex.set(hexFromBytes(s.spanId), s);
+  for (const s of spans) spanByHex.set(bytesToHex(s.spanId), s);
 
   for (const a of leftSpans) {
     for (const b of rightSpans) {
@@ -811,7 +799,7 @@ function isDescendantByParent(
   const visited = new Set<string>();
   let current: SpanRecord | undefined = descendant;
   while (current?.parentSpanId !== undefined) {
-    const parentHex = hexFromBytes(current.parentSpanId);
+    const parentHex = bytesToHex(current.parentSpanId);
     if (visited.has(parentHex)) return false;
     if (bytesEqual(current.parentSpanId, ancestor.spanId)) return true;
     visited.add(parentHex);
@@ -821,53 +809,6 @@ function isDescendantByParent(
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────
-
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-}
-
-function anyValueEquals(a: AnyValue, b: AnyValue): boolean {
-  if (a === b) return true;
-  if (a === null || b === null) return false;
-  if (typeof a !== typeof b) return false;
-  if (
-    typeof a === "string" ||
-    typeof a === "number" ||
-    typeof a === "bigint" ||
-    typeof a === "boolean"
-  ) {
-    return a === b;
-  }
-  if (a instanceof Uint8Array && b instanceof Uint8Array) {
-    return bytesEqual(a, b);
-  }
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      const aItem = a[i];
-      const bItem = b[i];
-      if (aItem === undefined || bItem === undefined) return false;
-      if (!anyValueEquals(aItem, bItem)) return false;
-    }
-    return true;
-  }
-  if (typeof a === "object" && typeof b === "object") {
-    const aEntries = Object.entries(a as Record<string, AnyValue>);
-    const bObj = b as Record<string, AnyValue>;
-    if (aEntries.length !== Object.keys(bObj).length) return false;
-    for (const [k, v] of aEntries) {
-      const bVal = bObj[k];
-      if (bVal === undefined) return false;
-      if (!anyValueEquals(v, bVal)) return false;
-    }
-    return true;
-  }
-  return false;
-}
 
 /** Safe bigint sort comparator for spans by startTimeUnixNano. */
 function compareBigint(a: SpanRecord, b: SpanRecord): number {

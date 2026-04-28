@@ -10,10 +10,12 @@ import type {
   Codec,
   InstrumentationScope,
   IntCodec,
+  InternId,
   KeyValue,
   Resource,
   SeverityText,
   StreamId,
+  StreamKey,
   StringCodec,
 } from "../src/index.js";
 import * as stardb from "../src/index.js";
@@ -21,12 +23,43 @@ import * as stardb from "../src/index.js";
 // Single source of truth for every runtime symbol the package promises.
 // Adding or removing one without updating this list fails both tests below.
 const RUNTIME_EXPORTS = [
+  "anyValueEquals",
+  "anyValueToJson",
+  "BackpressureController",
+  "bloomFromBase64",
+  "bloomMayContain",
+  "bloomToBase64",
+  "buildDictWithIndex",
+  "bytesEqual",
+  "bytesToHex",
+  "bytesToUuid",
+  "ByteBuf",
+  "ByteReader",
+  "chunkWireSize",
   "CodecRegistry",
+  "createBloomFilter",
+  "decodeAnyValue",
   "defaultRegistry",
+  "deserializeChunkWire",
+  "encodeAnyValue",
+  "findAttribute",
+  "fnv1aBytes",
   "GzipCodec",
+  "hexToBytes",
+  "Interner",
+  "jsonToAnyValue",
   "lengthPrefixStringCodec",
+  "lowerBound",
+  "nowMillis",
   "rawCodec",
   "rawInt64Codec",
+  "serializeChunkWire",
+  "StreamRegistry",
+  "timeRangeOverlaps",
+  "uint8IndexOf",
+  "upperBound",
+  "uuidToBytes",
+  "ValueTag",
   "ZstdCodec",
 ] as const;
 
@@ -50,11 +83,13 @@ describe("stardb public API", () => {
     const scope: InstrumentationScope = { name: "io.opentelemetry.sdk", version: "1.0.0" };
     const id: StreamId = 42;
     const value: AnyValue = { nested: ["a", 1, 2n, true, null, new Uint8Array([1])] };
+    const sk: StreamKey = { resource, scope };
     expect(sev).toBe("INFO");
     expect(resource.attributes[0]?.key).toBe("service.name");
     expect(scope.name).toBe("io.opentelemetry.sdk");
     expect(id).toBe(42);
     expect(value).toBeDefined();
+    expect(sk.resource).toBe(resource);
   });
 
   it("Codec / StringCodec / IntCodec interfaces are assignable from baseline impls", () => {

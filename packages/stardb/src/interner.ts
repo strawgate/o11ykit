@@ -1,10 +1,14 @@
+import { fnv1aBytes } from "./utils.js";
+
 export type InternId = number;
 
-const FNV_OFFSET = 0x811c9dc5;
-const FNV_PRIME = 0x01000193;
 const MAX_LOAD = 0.7;
 const DEFAULT_MAX_CARDINALITY = 1_000_000;
 
+/**
+ * High-performance open-address hash table for string → integer interning.
+ * Uses FNV-1a hashing with linear probing and automatic load-factor resizing.
+ */
 export class Interner {
   private readonly encoder = new (
     globalThis as unknown as { TextEncoder: new () => { encode(input: string): Uint8Array } }
@@ -72,7 +76,7 @@ export class Interner {
     if ((this.count + 1) / this.slots.length > MAX_LOAD) {
       this.resizeTable(this.slots.length * 2);
     }
-    const hash = fnv1a(encoded) || 1;
+    const hash = fnv1aBytes(encoded) || 1;
     let slot = hash & this.mask;
     while (true) {
       // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
@@ -160,14 +164,4 @@ export class Interner {
     this.hashes = hashes;
     this.mask = mask;
   }
-}
-
-export function fnv1a(input: Uint8Array): number {
-  let hash = FNV_OFFSET >>> 0;
-  for (let i = 0; i < input.length; i++) {
-    // biome-ignore lint/style/noNonNullAssertion: bounds-checked by construction
-    hash ^= input[i]!;
-    hash = Math.imul(hash, FNV_PRIME) >>> 0;
-  }
-  return hash >>> 0;
 }

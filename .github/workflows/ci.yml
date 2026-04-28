@@ -10,7 +10,48 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  validate:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Lint
+        run: npm run lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Install octo11y dependencies
+        run: npm run octo11y:install
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -32,15 +73,8 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=dev
 
-      - name: Install octo11y dependencies
-        run: npm run octo11y:install
-
-      - name: Validate workspace
-        run: make check
-
-      - name: Validate publish artifacts
-        if: matrix.node-version == 24
-        run: npm run check:release
+      - name: Test
+        run: npm run test
 
       - name: Upload coverage report
         if: matrix.node-version == 24
@@ -48,6 +82,31 @@ jobs:
         with:
           name: coverage-report
           path: coverage
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Install octo11y dependencies
+        run: npm run octo11y:install
+
+      - name: Build
+        run: npm run build
+
+      - name: Validate publish artifacts
+        run: npm run check:release
 
   validate-octo11y:
     runs-on: ubuntu-latest

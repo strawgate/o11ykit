@@ -6,7 +6,7 @@
  * that was previously copied across multiple storage backends.
  */
 
-import { Interner } from "./interner.js";
+import { Interner } from "stardb";
 import { MemPostings } from "./postings.js";
 import type { Labels, SeriesId } from "./types.js";
 

@@ -49,3 +49,9 @@ export interface InstrumentationScope {
  * to the engine instance.
  */
 export type StreamId = number;
+
+/** A grouping of (resource, scope) under which records share metadata. */
+export interface StreamKey {
+  resource: Resource;
+  scope: InstrumentationScope;
+}

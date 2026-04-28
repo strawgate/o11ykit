@@ -86,7 +86,7 @@ describe("chunk wire format", () => {
 
   it("rejects chunks with bad magic bytes", () => {
     const bytes = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]);
-    expect(() => deserializeChunk(bytes)).toThrow(/bad chunk magic/);
+    expect(() => deserializeChunk(bytes)).toThrow(/invalid chunk magic/);
   });
 
   it("schemaVersion in the header equals CHUNK_VERSION", () => {

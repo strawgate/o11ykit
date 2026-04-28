@@ -1,6 +1,5 @@
+import { Interner } from "stardb";
 import { describe, expect, it } from "vitest";
-
-import { Interner } from "../src/interner.js";
 
 describe("Interner", () => {
   it("round-trips utf8 strings and deduplicates ids", () => {

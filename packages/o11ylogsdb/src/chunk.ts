@@ -21,10 +21,16 @@
  * over the result. M3/M4 replace this with a proper per-column form.
  */
 
-import type { CodecRegistry } from "stardb";
+import type { ChunkWireOptions, CodecRegistry } from "stardb";
+import { bytesToHex, deserializeChunkWire, hexToBytes, serializeChunkWire } from "stardb";
+import { anyValueToJson, jsonToAnyValue } from "./codec-utils.js";
 import type { AnyValue, InstrumentationScope, LogRecord, Resource } from "./types.js";
 
-const MAGIC_BYTES = new Uint8Array([0x4f, 0x4c, 0x44, 0x42]); // "OLDB"
+const CHUNK_WIRE_OPTS: ChunkWireOptions = {
+  magic: new Uint8Array([0x4f, 0x4c, 0x44, 0x42]), // "OLDB"
+  version: 1,
+  name: "o11ylogsdb",
+};
 export const CHUNK_VERSION = 1;
 
 export interface ChunkHeader {
@@ -108,6 +114,22 @@ export interface ChunkPolicy {
    * implemented.
    */
   decodeBodiesOnly?(buf: Uint8Array, nLogs: number, meta: unknown): AnyValue[];
+
+  /**
+   * Filtered decode: reconstruct bodies, filter by substring needle,
+   * and only JSON.parse sidecar lines for matching records. Returns
+   * a sparse array (matching records at their original indices).
+   *
+   * Saves ~35–60% of sidecar CPU by skipping JSON.parse for records
+   * whose bodies don't contain the needle. Falls back to full decode
+   * when not implemented.
+   */
+  decodeFilteredByBodyNeedle?(
+    buf: Uint8Array,
+    nLogs: number,
+    meta: unknown,
+    needle: string
+  ): LogRecord[];
 }
 
 /** Default policy: ZSTD-19 over the NDJSON form. Simple and decent. */
@@ -205,12 +227,25 @@ export function readRecords(
 ): LogRecord[] {
   const codec = registry.get(chunk.header.codecName);
   const raw = codec.decode(chunk.payload);
+  return readRecordsFromRaw(raw, chunk.header, policy);
+}
+
+/**
+ * Decode records from an already-decompressed payload buffer. Use this
+ * when the caller has already decompressed (e.g. in the query engine's
+ * raw-byte-scan path) to avoid double decompression.
+ */
+export function readRecordsFromRaw(
+  raw: Uint8Array,
+  header: ChunkHeader,
+  policy?: ChunkPolicy
+): LogRecord[] {
   if (policy?.decodePayload) {
-    return policy.decodePayload(raw, chunk.header.nLogs, chunk.header.codecMeta);
+    return policy.decodePayload(raw, header.nLogs, header.codecMeta);
   }
-  const decoded = decodeNdjsonRecords(raw, chunk.header.nLogs);
+  const decoded = decodeNdjsonRecords(raw, header.nLogs);
   if (policy?.postDecode) {
-    return policy.postDecode(decoded, chunk.header.codecMeta);
+    return policy.postDecode(decoded, header.codecMeta);
   }
   return decoded;
 }
@@ -241,6 +276,36 @@ export function readBodiesOnly(
 }
 
 /**
+ * Filtered decode from already-decompressed bytes: only reconstruct full
+ * LogRecord objects for records whose body contains `needle`. Returns a
+ * sparse array — matching records at their original indices, undefined
+ * elsewhere. The query engine iterates this directly.
+ *
+ * Falls back to full decode + filter when the policy doesn't implement
+ * `decodeFilteredByBodyNeedle`.
+ */
+export function readRecordsFilteredFromRaw(
+  raw: Uint8Array,
+  header: ChunkHeader,
+  needle: string,
+  policy?: ChunkPolicy
+): LogRecord[] {
+  if (policy?.decodeFilteredByBodyNeedle) {
+    return policy.decodeFilteredByBodyNeedle(raw, header.nLogs, header.codecMeta, needle);
+  }
+  // Fallback: full decode + filter into sparse array
+  const records = readRecordsFromRaw(raw, header, policy);
+  const out: LogRecord[] = new Array(records.length);
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i] as LogRecord;
+    if (typeof r.body === "string" && r.body.includes(needle)) {
+      out[i] = r;
+    }
+  }
+  return out;
+}
+
+/**
  * Wire size of a chunk without materializing the full byte buffer —
  * the header JSON is encoded just to measure its length, but the
  * payload bytes (the dominant cost) are not copied. Used by `stats()`
@@ -248,41 +313,17 @@ export function readBodiesOnly(
  */
 export function chunkWireSize(chunk: Chunk): number {
   const headerJson = new TextEncoder().encode(JSON.stringify(chunk.header));
-  return MAGIC_BYTES.length + 1 + 4 + headerJson.length + chunk.payload.length;
+  return 4 + 1 + 4 + headerJson.length + chunk.payload.length;
 }
 
 /** Serialize a chunk to the wire format. */
 export function serializeChunk(chunk: Chunk): Uint8Array {
-  const headerJson = new TextEncoder().encode(JSON.stringify(chunk.header));
-  const totalLen = MAGIC_BYTES.length + 1 + 4 + headerJson.length + chunk.payload.length;
-  const out = new Uint8Array(totalLen);
-  let cursor = 0;
-  out.set(MAGIC_BYTES, cursor);
-  cursor += MAGIC_BYTES.length;
-  out[cursor++] = CHUNK_VERSION;
-  const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
-  view.setUint32(cursor, headerJson.length, true);
-  cursor += 4;
-  out.set(headerJson, cursor);
-  cursor += headerJson.length;
-  out.set(chunk.payload, cursor);
-  return out;
+  return serializeChunkWire(chunk.header, chunk.payload, CHUNK_WIRE_OPTS);
 }
 
 /** Parse the wire format back to a Chunk. */
 export function deserializeChunk(buf: Uint8Array): Chunk {
-  for (let i = 0; i < MAGIC_BYTES.length; i++) {
-    if (buf[i] !== MAGIC_BYTES[i]) throw new Error("o11ylogsdb: bad chunk magic");
-  }
-  const version = buf[4];
-  if (version !== CHUNK_VERSION) {
-    throw new Error(`o11ylogsdb: unsupported chunk version ${version}`);
-  }
-  const view = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  const headerLen = view.getUint32(5, true);
-  const headerJson = new TextDecoder().decode(buf.subarray(9, 9 + headerLen));
-  const header: ChunkHeader = JSON.parse(headerJson);
-  const payload = buf.subarray(9 + headerLen);
+  const { header, payload } = deserializeChunkWire<ChunkHeader>(buf, CHUNK_WIRE_OPTS);
   if (payload.length !== header.payloadBytes) {
     throw new Error(
       `o11ylogsdb: payload length mismatch (${payload.length} vs ${header.payloadBytes})`
@@ -333,8 +374,8 @@ function toJsonable(r: LogRecord): JsonableRecord {
   if (r.flags !== undefined) out.f = r.flags;
   if (r.traceId) out.ti = bytesToHex(r.traceId);
   if (r.spanId) out.si = bytesToHex(r.spanId);
-  if (r.eventName) out.e = r.eventName;
-  if (r.droppedAttributesCount) out.d = r.droppedAttributesCount;
+  if (r.eventName !== undefined) out.e = r.eventName;
+  if (r.droppedAttributesCount !== undefined) out.d = r.droppedAttributesCount;
   return out;
 }
 
@@ -353,51 +394,7 @@ function fromJsonable(j: JsonableRecord): LogRecord {
   if (j.f !== undefined) out.flags = j.f;
   if (j.ti) out.traceId = hexToBytes(j.ti);
   if (j.si) out.spanId = hexToBytes(j.si);
-  if (j.e) out.eventName = j.e;
-  if (j.d) out.droppedAttributesCount = j.d;
-  return out;
-}
-
-function anyValueToJson(v: import("./types.js").AnyValue): unknown {
-  if (v === null) return null;
-  if (typeof v === "bigint") return { $bi: v.toString() };
-  if (v instanceof Uint8Array) return { $b: bytesToHex(v) };
-  if (Array.isArray(v)) return v.map(anyValueToJson);
-  if (typeof v === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v)) out[k] = anyValueToJson(val);
-    return out;
-  }
-  return v;
-}
-
-function jsonToAnyValue(j: unknown): import("./types.js").AnyValue {
-  if (j === null) return null;
-  if (typeof j === "object" && j !== null) {
-    const obj = j as Record<string, unknown>;
-    if (typeof obj.$bi === "string") return BigInt(obj.$bi);
-    if (typeof obj.$b === "string") return hexToBytes(obj.$b);
-    if (Array.isArray(j)) return j.map(jsonToAnyValue);
-    const out: Record<string, import("./types.js").AnyValue> = {};
-    for (const [k, v] of Object.entries(obj)) out[k] = jsonToAnyValue(v);
-    return out;
-  }
-  // string | number | boolean
-  return j as import("./types.js").AnyValue;
-}
-
-function bytesToHex(b: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < b.length; i++) {
-    out += (b[i] as number).toString(16).padStart(2, "0");
-  }
-  return out;
-}
-
-function hexToBytes(s: string): Uint8Array {
-  const out = new Uint8Array(s.length / 2);
-  for (let i = 0; i < out.length; i++) {
-    out[i] = Number.parseInt(s.substring(i * 2, i * 2 + 2), 16);
-  }
+  if (j.e !== undefined) out.eventName = j.e;
+  if (j.d !== undefined) out.droppedAttributesCount = j.d;
   return out;
 }

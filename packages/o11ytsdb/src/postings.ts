@@ -1,4 +1,4 @@
-import { Interner } from "./interner.js";
+import { Interner } from "stardb";
 import type { Labels, SeriesId } from "./types.js";
 
 export class MemPostings {
