@@ -211,7 +211,9 @@ describe("QueryBuilder — plan compilation", () => {
   });
 
   it("throws when step is negative", () => {
-    expect(() => query().metric("cpu").range(0n, 100n).step(-60_000n).plan()).toThrow("step must be > 0");
+    expect(() => query().metric("cpu").range(0n, 100n).step(-60_000n).plan()).toThrow(
+      "step must be > 0"
+    );
   });
 
   it("throws when step is used without aggregation or step transform", () => {
