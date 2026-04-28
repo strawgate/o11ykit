@@ -1,13 +1,18 @@
-/* ─── TSDB Engine Docs — CSS Variable Palette ────────────────────── */
+/* ─── TSDB Engine — Theme Overrides ──────────────────────────────────── */
 
 :root {
-  /* Byte explorer region colors */
+  /* Override global accent color for TSDB */
+  --signal: #7c3aed;
+  --signal-2: #a78bfa;
+  --signal-3: #ddd6fe;
+
+  /* Byte explorer palette */
   --region-header: #8b5cf6;
   --region-timestamps: #06b6d4;
   --region-values: #10b981;
   --region-exceptions: #f59e0b;
 
-  /* Dark theme (byte explorer, codec insight) */
+  /* Dark theme (used in byte-explorer code blocks) */
   --dark-bg: #0a1929;
   --dark-bg-alt: #0d2137;
   --dark-text: #e2e8f0;
@@ -26,7 +31,7 @@
   --bit-0-text: #64748b;
   --bit-1-text: #e2e8f0;
 
-  /* Backend badges */
+  /* Badges */
   --badge-flat-bg: #fef3c7;
   --badge-flat-text: #92400e;
   --badge-chunked-bg: #dbeafe;
@@ -34,7 +39,7 @@
   --badge-column-bg: #d1fae5;
   --badge-column-text: #065f46;
 
-  /* Z-index scale */
+  /* Z-index */
   --z-cell: 1;
   --z-highlight: 2;
   --z-hover: 3;
@@ -42,11 +47,10 @@
   --z-tooltip: 50;
 }
 
-/* ─── TSDB Engine Docs — Base Styles ──────────────────────────────── */
-
+/* ─── Section Intro ──────────────────────────────────────────────────── */
 .section-intro {
   margin: 0 0 18px;
-  color: var(--ink-soft);
+  color: var(--ink-2);
   max-width: 72ch;
   font-size: 16px;
   line-height: 1.5;
