@@ -13,6 +13,11 @@ export interface ObservablePlotMark {
 export interface ObservablePlotEngineModel {
   readonly data: readonly Record<string, unknown>[];
   readonly marks: readonly ObservablePlotMark[];
+  readonly options: {
+    readonly x: { readonly grid: boolean };
+    readonly y: { readonly grid: boolean };
+    readonly color?: { readonly legend: boolean };
+  };
 }
 
 export function toObservablePlotEngineModel(
@@ -37,6 +42,11 @@ export function toObservablePlotEngineModel(
         stroke: "series",
       },
     ],
+    options: {
+      x: { grid: chartType !== "sparkline" },
+      y: { grid: chartType !== "sparkline" },
+      color: { legend: chartType !== "sparkline" },
+    },
   };
 }
 
@@ -51,5 +61,9 @@ export function toObservablePlotEngineHistogramModel(
       end: bucket.end,
     })),
     marks: [{ mark: "barY", x: "label", y: "count" }],
+    options: { x: { grid: false }, y: { grid: true } },
   };
 }
+
+export const toObservablePlotEnginePlotOptions: typeof toObservablePlotEngineModel =
+  toObservablePlotEngineModel;

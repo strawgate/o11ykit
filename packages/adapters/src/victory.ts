@@ -12,6 +12,12 @@ export interface VictorySeries {
   readonly component: "VictoryLine" | "VictoryArea" | "VictoryScatter";
 }
 
+export interface VictoryChartPropsModel {
+  readonly scale: { readonly x: "time" };
+  readonly domainPadding: { readonly x: number; readonly y: number };
+  readonly series: readonly VictorySeries[];
+}
+
 export function toVictoryEngineSeries(
   model: EngineWideTableModel,
   options: { readonly chartType?: "line" | "area" | "scatter" } = {}
@@ -28,6 +34,17 @@ export function toVictoryEngineSeries(
           ? "VictoryArea"
           : "VictoryLine",
   }));
+}
+
+export function toVictoryEngineChartProps(
+  model: EngineWideTableModel,
+  options: { readonly chartType?: "line" | "area" | "scatter" } = {}
+): VictoryChartPropsModel {
+  return {
+    scale: { x: "time" },
+    domainPadding: { x: 8, y: 12 },
+    series: toVictoryEngineSeries(model, options),
+  };
 }
 
 export function toVictoryEngineLatestData(model: EngineLatestValueModel): readonly VictoryDatum[] {

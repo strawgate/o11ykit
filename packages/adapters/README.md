@@ -22,6 +22,7 @@ users should get aligned arrays. ECharts users should get dataset/encode options
 - `@otlpkit/adapters/uplot`
 - `@otlpkit/adapters/vegalite`
 - `@otlpkit/adapters/victory`
+- `@otlpkit/adapters/visx`
 - `@otlpkit/adapters/waterfall`
 
 The goal is to preserve each chart library's idioms:
@@ -37,6 +38,7 @@ The goal is to preserve each chart library's idioms:
 - Victory: component-oriented data series
 - AG Charts and Highcharts: option trees with explicit series keys
 - Vega-Lite: tidy records and declarative encodings
+- Visx: low-level series arrays, accessors, and scale hints
 
 ## Chart Gallery
 
@@ -47,10 +49,9 @@ in the browser; entries without package renderers are explicitly labeled as adap
 
 The gallery uses exported engine-backed adapters for every package-backed library. Tremor and
 Recharts are the most polished component-level APIs; Chart.js, ECharts, uPlot, Nivo, Observable
-Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, and Vega-Lite expose first-pass native
-model adapters that the gallery renders with the real packages. The remaining gallery entry is the
-design target for a future first-class adapter: it shows the native shape we want, not a generic
-cross-library DTO.
+Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite, and Visx expose first-pass
+native model adapters. The gallery renders every package-backed entry with the real package; Visx is
+exported as a low-level adapter shape while its package renderer waits for a dedicated React pass.
 
 | Library | Engine-backed status | User-facing shape |
 | --- | --- | --- |
@@ -60,7 +61,7 @@ cross-library DTO.
 | ECharts | exported | dataset and encode option |
 | uPlot | exported | aligned arrays |
 | Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite | exported, package-rendered gallery | library-native models |
-| Visx | research | library-native sketch; package renderer held until React peer support matches the gallery |
+| Visx | exported, adapter-shape gallery | accessors, series arrays, and scale hints |
 
 ## Ergonomics Audit
 

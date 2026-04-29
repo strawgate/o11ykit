@@ -480,8 +480,8 @@ async function renderPlotly(target, chart, generation) {
     yaxis: { ...(model.layout?.yaxis ?? {}), visible: chart.chartType !== "sparkline" },
   };
   await Plotly.newPlot(target, model.data, layout, {
+    ...model.config,
     displayModeBar: false,
-    responsive: true,
   });
   return () => Plotly.purge(target);
 }
@@ -562,6 +562,7 @@ async function renderVegaLite(target, chart, generation) {
     height: Math.max(180, target.clientHeight || 220),
     background: "transparent",
     config: {
+      ...(model.config ?? {}),
       axis: { labelColor: "#6f6a60", title: null, gridColor: "rgba(17,17,15,0.12)" },
       legend: { labelColor: "#11110f", title: null },
       view: { stroke: null },
@@ -659,8 +660,9 @@ async function renderObservablePlot(target, chart, generation) {
     marginTop: 12,
     marginBottom: chart.chartType === "sparkline" ? 10 : 28,
     style: { background: "transparent", color: "#11110f", fontFamily: "var(--mono)" },
-    x: chart.chartType === "sparkline" ? { axis: null } : undefined,
-    y: chart.chartType === "sparkline" ? { axis: null } : { grid: true },
+    x: chart.chartType === "sparkline" ? { axis: null } : model.options.x,
+    y: chart.chartType === "sparkline" ? { axis: null } : model.options.y,
+    color: model.options.color,
     marks,
   });
   target.replaceChildren(plot);

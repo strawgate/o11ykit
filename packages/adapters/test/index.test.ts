@@ -10,7 +10,9 @@ import {
 import * as adapterBarrel from "../src/index.js";
 import {
   toAgChartsEngineTimeSeriesOptions,
+  toAgChartsEngineUpdateDelta,
   toApexChartsEngineLatestValuesOptions,
+  toApexChartsEngineSeriesUpdate,
   toChartJsEngineHistogramConfig,
   toChartJsEngineLatestValuesConfig,
   toChartJsEngineTimeSeriesConfig,
@@ -29,7 +31,10 @@ import {
   toEngineWideTableModel,
   toHighchartsEngineTimeSeriesOptions,
   toNivoEngineBarModel,
+  toNivoEngineLineProps,
+  toNivoEnginePieProps,
   toObservablePlotEngineModel,
+  toPlotlyEngineLatestValuesFigure,
   toPlotlyEngineTimeSeriesModel,
   toRechartsEngineLatestValuesModel,
   toRechartsEngineTimeSeriesModel,
@@ -44,7 +49,10 @@ import {
   toUPlotLatestValuesModel,
   toUPlotTimeSeriesModel,
   toVegaLiteEngineSpec,
+  toVictoryEngineChartProps,
   toVictoryEngineSeries,
+  toVisxEngineHistogramModel,
+  toVisxEngineXYChartModel,
   traceWaterfallToLaneRows,
 } from "../src/index.js";
 import { histogramRows, pivotTimeSeriesFrame } from "../src/shared.js";
@@ -157,17 +165,33 @@ describe("@otlpkit/adapters", () => {
     expect(toEChartsEngineHistogramOption(histogram).dataset[0]?.source).toHaveLength(3);
     expect(toUPlotEngineTimeSeriesModel(wide).data).toHaveLength(3);
     expect(toNivoEngineBarModel(wide).keys).toEqual(["__name__=cpu,host=a", "__name__=cpu,host=b"]);
+    expect(toNivoEngineLineProps(wide, { chartType: "sparkline" }).enablePoints).toBe(false);
+    expect(toNivoEnginePieProps(latest).value).toBe("value");
     expect(toObservablePlotEngineModel(wide).marks[0]?.mark).toBe("lineY");
+    expect(toObservablePlotEngineModel(wide).options.color?.legend).toBe(true);
     expect(toPlotlyEngineTimeSeriesModel(wide).data[0]?.type).toBe("scatter");
+    expect(toPlotlyEngineTimeSeriesModel(wide).data[0]?.uid).toBe("__name__=cpu,host=a");
+    expect(toPlotlyEngineLatestValuesFigure(latest).config.responsive).toBe(true);
     expect(toApexChartsEngineLatestValuesOptions(latest, { chartType: "gauge" }).chart.type).toBe(
       "radialBar"
     );
+    expect(
+      toApexChartsEngineSeriesUpdate(toApexChartsEngineLatestValuesOptions(latest)).series
+    ).toEqual([3, 30]);
     expect(toVictoryEngineSeries(wide, { chartType: "area" })[0]?.component).toBe("VictoryArea");
+    expect(toVictoryEngineChartProps(wide).scale.x).toBe("time");
     expect(toAgChartsEngineTimeSeriesOptions(wide, { chartType: "area" }).series?.[0]?.type).toBe(
       "area"
     );
+    expect(toAgChartsEngineUpdateDelta(toAgChartsEngineTimeSeriesOptions(wide)).data).toHaveLength(
+      3
+    );
     expect(toHighchartsEngineTimeSeriesOptions(wide).chart.type).toBe("line");
+    expect(toHighchartsEngineTimeSeriesOptions(wide).xAxis?.type).toBe("datetime");
     expect(toVegaLiteEngineSpec(wide, { mark: "scatter" }).mark).toBe("point");
+    expect(toVegaLiteEngineSpec(wide).$schema).toContain("vega-lite");
+    expect(toVisxEngineXYChartModel(wide).data[0]?.data[0]).toEqual({ x: 1, y: 1 });
+    expect(toVisxEngineHistogramModel(histogram).xScale.type).toBe("band");
   });
 
   it("handles engine timestamp units, point budgets, and invalid query results", () => {
@@ -542,6 +566,7 @@ describe("@otlpkit/adapters", () => {
     expect(typeof adapterBarrel.adapterModules.toChartJsLineConfig).toBe("function");
     expect(typeof adapterBarrel.adapterModules.toAgChartsEngineTimeSeriesOptions).toBe("function");
     expect(typeof adapterBarrel.adapterModules.toVegaLiteEngineSpec).toBe("function");
+    expect(typeof adapterBarrel.adapterModules.toVisxEngineXYChartModel).toBe("function");
     expect(toChartJsLineConfig(sparseFrame).data.datasets[0]?.data[0]).toEqual({ x: 0, y: 1 });
     expect(toChartJsLineConfig(sparseFrame).options.scales.y.title.text).toBe("");
     expect(toEChartsTimeSeriesOption(sparseFrame).yAxis.name).toBe("");

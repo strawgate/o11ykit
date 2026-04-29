@@ -16,6 +16,7 @@ export type PlotlyEngineChartType =
   | "gauge";
 
 export interface PlotlyTrace {
+  readonly uid?: string;
   readonly type: "scatter" | "bar" | "pie" | "indicator";
   readonly mode?: "lines" | "markers" | undefined;
   readonly name?: string;
@@ -31,6 +32,10 @@ export interface PlotlyTrace {
 export interface PlotlyEngineModel {
   readonly data: readonly PlotlyTrace[];
   readonly layout: Record<string, unknown>;
+  readonly config: {
+    readonly responsive: boolean;
+    readonly displaylogo: boolean;
+  };
 }
 
 export function toPlotlyEngineTimeSeriesModel(
@@ -40,6 +45,7 @@ export function toPlotlyEngineTimeSeriesModel(
   const chartType = options.chartType ?? "line";
   return {
     data: model.series.map((series, index) => ({
+      uid: series.id,
       type: chartType === "bar" ? "bar" : "scatter",
       mode: chartType === "bar" ? undefined : chartType === "scatter" ? "markers" : "lines",
       name: series.label,
@@ -47,7 +53,8 @@ export function toPlotlyEngineTimeSeriesModel(
       y: model.rows.map((row) => row.values[index] ?? null),
       fill: chartType === "area" ? "tozeroy" : undefined,
     })),
-    layout: { xaxis: { type: "date" } },
+    layout: { xaxis: { type: "date" }, uirevision: "engine-series" },
+    config: { responsive: true, displaylogo: false },
   };
 }
 
@@ -58,20 +65,23 @@ export function toPlotlyEngineLatestValuesModel(
   const chartType = options.chartType ?? "donut";
   if (chartType === "gauge") {
     return {
-      data: [{ type: "indicator", mode: undefined, value: gaugeValue(model) }],
-      layout: { margin: { t: 16, b: 16 } },
+      data: [{ uid: "latest-gauge", type: "indicator", mode: undefined, value: gaugeValue(model) }],
+      layout: { margin: { t: 16, b: 16 }, uirevision: "engine-latest" },
+      config: { responsive: true, displaylogo: false },
     };
   }
   const rows = model.rows.filter((row) => row.value !== null);
   return {
     data: [
       {
+        uid: "latest-values",
         type: "pie",
         labels: rows.map((row) => row.label),
         values: rows.map((row) => row.value ?? 0),
       },
     ],
-    layout: {},
+    layout: { uirevision: "engine-latest" },
+    config: { responsive: true, displaylogo: false },
   };
 }
 
@@ -79,11 +89,20 @@ export function toPlotlyEngineHistogramModel(model: EngineHistogramModel): Plotl
   return {
     data: [
       {
+        uid: "histogram",
         type: "bar",
         x: model.buckets.map((bucket) => bucket.label),
         y: model.buckets.map((bucket) => bucket.count),
       },
     ],
-    layout: {},
+    layout: { uirevision: "engine-histogram" },
+    config: { responsive: true, displaylogo: false },
   };
 }
+
+export const toPlotlyEngineTimeSeriesFigure: typeof toPlotlyEngineTimeSeriesModel =
+  toPlotlyEngineTimeSeriesModel;
+export const toPlotlyEngineLatestValuesFigure: typeof toPlotlyEngineLatestValuesModel =
+  toPlotlyEngineLatestValuesModel;
+export const toPlotlyEngineHistogramFigure: typeof toPlotlyEngineHistogramModel =
+  toPlotlyEngineHistogramModel;

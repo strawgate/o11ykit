@@ -1,9 +1,11 @@
 import {
   toAgChartsEngineLatestValuesOptions,
   toAgChartsEngineTimeSeriesOptions,
+  toAgChartsEngineUpdateDelta,
 } from "./agcharts.js";
 import {
   toApexChartsEngineLatestValuesOptions,
+  toApexChartsEngineSeriesUpdate,
   toApexChartsEngineTimeSeriesOptions,
 } from "./apexcharts.js";
 import {
@@ -29,14 +31,24 @@ import {
 } from "./highcharts.js";
 import {
   toNivoEngineBarModel,
+  toNivoEngineBarProps,
+  toNivoEngineLineProps,
   toNivoEngineLineSeries,
   toNivoEnginePieData,
+  toNivoEnginePieProps,
   toNivoEngineScatterSeries,
 } from "./nivo.js";
-import { toObservablePlotEngineHistogramModel, toObservablePlotEngineModel } from "./observable.js";
 import {
+  toObservablePlotEngineHistogramModel,
+  toObservablePlotEngineModel,
+  toObservablePlotEnginePlotOptions,
+} from "./observable.js";
+import {
+  toPlotlyEngineHistogramFigure,
   toPlotlyEngineHistogramModel,
+  toPlotlyEngineLatestValuesFigure,
   toPlotlyEngineLatestValuesModel,
+  toPlotlyEngineTimeSeriesFigure,
   toPlotlyEngineTimeSeriesModel,
 } from "./plotly.js";
 import {
@@ -60,13 +72,24 @@ import {
   toUPlotTimeSeriesModel,
 } from "./uplot.js";
 import { toVegaLiteEngineHistogramSpec, toVegaLiteEngineSpec } from "./vegalite.js";
-import { toVictoryEngineLatestData, toVictoryEngineSeries } from "./victory.js";
+import {
+  toVictoryEngineChartProps,
+  toVictoryEngineLatestData,
+  toVictoryEngineSeries,
+} from "./victory.js";
+import {
+  toVisxEngineHistogramModel,
+  toVisxEngineLatestValuesModel,
+  toVisxEngineXYChartModel,
+} from "./visx.js";
 import { traceWaterfallToLaneRows } from "./waterfall.js";
 
 export const adapterModules: {
   readonly toAgChartsEngineLatestValuesOptions: typeof toAgChartsEngineLatestValuesOptions;
   readonly toAgChartsEngineTimeSeriesOptions: typeof toAgChartsEngineTimeSeriesOptions;
+  readonly toAgChartsEngineUpdateDelta: typeof toAgChartsEngineUpdateDelta;
   readonly toApexChartsEngineLatestValuesOptions: typeof toApexChartsEngineLatestValuesOptions;
+  readonly toApexChartsEngineSeriesUpdate: typeof toApexChartsEngineSeriesUpdate;
   readonly toApexChartsEngineTimeSeriesOptions: typeof toApexChartsEngineTimeSeriesOptions;
   readonly toChartJsHistogramConfig: typeof toChartJsHistogramConfig;
   readonly toChartJsEngineHistogramConfig: typeof toChartJsEngineHistogramConfig;
@@ -84,13 +107,20 @@ export const adapterModules: {
   readonly toHighchartsEngineLatestValuesOptions: typeof toHighchartsEngineLatestValuesOptions;
   readonly toHighchartsEngineTimeSeriesOptions: typeof toHighchartsEngineTimeSeriesOptions;
   readonly toNivoEngineBarModel: typeof toNivoEngineBarModel;
+  readonly toNivoEngineBarProps: typeof toNivoEngineBarProps;
   readonly toNivoEngineLineSeries: typeof toNivoEngineLineSeries;
+  readonly toNivoEngineLineProps: typeof toNivoEngineLineProps;
   readonly toNivoEnginePieData: typeof toNivoEnginePieData;
+  readonly toNivoEnginePieProps: typeof toNivoEnginePieProps;
   readonly toNivoEngineScatterSeries: typeof toNivoEngineScatterSeries;
   readonly toObservablePlotEngineHistogramModel: typeof toObservablePlotEngineHistogramModel;
   readonly toObservablePlotEngineModel: typeof toObservablePlotEngineModel;
+  readonly toObservablePlotEnginePlotOptions: typeof toObservablePlotEnginePlotOptions;
+  readonly toPlotlyEngineHistogramFigure: typeof toPlotlyEngineHistogramFigure;
   readonly toPlotlyEngineHistogramModel: typeof toPlotlyEngineHistogramModel;
+  readonly toPlotlyEngineLatestValuesFigure: typeof toPlotlyEngineLatestValuesFigure;
   readonly toPlotlyEngineLatestValuesModel: typeof toPlotlyEngineLatestValuesModel;
+  readonly toPlotlyEngineTimeSeriesFigure: typeof toPlotlyEngineTimeSeriesFigure;
   readonly toPlotlyEngineTimeSeriesModel: typeof toPlotlyEngineTimeSeriesModel;
   readonly toRechartsEngineLatestValuesModel: typeof toRechartsEngineLatestValuesModel;
   readonly toRechartsEngineTimeSeriesModel: typeof toRechartsEngineTimeSeriesModel;
@@ -108,13 +138,19 @@ export const adapterModules: {
   readonly toUPlotTimeSeriesModel: typeof toUPlotTimeSeriesModel;
   readonly toVegaLiteEngineHistogramSpec: typeof toVegaLiteEngineHistogramSpec;
   readonly toVegaLiteEngineSpec: typeof toVegaLiteEngineSpec;
+  readonly toVictoryEngineChartProps: typeof toVictoryEngineChartProps;
   readonly toVictoryEngineLatestData: typeof toVictoryEngineLatestData;
   readonly toVictoryEngineSeries: typeof toVictoryEngineSeries;
+  readonly toVisxEngineHistogramModel: typeof toVisxEngineHistogramModel;
+  readonly toVisxEngineLatestValuesModel: typeof toVisxEngineLatestValuesModel;
+  readonly toVisxEngineXYChartModel: typeof toVisxEngineXYChartModel;
   readonly traceWaterfallToLaneRows: typeof traceWaterfallToLaneRows;
 } = {
   toAgChartsEngineLatestValuesOptions,
   toAgChartsEngineTimeSeriesOptions,
+  toAgChartsEngineUpdateDelta,
   toApexChartsEngineLatestValuesOptions,
+  toApexChartsEngineSeriesUpdate,
   toApexChartsEngineTimeSeriesOptions,
   toChartJsHistogramConfig,
   toChartJsEngineHistogramConfig,
@@ -132,13 +168,20 @@ export const adapterModules: {
   toHighchartsEngineLatestValuesOptions,
   toHighchartsEngineTimeSeriesOptions,
   toNivoEngineBarModel,
+  toNivoEngineBarProps,
   toNivoEngineLineSeries,
+  toNivoEngineLineProps,
   toNivoEnginePieData,
+  toNivoEnginePieProps,
   toNivoEngineScatterSeries,
   toObservablePlotEngineHistogramModel,
   toObservablePlotEngineModel,
+  toObservablePlotEnginePlotOptions,
+  toPlotlyEngineHistogramFigure,
   toPlotlyEngineHistogramModel,
+  toPlotlyEngineLatestValuesFigure,
   toPlotlyEngineLatestValuesModel,
+  toPlotlyEngineTimeSeriesFigure,
   toPlotlyEngineTimeSeriesModel,
   toRechartsEngineLatestValuesModel,
   toRechartsEngineTimeSeriesModel,
@@ -156,17 +199,23 @@ export const adapterModules: {
   toUPlotTimeSeriesModel,
   toVegaLiteEngineHistogramSpec,
   toVegaLiteEngineSpec,
+  toVictoryEngineChartProps,
   toVictoryEngineLatestData,
   toVictoryEngineSeries,
+  toVisxEngineHistogramModel,
+  toVisxEngineLatestValuesModel,
+  toVisxEngineXYChartModel,
   traceWaterfallToLaneRows,
 };
 
 export {
   toAgChartsEngineLatestValuesOptions,
   toAgChartsEngineTimeSeriesOptions,
+  toAgChartsEngineUpdateDelta,
 } from "./agcharts.js";
 export {
   toApexChartsEngineLatestValuesOptions,
+  toApexChartsEngineSeriesUpdate,
   toApexChartsEngineTimeSeriesOptions,
 } from "./apexcharts.js";
 export type {
@@ -219,13 +268,20 @@ export {
   toHighchartsEngineLatestValuesOptions,
   toHighchartsEngineTimeSeriesOptions,
   toNivoEngineBarModel,
+  toNivoEngineBarProps,
+  toNivoEngineLineProps,
   toNivoEngineLineSeries,
   toNivoEnginePieData,
+  toNivoEnginePieProps,
   toNivoEngineScatterSeries,
   toObservablePlotEngineHistogramModel,
   toObservablePlotEngineModel,
+  toObservablePlotEnginePlotOptions,
+  toPlotlyEngineHistogramFigure,
   toPlotlyEngineHistogramModel,
+  toPlotlyEngineLatestValuesFigure,
   toPlotlyEngineLatestValuesModel,
+  toPlotlyEngineTimeSeriesFigure,
   toPlotlyEngineTimeSeriesModel,
   toRechartsEngineLatestValuesModel,
   toRechartsEngineTimeSeriesModel,
@@ -243,7 +299,11 @@ export {
   toUPlotTimeSeriesModel,
   toVegaLiteEngineHistogramSpec,
   toVegaLiteEngineSpec,
+  toVictoryEngineChartProps,
   toVictoryEngineLatestData,
   toVictoryEngineSeries,
+  toVisxEngineHistogramModel,
+  toVisxEngineLatestValuesModel,
+  toVisxEngineXYChartModel,
   traceWaterfallToLaneRows,
 };

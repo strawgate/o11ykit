@@ -21,6 +21,7 @@ import {
 import { toUPlotEngineTimeSeriesModel } from "../../../packages/adapters/src/uplot.js";
 import { toVegaLiteEngineSpec } from "../../../packages/adapters/src/vegalite.js";
 import { toVictoryEngineSeries } from "../../../packages/adapters/src/victory.js";
+import { toVisxEngineXYChartModel } from "../../../packages/adapters/src/visx.js";
 import {
   createEngineResult,
   createGalleryState,
@@ -119,6 +120,9 @@ describe("chart gallery integration with real adapters", () => {
     );
     expect(toVegaLiteEngineSpec(wide).mark).toBe(
       createGalleryState("vegalite", "line").adapterModel.mark
+    );
+    expect(toVisxEngineXYChartModel(wide).data[0]?.key).toBe(
+      createGalleryState("visx", "line").adapterModel.data[0]?.key
     );
   });
 });

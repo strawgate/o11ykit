@@ -20,6 +20,12 @@ export interface AgChartsEngineOptionsModel {
   readonly scale?: { readonly min: number; readonly max: number };
 }
 
+export interface AgChartsEngineUpdateDelta {
+  readonly data?: AgChartsEngineOptionsModel["data"];
+  readonly series?: AgChartsEngineOptionsModel["series"];
+  readonly value?: AgChartsEngineOptionsModel["value"];
+}
+
 export function toAgChartsEngineTimeSeriesOptions(
   model: EngineWideTableModel,
   options: { readonly chartType?: AgChartsEngineChartType } = {}
@@ -40,6 +46,16 @@ export function toAgChartsEngineTimeSeriesOptions(
       yKey: series.id,
       yName: series.label,
     })),
+  };
+}
+
+export function toAgChartsEngineUpdateDelta(
+  model: AgChartsEngineOptionsModel
+): AgChartsEngineUpdateDelta {
+  return {
+    ...(model.data ? { data: model.data } : {}),
+    ...(model.series ? { series: model.series } : {}),
+    ...(model.value !== undefined ? { value: model.value } : {}),
   };
 }
 

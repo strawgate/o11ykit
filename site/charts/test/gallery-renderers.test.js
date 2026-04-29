@@ -23,7 +23,7 @@ describe("chart gallery package renderers", () => {
     ).toHaveLength(13);
   });
 
-  it("keeps research-only libraries out of the package-rendered set", () => {
+  it("keeps adapter-shape-only libraries out of the package-rendered set", () => {
     expect(hasPackageRenderer("visx")).toBe(false);
   });
 });

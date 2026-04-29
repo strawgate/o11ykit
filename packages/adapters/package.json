@@ -92,6 +92,11 @@
       "import": "./dist/victory.js",
       "default": "./dist/victory.js"
     },
+    "./visx": {
+      "types": "./dist/visx.d.ts",
+      "import": "./dist/visx.js",
+      "default": "./dist/visx.js"
+    },
     "./waterfall": {
       "types": "./dist/waterfall.d.ts",
       "import": "./dist/waterfall.js",

@@ -40,6 +40,7 @@ export function toHighchartsEngineTimeSeriesOptions(
   const chartType = options.chartType ?? "line";
   return {
     chart: { type: chartType === "bar" ? "bar" : chartType === "scatter" ? "scatter" : "line" },
+    xAxis: { type: "datetime" },
     series: model.series.map((series, index) => ({
       id: series.id,
       name: series.label,

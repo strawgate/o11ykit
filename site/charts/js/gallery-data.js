@@ -46,6 +46,11 @@ import {
   toVictoryEngineLatestData,
   toVictoryEngineSeries,
 } from "../../../packages/adapters/src/victory.ts";
+import {
+  toVisxEngineHistogramModel,
+  toVisxEngineLatestValuesModel,
+  toVisxEngineXYChartModel,
+} from "../../../packages/adapters/src/visx.ts";
 
 export const CHART_TYPES = [
   { id: "line", label: "Line" },
@@ -125,8 +130,8 @@ export const LIBRARIES = [
     name: "Visx",
     primaryApi: "accessors + arrays",
     updateModel: "caller state updates",
-    status: "research",
-    package: "research shape",
+    status: "exported",
+    package: "@otlpkit/adapters/visx",
     charts: ["line", "area", "bar", "histogram", "scatter", "sparkline"],
     note: "Expose arrays and accessors, because Visx users compose marks rather than consume configs.",
   },
@@ -481,23 +486,10 @@ function nivoModel(chartType, wide, latest) {
 }
 
 function visxModel(chartType, wide, latest, histogram) {
-  if (chartType === "histogram") return histogram.buckets;
-  if (chartType === "bar")
-    return latest.rows.map((row) => ({ label: row.label, value: row.value }));
-  if (chartType === "scatter") {
-    return {
-      points: scatterRows(wide),
-      accessors: { x: "(d) => d.time", y: "(d) => d.value" },
-    };
-  }
-  return {
-    series: wide.series.map((series, index) => ({
-      key: series.id,
-      label: series.label,
-      points: wide.rows.map((row) => ({ x: row.t, y: row.values[index] })),
-    })),
-    accessors: { x: "(d) => d.x", y: "(d) => d.y" },
-  };
+  if (chartType === "histogram") return toVisxEngineHistogramModel(histogram);
+  if (chartType === "bar") return toVisxEngineLatestValuesModel(latest);
+  if (chartType === "scatter") return toVisxEngineXYChartModel(wide, { chartType: "scatter" });
+  return toVisxEngineXYChartModel(wide, { chartType });
 }
 
 function victoryModel(chartType, wide, latest) {
@@ -525,7 +517,7 @@ function snippetsFor(library, chartType) {
 }
 
 function adapterSnippet(libraryId, chartType) {
-  // Exported libraries show copy-ready imports; Visx remains an adapter-shape-only sketch.
+  // Exported libraries show copy-ready imports; Visx is exported but still adapter-shape-only here.
   if (libraryId === "tremor") {
     const fn =
       chartType === "donut"
@@ -767,10 +759,12 @@ const plot = toObservablePlotEngineModel(wide, {
 });`;
   }
   if (libraryId === "visx") {
-    return `// Research shape: this adapter is not exported yet.
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toVisxEngineXYChartModel } from "@otlpkit/adapters/visx";
+
 const wide = toEngineWideTableModel(result);
-const model = toVisxSeries(wide, {
-  accessors: true,
+const model = toVisxEngineXYChartModel(wide, {
+  chartType: "${chartType}",
 });`;
   }
   if (libraryId === "nivo" && chartType === "donut") {
