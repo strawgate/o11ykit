@@ -107,9 +107,9 @@ Each library page should include:
 
 ### Phase 1: Static Gallery Shell
 
-- Add `/o11ykit/charts/` overview page.
-- Link it from the home nav.
-- Include support matrix and canonical snippets.
+- Added `/o11ykit/charts/` overview page.
+- Linked it from the home nav.
+- Included support matrix, canonical snippets, adapter-shaped output previews, and deterministic gallery data.
 
 ### Phase 2: Tremor + Recharts Live Examples
 

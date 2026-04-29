@@ -6,11 +6,15 @@
     <title>o11ykit Charts &middot; Engine to every chart library</title>
     <meta
       name="description"
-      content="A planned adapter gallery showing how the o11ykit engine feeds Tremor, Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, and Plotly."
+      content="An interactive adapter gallery showing how the o11ykit engine feeds Tremor, Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, and Plotly."
     />
     <meta name="theme-color" content="#F2EFE7" />
     <link rel="icon" href="../logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Inter+Tight:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <a href="#main" class="skip-link">Skip to main content</a>
@@ -29,145 +33,135 @@
         <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
       </nav>
     </header>
+
     <main id="main">
-      <section class="hero grid-bg">
-        <div class="hero-inner">
-          <p class="t-eyebrow">chart adapter gallery</p>
-          <h1 class="t-display hero-headline">Engine data.<br />Native charts.</h1>
-          <p class="hero-sub">
-            The adapter gallery will show the same TSDB query rendered through every supported
-            chart library, using each library's own mental model instead of a generic chart DTO.
-          </p>
-          <div class="hero-actions">
-            <a class="stamp-fill" href="#matrix">View Matrix</a>
-            <a class="stamp" href="/o11ykit/tsdb-engine/">Open Engine Demo</a>
+      <section class="charts-hero grid-bg">
+        <div class="charts-hero-inner">
+          <div>
+            <p class="t-eyebrow">chart adapter gallery</p>
+            <h1 class="t-display hero-headline">One query.<br />Native charts.</h1>
+            <p class="hero-sub">
+              The engine returns typed time-series results. The adapters turn that into the thing
+              each chart library actually wants: props, rows, configs, datasets, aligned arrays, or
+              traces. Switch libraries and chart types below; the source data stays the same.
+            </p>
+            <div class="hero-actions charts-actions">
+              <a class="stamp-fill" href="#gallery">Open Gallery</a>
+              <a class="stamp" href="#coverage">Coverage</a>
+              <a class="stamp" href="/o11ykit/tsdb-engine/">Engine Demo</a>
+            </div>
           </div>
-          <pre class="code-block" style="margin-top:32px"><span class="code-comment">// Query once. Render anywhere.</span>
+          <div class="hero-terminal" aria-label="Adapter flow code sample">
+            <pre><span class="code-comment">// Query once. Render anywhere.</span>
 const result = engine.query(store, query);
 const wide = toEngineWideTableModel(result);
-const tremor = toTremorLineChartProps(wide);
-const recharts = toRechartsEngineTimeSeriesModel(wide);</pre>
-        </div>
-      </section>
 
-      <section id="first-wave">
-        <div class="section-inner">
-          <p class="t-eyebrow">first wave</p>
-          <h2 class="t-h2" style="margin:8px 0 8px">Adapters feel like the chart library.</h2>
-          <p class="t-body" style="max-width:72ch;margin:0 0 28px">
-            Every demo starts from the same engine result and then switches into the library's
-            preferred surface: Tremor props, Recharts row models, Chart.js configs, ECharts
-            datasets, or uPlot aligned arrays.
-          </p>
-          <div
-            style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px"
-          >
-            <article class="card">
-              <span class="tag">Tremor</span>
-              <h3 class="t-h3" style="margin:14px 0 8px">Prop-first components</h3>
-              <p>
-                Line, area, bar, donut, and bar list demos expose readable categories, nullable
-                gaps, value formatters, and metadata for drilldown.
-              </p>
-              <pre class="code-block" style="margin-top:16px;font-size:12px;overflow:auto">const wide = toEngineWideTableModel(result, {
-  seriesLabel: (s) =&gt; s.labels.get("host") ?? "host",
-});
-const props = toTremorLineChartProps(wide);</pre>
-            </article>
-            <article class="card">
-              <span class="tag">Recharts</span>
-              <h3 class="t-h3" style="margin:14px 0 8px">Rows plus data keys</h3>
-              <p>
-                Recharts demos keep the model simple: rows for chart data, series descriptors for
-                rendering lines, bars, areas, composed charts, and latest-value views.
-              </p>
-              <pre class="code-block" style="margin-top:16px;font-size:12px;overflow:auto">const wide = toEngineWideTableModel(result);
-const model = toRechartsEngineTimeSeriesModel(wide, {
-  unit: "ms",
-});</pre>
-            </article>
-            <article class="card">
-              <span class="tag">Next wave</span>
-              <h3 class="t-h3" style="margin:14px 0 8px">Native update models</h3>
-              <p>
-                The gallery plan tracks the chart types, lazy update path, and demo state for each
-                library so Chart.js, ECharts, uPlot, and the wider ecosystem can land cleanly.
-              </p>
-              <pre class="code-block" style="margin-top:16px;font-size:12px;overflow:auto">const line = toChartJsLineConfig(frame);
-chart.data = line.data;
-chart.update("none");</pre>
-            </article>
+const tremor = toTremorLineChartProps(wide);
+const recharts = toRechartsEngineTimeSeriesModel(wide);
+const echarts = toEChartsOption(wide);</pre>
           </div>
         </div>
       </section>
 
-      <section id="matrix">
+      <section class="gallery-stats" aria-label="Gallery scope">
+        <div class="stat">
+          <span class="stat-value">9</span>
+          <span class="stat-label">chart libraries</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">6</span>
+          <span class="stat-label">chart shapes</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">1</span>
+          <span class="stat-label">engine result</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">0</span>
+          <span class="stat-label">generic chart DTOs</span>
+        </div>
+      </section>
+
+      <section id="gallery" class="gallery-shell">
+        <div class="gallery-toolbar" aria-label="Gallery controls">
+          <div>
+            <p class="t-eyebrow">library</p>
+            <div id="libraryButtons" class="segmented-control"></div>
+          </div>
+          <div>
+            <p class="t-eyebrow">chart type</p>
+            <div id="chartButtons" class="segmented-control"></div>
+          </div>
+          <button id="liveToggle" class="live-toggle" type="button" aria-pressed="false">
+            <span class="live-dot" aria-hidden="true"></span>
+            Live updates
+          </button>
+        </div>
+
+        <div class="gallery-grid">
+          <article class="preview-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="t-eyebrow" id="adapterKind">adapter output</p>
+                <h2 class="t-h2" id="previewTitle">Tremor LineChart props</h2>
+              </div>
+              <div class="update-pill" id="updateModel">React data updates</div>
+            </div>
+            <div class="chart-frame">
+              <svg
+                id="chartPreview"
+                class="chart-preview"
+                viewBox="0 0 720 360"
+                role="img"
+                aria-labelledby="previewSvgTitle previewTitle"
+              >
+                <title id="previewSvgTitle">Chart adapter preview</title>
+              </svg>
+            </div>
+            <div id="legend" class="legend"></div>
+          </article>
+
+          <aside class="code-panel">
+            <div class="code-tabs" role="tablist" aria-label="Code examples">
+              <button type="button" class="code-tab is-active" data-tab="query">query</button>
+              <button type="button" class="code-tab" data-tab="adapter">adapter</button>
+              <button type="button" class="code-tab" data-tab="library">library</button>
+              <button type="button" class="code-tab" data-tab="output">output</button>
+            </div>
+            <pre id="codeBlock" class="code-block gallery-code"></pre>
+          </aside>
+        </div>
+      </section>
+
+      <section id="library-notes">
         <div class="section-inner">
-          <p class="t-eyebrow">coverage plan</p>
-          <h2 class="t-h2" style="margin:8px 0 8px">Every library gets its native path.</h2>
-          <p class="t-body" style="max-width:68ch;margin:0 0 28px">
-            The first implementation wave focuses on Tremor and Recharts, then extends existing
-            Chart.js, ECharts, and uPlot adapters before adding ecosystem libraries.
+          <p class="t-eyebrow">why it feels good</p>
+          <h2 class="t-h2" style="margin:8px 0 8px">Each adapter speaks the library's dialect.</h2>
+          <p class="t-body" style="max-width:72ch;margin:0 0 28px">
+            The shared engine model handles timestamps, sparse rows, nulls, labels, and latest
+            values. Library adapters stay thin and lovable: a Tremor user gets props, a Recharts
+            user gets rows and data keys, uPlot gets aligned arrays, and ECharts gets
+            dataset/encode.
           </p>
-          <div style="overflow:auto;border:1px solid var(--rule);border-radius:var(--radius);background:var(--paper)">
-            <table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px">
-              <thead>
-                <tr style="background:var(--paper-2);text-align:left">
-                  <th style="padding:12px;border-bottom:1px solid var(--rule)">Library</th>
-                  <th style="padding:12px;border-bottom:1px solid var(--rule)">Primary API</th>
-                  <th style="padding:12px;border-bottom:1px solid var(--rule)">Chart Types</th>
-                  <th style="padding:12px;border-bottom:1px solid var(--rule)">Live Model</th>
-                  <th style="padding:12px;border-bottom:1px solid var(--rule)">Wave</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">Tremor</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">props</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">line, area, bar, donut, bar list</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">React data updates</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">1</td>
-                </tr>
-                <tr>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">Recharts</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">rows + dataKey</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">line, area, bar, composed, histogram</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">React data updates</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">1</td>
-                </tr>
-                <tr>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">Chart.js</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">configuration</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">line, area, bar, doughnut, histogram</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">controller + update</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">2</td>
-                </tr>
-                <tr>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">ECharts</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">dataset + encode</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">line, area, bar, pie, histogram</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">setOption plan</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">2</td>
-                </tr>
-                <tr>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">uPlot</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">aligned arrays</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">time series, latest recipe</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">controller + setData</td>
-                  <td style="padding:12px;border-bottom:1px solid var(--rule)">2</td>
-                </tr>
-                <tr>
-                  <td style="padding:12px">Nivo / Visx / Observable Plot / Plotly</td>
-                  <td style="padding:12px">thin native helpers</td>
-                  <td style="padding:12px">library-specific gallery pages</td>
-                  <td style="padding:12px">native update model</td>
-                  <td style="padding:12px">3</td>
-                </tr>
-              </tbody>
-            </table>
+          <div id="libraryCards" class="library-card-grid"></div>
+        </div>
+      </section>
+
+      <section id="coverage">
+        <div class="section-inner">
+          <p class="t-eyebrow">coverage</p>
+          <h2 class="t-h2" style="margin:8px 0 8px">Chart shape by chart shape.</h2>
+          <p class="t-body" style="max-width:72ch;margin:0 0 28px">
+            First-class does not mean every adapter exposes the same API. It means every chart type
+            has the smallest useful bridge from engine output to that library's natural runtime.
+          </p>
+          <div class="coverage-table-wrap">
+            <table id="coverageTable" class="coverage-table"></table>
           </div>
         </div>
       </section>
     </main>
+
+    <script type="module" src="./js/gallery-app.js"></script>
   </body>
 </html>
