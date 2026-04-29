@@ -1,5 +1,6 @@
 const COLORS = ["#2563eb", "#059669", "#dc2626", "#7c3aed", "#d97706", "#0891b2"];
-const activeDisposers = new Map();
+const VALUE_DOMAIN = { min: 0, max: 180 };
+const targetStates = new Map();
 const renderedLibraries = new Set([
   "tremor",
   "recharts",
@@ -38,10 +39,10 @@ export function hasPackageRenderer(libraryId) {
 
 export function destroyNativeCharts() {
   renderGeneration += 1;
-  for (const dispose of activeDisposers.values()) {
-    dispose();
+  for (const state of targetStates.values()) {
+    state.dispose?.();
   }
-  activeDisposers.clear();
+  targetStates.clear();
 }
 
 export function renderNativeCharts(charts, root) {
@@ -58,6 +59,8 @@ async function renderNativeChart(target, chart, generation) {
   const hasRenderedChart = target.dataset.rendered === "true";
 
   if (!hasPackageRenderer(chart.library.id)) {
+    targetStates.get(target)?.dispose?.();
+    targetStates.delete(target);
     target.dataset.rendered = "false";
     renderPlaceholder(target, chart, "Renderer package is not mounted in this gallery yet.");
     return;
@@ -72,12 +75,10 @@ async function renderNativeChart(target, chart, generation) {
   }
 
   try {
-    activeDisposers.get(target)?.();
-    activeDisposers.delete(target);
     const dispose = await renderWithPackage(target, chart, generation);
     if (!isCurrentRender(target, generation)) return;
     target.dataset.rendered = "true";
-    if (dispose) activeDisposers.set(target, dispose);
+    if (dispose) stateFor(target).dispose = dispose;
   } catch (error) {
     if (!isCurrentRender(target, generation)) return;
     renderPlaceholder(
@@ -243,6 +244,8 @@ async function renderTremor(target, chart, generation) {
     showLegend: false,
     showXAxis: false,
     showYAxis: false,
+    minValue: VALUE_DOMAIN.min,
+    maxValue: VALUE_DOMAIN.max,
     yAxisWidth: 34,
   };
   const valueFormatter = (value) => `${Math.round(value)} ms`;
@@ -267,12 +270,13 @@ async function renderRecharts(target, chart, generation) {
 
   const { React } = runtime;
   const model = chart.adapterModel;
+  const timeRange = timeRangeForChart(chart);
   if (chart.chartType === "donut") {
     return renderReact(
       target,
       React.createElement(
         runtime.ResponsiveContainer,
-        { width: "100%", height: "100%" },
+        responsiveContainerProps(),
         React.createElement(
           runtime.PieChart,
           null,
@@ -301,13 +305,16 @@ async function renderRecharts(target, chart, generation) {
       target,
       React.createElement(
         runtime.ResponsiveContainer,
-        { width: "100%", height: "100%" },
+        responsiveContainerProps(),
         React.createElement(
           runtime.BarChart,
           { data: model.data, margin: chartMargin() },
           React.createElement(runtime.CartesianGrid, { strokeDasharray: "3 3" }),
           React.createElement(runtime.XAxis, { dataKey: model.categoryKey, tick: false }),
-          React.createElement(runtime.YAxis, { width: 32 }),
+          React.createElement(runtime.YAxis, {
+            width: 32,
+            domain: [VALUE_DOMAIN.min, VALUE_DOMAIN.max],
+          }),
           React.createElement(runtime.Tooltip, null),
           React.createElement(runtime.Bar, {
             dataKey: model.valueKey,
@@ -339,13 +346,21 @@ async function renderRecharts(target, chart, generation) {
     target,
     React.createElement(
       runtime.ResponsiveContainer,
-      { width: "100%", height: "100%" },
+      responsiveContainerProps(),
       React.createElement(
         ChartComponent,
         { data: model.data, margin: chartMargin() },
         React.createElement(runtime.CartesianGrid, { strokeDasharray: "3 3" }),
-        React.createElement(runtime.XAxis, { dataKey: model.xAxisKey, tick: false }),
-        React.createElement(runtime.YAxis, { width: 32 }),
+        React.createElement(runtime.XAxis, {
+          dataKey: model.xAxisKey,
+          type: timeRange ? "number" : undefined,
+          domain: timeRange ? [timeRange.min, timeRange.max] : undefined,
+          tick: false,
+        }),
+        React.createElement(runtime.YAxis, {
+          width: 32,
+          domain: [VALUE_DOMAIN.min, VALUE_DOMAIN.max],
+        }),
         React.createElement(runtime.Tooltip, null),
         model.series.map((series, index) =>
           React.createElement(SeriesComponent, {
@@ -368,12 +383,13 @@ async function renderRecharts(target, chart, generation) {
 function renderRechartsScatter(target, chart, runtime) {
   const { React } = runtime;
   const model = chart.adapterModel;
+  const timeRange = timeRangeForChart(chart);
   const seriesNames = [...new Set(model.data.map((row) => row.series))];
   return renderReact(
     target,
     React.createElement(
       runtime.ResponsiveContainer,
-      { width: "100%", height: "100%" },
+      responsiveContainerProps(),
       React.createElement(
         runtime.ScatterChart,
         { margin: chartMargin() },
@@ -381,9 +397,14 @@ function renderRechartsScatter(target, chart, runtime) {
         React.createElement(runtime.XAxis, {
           dataKey: model.xAxisKey,
           type: "number",
+          domain: timeRange ? [timeRange.min, timeRange.max] : undefined,
           tick: false,
         }),
-        React.createElement(runtime.YAxis, { dataKey: model.yAxisKey, width: 32 }),
+        React.createElement(runtime.YAxis, {
+          dataKey: model.yAxisKey,
+          width: 32,
+          domain: [VALUE_DOMAIN.min, VALUE_DOMAIN.max],
+        }),
         React.createElement(runtime.Tooltip, null),
         seriesNames.map((series, index) =>
           React.createElement(runtime.Scatter, {
@@ -403,8 +424,7 @@ async function renderChartJs(target, chart, generation) {
   const Chart = await loadChartJsRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  const canvas = document.createElement("canvas");
-  target.replaceChildren(canvas);
+  const timeRange = timeRangeForChart(chart);
   const config = {
     ...chart.adapterModel,
     options: {
@@ -415,34 +435,75 @@ async function renderChartJs(target, chart, generation) {
         legend: { display: chart.chartType !== "sparkline" && chart.chartType !== "gauge" },
         tooltip: { enabled: true },
       },
+      scales: {
+        ...(chart.adapterModel.options?.scales ?? {}),
+        x: {
+          ...(chart.adapterModel.options?.scales?.x ?? {}),
+          ...(timeRange ?? {}),
+        },
+        y: {
+          ...(chart.adapterModel.options?.scales?.y ?? {}),
+          min: VALUE_DOMAIN.min,
+          max: VALUE_DOMAIN.max,
+        },
+      },
     },
   };
+  const state = stateFor(target);
+  if (state.chartJs) {
+    state.chartJs.config.type = config.type;
+    state.chartJs.data = config.data;
+    state.chartJs.options = config.options;
+    state.chartJs.update("none");
+    return state.dispose;
+  }
+  const canvas = document.createElement("canvas");
+  target.replaceChildren(canvas);
   const instance = new Chart(canvas, config);
-  return () => instance.destroy();
+  state.chartJs = instance;
+  state.dispose = () => instance.destroy();
+  return state.dispose;
 }
 
 async function renderECharts(target, chart, generation) {
   const echarts = await loadEChartsRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
+  const option = echartsOptionFor(chart);
+  const state = stateFor(target);
+  if (state.echarts) {
+    state.echarts.setOption(option, { notMerge: false, lazyUpdate: true });
+    return state.dispose;
+  }
   target.replaceChildren();
   const instance = echarts.init(target, null, { renderer: "canvas" });
-  instance.setOption(echartsOptionFor(chart), true);
-  return () => instance.dispose();
+  instance.setOption(option, true);
+  state.echarts = instance;
+  state.dispose = () => instance.dispose();
+  return state.dispose;
 }
 
 async function renderUPlot(target, chart, generation) {
   const uPlot = await loadUPlotRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  target.replaceChildren();
   const model = chart.adapterModel;
+  const state = stateFor(target);
+  if (state.uplot) {
+    state.uplot.setData(model.data);
+    return state.dispose;
+  }
+  target.replaceChildren();
   const width = Math.max(260, target.clientWidth || 320);
   const height = Math.max(180, target.clientHeight || 220);
   const options = {
     ...model.options,
     width,
     height,
+    scales: {
+      ...model.options.scales,
+      y: { ...model.options.scales.y, range: () => [VALUE_DOMAIN.min, VALUE_DOMAIN.max] },
+    },
     legend: { show: chart.chartType !== "sparkline" },
     cursor: { drag: { x: false, y: false } },
     axes:
@@ -465,15 +526,17 @@ async function renderUPlot(target, chart, generation) {
     ),
   };
   const plot = new uPlot(options, model.data, target);
-  return () => plot.destroy();
+  state.uplot = plot;
+  state.dispose = () => plot.destroy();
+  return state.dispose;
 }
 
 async function renderPlotly(target, chart, generation) {
   const Plotly = await loadPlotlyRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  target.replaceChildren();
   const model = chart.adapterModel;
+  const timeRange = timeRangeForChart(chart);
   const layout = {
     ...model.layout,
     autosize: true,
@@ -482,22 +545,39 @@ async function renderPlotly(target, chart, generation) {
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
     showlegend: chart.chartType !== "sparkline" && chart.chartType !== "gauge",
-    xaxis: { ...(model.layout?.xaxis ?? {}), visible: chart.chartType !== "sparkline" },
-    yaxis: { ...(model.layout?.yaxis ?? {}), visible: chart.chartType !== "sparkline" },
+    xaxis: {
+      ...(model.layout?.xaxis ?? {}),
+      visible: chart.chartType !== "sparkline",
+      ...(timeRange ? { range: [timeRange.min, timeRange.max] } : {}),
+    },
+    yaxis: {
+      ...(model.layout?.yaxis ?? {}),
+      visible: chart.chartType !== "sparkline",
+      range: [VALUE_DOMAIN.min, VALUE_DOMAIN.max],
+    },
   };
-  await Plotly.newPlot(target, model.data, layout, {
+  const config = {
     ...model.config,
     displayModeBar: false,
-  });
-  return () => Plotly.purge(target);
+  };
+  const state = stateFor(target);
+  if (state.plotly) {
+    await Plotly.react(target, model.data, layout, config);
+    return state.dispose;
+  }
+  target.replaceChildren();
+  await Plotly.newPlot(target, model.data, layout, config);
+  state.plotly = true;
+  state.dispose = () => Plotly.purge(target);
+  return state.dispose;
 }
 
 async function renderApexCharts(target, chart, generation) {
   const ApexCharts = await loadApexChartsRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  target.replaceChildren();
   const model = chart.adapterModel;
+  const timeRange = timeRangeForChart(chart);
   const options = {
     ...model,
     chart: {
@@ -513,20 +593,36 @@ async function renderApexCharts(target, chart, generation) {
     colors: COLORS,
     grid: { borderColor: "rgba(17,17,15,0.12)" },
     legend: { show: chart.chartType !== "sparkline" && chart.chartType !== "gauge" },
-    xaxis: { type: "datetime", labels: { show: chart.chartType !== "sparkline" } },
-    yaxis: { labels: { show: chart.chartType !== "sparkline" } },
+    xaxis: {
+      type: "datetime",
+      labels: { show: chart.chartType !== "sparkline" },
+      ...(timeRange ?? {}),
+    },
+    yaxis: {
+      min: VALUE_DOMAIN.min,
+      max: VALUE_DOMAIN.max,
+      labels: { show: chart.chartType !== "sparkline" },
+    },
   };
+  const state = stateFor(target);
+  if (state.apex) {
+    await state.apex.updateOptions(options, false, false);
+    return state.dispose;
+  }
+  target.replaceChildren();
   const instance = new ApexCharts(target, options);
   await instance.render();
-  return () => instance.destroy();
+  state.apex = instance;
+  state.dispose = () => instance.destroy();
+  return state.dispose;
 }
 
 async function renderHighcharts(target, chart, generation) {
   const Highcharts = await loadHighchartsRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  target.replaceChildren();
   const model = chart.adapterModel;
+  const timeRange = timeRangeForChart(chart);
   const options = {
     ...model,
     chart: {
@@ -545,22 +641,35 @@ async function renderHighcharts(target, chart, generation) {
       ...(model.xAxis ?? {}),
       visible: chart.chartType !== "sparkline",
       type: chart.chartType === "histogram" ? undefined : "datetime",
+      ...(timeRange ?? {}),
     },
-    yAxis: { title: { text: undefined }, visible: chart.chartType !== "sparkline" },
+    yAxis: {
+      title: { text: undefined },
+      visible: chart.chartType !== "sparkline",
+      min: VALUE_DOMAIN.min,
+      max: VALUE_DOMAIN.max,
+    },
     plotOptions: {
       ...(model.plotOptions ?? {}),
       series: { animation: false, marker: { enabled: chart.chartType === "scatter" } },
     },
   };
+  const state = stateFor(target);
+  if (state.highcharts) {
+    state.highcharts.update(options, true, false);
+    return state.dispose;
+  }
+  target.replaceChildren();
   const instance = Highcharts.chart(target, options);
-  return () => instance.destroy();
+  state.highcharts = instance;
+  state.dispose = () => instance.destroy();
+  return state.dispose;
 }
 
 async function renderVegaLite(target, chart, generation) {
   const vegaEmbed = await loadVegaLiteRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  target.replaceChildren();
   const model = chart.adapterModel;
   const spec = {
     ...model,
@@ -574,8 +683,20 @@ async function renderVegaLite(target, chart, generation) {
       view: { stroke: null },
     },
   };
-  const result = await vegaEmbed(target, spec, { actions: false, renderer: "svg" });
-  return () => result.view.finalize();
+  const state = stateFor(target);
+  const oldResult = state.vegaResult;
+  const nextTarget = document.createElement("span");
+  const result = await vegaEmbed(nextTarget, spec, { actions: false, renderer: "svg" });
+  if (!isCurrentRender(target, generation)) {
+    result.view.finalize();
+    return state.dispose;
+  }
+  target.replaceChildren(...nextTarget.childNodes);
+  oldResult?.view.finalize();
+  state.vegaResult = result;
+  state.vegaTarget = nextTarget;
+  state.dispose = () => result.view.finalize();
+  return state.dispose;
 }
 
 async function renderNivo(target, chart, generation) {
@@ -583,6 +704,7 @@ async function renderNivo(target, chart, generation) {
   if (!isCurrentRender(target, generation)) return undefined;
 
   const { React } = runtime;
+  const timeRange = timeRangeForChart(chart);
   const common = {
     animate: false,
     colors: COLORS,
@@ -625,8 +747,11 @@ async function renderNivo(target, chart, generation) {
       React.createElement(runtime.ResponsiveScatterPlot, {
         ...common,
         data: chart.adapterModel,
-        xScale: { type: "linear" },
-        yScale: { type: "linear" },
+        xScale: {
+          type: "linear",
+          ...(timeRange ? { min: timeRange.min, max: timeRange.max } : {}),
+        },
+        yScale: { type: "linear", min: VALUE_DOMAIN.min, max: VALUE_DOMAIN.max },
         axisBottom: null,
         axisLeft: { tickSize: 0, tickPadding: 6 },
         nodeSize: 8,
@@ -642,8 +767,11 @@ async function renderNivo(target, chart, generation) {
       enableArea: chart.chartType === "area",
       enablePoints: false,
       useMesh: true,
-      xScale: { type: "linear" },
-      yScale: { type: "linear", stacked: false },
+      xScale: {
+        type: "linear",
+        ...(timeRange ? { min: timeRange.min, max: timeRange.max } : {}),
+      },
+      yScale: { type: "linear", stacked: false, min: VALUE_DOMAIN.min, max: VALUE_DOMAIN.max },
       axisBottom: null,
       axisLeft: { tickSize: 0, tickPadding: 6 },
     }),
@@ -655,9 +783,10 @@ async function renderObservablePlot(target, chart, generation) {
   const Plot = await loadObservablePlotRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  target.replaceChildren();
   const model = chart.adapterModel;
+  const timeRange = timeRangeForChart(chart);
   const marks = model.marks.map((mark) => observableMark(Plot, model.data, mark));
+  const state = stateFor(target);
   const plot = Plot.plot({
     width: Math.max(260, target.clientWidth || 320),
     height: Math.max(180, target.clientHeight || 220),
@@ -666,13 +795,22 @@ async function renderObservablePlot(target, chart, generation) {
     marginTop: 12,
     marginBottom: chart.chartType === "sparkline" ? 10 : 28,
     style: { background: "transparent", color: "#11110f", fontFamily: "var(--mono)" },
-    x: chart.chartType === "sparkline" ? { axis: null } : model.options.x,
-    y: chart.chartType === "sparkline" ? { axis: null } : model.options.y,
+    x:
+      chart.chartType === "sparkline"
+        ? { axis: null }
+        : { ...model.options.x, ...(timeRange ? { domain: [timeRange.min, timeRange.max] } : {}) },
+    y:
+      chart.chartType === "sparkline"
+        ? { axis: null }
+        : { ...model.options.y, domain: [VALUE_DOMAIN.min, VALUE_DOMAIN.max] },
     color: model.options.color,
     marks,
   });
+  state.observablePlot?.remove();
   target.replaceChildren(plot);
-  return () => plot.remove();
+  state.observablePlot = plot;
+  state.dispose = () => plot.remove();
+  return state.dispose;
 }
 
 async function renderVictory(target, chart, generation) {
@@ -705,7 +843,11 @@ async function renderVictory(target, chart, generation) {
       target,
       React.createElement(
         runtime.VictoryChart,
-        { ...dimensions, domainPadding: { x: 24, y: 10 } },
+        {
+          ...dimensions,
+          domain: { y: [VALUE_DOMAIN.min, VALUE_DOMAIN.max] },
+          domainPadding: { x: 24, y: 10 },
+        },
         React.createElement(runtime.VictoryAxis, { tickFormat: () => "" }),
         React.createElement(runtime.VictoryAxis, { dependentAxis: true }),
         React.createElement(runtime.VictoryBar, {
@@ -720,7 +862,11 @@ async function renderVictory(target, chart, generation) {
     target,
     React.createElement(
       runtime.VictoryChart,
-      { ...dimensions, scale: { x: "time", y: "linear" } },
+      {
+        ...dimensions,
+        domain: victoryDomainFor(chart),
+        scale: { x: "time", y: "linear" },
+      },
       React.createElement(runtime.VictoryAxis, { tickFormat: () => "" }),
       React.createElement(runtime.VictoryAxis, { dependentAxis: true }),
       chart.adapterModel.map((series, index) => {
@@ -762,7 +908,6 @@ async function renderAgCharts(target, chart, generation) {
   const AgCharts = await loadAgChartsRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  target.replaceChildren();
   const model = chart.adapterModel;
   const baseOptions = {
     ...model,
@@ -771,21 +916,43 @@ async function renderAgCharts(target, chart, generation) {
     background: { visible: false },
     animation: { enabled: false },
     legend: { enabled: chart.chartType !== "gauge" },
+    axes:
+      chart.chartType === "gauge" || chart.chartType === "donut"
+        ? undefined
+        : [
+            { type: chart.chartType === "bar" ? "category" : "number", position: "bottom" },
+            { type: "number", position: "left", min: VALUE_DOMAIN.min, max: VALUE_DOMAIN.max },
+          ],
     theme: {
       palette: { fills: COLORS, strokes: COLORS },
       overrides: { common: { axes: { number: { gridLine: { enabled: true } } } } },
     },
   };
+  const state = stateFor(target);
+  if (state.ag) {
+    if (typeof state.ag.update === "function") {
+      state.ag.update(baseOptions);
+    } else if (typeof state.ag.updateDelta === "function") {
+      state.ag.updateDelta(baseOptions);
+    }
+    return state.dispose;
+  }
+  target.replaceChildren();
   const instance =
     chart.chartType === "gauge" ? AgCharts.createGauge(baseOptions) : AgCharts.create(baseOptions);
-  return () => instance.destroy();
+  state.ag = instance;
+  state.dispose = () => instance.destroy();
+  return state.dispose;
 }
 
 function renderReact(target, element, createRoot) {
-  target.replaceChildren();
-  const root = createRoot(target);
+  const state = stateFor(target);
+  if (!state.reactRoot) target.replaceChildren();
+  const root = state.reactRoot ?? createRoot(target);
+  state.reactRoot = root;
   root.render(element);
-  return () => root.unmount();
+  state.dispose = () => root.unmount();
+  return state.dispose;
 }
 
 function echartsOptionFor(chart) {
@@ -793,6 +960,7 @@ function echartsOptionFor(chart) {
   if (chart.chartType === "donut" || chart.chartType === "gauge") {
     return { ...model, animation: false, tooltip: { trigger: "item" } };
   }
+  const timeRange = timeRangeForChart(chart);
   return {
     ...model,
     animation: false,
@@ -802,8 +970,14 @@ function echartsOptionFor(chart) {
     xAxis: {
       type: chart.chartType === "histogram" ? "category" : "time",
       show: chart.chartType !== "sparkline",
+      ...(timeRange ?? {}),
     },
-    yAxis: { type: "value", show: chart.chartType !== "sparkline" },
+    yAxis: {
+      type: "value",
+      show: chart.chartType !== "sparkline",
+      min: VALUE_DOMAIN.min,
+      max: VALUE_DOMAIN.max,
+    },
   };
 }
 
@@ -818,8 +992,59 @@ function renderPlaceholder(target, chart, message, title = "adapter shape") {
   </div>`;
 }
 
+function stateFor(target) {
+  let state = targetStates.get(target);
+  if (!state) {
+    state = {};
+    targetStates.set(target, state);
+  }
+  return state;
+}
+
+function timeRangeForChart(chart) {
+  const values = timeValuesForChart(chart).filter((value) => Number.isFinite(value));
+  if (values.length === 0) return undefined;
+  return { min: Math.min(...values), max: Math.max(...values) };
+}
+
+function timeValuesForChart(chart) {
+  const model = chart.adapterModel;
+  if (model?.data?.datasets?.[0]?.data) {
+    return model.data.datasets[0].data.map((point) => point.x);
+  }
+  if (model?.dataset?.[0]?.source) {
+    return model.dataset[0].source.map((row) => row.time).filter((value) => value !== undefined);
+  }
+  if (Array.isArray(model?.data?.[0])) return model.data[0];
+  if (Array.isArray(model?.data?.[0]?.x)) return model.data[0].x;
+  if (Array.isArray(model?.series?.[0]?.data)) {
+    return model.series[0].data
+      .map((point) => (Array.isArray(point) ? point[0] : point?.x))
+      .filter((value) => value !== undefined);
+  }
+  if (Array.isArray(model?.data)) {
+    return model.data.map((row) => row.time ?? row.x).filter((value) => value !== undefined);
+  }
+  if (Array.isArray(model?.[0]?.data)) {
+    return model[0].data.map((point) => point.x).filter((value) => value !== undefined);
+  }
+  return [];
+}
+
+function victoryDomainFor(chart) {
+  const timeRange = timeRangeForChart(chart);
+  return {
+    ...(timeRange ? { x: [new Date(timeRange.min), new Date(timeRange.max)] } : {}),
+    y: [VALUE_DOMAIN.min, VALUE_DOMAIN.max],
+  };
+}
+
 function chartMargin() {
   return { top: 10, right: 12, bottom: 12, left: 0 };
+}
+
+function responsiveContainerProps() {
+  return { width: "100%", height: "100%", minWidth: 1, minHeight: 1 };
 }
 
 function nivoTheme() {

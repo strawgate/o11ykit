@@ -234,10 +234,12 @@ export function createEngineResult(liveStep = 0) {
       const timestamps = new BigInt64Array(points);
       const values = new Float64Array(points);
       for (let i = 0; i < points; i++) {
+        const sampleIndex = liveStep + i;
         timestamps[i] = BigInt(startMs + i * 30_000) * NS_PER_MS;
-        const wave = Math.sin((i + liveStep) * 0.68 + series.phase) * 13;
-        const secondary = Math.cos((i + seriesIndex) * 0.37) * 6;
-        const incident = series.status === "5xx" && i > 10 ? (i - 10) * 7 : 0;
+        const wave = Math.sin(sampleIndex * 0.68 + series.phase) * 13;
+        const secondary = Math.cos((sampleIndex + seriesIndex) * 0.37) * 6;
+        const incidentWave = Math.max(0, 44 - Math.abs((sampleIndex % 44) - 24) * 6);
+        const incident = series.status === "5xx" ? incidentWave : 0;
         values[i] = Math.max(4, Math.round((series.base + wave + secondary + incident) * 10) / 10);
       }
       return {

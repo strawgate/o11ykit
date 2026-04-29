@@ -135,6 +135,22 @@ describe("chart gallery data", () => {
     );
   });
 
+  it("advances live data as a stable sliding append window", () => {
+    const first = createEngineResult(0);
+    const next = createEngineResult(1);
+
+    for (let seriesIndex = 0; seriesIndex < first.series.length; seriesIndex++) {
+      const firstSeries = first.series[seriesIndex];
+      const nextSeries = next.series[seriesIndex];
+
+      expect(nextSeries.timestamps.slice(0, -1)).toEqual(firstSeries.timestamps.slice(1));
+      expect(Array.from(nextSeries.values.slice(0, -1))).toEqual(
+        Array.from(firstSeries.values.slice(1))
+      );
+      expect(Math.max(...nextSeries.values)).toBeLessThanOrEqual(180);
+    }
+  });
+
   it("keeps the coverage model aligned with declared chart types", () => {
     const chartIds = new Set(CHART_TYPES.map((chart) => chart.id));
     for (const library of LIBRARIES) {
