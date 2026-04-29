@@ -1,6 +1,16 @@
 const COLORS = ["#2563eb", "#059669", "#dc2626", "#7c3aed", "#d97706", "#0891b2"];
 const activeDisposers = [];
-const renderedLibraries = new Set(["tremor", "recharts", "chartjs", "echarts", "uplot"]);
+const renderedLibraries = new Set([
+  "tremor",
+  "recharts",
+  "chartjs",
+  "echarts",
+  "uplot",
+  "plotly",
+  "apexcharts",
+  "highcharts",
+  "vegalite",
+]);
 
 let renderGeneration = 0;
 let reactRuntime;
@@ -9,6 +19,10 @@ let tremorRuntime;
 let chartJsRuntime;
 let echartsRuntime;
 let uPlotRuntime;
+let plotlyRuntime;
+let apexChartsRuntime;
+let highchartsRuntime;
+let vegaLiteRuntime;
 
 export function hasPackageRenderer(libraryId) {
   return renderedLibraries.has(libraryId);
@@ -67,6 +81,10 @@ async function renderWithPackage(target, chart, generation) {
   if (chart.library.id === "chartjs") return renderChartJs(target, chart, generation);
   if (chart.library.id === "echarts") return renderECharts(target, chart, generation);
   if (chart.library.id === "uplot") return renderUPlot(target, chart, generation);
+  if (chart.library.id === "plotly") return renderPlotly(target, chart, generation);
+  if (chart.library.id === "apexcharts") return renderApexCharts(target, chart, generation);
+  if (chart.library.id === "highcharts") return renderHighcharts(target, chart, generation);
+  if (chart.library.id === "vegalite") return renderVegaLite(target, chart, generation);
   return undefined;
 }
 
@@ -115,6 +133,35 @@ async function loadUPlotRuntime() {
     ([module]) => module.default
   );
   return uPlotRuntime;
+}
+
+async function loadPlotlyRuntime() {
+  plotlyRuntime ??= import("plotly.js-dist-min").then((module) => module.default ?? module);
+  return plotlyRuntime;
+}
+
+async function loadApexChartsRuntime() {
+  apexChartsRuntime ??= import("apexcharts").then((module) => module.default);
+  return apexChartsRuntime;
+}
+
+async function loadHighchartsRuntime() {
+  highchartsRuntime ??= Promise.all([
+    import("highcharts"),
+    import("highcharts/highcharts-more"),
+  ]).then(([module, highchartsMore]) => {
+    const Highcharts = module.default ?? module;
+    if (typeof highchartsMore.default === "function") {
+      highchartsMore.default(Highcharts);
+    }
+    return Highcharts;
+  });
+  return highchartsRuntime;
+}
+
+async function loadVegaLiteRuntime() {
+  vegaLiteRuntime ??= import("vega-embed").then((module) => module.default);
+  return vegaLiteRuntime;
 }
 
 async function renderTremor(target, chart, generation) {
@@ -362,6 +409,115 @@ async function renderUPlot(target, chart, generation) {
   };
   const plot = new uPlot(options, model.data, target);
   return () => plot.destroy();
+}
+
+async function renderPlotly(target, chart, generation) {
+  const Plotly = await loadPlotlyRuntime();
+  if (!isCurrentRender(target, generation)) return undefined;
+
+  target.replaceChildren();
+  const model = chart.adapterModel;
+  const layout = {
+    ...model.layout,
+    autosize: true,
+    height: target.clientHeight || 220,
+    margin: { l: 36, r: 12, t: 12, b: 28, ...(model.layout?.margin ?? {}) },
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor: "rgba(0,0,0,0)",
+    showlegend: chart.chartType !== "sparkline" && chart.chartType !== "gauge",
+    xaxis: { ...(model.layout?.xaxis ?? {}), visible: chart.chartType !== "sparkline" },
+    yaxis: { ...(model.layout?.yaxis ?? {}), visible: chart.chartType !== "sparkline" },
+  };
+  await Plotly.newPlot(target, model.data, layout, {
+    displayModeBar: false,
+    responsive: true,
+  });
+  return () => Plotly.purge(target);
+}
+
+async function renderApexCharts(target, chart, generation) {
+  const ApexCharts = await loadApexChartsRuntime();
+  if (!isCurrentRender(target, generation)) return undefined;
+
+  target.replaceChildren();
+  const model = chart.adapterModel;
+  const options = {
+    ...model,
+    chart: {
+      ...model.chart,
+      type: chart.chartType === "area" ? "area" : model.chart?.type,
+      animations: { enabled: false },
+      height: target.clientHeight || 220,
+      toolbar: { show: false },
+      sparkline: {
+        enabled: chart.chartType === "sparkline" || model.chart?.sparkline?.enabled === true,
+      },
+    },
+    colors: COLORS,
+    grid: { borderColor: "rgba(17,17,15,0.12)" },
+    legend: { show: chart.chartType !== "sparkline" && chart.chartType !== "gauge" },
+    xaxis: { type: "datetime", labels: { show: chart.chartType !== "sparkline" } },
+    yaxis: { labels: { show: chart.chartType !== "sparkline" } },
+  };
+  const instance = new ApexCharts(target, options);
+  await instance.render();
+  return () => instance.destroy();
+}
+
+async function renderHighcharts(target, chart, generation) {
+  const Highcharts = await loadHighchartsRuntime();
+  if (!isCurrentRender(target, generation)) return undefined;
+
+  target.replaceChildren();
+  const model = chart.adapterModel;
+  const options = {
+    ...model,
+    chart: {
+      ...model.chart,
+      animation: false,
+      backgroundColor: "transparent",
+      height: target.clientHeight || 220,
+    },
+    title: { text: undefined },
+    credits: { enabled: false },
+    accessibility: { enabled: false },
+    colors: COLORS,
+    legend: { enabled: chart.chartType !== "sparkline" && chart.chartType !== "gauge" },
+    tooltip: { enabled: true },
+    xAxis: {
+      ...(model.xAxis ?? {}),
+      visible: chart.chartType !== "sparkline",
+      type: chart.chartType === "histogram" ? undefined : "datetime",
+    },
+    yAxis: { title: { text: undefined }, visible: chart.chartType !== "sparkline" },
+    plotOptions: {
+      ...(model.plotOptions ?? {}),
+      series: { animation: false, marker: { enabled: chart.chartType === "scatter" } },
+    },
+  };
+  const instance = Highcharts.chart(target, options);
+  return () => instance.destroy();
+}
+
+async function renderVegaLite(target, chart, generation) {
+  const vegaEmbed = await loadVegaLiteRuntime();
+  if (!isCurrentRender(target, generation)) return undefined;
+
+  target.replaceChildren();
+  const model = chart.adapterModel;
+  const spec = {
+    ...model,
+    width: "container",
+    height: Math.max(180, target.clientHeight || 220),
+    background: "transparent",
+    config: {
+      axis: { labelColor: "#6f6a60", title: null, gridColor: "rgba(17,17,15,0.12)" },
+      legend: { labelColor: "#11110f", title: null },
+      view: { stroke: null },
+    },
+  };
+  const result = await vegaEmbed(target, spec, { actions: false, renderer: "svg" });
+  return () => result.view.finalize();
 }
 
 function renderReact(target, element, createRoot) {

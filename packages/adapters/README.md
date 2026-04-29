@@ -30,10 +30,11 @@ Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, Plotly, ApexCha
 AG Charts, Highcharts, and Vega-Lite shapes. Package-backed entries mount the actual chart package
 in the browser; research entries are explicitly labeled as adapter shapes until their renderers land.
 
-Tremor and Recharts are implemented engine-backed adapters today. Chart.js, ECharts, and uPlot also
-render through their real packages in the gallery while their engine-adapter APIs are still being
-hardened. The remaining gallery entries are the design target for future first-class adapters: they
-show the native shape we want, not a generic cross-library DTO.
+Tremor and Recharts are implemented engine-backed adapters today. Chart.js, ECharts, uPlot, Plotly,
+ApexCharts, Highcharts, and Vega-Lite also render through their real packages in the gallery while
+their engine-adapter APIs are still being hardened. The remaining gallery entries are the design
+target for future first-class adapters: they show the native shape we want, not a generic
+cross-library DTO.
 
 | Library | Engine-backed status | User-facing shape |
 | --- | --- | --- |
@@ -42,8 +43,8 @@ show the native shape we want, not a generic cross-library DTO.
 | Chart.js | planned | config with parsing disabled |
 | ECharts | planned | dataset and encode option |
 | uPlot | planned | aligned arrays |
-| Nivo, Visx, Observable Plot, Plotly | research | library-native sketches |
-| ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite | research | library-native sketches |
+| Plotly, ApexCharts, Highcharts, Vega-Lite | research, package-rendered gallery | library-native sketches |
+| Nivo, Visx, Observable Plot, Victory, AG Charts | research | library-native sketches |
 
 ## Quick Example
 
