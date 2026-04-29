@@ -45,14 +45,16 @@ export function destroyNativeCharts() {
   targetStates.clear();
 }
 
-export function renderNativeCharts(charts, root) {
+export async function renderNativeCharts(charts, root) {
   const generation = ++renderGeneration;
+  const renders = [];
   for (const chart of charts) {
     const target = root.querySelector(`[data-render-target="${chart.chartType}"]`);
     if (target instanceof HTMLElement) {
-      void renderNativeChart(target, chart, generation);
+      renders.push(renderNativeChart(target, chart, generation));
     }
   }
+  await Promise.allSettled(renders);
 }
 
 async function renderNativeChart(target, chart, generation) {

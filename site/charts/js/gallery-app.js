@@ -55,10 +55,10 @@ function init() {
     syncLiveControls();
     if (state.live) restartLiveTimer();
   });
-  render();
+  void render();
 }
 
-function render() {
+async function render() {
   const gallery = createLibraryGalleryState(state.library, state.liveStep);
   if (state.expandedChart && !gallery.library.charts.includes(state.expandedChart)) {
     state.expandedChart = null;
@@ -68,10 +68,10 @@ function render() {
   if (layoutKey !== state.lastLayoutKey) {
     state.lastLayoutKey = layoutKey;
     renderLibraryButtons();
-    renderChartGallery(gallery);
+    await renderChartGallery(gallery);
     return;
   }
-  updateChartGallery(gallery);
+  await updateChartGallery(gallery);
 }
 
 function renderLibraryButtons() {
@@ -85,7 +85,7 @@ function renderLibraryButtons() {
       if (state.expandedChart) {
         state.expandedChart = getSupportedChart(state.library, state.expandedChart);
       }
-      render();
+      void render();
     });
   });
 }
@@ -102,7 +102,7 @@ function renderLibrarySummary(gallery) {
   `;
 }
 
-function renderChartGallery(gallery) {
+async function renderChartGallery(gallery) {
   destroyNativeCharts();
   elements.chartGallery.innerHTML = gallery.charts
     .map((chart) => {
@@ -144,35 +144,35 @@ function renderChartGallery(gallery) {
       state.expandedChart =
         state.expandedChart === button.dataset.chart ? null : button.dataset.chart;
       state.tab = "adapter";
-      render();
+      void render();
     });
   });
   elements.chartGallery.querySelectorAll(".card-code-tab").forEach((button) => {
     button.addEventListener("click", () => {
       state.expandedChart = button.dataset.chart;
       state.tab = button.dataset.tab;
-      render();
+      void render();
     });
   });
-  renderNativeCharts(gallery.charts, elements.chartGallery);
+  await renderNativeCharts(gallery.charts, elements.chartGallery);
 }
 
-function updateChartGallery(gallery) {
+async function updateChartGallery(gallery) {
   for (const chart of gallery.charts) {
     const card = elements.chartGallery
       .querySelector(`[data-render-target="${chart.chartType}"]`)
       ?.closest(".chart-card");
     if (!card) continue;
     const meta = card.querySelector(".chart-card-meta");
-    if (meta) meta.textContent = adapterSummary(chart.adapterModel);
+    if (meta) setTextIfChanged(meta, adapterSummary(chart.adapterModel));
     const legend = card.querySelector(".mini-legend");
-    if (legend) legend.innerHTML = renderLegend(chart);
+    if (legend) setHtmlIfChanged(legend, renderLegend(chart));
     if (chart.chartType === state.expandedChart) {
       const code = card.querySelector(".card-code-block");
-      if (code) code.textContent = codeFor(chart);
+      if (code) setTextIfChanged(code, codeFor(chart));
     }
   }
-  renderNativeCharts(gallery.charts, elements.chartGallery);
+  await renderNativeCharts(gallery.charts, elements.chartGallery);
 }
 
 function renderLegend(gallery) {
@@ -303,13 +303,13 @@ function stopLiveTimer() {
 function scheduleRender() {
   state.renderQueued = true;
   if (state.raf !== null) return;
-  state.raf = window.requestAnimationFrame(() => {
+  state.raf = window.requestAnimationFrame(async () => {
     state.raf = null;
     if (state.renderBusy || !state.renderQueued) return;
     state.renderQueued = false;
     state.renderBusy = true;
     try {
-      render();
+      await render();
     } finally {
       state.renderBusy = false;
       if (state.renderQueued) scheduleRender();
@@ -338,6 +338,18 @@ function adapterSummary(model) {
   if (Array.isArray(output.data)) return `data rows=${output.data.length}`;
   if (Array.isArray(output.series)) return `series=${output.series.length}`;
   return Object.keys(output).slice(0, 3).join(" + ");
+}
+
+function setTextIfChanged(element, next) {
+  if (element.textContent !== next) {
+    element.textContent = next;
+  }
+}
+
+function setHtmlIfChanged(element, next) {
+  if (element.innerHTML !== next) {
+    element.innerHTML = next;
+  }
 }
 
 function escapeHtml(value) {
