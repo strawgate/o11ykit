@@ -1,8 +1,19 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
+const learnTopbar = readFileSync(resolve(__dirname, "learn/_topbar.html"), "utf8");
+
 export default defineConfig({
   base: process.env.BASE_PATH ?? "/o11ykit/tsdb-engine/",
+  plugins: [
+    {
+      name: "o11ykit-learn-topbar",
+      transformIndexHtml(html) {
+        return html.replaceAll("<!-- @include learn-topbar -->", learnTopbar);
+      },
+    },
+  ],
   root: resolve(__dirname),
   resolve: {
     alias: {
