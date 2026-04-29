@@ -164,12 +164,31 @@ describe("@otlpkit/adapters", () => {
         },
       ],
     });
+    const safeBoundaries = toEngineLineSeriesModel(
+      {
+        series: [
+          {
+            labels: new Map([["__name__", "safe"]]),
+            timestamps: new BigInt64Array([
+              BigInt(Number.MIN_SAFE_INTEGER),
+              BigInt(Number.MAX_SAFE_INTEGER),
+            ]),
+            values: new Float64Array([1, 2]),
+          },
+        ],
+      },
+      { timestampUnit: "milliseconds" }
+    );
 
     expect(wide.rows).toEqual([{ t: 3, values: [3, 30] }]);
     expect(emptyWide.rows).toEqual([]);
     expect(seconds.series[0]?.points.map((point) => point.t)).toEqual([1000, 2000]);
     expect(milliseconds.series[0]?.points.map((point) => point.t)).toEqual([1, 2]);
     expect(largeNanoseconds.series[0]?.points[0]?.t).toBe(9_007_199_254_740);
+    expect(safeBoundaries.series[0]?.points.map((point) => point.t)).toEqual([
+      Number.MIN_SAFE_INTEGER,
+      Number.MAX_SAFE_INTEGER,
+    ]);
     expect(() =>
       toEngineLineSeriesModel({
         series: [
@@ -181,6 +200,34 @@ describe("@otlpkit/adapters", () => {
         ],
       })
     ).toThrow(/mismatched timestamps/);
+    expect(() =>
+      toEngineLineSeriesModel(
+        {
+          series: [
+            {
+              labels: new Map([["__name__", "unsafe"]]),
+              timestamps: new BigInt64Array([BigInt(Number.MAX_SAFE_INTEGER) + 1n]),
+              values: new Float64Array([1]),
+            },
+          ],
+        },
+        { timestampUnit: "milliseconds" }
+      )
+    ).toThrow(/cannot be represented safely/);
+    expect(() =>
+      toEngineLineSeriesModel(
+        {
+          series: [
+            {
+              labels: new Map([["__name__", "unsafe"]]),
+              timestamps: new BigInt64Array([BigInt(Number.MIN_SAFE_INTEGER) - 1n]),
+              values: new Float64Array([1]),
+            },
+          ],
+        },
+        { timestampUnit: "milliseconds" }
+      )
+    ).toThrow(/cannot be represented safely/);
   });
 
   it("builds engine-backed Recharts models", () => {

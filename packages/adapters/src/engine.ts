@@ -202,12 +202,25 @@ function seriesLabel(
 }
 
 function timestampToMillis(timestamp: bigint, unit: EngineTimestampUnit = "nanoseconds"): number {
+  const millis = timestampToMillisBigInt(timestamp, unit);
+  if (millis > BigInt(Number.MAX_SAFE_INTEGER) || millis < BigInt(Number.MIN_SAFE_INTEGER)) {
+    throw new RangeError(
+      `timestamp ${timestamp.toString()} cannot be represented safely as milliseconds`
+    );
+  }
+  return Number(millis);
+}
+
+function timestampToMillisBigInt(
+  timestamp: bigint,
+  unit: EngineTimestampUnit = "nanoseconds"
+): bigint {
   switch (unit) {
     case "seconds":
-      return Number(timestamp) * 1_000;
+      return timestamp * 1_000n;
     case "milliseconds":
-      return Number(timestamp);
+      return timestamp;
     case "nanoseconds":
-      return Number(timestamp / 1_000_000n);
+      return timestamp / 1_000_000n;
   }
 }
