@@ -96,6 +96,9 @@ export function toTremorDonutChartProps(
 ): TremorDonutChartProps {
   const index = options.index ?? "label";
   const category = options.category ?? "value";
+  if (index === category) {
+    throw new RangeError(`Tremor donut index and category keys must be distinct: ${index}`);
+  }
   return {
     data: model.rows.flatMap((row) =>
       row.value === null
@@ -137,7 +140,7 @@ function toTremorLineLikeProps(
   options: TremorXYOptions
 ): TremorLineLikeProps {
   const index = options.index ?? "time";
-  const usedCategoryKeys = new Set<string>();
+  const usedCategoryKeys = new Set<string>([index]);
   const series = model.series.map((series, seriesIndex) => {
     const label = options.categoryLabel?.(series, seriesIndex) ?? series.label;
     return {

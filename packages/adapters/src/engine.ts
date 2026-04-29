@@ -157,7 +157,10 @@ function pointsForSeries(
 
 function applyPointBudget<T>(points: readonly T[], maxPoints: number | undefined): readonly T[] {
   const pointBudget = maxPoints === undefined ? undefined : Math.floor(maxPoints);
-  if (pointBudget === undefined || pointBudget <= 0 || points.length <= pointBudget) {
+  if (pointBudget !== undefined && pointBudget <= 0) {
+    return [];
+  }
+  if (pointBudget === undefined || points.length <= pointBudget) {
     return points;
   }
   return points.slice(points.length - pointBudget);
@@ -205,6 +208,6 @@ function timestampToMillis(timestamp: bigint, unit: EngineTimestampUnit = "nanos
     case "milliseconds":
       return Number(timestamp);
     case "nanoseconds":
-      return Number(timestamp) / 1_000_000;
+      return Number(timestamp / 1_000_000n);
   }
 }

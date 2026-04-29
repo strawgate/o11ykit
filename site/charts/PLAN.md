@@ -107,7 +107,7 @@ Each library page should include:
 
 ### Phase 1: Static Gallery Shell
 
-- Add `/charts/` overview page.
+- Add `/o11ykit/charts/` overview page.
 - Link it from the home nav.
 - Include support matrix and canonical snippets.
 
@@ -133,4 +133,3 @@ Each library page should include:
 - Build examples with the repo task runner.
 - Add screenshot/e2e checks once pages become interactive.
 - Keep every snippet copy-pasteable and backed by a test or example source file.
-

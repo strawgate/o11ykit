@@ -127,6 +127,10 @@ describe("@otlpkit/adapters", () => {
       maxPoints: 1,
       seriesLabel: (series) => series.labels.get("host") ?? "unknown",
     });
+    const emptyWide = toEngineWideTableModel(engineResult, {
+      maxPoints: 0,
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
     const seconds = toEngineLineSeriesModel(
       {
         series: [
@@ -151,10 +155,21 @@ describe("@otlpkit/adapters", () => {
       },
       { timestampUnit: "milliseconds" }
     );
+    const largeNanoseconds = toEngineLineSeriesModel({
+      series: [
+        {
+          labels: new Map([["__name__", "requests"]]),
+          timestamps: new BigInt64Array([9_007_199_254_740_993_000n]),
+          values: new Float64Array([10]),
+        },
+      ],
+    });
 
     expect(wide.rows).toEqual([{ t: 3, values: [3, 30] }]);
+    expect(emptyWide.rows).toEqual([]);
     expect(seconds.series[0]?.points.map((point) => point.t)).toEqual([1000, 2000]);
     expect(milliseconds.series[0]?.points.map((point) => point.t)).toEqual([1, 2]);
+    expect(largeNanoseconds.series[0]?.points[0]?.t).toBe(9_007_199_254_740);
     expect(() =>
       toEngineLineSeriesModel({
         series: [
@@ -189,6 +204,38 @@ describe("@otlpkit/adapters", () => {
       { label: "a", value: 3 },
       { label: "b", value: 30 },
     ]);
+  });
+
+  it("keeps engine-backed Recharts data keys distinct from axis and tooltip keys", () => {
+    const wide = toEngineWideTableModel({
+      series: [
+        {
+          labels: new Map([["__name__", "time"]]),
+          timestamps: new BigInt64Array([1_000_000n]),
+          values: new Float64Array([1]),
+        },
+        {
+          labels: new Map([["__name__", "tooltip"]]),
+          timestamps: new BigInt64Array([1_000_000n]),
+          values: new Float64Array([2]),
+        },
+      ],
+    });
+    const timeSeries = toRechartsEngineTimeSeriesModel(wide, {
+      xAxisKey: "__name__=time",
+      tooltipKey: "__name__=tooltip",
+    });
+
+    expect(timeSeries.xAxisKey).toBe("__name__=time");
+    expect(timeSeries.tooltipKey).toBe("__name__=tooltip");
+    expect(timeSeries.series.map((series) => series.dataKey)).toEqual([
+      "__name__=time (2)",
+      "__name__=tooltip (2)",
+    ]);
+    expect(timeSeries.data[0]?.["__name__=time"]).toBe(1);
+    expect(timeSeries.data[0]?.["__name__=tooltip"]).toBe(1);
+    expect(timeSeries.data[0]?.["__name__=time (2)"]).toBe(1);
+    expect(timeSeries.data[0]?.["__name__=tooltip (2)"]).toBe(2);
   });
 
   it("builds Tremor-native props from engine models", () => {
@@ -257,6 +304,27 @@ describe("@otlpkit/adapters", () => {
     expect(renamed.categories).toEqual(["CPU 1", "CPU 2"]);
     expect(donut.data).toEqual([{ label: "cpu{host=b}", value: 30 }]);
     expect(barList.data).toEqual([{ name: "cpu{host=b}", value: 30 }]);
+  });
+
+  it("keeps Tremor data keys distinct from index and category keys", () => {
+    const wide = toEngineWideTableModel(engineResult, {
+      seriesLabel: () => "time",
+    });
+    const latest = toEngineLatestValueModel(engineResult);
+    const line = toTremorLineChartProps(wide);
+
+    expect(line.index).toBe("time");
+    expect(line.categories).toEqual(["time (2)", "time (3)"]);
+    expect(line.data[0]?.time).toBe(1);
+    expect(line.data[0]?.["time (2)"]).toBe(1);
+    expect(line.data[1]?.time).toBe(2);
+    expect(line.data[1]?.["time (2)"]).toBeNull();
+    expect(() =>
+      toTremorDonutChartProps(latest, {
+        index: "value",
+        category: "value",
+      })
+    ).toThrow(/must be distinct/);
   });
 
   it("builds aligned uPlot models", () => {

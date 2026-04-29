@@ -70,7 +70,7 @@ const recharts = toRechartsEngineTimeSeriesModel(wide);</pre>
                 gaps, value formatters, and metadata for drilldown.
               </p>
               <pre class="code-block" style="margin-top:16px;font-size:12px;overflow:auto">const wide = toEngineWideTableModel(result, {
-  seriesLabel: (s) => s.labels.get("host") ?? "host",
+  seriesLabel: (s) =&gt; s.labels.get("host") ?? "host",
 });
 const props = toTremorLineChartProps(wide);</pre>
             </article>

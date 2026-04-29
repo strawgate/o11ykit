@@ -11,6 +11,14 @@ export interface RechartsSeriesDescriptor {
 
 export interface RechartsTimeSeriesModel {
   readonly data: readonly Record<string, number | string | null>[];
+  readonly xAxisKey: "timeMs";
+  readonly tooltipKey: "isoTime";
+  readonly unit: string | null;
+  readonly series: readonly RechartsSeriesDescriptor[];
+}
+
+export interface RechartsEngineTimeSeriesModel {
+  readonly data: readonly Record<string, number | string | null>[];
   readonly xAxisKey: string;
   readonly tooltipKey: string;
   readonly unit: string | null;
@@ -69,9 +77,16 @@ export interface RechartsEngineTimeSeriesOptions {
 export function toRechartsEngineTimeSeriesModel(
   model: EngineWideTableModel,
   options: RechartsEngineTimeSeriesOptions = {}
-): RechartsTimeSeriesModel {
+): RechartsEngineTimeSeriesModel {
   const xAxisKey = options.xAxisKey ?? "time";
   const tooltipKey = options.tooltipKey ?? xAxisKey;
+  const reservedKeys = new Set([xAxisKey, tooltipKey]);
+  const series = model.series.map((series, index) => ({
+    id: series.id,
+    dataKey: uniqueDataKey(series.id, reservedKeys),
+    name: options.seriesName?.(series, index) ?? series.label,
+  }));
+
   return {
     data: model.rows.map((row) => {
       const output: Record<string, number | string | null> = {
@@ -81,20 +96,16 @@ export function toRechartsEngineTimeSeriesModel(
         output[tooltipKey] = row.t;
       }
       for (let i = 0; i < model.series.length; i++) {
-        const series = model.series[i];
-        if (!series) continue;
-        output[series.id] = row.values[i] ?? null;
+        const seriesMeta = series[i];
+        if (!seriesMeta) continue;
+        output[seriesMeta.dataKey] = row.values[i] ?? null;
       }
       return output;
     }),
     xAxisKey,
     tooltipKey,
     unit: options.unit ?? null,
-    series: model.series.map((series, index) => ({
-      id: series.id,
-      dataKey: series.id,
-      name: options.seriesName?.(series, index) ?? series.label,
-    })),
+    series,
   };
 }
 
@@ -117,4 +128,16 @@ export function toRechartsEngineLatestValuesModel(
     valueKey: "value",
     unit: options.unit ?? null,
   };
+}
+
+function uniqueDataKey(base: string, used: Set<string>): string {
+  const fallback = base.length > 0 ? base : `series-${used.size}`;
+  let key = fallback;
+  let suffix = 2;
+  while (used.has(key)) {
+    key = `${fallback} (${suffix})`;
+    suffix += 1;
+  }
+  used.add(key);
+  return key;
 }
