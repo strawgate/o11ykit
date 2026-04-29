@@ -10,6 +10,10 @@ const renderedLibraries = new Set([
   "apexcharts",
   "highcharts",
   "vegalite",
+  "nivo",
+  "observable",
+  "victory",
+  "agcharts",
 ]);
 
 let renderGeneration = 0;
@@ -23,6 +27,10 @@ let plotlyRuntime;
 let apexChartsRuntime;
 let highchartsRuntime;
 let vegaLiteRuntime;
+let nivoRuntime;
+let observablePlotRuntime;
+let victoryRuntime;
+let agChartsRuntime;
 
 export function hasPackageRenderer(libraryId) {
   return renderedLibraries.has(libraryId);
@@ -85,6 +93,10 @@ async function renderWithPackage(target, chart, generation) {
   if (chart.library.id === "apexcharts") return renderApexCharts(target, chart, generation);
   if (chart.library.id === "highcharts") return renderHighcharts(target, chart, generation);
   if (chart.library.id === "vegalite") return renderVegaLite(target, chart, generation);
+  if (chart.library.id === "nivo") return renderNivo(target, chart, generation);
+  if (chart.library.id === "observable") return renderObservablePlot(target, chart, generation);
+  if (chart.library.id === "victory") return renderVictory(target, chart, generation);
+  if (chart.library.id === "agcharts") return renderAgCharts(target, chart, generation);
   return undefined;
 }
 
@@ -162,6 +174,46 @@ async function loadHighchartsRuntime() {
 async function loadVegaLiteRuntime() {
   vegaLiteRuntime ??= import("vega-embed").then((module) => module.default);
   return vegaLiteRuntime;
+}
+
+async function loadNivoRuntime() {
+  nivoRuntime ??= Promise.all([
+    loadReactRuntime(),
+    import("@nivo/line"),
+    import("@nivo/bar"),
+    import("@nivo/pie"),
+    import("@nivo/scatterplot"),
+  ]).then(([react, line, bar, pie, scatterplot]) => ({
+    ...react,
+    ...line,
+    ...bar,
+    ...pie,
+    ...scatterplot,
+  }));
+  return nivoRuntime;
+}
+
+async function loadObservablePlotRuntime() {
+  observablePlotRuntime ??= import("@observablehq/plot");
+  return observablePlotRuntime;
+}
+
+async function loadVictoryRuntime() {
+  victoryRuntime ??= Promise.all([loadReactRuntime(), import("victory")]).then(
+    ([react, victory]) => ({
+      ...react,
+      ...victory,
+    })
+  );
+  return victoryRuntime;
+}
+
+async function loadAgChartsRuntime() {
+  agChartsRuntime ??= import("ag-charts-community").then((module) => {
+    module.ModuleRegistry.registerModules(module.AllCommunityModule);
+    return module.AgCharts;
+  });
+  return agChartsRuntime;
 }
 
 async function renderTremor(target, chart, generation) {
@@ -520,6 +572,208 @@ async function renderVegaLite(target, chart, generation) {
   return () => result.view.finalize();
 }
 
+async function renderNivo(target, chart, generation) {
+  const runtime = await loadNivoRuntime();
+  if (!isCurrentRender(target, generation)) return undefined;
+
+  const { React } = runtime;
+  const common = {
+    animate: false,
+    colors: COLORS,
+    margin:
+      chart.chartType === "donut" ? { top: 16, right: 16, bottom: 16, left: 16 } : chartMargin(),
+    theme: nivoTheme(),
+  };
+  if (chart.chartType === "donut") {
+    return renderReact(
+      target,
+      React.createElement(runtime.ResponsivePie, {
+        ...common,
+        data: chart.adapterModel,
+        innerRadius: 0.58,
+        enableArcLabels: false,
+        enableArcLinkLabels: false,
+      }),
+      runtime.createRoot
+    );
+  }
+  if (chart.chartType === "bar") {
+    return renderReact(
+      target,
+      React.createElement(runtime.ResponsiveBar, {
+        ...common,
+        data: chart.adapterModel.data,
+        keys: chart.adapterModel.keys,
+        indexBy: chart.adapterModel.indexBy,
+        groupMode: "grouped",
+        enableLabel: false,
+        axisBottom: null,
+        axisLeft: { tickSize: 0, tickPadding: 6 },
+      }),
+      runtime.createRoot
+    );
+  }
+  if (chart.chartType === "scatter") {
+    return renderReact(
+      target,
+      React.createElement(runtime.ResponsiveScatterPlot, {
+        ...common,
+        data: chart.adapterModel,
+        xScale: { type: "linear" },
+        yScale: { type: "linear" },
+        axisBottom: null,
+        axisLeft: { tickSize: 0, tickPadding: 6 },
+        nodeSize: 8,
+      }),
+      runtime.createRoot
+    );
+  }
+  return renderReact(
+    target,
+    React.createElement(runtime.ResponsiveLine, {
+      ...common,
+      data: chart.adapterModel,
+      enableArea: chart.chartType === "area",
+      enablePoints: false,
+      useMesh: true,
+      xScale: { type: "linear" },
+      yScale: { type: "linear", stacked: false },
+      axisBottom: null,
+      axisLeft: { tickSize: 0, tickPadding: 6 },
+    }),
+    runtime.createRoot
+  );
+}
+
+async function renderObservablePlot(target, chart, generation) {
+  const Plot = await loadObservablePlotRuntime();
+  if (!isCurrentRender(target, generation)) return undefined;
+
+  target.replaceChildren();
+  const model = chart.adapterModel;
+  const marks = model.marks.map((mark) => observableMark(Plot, model.data, mark));
+  const plot = Plot.plot({
+    width: Math.max(260, target.clientWidth || 320),
+    height: Math.max(180, target.clientHeight || 220),
+    marginLeft: 36,
+    marginRight: 12,
+    marginTop: 12,
+    marginBottom: chart.chartType === "sparkline" ? 10 : 28,
+    style: { background: "transparent", color: "#11110f", fontFamily: "var(--mono)" },
+    x: chart.chartType === "sparkline" ? { axis: null } : undefined,
+    y: chart.chartType === "sparkline" ? { axis: null } : { grid: true },
+    marks,
+  });
+  target.replaceChildren(plot);
+  return () => plot.remove();
+}
+
+async function renderVictory(target, chart, generation) {
+  const runtime = await loadVictoryRuntime();
+  if (!isCurrentRender(target, generation)) return undefined;
+
+  const { React } = runtime;
+  const dimensions = {
+    standalone: true,
+    width: Math.max(300, target.clientWidth || 340),
+    height: Math.max(190, target.clientHeight || 220),
+    padding: { top: 12, right: 18, bottom: 28, left: 42 },
+  };
+  if (chart.chartType === "donut") {
+    return renderReact(
+      target,
+      React.createElement(runtime.VictoryPie, {
+        ...dimensions,
+        data: chart.adapterModel,
+        colorScale: COLORS,
+        innerRadius: 54,
+        labels: () => null,
+        style: { parent: { background: "transparent" } },
+      }),
+      runtime.createRoot
+    );
+  }
+  if (chart.chartType === "bar") {
+    return renderReact(
+      target,
+      React.createElement(
+        runtime.VictoryChart,
+        { ...dimensions, domainPadding: { x: 24, y: 10 } },
+        React.createElement(runtime.VictoryAxis, { tickFormat: () => "" }),
+        React.createElement(runtime.VictoryAxis, { dependentAxis: true }),
+        React.createElement(runtime.VictoryBar, {
+          data: chart.adapterModel,
+          style: { data: { fill: COLORS[0] } },
+        })
+      ),
+      runtime.createRoot
+    );
+  }
+  return renderReact(
+    target,
+    React.createElement(
+      runtime.VictoryChart,
+      { ...dimensions, scale: { x: "time", y: "linear" } },
+      React.createElement(runtime.VictoryAxis, { tickFormat: () => "" }),
+      React.createElement(runtime.VictoryAxis, { dependentAxis: true }),
+      chart.adapterModel.map((series, index) => {
+        const style = {
+          data: {
+            stroke: COLORS[index % COLORS.length],
+            fill: chart.chartType === "area" ? `${COLORS[index % COLORS.length]}33` : undefined,
+          },
+        };
+        if (chart.chartType === "scatter") {
+          return React.createElement(runtime.VictoryScatter, {
+            key: series.key,
+            data: series.data,
+            size: 2.5,
+            style: { data: { fill: COLORS[index % COLORS.length] } },
+          });
+        }
+        if (chart.chartType === "area") {
+          return React.createElement(runtime.VictoryArea, {
+            key: series.key,
+            data: series.data,
+            interpolation: "monotoneX",
+            style,
+          });
+        }
+        return React.createElement(runtime.VictoryLine, {
+          key: series.key,
+          data: series.data,
+          interpolation: "monotoneX",
+          style,
+        });
+      })
+    ),
+    runtime.createRoot
+  );
+}
+
+async function renderAgCharts(target, chart, generation) {
+  const AgCharts = await loadAgChartsRuntime();
+  if (!isCurrentRender(target, generation)) return undefined;
+
+  target.replaceChildren();
+  const model = chart.adapterModel;
+  const baseOptions = {
+    ...model,
+    container: target,
+    height: Math.max(180, target.clientHeight || 220),
+    background: { visible: false },
+    animation: { enabled: false },
+    legend: { enabled: chart.chartType !== "gauge" },
+    theme: {
+      palette: { fills: COLORS, strokes: COLORS },
+      overrides: { common: { axes: { number: { gridLine: { enabled: true } } } } },
+    },
+  };
+  const instance =
+    chart.chartType === "gauge" ? AgCharts.createGauge(baseOptions) : AgCharts.create(baseOptions);
+  return () => instance.destroy();
+}
+
 function renderReact(target, element, createRoot) {
   target.replaceChildren();
   const root = createRoot(target);
@@ -559,6 +813,30 @@ function renderPlaceholder(target, chart, message, title = "adapter shape") {
 
 function chartMargin() {
   return { top: 10, right: 12, bottom: 12, left: 0 };
+}
+
+function nivoTheme() {
+  return {
+    text: { fontFamily: "var(--mono)", fontSize: 11, fill: "#6f6a60" },
+    axis: {
+      domain: { line: { stroke: "#11110f", strokeWidth: 1 } },
+      ticks: { line: { stroke: "#11110f", strokeWidth: 1 }, text: { fill: "#6f6a60" } },
+    },
+    grid: { line: { stroke: "rgba(17,17,15,0.12)", strokeWidth: 1 } },
+    tooltip: { container: { fontFamily: "var(--mono)", fontSize: 12 } },
+  };
+}
+
+function observableMark(Plot, data, mark) {
+  const options = { ...mark };
+  const markName = options.mark;
+  delete options.mark;
+  if (markName === "lineY") return Plot.lineY(data, options);
+  if (markName === "areaY") return Plot.areaY(data, { ...options, fill: options.stroke });
+  if (markName === "barY")
+    return Plot.barY(data, { ...options, fill: options.stroke ?? COLORS[0] });
+  if (markName === "dot") return Plot.dot(data, { ...options, fill: options.stroke });
+  return Plot.lineY(data, options);
 }
 
 function escapeHtml(value) {

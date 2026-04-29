@@ -11,6 +11,8 @@ describe("chart gallery content", () => {
     expect(html).toContain("toEngineLineSeriesModel");
     expect(html).toContain("Show code button");
     expect(html).toContain("package-rendered chart");
+    expect(html).toContain("Compared with raw data sources");
+    expect(html).toContain("engine model -> library-native output");
     expect(html).toContain('id="chartGallery"');
     expect(html).not.toContain('id="chartButtons"');
     expect(html).not.toContain('id="codeBlock"');

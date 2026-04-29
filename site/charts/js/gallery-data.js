@@ -67,7 +67,7 @@ export const LIBRARIES = [
     primaryApi: "series objects",
     updateModel: "React data updates",
     status: "research",
-    package: "research shape",
+    package: "@nivo/*",
     charts: ["line", "area", "bar", "donut", "scatter"],
     note: "Map engine series into Nivo's nested data while keeping labels and colors predictable.",
   },
@@ -87,7 +87,7 @@ export const LIBRARIES = [
     primaryApi: "marks",
     updateModel: "plot rebuild",
     status: "research",
-    package: "research shape",
+    package: "@observablehq/plot",
     charts: ["line", "area", "bar", "histogram", "scatter", "sparkline"],
     note: "Flatten wide rows into tidy records and return Plot marks users can drop into Plot.plot.",
   },
@@ -117,7 +117,7 @@ export const LIBRARIES = [
     primaryApi: "components + data",
     updateModel: "React data updates",
     status: "research",
-    package: "research shape",
+    package: "victory",
     charts: ["line", "area", "bar", "donut", "scatter"],
     note: "Keep data arrays small and component-friendly for Victory's declarative chart primitives.",
   },
@@ -127,7 +127,7 @@ export const LIBRARIES = [
     primaryApi: "options",
     updateModel: "update options",
     status: "research",
-    package: "research shape",
+    package: "ag-charts-community",
     charts: ["line", "area", "bar", "donut", "scatter", "gauge"],
     note: "Project engine rows into AG Charts options with explicit keys and series definitions.",
   },
@@ -527,7 +527,11 @@ function nivoModel(chartType, wide, latest) {
     }));
   }
   if (chartType === "bar") {
-    return wide.rows.map((row) => rowToRecord(row, wide.series, "time"));
+    return {
+      data: wide.rows.map((row) => rowToRecord(row, wide.series, "time")),
+      keys: wide.series.map((series) => series.id),
+      indexBy: "time",
+    };
   }
   if (chartType === "scatter") {
     return wide.series.map((series, index) => ({
@@ -578,7 +582,14 @@ function observablePlotModel(chartType, wide, histogram) {
     ),
     marks: [
       {
-        mark: chartType === "bar" ? "barY" : chartType === "scatter" ? "dot" : `${chartType}Y`,
+        mark:
+          chartType === "bar"
+            ? "barY"
+            : chartType === "scatter"
+              ? "dot"
+              : chartType === "sparkline"
+                ? "lineY"
+                : `${chartType}Y`,
         x: "time",
         y: "value",
         stroke: "series",
@@ -690,7 +701,14 @@ function agChartsModel(chartType, wide, latest) {
   return {
     data: wide.rows.map((row) => rowToRecord(row, wide.series, "time")),
     series: wide.series.map((series) => ({
-      type: chartType === "bar" ? "bar" : chartType === "scatter" ? "scatter" : "line",
+      type:
+        chartType === "bar"
+          ? "bar"
+          : chartType === "scatter"
+            ? "scatter"
+            : chartType === "area"
+              ? "area"
+              : "line",
       xKey: "time",
       yKey: series.id,
       yName: series.label,

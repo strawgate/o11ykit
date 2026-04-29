@@ -15,13 +15,15 @@ describe("chart gallery package renderers", () => {
         "apexcharts",
         "highcharts",
         "vegalite",
+        "nivo",
+        "observable",
+        "victory",
+        "agcharts",
       ].filter(hasPackageRenderer)
-    ).toHaveLength(9);
+    ).toHaveLength(13);
   });
 
   it("keeps research-only libraries out of the package-rendered set", () => {
-    expect(hasPackageRenderer("nivo")).toBe(false);
     expect(hasPackageRenderer("visx")).toBe(false);
-    expect(hasPackageRenderer("agcharts")).toBe(false);
   });
 });

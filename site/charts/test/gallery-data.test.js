@@ -109,6 +109,18 @@ describe("chart gallery data", () => {
     expect(createGalleryState("uplot", "line").adapterModel.data).toHaveLength(5);
     expect(createGalleryState("plotly", "donut").adapterModel.data[0].type).toBe("pie");
     expect(createGalleryState("apexcharts", "gauge").adapterModel.chart.type).toBe("radialBar");
+    expect(createGalleryState("nivo", "bar").adapterModel).toMatchObject({
+      indexBy: "time",
+      keys: expect.arrayContaining([
+        "__name__=http.server.duration,route=/cart,service=checkout,status_class=2xx",
+      ]),
+    });
+    expect(createGalleryState("observable", "sparkline").adapterModel.marks[0].mark).toBe("lineY");
+    expect(createGalleryState("victory", "bar").adapterModel[0]).toMatchObject({
+      x: "checkout /cart 2xx",
+      y: expect.any(Number),
+    });
+    expect(createGalleryState("agcharts", "area").adapterModel.series[0].type).toBe("area");
     expect(createGalleryState("highcharts", "scatter").adapterModel.chart.type).toBe("scatter");
     expect(createGalleryState("vegalite", "scatter").adapterModel.mark).toBe("point");
   });

@@ -28,13 +28,13 @@ The goal is to preserve each chart library's idioms:
 The interactive gallery at `/o11ykit/charts/` shows the same engine result across Tremor,
 Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, Plotly, ApexCharts, Victory,
 AG Charts, Highcharts, and Vega-Lite shapes. Package-backed entries mount the actual chart package
-in the browser; research entries are explicitly labeled as adapter shapes until their renderers land.
+in the browser; entries without package renderers are explicitly labeled as adapter shapes only.
 
-Tremor and Recharts are implemented engine-backed adapters today. Chart.js, ECharts, uPlot, Plotly,
-ApexCharts, Highcharts, and Vega-Lite also render through their real packages in the gallery while
-their engine-adapter APIs are still being hardened. The remaining gallery entries are the design
-target for future first-class adapters: they show the native shape we want, not a generic
-cross-library DTO.
+Tremor and Recharts are implemented engine-backed adapters today. Chart.js, ECharts, uPlot, Nivo,
+Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, and Vega-Lite also render
+through their real packages in the gallery while their engine-adapter APIs are still being
+hardened. The remaining gallery entry is the design target for a future first-class adapter: it
+shows the native shape we want, not a generic cross-library DTO.
 
 | Library | Engine-backed status | User-facing shape |
 | --- | --- | --- |
@@ -43,8 +43,30 @@ cross-library DTO.
 | Chart.js | planned | config with parsing disabled |
 | ECharts | planned | dataset and encode option |
 | uPlot | planned | aligned arrays |
-| Plotly, ApexCharts, Highcharts, Vega-Lite | research, package-rendered gallery | library-native sketches |
-| Nivo, Visx, Observable Plot, Victory, AG Charts | research | library-native sketches |
+| Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite | research, package-rendered gallery | library-native sketches |
+| Visx | research | library-native sketch; package renderer held until React peer support matches the gallery |
+
+## Ergonomics Audit
+
+The engine path should feel better than starting from raw data sources because it removes the
+repeated data-shaping chores without hiding the chart package's own API.
+
+| Path | User input | User still owns | Where the engine helps |
+| --- | --- | --- | --- |
+| Raw REST, SQL, Prometheus, or OTLP data | Source-specific rows, samples, or frames | timestamp conversion, pivoting, sparse joins, latest-value extraction, label naming, and one-off null policy | nothing until the user writes glue |
+| Chart-package native data | The exact props/config/spec/traces the chart package expects | source normalization and every library-specific reshaping step | chart package ergonomics only after data is already shaped |
+| o11ykit engine adapters | `QueryResult` -> engine model -> library adapter | chart selection, styling, and optional package-specific overrides | stable series ids, sorted labels, null-safe sparse points, latest-value rows, histogram buckets, and max-point trimming |
+
+The important design choice is that adapters do not return an o11ykit chart DTO. They return the
+library's own dialect: Tremor props, Recharts rows plus `dataKey`s, uPlot aligned arrays, Plotly
+traces, Vega-Lite specs, Observable Plot marks, AG Charts options, and so on. That keeps the happy
+path short while preserving escape hatches for each package.
+
+Most libraries are snapshot-first from the user's point of view. A single `toXxxModel(...)` API is
+the default ergonomic surface. Libraries with efficient mutation APIs can add an optional update
+helper later: uPlot `setData`, ECharts `setOption`, Plotly `extendTraces`, ApexCharts
+`updateSeries`, AG Charts `update` / `updateDelta`, Highcharts `setData`, or Vega view changesets.
+Those should be incremental helpers, not a second required API for everyone.
 
 ## Quick Example
 

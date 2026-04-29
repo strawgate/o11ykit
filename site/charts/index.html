@@ -110,10 +110,10 @@ const recharts =
           <p class="t-body" style="max-width:72ch;margin:0 0 28px">
             The engine model is the stable part. Pick the model that matches the chart you are
             rendering, then use the library adapter to get the object that chart library expects.
-            The copy-ready adapters today are Tremor and Recharts. Chart.js, ECharts, uPlot,
-            Plotly, ApexCharts, Highcharts, and Vega-Lite also mount their real packages from
-            research adapter shapes. Use the Show code button on any chart card to inspect that
-            chart's adapter output beside the package-rendered chart.
+            The copy-ready adapters today are Tremor and Recharts. Chart.js, ECharts, uPlot, Nivo,
+            Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, and Vega-Lite also
+            mount their real packages from research adapter shapes. Use the Show code button on any
+            chart card to inspect that chart's adapter output beside the package-rendered chart.
           </p>
           <div class="adapter-doc-grid">
             <article class="adapter-doc">
@@ -130,6 +130,45 @@ const recharts =
               <h3>Custom marks</h3>
               <p>Use `toEngineLineSeriesModel` when the library wants one point array per series.</p>
               <code>series: [{ id, points[] }]</code>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="ergonomics-audit" class="adapter-docs">
+        <div class="section-inner">
+          <p class="t-eyebrow">ergonomics audit</p>
+          <h2 class="t-h2" style="margin:8px 0 8px">Compared with raw data sources.</h2>
+          <p class="t-body" style="max-width:76ch;margin:0 0 28px">
+            Raw APIs make chart users solve transport, time alignment, grouping, sparse values, and
+            chart-library shape differences at the same time. The engine splits that work: queries
+            produce typed series once, engine models normalize dashboard data once, and adapters
+            return the package-native object a chart user already recognizes.
+          </p>
+          <div class="ergonomics-grid">
+            <article class="ergonomics-card">
+              <h3>Raw source data</h3>
+              <p>
+                Users hand-roll timestamp conversion, joins, latest-value extraction, null
+                handling, and label naming before they can even start writing chart code.
+              </p>
+              <code>fetch() -> reshape -> chart config</code>
+            </article>
+            <article class="ergonomics-card">
+              <h3>Chart-native data</h3>
+              <p>
+                The chart package feels good once the data is shaped, but every package wants a
+                different shape: props, rows, traces, specs, options, marks, or aligned arrays.
+              </p>
+              <code>rows | props | traces | spec | marks</code>
+            </article>
+            <article class="ergonomics-card">
+              <h3>Engine adapters</h3>
+              <p>
+                Users keep one query and one set of engine transforms, then pick the adapter that
+                speaks their chart library's dialect without learning an o11ykit-only chart DTO.
+              </p>
+              <code>engine model -> library-native output</code>
             </article>
           </div>
         </div>
