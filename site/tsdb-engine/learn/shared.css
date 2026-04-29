@@ -79,6 +79,82 @@ body {
   padding: 0 20px 64px;
 }
 
+/* ─── Site Navigation ─────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--xp-border);
+  margin-bottom: 16px;
+}
+
+.topbar.panel {
+  background: var(--xp-surface);
+  border: 1px solid var(--xp-border);
+  border-radius: 0;
+  padding: 12px 16px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  font-family: var(--xp-mono);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.brand-mark {
+  flex-shrink: 0;
+}
+
+.topnav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topnav a {
+  color: var(--xp-text-muted);
+  background: var(--xp-surface-raised);
+  border: 1px solid var(--xp-border-strong);
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-family: var(--xp-mono);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  transition:
+    color 150ms,
+    border-color 150ms,
+    background-color 150ms;
+}
+
+.topnav a:hover {
+  color: #fff;
+  border-color: var(--xp-accent);
+}
+
+.brand:focus-visible,
+.topnav a:focus-visible {
+  color: #fff;
+  border-color: var(--xp-accent);
+  outline: 2px solid var(--xp-accent-light);
+  outline-offset: 2px;
+}
+
+.topnav a[aria-current="page"] {
+  color: var(--xp-accent-light);
+  border-color: var(--xp-accent);
+  background: var(--xp-accent-glow);
+}
+
 /* ─── Top Navigation ──────────────────────────────────────────────── */
 .xp-topbar {
   display: flex;
@@ -546,6 +622,10 @@ body {
 @media (max-width: 640px) {
   .xp-page {
     padding: 0 14px 40px;
+  }
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
   .xp-card {
     padding: 16px;
