@@ -60,7 +60,7 @@ describe("chart gallery data", () => {
       xAxisKey: "time",
       series: expect.arrayContaining([
         expect.objectContaining({
-          dataKey: "__name__=http.server.duration,service=checkout,route=/cart,status_class=2xx",
+          dataKey: "__name__=http.server.duration,route=/cart,service=checkout,status_class=2xx",
         }),
       ]),
     });

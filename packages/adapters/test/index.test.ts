@@ -230,6 +230,40 @@ describe("@otlpkit/adapters", () => {
     ).toThrow(/cannot be represented safely/);
   });
 
+  it("canonicalizes engine series ids and default labels", () => {
+    const first = toEngineLineSeriesModel({
+      series: [
+        {
+          labels: new Map([
+            ["__name__", "latency"],
+            ["route", "/checkout"],
+            ["service", "api"],
+          ]),
+          timestamps: new BigInt64Array([1_000_000n]),
+          values: new Float64Array([1]),
+        },
+      ],
+    });
+    const second = toEngineLineSeriesModel({
+      series: [
+        {
+          labels: new Map([
+            ["service", "api"],
+            ["route", "/checkout"],
+            ["__name__", "latency"],
+          ]),
+          timestamps: new BigInt64Array([1_000_000n]),
+          values: new Float64Array([1]),
+        },
+      ],
+    });
+
+    expect(first.series[0]?.id).toBe("__name__=latency,route=/checkout,service=api");
+    expect(first.series[0]?.id).toBe(second.series[0]?.id);
+    expect(first.series[0]?.label).toBe("latency{route=/checkout,service=api}");
+    expect(first.series[0]?.label).toBe(second.series[0]?.label);
+  });
+
   it("builds engine-backed Recharts models", () => {
     const wide = toEngineWideTableModel(engineResult, {
       seriesLabel: (series) => series.labels.get("host") ?? "unknown",

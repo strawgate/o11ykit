@@ -179,7 +179,7 @@ function finiteOrNull(value: number): number | null {
 }
 
 function seriesId(series: EngineSeriesResult, index: number): string {
-  const parts = [...series.labels.entries()].map(([key, value]) => `${key}=${value}`);
+  const parts = sortedLabelEntries(series.labels).map(([key, value]) => `${key}=${value}`);
   return parts.length > 0 ? parts.join(",") : `series-${index}`;
 }
 
@@ -193,12 +193,16 @@ function seriesLabel(
   }
   const name = series.labels.get("__name__") ?? `series-${index}`;
   const labelParts: string[] = [];
-  for (const [key, value] of series.labels) {
+  for (const [key, value] of sortedLabelEntries(series.labels)) {
     if (key !== "__name__") {
       labelParts.push(`${key}=${value}`);
     }
   }
   return labelParts.length > 0 ? `${name}{${labelParts.join(",")}}` : name;
+}
+
+function sortedLabelEntries(labels: EngineLabels): [string, string][] {
+  return [...labels.entries()].sort(([left], [right]) => left.localeCompare(right));
 }
 
 function timestampToMillis(timestamp: bigint, unit: EngineTimestampUnit = "nanoseconds"): number {

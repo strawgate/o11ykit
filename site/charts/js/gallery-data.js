@@ -627,7 +627,7 @@ function rowToRecord(row, series, timeKey) {
 }
 
 function seriesId(series, index) {
-  const parts = [...series.labels.entries()].map(([key, value]) => `${key}=${value}`);
+  const parts = sortedLabelEntries(series.labels).map(([key, value]) => `${key}=${value}`);
   return parts.length > 0 ? parts.join(",") : `series-${index}`;
 }
 
@@ -644,4 +644,8 @@ function formatTime(ms) {
 
 function capitalize(value) {
   return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
+}
+
+function sortedLabelEntries(labels) {
+  return [...labels.entries()].sort(([left], [right]) => left.localeCompare(right));
 }
