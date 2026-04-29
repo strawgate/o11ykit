@@ -9,6 +9,8 @@ describe("chart gallery content", () => {
     expect(html).toContain("toEngineWideTableModel");
     expect(html).toContain("toEngineLatestValueModel");
     expect(html).toContain("toEngineLineSeriesModel");
+    expect(html).toContain('id="chartGallery"');
+    expect(html).not.toContain('id="chartButtons"');
     expect(html).not.toContain("toEChartsOption(wide)");
   });
 });

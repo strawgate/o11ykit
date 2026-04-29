@@ -1,6 +1,6 @@
 import {
   CHART_TYPES,
-  createGalleryState,
+  createLibraryGalleryState,
   getSupportedChart,
   LIBRARIES,
   serializableAdapterModel,
@@ -18,13 +18,11 @@ const state = {
 
 const elements = {
   libraryButtons: document.querySelector("#libraryButtons"),
-  chartButtons: document.querySelector("#chartButtons"),
+  librarySummary: document.querySelector("#librarySummary"),
   liveToggle: document.querySelector("#liveToggle"),
-  adapterKind: document.querySelector("#adapterKind"),
-  previewTitle: document.querySelector("#previewTitle"),
-  updateModel: document.querySelector("#updateModel"),
-  chartPreview: document.querySelector("#chartPreview"),
-  legend: document.querySelector("#legend"),
+  chartGallery: document.querySelector("#chartGallery"),
+  codeEyebrow: document.querySelector("#codeEyebrow"),
+  codeTitle: document.querySelector("#codeTitle"),
   codeBlock: document.querySelector("#codeBlock"),
   codeTabs: document.querySelectorAll(".code-tab"),
   libraryCards: document.querySelector("#libraryCards"),
@@ -43,16 +41,15 @@ function init() {
 }
 
 function render() {
-  state.chartType = getSupportedChart(state.library, state.chartType);
-  const gallery = createGalleryState(state.library, state.chartType, state.liveStep);
+  const gallery = createLibraryGalleryState(state.library, state.liveStep);
+  state.chartType = getSupportedChart(gallery.library.id, state.chartType);
+  const selectedChart = selectedGalleryChart(gallery);
   renderLibraryButtons();
-  renderChartButtons(gallery.library);
-  elements.adapterKind.textContent = `${gallery.library.primaryApi} adapter`;
-  elements.previewTitle.textContent = `${gallery.library.name} ${chartLabel(gallery.chartType)}`;
-  elements.updateModel.textContent = gallery.library.updateModel;
-  renderPreview(gallery);
-  renderLegend(gallery);
-  renderCode(gallery);
+  renderLibrarySummary(gallery);
+  renderChartGallery(gallery);
+  elements.codeEyebrow.textContent = `${gallery.library.primaryApi} adapter`;
+  elements.codeTitle.textContent = `${gallery.library.name} ${chartLabel(selectedChart.chartType)}`;
+  renderCode(selectedChart);
 }
 
 function renderLibraryButtons() {
@@ -69,13 +66,51 @@ function renderLibraryButtons() {
   });
 }
 
-function renderChartButtons(library) {
-  elements.chartButtons.innerHTML = CHART_TYPES.map((chart) => {
-    const supported = library.charts.includes(chart.id);
-    const className = chart.id === state.chartType ? "is-active" : "";
-    return `<button type="button" class="${className}" data-chart="${chart.id}" ${supported ? "" : "disabled"}>${chart.label}</button>`;
-  }).join("");
-  elements.chartButtons.querySelectorAll("button:not([disabled])").forEach((button) => {
+function renderLibrarySummary(gallery) {
+  elements.librarySummary.innerHTML = `
+    <p class="t-eyebrow">rendering</p>
+    <div class="library-summary-line">
+      <strong>${gallery.library.name}</strong>
+      <span>${gallery.charts.length} chart${gallery.charts.length === 1 ? "" : "s"}</span>
+      <span>${gallery.library.package}</span>
+    </div>
+  `;
+}
+
+function renderChartGallery(gallery) {
+  elements.chartGallery.innerHTML = gallery.charts
+    .map((chart) => {
+      const selected = chart.chartType === state.chartType;
+      return `
+        <button
+          type="button"
+          class="chart-card ${selected ? "is-selected" : ""}"
+          data-chart="${chart.chartType}"
+          aria-pressed="${selected}"
+        >
+          <span class="chart-card-heading">
+            <span>
+              <span class="chart-card-kicker">${chart.library.primaryApi}</span>
+              <strong>${chartLabel(chart.chartType)}</strong>
+            </span>
+            <span class="chart-card-pill">${chart.library.status}</span>
+          </span>
+          <span class="chart-card-frame">
+            <svg
+              class="chart-card-preview"
+              viewBox="0 0 720 360"
+              role="img"
+              aria-label="${chart.library.name} ${chartLabel(chart.chartType)} preview"
+            >
+              ${renderPreview(chart)}
+            </svg>
+          </span>
+          <span class="mini-legend">${renderLegend(chart)}</span>
+        </button>
+      `;
+    })
+    .join("");
+  elements.chartGallery.querySelectorAll(".chart-card").forEach((button) => {
     button.addEventListener("click", () => {
       state.chartType = button.dataset.chart;
       render();
@@ -86,22 +121,18 @@ function renderChartButtons(library) {
 function renderPreview(gallery) {
   const { chartType, wide, latest, histogram } = gallery;
   if (chartType === "donut") {
-    elements.chartPreview.innerHTML = renderDonut(latest);
-    return;
+    return renderDonut(latest);
   }
   if (chartType === "barList") {
-    elements.chartPreview.innerHTML = renderBarList(latest);
-    return;
+    return renderBarList(latest);
   }
   if (chartType === "histogram") {
-    elements.chartPreview.innerHTML = renderHistogram(histogram);
-    return;
+    return renderHistogram(histogram);
   }
   if (chartType === "bar") {
-    elements.chartPreview.innerHTML = renderBars(wide);
-    return;
+    return renderBars(wide);
   }
-  elements.chartPreview.innerHTML = renderLines(wide, chartType === "area");
+  return renderLines(wide, chartType === "area");
 }
 
 function renderLines(wide, area) {
@@ -182,7 +213,7 @@ function renderDonut(latest) {
 
 function renderBarList(latest) {
   const max = Math.max(...latest.rows.map((row) => row.value ?? 0), 1);
-  const rows = latest.rows
+  const rows = [...latest.rows]
     .sort((left, right) => (right.value ?? 0) - (left.value ?? 0))
     .map((row, index) => {
       const x = 88;
@@ -242,7 +273,7 @@ function renderAxisLabels(frame) {
 function renderLegend(gallery) {
   const rows =
     gallery.chartType === "histogram" ? gallery.histogram.buckets.slice(0, 4) : gallery.wide.series;
-  elements.legend.innerHTML = rows
+  return rows
     .map((row, index) => {
       const label = row.label ?? row.id;
       return `<span class="legend-item"><span class="legend-swatch" style="background:${COLOR_SCALE[index % COLOR_SCALE.length]}"></span>${escapeHtml(label)}</span>`;
@@ -306,6 +337,10 @@ function bindTabs() {
   });
 }
 
+function selectedGalleryChart(gallery) {
+  return gallery.charts.find((chart) => chart.chartType === state.chartType) ?? gallery.charts[0];
+}
+
 function toggleLive() {
   state.live = !state.live;
   elements.liveToggle.setAttribute("aria-pressed", String(state.live));
@@ -353,7 +388,7 @@ function linePath(points) {
 }
 
 function svgShell(content) {
-  return `<title id="previewSvgTitle">Chart adapter preview</title>${content}`;
+  return `<title>Chart adapter preview</title>${content}`;
 }
 
 function chartLabel(chartType) {

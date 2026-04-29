@@ -43,7 +43,8 @@
             <p class="hero-sub">
               The engine returns typed time-series results. The adapters turn that into the thing
               each chart library actually wants: props, rows, configs, datasets, aligned arrays, or
-              traces. Switch libraries and chart types below; the source data stays the same.
+              traces. Switch libraries below; every supported chart for that library renders from
+              the same source data.
             </p>
             <div class="hero-actions charts-actions">
               <a class="stamp-fill" href="#gallery">Open Gallery</a>
@@ -90,10 +91,7 @@ const recharts =
             <p class="t-eyebrow">library</p>
             <div id="libraryButtons" class="segmented-control"></div>
           </div>
-          <div>
-            <p class="t-eyebrow">chart type</p>
-            <div id="chartButtons" class="segmented-control"></div>
-          </div>
+          <div id="librarySummary" class="library-summary"></div>
           <button id="liveToggle" class="live-toggle" type="button" aria-pressed="false">
             <span class="live-dot" aria-hidden="true"></span>
             Live updates
@@ -101,32 +99,16 @@ const recharts =
         </div>
 
         <div class="gallery-grid">
-          <article class="preview-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="t-eyebrow" id="adapterKind">adapter output</p>
-                <h2 class="t-h2" id="previewTitle">Tremor LineChart props</h2>
-              </div>
-              <div class="update-pill" id="updateModel">React data updates</div>
-            </div>
-            <div class="chart-frame">
-              <svg
-                id="chartPreview"
-                class="chart-preview"
-                viewBox="0 0 720 360"
-                role="img"
-                aria-labelledby="previewSvgTitle previewTitle"
-              >
-                <title id="previewSvgTitle">Chart adapter preview</title>
-              </svg>
-            </div>
-            <div id="legend" class="legend"></div>
-          </article>
+          <div id="chartGallery" class="chart-card-grid" aria-label="Chart previews"></div>
 
           <aside class="code-panel">
+            <div class="code-panel-heading">
+              <p class="t-eyebrow" id="codeEyebrow">adapter output</p>
+              <h2 class="t-h2" id="codeTitle">Tremor Line</h2>
+            </div>
             <div class="code-tabs" role="tablist" aria-label="Code examples">
-              <button type="button" class="code-tab is-active" data-tab="query">query</button>
-              <button type="button" class="code-tab" data-tab="adapter">adapter</button>
+              <button type="button" class="code-tab" data-tab="query">query</button>
+              <button type="button" class="code-tab is-active" data-tab="adapter">adapter</button>
               <button type="button" class="code-tab" data-tab="library">library</button>
               <button type="button" class="code-tab" data-tab="output">output</button>
             </div>

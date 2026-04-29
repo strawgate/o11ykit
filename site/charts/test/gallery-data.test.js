@@ -4,6 +4,7 @@ import {
   CHART_TYPES,
   createEngineResult,
   createGalleryState,
+  createLibraryGalleryState,
   getSupportedChart,
   LIBRARIES,
   serializableAdapterModel,
@@ -42,6 +43,22 @@ describe("chart gallery data", () => {
         expect(output).toBeTruthy();
         expect(gallery.snippets.query).toContain("engine.query");
         expect(gallery.snippets.adapter).toContain("toEngine");
+      }
+    }
+  });
+
+  it("builds a full gallery from one shared engine result per library", () => {
+    for (const library of LIBRARIES) {
+      const gallery = createLibraryGalleryState(library.id);
+
+      expect(gallery.library.id).toBe(library.id);
+      expect(gallery.charts.map((chart) => chart.chartType)).toEqual(library.charts);
+      for (const chart of gallery.charts) {
+        expect(chart.result).toBe(gallery.result);
+        expect(chart.wide).toBe(gallery.wide);
+        expect(chart.latest).toBe(gallery.latest);
+        expect(chart.histogram).toBe(gallery.histogram);
+        expect(serializableAdapterModel(chart.adapterModel)).toBeTruthy();
       }
     }
   });

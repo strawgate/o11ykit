@@ -197,23 +197,34 @@ export function toEngineLatestValueModel(result) {
 }
 
 export function createGalleryState(libraryId = "tremor", chartType = "line", liveStep = 0) {
+  const gallery = createLibraryGalleryState(libraryId, liveStep);
+  const supportedChart = getSupportedChart(gallery.library.id, chartType);
+  return gallery.charts.find((chart) => chart.chartType === supportedChart) ?? gallery.charts[0];
+}
+
+export function createLibraryGalleryState(libraryId = "tremor", liveStep = 0) {
   const library = getLibrary(libraryId);
-  const supportedChart = getSupportedChart(library.id, chartType);
   const result = createEngineResult(liveStep);
   const wide = toEngineWideTableModel(result);
   const latest = toEngineLatestValueModel(result);
   const histogram = toHistogramModel(wide);
-  const adapterModel = toAdapterModel(library, supportedChart, wide, latest, histogram);
 
   return {
     library,
-    chartType: supportedChart,
     result,
     wide,
     latest,
     histogram,
-    adapterModel,
-    snippets: snippetsFor(library, supportedChart),
+    charts: library.charts.map((chartType) => ({
+      library,
+      chartType,
+      result,
+      wide,
+      latest,
+      histogram,
+      adapterModel: toAdapterModel(library, chartType, wide, latest, histogram),
+      snippets: snippetsFor(library, chartType),
+    })),
   };
 }
 
