@@ -64,6 +64,23 @@ export interface EngineLatestValueModel {
   readonly rows: readonly EngineLatestValueRow[];
 }
 
+export interface EngineHistogramBucket {
+  readonly label: string;
+  readonly count: number;
+  readonly start: number;
+  readonly end: number;
+}
+
+export interface EngineHistogramModel {
+  readonly kind: "engine-histogram";
+  readonly buckets: readonly EngineHistogramBucket[];
+}
+
+export interface EngineHistogramOptions {
+  readonly bucketCount?: number;
+  readonly valueFormatter?: (start: number, end: number, index: number) => string;
+}
+
 export function toEngineLineSeriesModel(
   result: EngineQueryResult,
   options: EngineAdapterOptions = {}
@@ -137,6 +154,52 @@ export function toEngineLatestValueModel(
       };
     }),
   };
+}
+
+export function toEngineHistogramModel(
+  model: EngineWideTableModel,
+  options: EngineHistogramOptions = {}
+): EngineHistogramModel {
+  const values = model.rows.flatMap((row) =>
+    row.values.filter((value): value is number => value !== null && Number.isFinite(value))
+  );
+  const bucketCount = Math.max(1, Math.floor(options.bucketCount ?? 7));
+  if (values.length === 0) {
+    return {
+      kind: "engine-histogram",
+      buckets: Array.from({ length: bucketCount }, (_, index) => ({
+        label: options.valueFormatter?.(index, index + 1, index) ?? `${index}-${index + 1}`,
+        count: 0,
+        start: index,
+        end: index + 1,
+      })),
+    };
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const width = (max - min || 1) / bucketCount;
+  const buckets = Array.from({ length: bucketCount }, (_, index) => {
+    const start = min + index * width;
+    const end = min + (index + 1) * width;
+    return {
+      label:
+        options.valueFormatter?.(start, end, index) ?? `${Math.round(start)}-${Math.round(end)}`,
+      count: 0,
+      start,
+      end,
+    };
+  });
+
+  for (const value of values) {
+    const index = Math.min(bucketCount - 1, Math.max(0, Math.floor((value - min) / width)));
+    const bucket = buckets[index];
+    if (bucket) {
+      bucket.count += 1;
+    }
+  }
+
+  return { kind: "engine-histogram", buckets };
 }
 
 function pointsForSeries(

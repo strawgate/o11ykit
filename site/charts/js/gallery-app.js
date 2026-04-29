@@ -243,7 +243,7 @@ function chartLabel(chartType) {
 
 function adapterProof(gallery) {
   const status =
-    gallery.library.status === "implemented"
+    gallery.library.status === "implemented" || gallery.library.status === "exported"
       ? "package-backed"
       : `${gallery.library.status} adapter shape`;
   return `${status}; ${adapterSummary(gallery.adapterModel)}`;

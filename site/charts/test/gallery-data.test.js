@@ -65,12 +65,12 @@ describe("chart gallery data", () => {
     }
   });
 
-  it("marks copy-ready snippets separately from planned and research sketches", () => {
+  it("marks exported adapter snippets separately from adapter-shape-only sketches", () => {
     for (const library of LIBRARIES) {
       const gallery = createGalleryState(library.id, library.charts[0]);
 
       expect(library.package).toBeTruthy();
-      if (library.status === "implemented") {
+      if (library.status === "implemented" || library.status === "exported") {
         expect(library.package).toContain("@otlpkit/adapters/");
         expect(gallery.snippets.adapter).toContain(library.package);
         expect(gallery.snippets.adapter).not.toContain("not exported yet");
@@ -99,7 +99,7 @@ describe("chart gallery data", () => {
         }),
       ]),
     });
-    expect(createGalleryState("echarts", "line").adapterModel.dataset.source[0]).toEqual([
+    expect(createGalleryState("echarts", "line").adapterModel.dataset[0].dimensions).toEqual([
       "time",
       "checkout /cart 2xx",
       "checkout /pay 5xx",

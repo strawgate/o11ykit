@@ -9,11 +9,19 @@ users should get aligned arrays. ECharts users should get dataset/encode options
 ## Adapter Modules
 
 - `@otlpkit/adapters/chartjs`
+- `@otlpkit/adapters/agcharts`
+- `@otlpkit/adapters/apexcharts`
 - `@otlpkit/adapters/engine`
 - `@otlpkit/adapters/recharts`
 - `@otlpkit/adapters/tremor`
 - `@otlpkit/adapters/echarts`
+- `@otlpkit/adapters/highcharts`
+- `@otlpkit/adapters/nivo`
+- `@otlpkit/adapters/observable`
+- `@otlpkit/adapters/plotly`
 - `@otlpkit/adapters/uplot`
+- `@otlpkit/adapters/vegalite`
+- `@otlpkit/adapters/victory`
 - `@otlpkit/adapters/waterfall`
 
 The goal is to preserve each chart library's idioms:
@@ -22,6 +30,13 @@ The goal is to preserve each chart library's idioms:
 - Recharts: row-model + `dataKey` composition
 - ECharts: dataset/encode-first option trees
 - uPlot: aligned columnar arrays + minimal option scaffolding
+- Plotly: traces plus layout
+- ApexCharts: options plus series arrays
+- Nivo: nested series, bar keys, and pie data
+- Observable Plot: tidy rows plus marks
+- Victory: component-oriented data series
+- AG Charts and Highcharts: option trees with explicit series keys
+- Vega-Lite: tidy records and declarative encodings
 
 ## Chart Gallery
 
@@ -30,20 +45,21 @@ Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, Plotly, ApexCha
 AG Charts, Highcharts, and Vega-Lite shapes. Package-backed entries mount the actual chart package
 in the browser; entries without package renderers are explicitly labeled as adapter shapes only.
 
-Tremor and Recharts are implemented engine-backed adapters today. Chart.js, ECharts, uPlot, Nivo,
-Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, and Vega-Lite also render
-through their real packages in the gallery while their engine-adapter APIs are still being
-hardened. The remaining gallery entry is the design target for a future first-class adapter: it
-shows the native shape we want, not a generic cross-library DTO.
+The gallery uses exported engine-backed adapters for every package-backed library. Tremor and
+Recharts are the most polished component-level APIs; Chart.js, ECharts, uPlot, Nivo, Observable
+Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, and Vega-Lite expose first-pass native
+model adapters that the gallery renders with the real packages. The remaining gallery entry is the
+design target for a future first-class adapter: it shows the native shape we want, not a generic
+cross-library DTO.
 
 | Library | Engine-backed status | User-facing shape |
 | --- | --- | --- |
 | Tremor | implemented | component props |
 | Recharts | implemented | rows plus `dataKey` descriptors |
-| Chart.js | planned | config with parsing disabled |
-| ECharts | planned | dataset and encode option |
-| uPlot | planned | aligned arrays |
-| Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite | research, package-rendered gallery | library-native sketches |
+| Chart.js | exported | config with parsing disabled |
+| ECharts | exported | dataset and encode option |
+| uPlot | exported | aligned arrays |
+| Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite | exported, package-rendered gallery | library-native models |
 | Visx | research | library-native sketch; package renderer held until React peer support matches the gallery |
 
 ## Ergonomics Audit

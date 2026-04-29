@@ -158,11 +158,10 @@ async function loadApexChartsRuntime() {
 }
 
 async function loadHighchartsRuntime() {
-  highchartsRuntime ??= Promise.all([
-    import("highcharts"),
-    import("highcharts/highcharts-more"),
-  ]).then(([module, highchartsMore]) => {
+  highchartsRuntime ??= import("highcharts").then(async (module) => {
     const Highcharts = module.default ?? module;
+    globalThis.Highcharts = Highcharts;
+    const highchartsMore = await import("highcharts/highcharts-more.js");
     if (typeof highchartsMore.default === "function") {
       highchartsMore.default(Highcharts);
     }

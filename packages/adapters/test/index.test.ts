@@ -9,15 +9,28 @@ import {
 } from "../../views/src/index.js";
 import * as adapterBarrel from "../src/index.js";
 import {
+  toAgChartsEngineTimeSeriesOptions,
+  toApexChartsEngineLatestValuesOptions,
+  toChartJsEngineHistogramConfig,
+  toChartJsEngineLatestValuesConfig,
+  toChartJsEngineTimeSeriesConfig,
   toChartJsHistogramConfig,
   toChartJsLatestValuesConfig,
   toChartJsLineConfig,
+  toEChartsEngineHistogramOption,
+  toEChartsEngineLatestValuesOption,
+  toEChartsEngineTimeSeriesOption,
   toEChartsHistogramOption,
   toEChartsLatestValuesOption,
   toEChartsTimeSeriesOption,
+  toEngineHistogramModel,
   toEngineLatestValueModel,
   toEngineLineSeriesModel,
   toEngineWideTableModel,
+  toHighchartsEngineTimeSeriesOptions,
+  toNivoEngineBarModel,
+  toObservablePlotEngineModel,
+  toPlotlyEngineTimeSeriesModel,
   toRechartsEngineLatestValuesModel,
   toRechartsEngineTimeSeriesModel,
   toRechartsHistogramModel,
@@ -27,8 +40,11 @@ import {
   toTremorBarListProps,
   toTremorDonutChartProps,
   toTremorLineChartProps,
+  toUPlotEngineTimeSeriesModel,
   toUPlotLatestValuesModel,
   toUPlotTimeSeriesModel,
+  toVegaLiteEngineSpec,
+  toVictoryEngineSeries,
   traceWaterfallToLaneRows,
 } from "../src/index.js";
 import { histogramRows, pivotTimeSeriesFrame } from "../src/shared.js";
@@ -120,6 +136,38 @@ describe("@otlpkit/adapters", () => {
       ["a", 3],
       ["b", 30],
     ]);
+  });
+
+  it("builds exported engine adapters for package-rendered chart libraries", () => {
+    const wide = toEngineWideTableModel(engineResult, {
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
+    const latest = toEngineLatestValueModel(engineResult, {
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
+    const histogram = toEngineHistogramModel(wide, { bucketCount: 3 });
+
+    expect(toChartJsEngineTimeSeriesConfig(wide).data.datasets[0]?.parsing).toBe(false);
+    expect(toChartJsEngineLatestValuesConfig(latest, { chartType: "donut" }).type).toBe("doughnut");
+    expect(toChartJsEngineHistogramConfig(histogram).data.labels).toHaveLength(3);
+    expect(toEChartsEngineTimeSeriesOption(wide).series[0]?.encode.x).toBe("time");
+    expect(toEChartsEngineLatestValuesOption(latest, { chartType: "gauge" }).series[0]?.type).toBe(
+      "gauge"
+    );
+    expect(toEChartsEngineHistogramOption(histogram).dataset[0]?.source).toHaveLength(3);
+    expect(toUPlotEngineTimeSeriesModel(wide).data).toHaveLength(3);
+    expect(toNivoEngineBarModel(wide).keys).toEqual(["__name__=cpu,host=a", "__name__=cpu,host=b"]);
+    expect(toObservablePlotEngineModel(wide).marks[0]?.mark).toBe("lineY");
+    expect(toPlotlyEngineTimeSeriesModel(wide).data[0]?.type).toBe("scatter");
+    expect(toApexChartsEngineLatestValuesOptions(latest, { chartType: "gauge" }).chart.type).toBe(
+      "radialBar"
+    );
+    expect(toVictoryEngineSeries(wide, { chartType: "area" })[0]?.component).toBe("VictoryArea");
+    expect(toAgChartsEngineTimeSeriesOptions(wide, { chartType: "area" }).series?.[0]?.type).toBe(
+      "area"
+    );
+    expect(toHighchartsEngineTimeSeriesOptions(wide).chart.type).toBe("line");
+    expect(toVegaLiteEngineSpec(wide, { mark: "scatter" }).mark).toBe("point");
   });
 
   it("handles engine timestamp units, point budgets, and invalid query results", () => {
@@ -492,6 +540,8 @@ describe("@otlpkit/adapters", () => {
     };
 
     expect(typeof adapterBarrel.adapterModules.toChartJsLineConfig).toBe("function");
+    expect(typeof adapterBarrel.adapterModules.toAgChartsEngineTimeSeriesOptions).toBe("function");
+    expect(typeof adapterBarrel.adapterModules.toVegaLiteEngineSpec).toBe("function");
     expect(toChartJsLineConfig(sparseFrame).data.datasets[0]?.data[0]).toEqual({ x: 0, y: 1 });
     expect(toChartJsLineConfig(sparseFrame).options.scales.y.title.text).toBe("");
     expect(toEChartsTimeSeriesOption(sparseFrame).yAxis.name).toBe("");

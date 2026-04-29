@@ -1,15 +1,26 @@
 import { describe, expect, it } from "vitest";
-
+import { toAgChartsEngineTimeSeriesOptions } from "../../../packages/adapters/src/agcharts.js";
+import { toApexChartsEngineLatestValuesOptions } from "../../../packages/adapters/src/apexcharts.js";
+import { toChartJsEngineTimeSeriesConfig } from "../../../packages/adapters/src/chartjs.js";
+import { toEChartsEngineHistogramOption } from "../../../packages/adapters/src/echarts.js";
 import {
+  toEngineHistogramModel,
   toEngineLatestValueModel,
   toEngineWideTableModel,
 } from "../../../packages/adapters/src/engine.js";
+import { toHighchartsEngineTimeSeriesOptions } from "../../../packages/adapters/src/highcharts.js";
+import { toNivoEngineBarModel } from "../../../packages/adapters/src/nivo.js";
+import { toObservablePlotEngineModel } from "../../../packages/adapters/src/observable.js";
+import { toPlotlyEngineLatestValuesModel } from "../../../packages/adapters/src/plotly.js";
 import { toRechartsEngineTimeSeriesModel } from "../../../packages/adapters/src/recharts.js";
 import {
   toTremorBarListProps,
   toTremorDonutChartProps,
   toTremorLineChartProps,
 } from "../../../packages/adapters/src/tremor.js";
+import { toUPlotEngineTimeSeriesModel } from "../../../packages/adapters/src/uplot.js";
+import { toVegaLiteEngineSpec } from "../../../packages/adapters/src/vegalite.js";
+import { toVictoryEngineSeries } from "../../../packages/adapters/src/victory.js";
 import {
   createEngineResult,
   createGalleryState,
@@ -70,6 +81,45 @@ describe("chart gallery integration with real adapters", () => {
     expect(model.tooltipKey).toBe(galleryLine.tooltipKey);
     expect(model.series).toEqual(galleryLine.series);
     expect(model.data).toEqual(galleryLine.data);
+  });
+
+  it("backs package-rendered gallery examples with exported engine adapters", () => {
+    const result = createEngineResult();
+    const wide = toEngineWideTableModel(result, { seriesLabel: gallerySeriesLabel });
+    const latest = toEngineLatestValueModel(result, { seriesLabel: gallerySeriesLabel });
+    const histogram = toEngineHistogramModel(wide);
+
+    expect(toChartJsEngineTimeSeriesConfig(wide).data.datasets).toEqual(
+      createGalleryState("chartjs", "line").adapterModel.data.datasets
+    );
+    expect(toEChartsEngineHistogramOption(histogram).dataset).toEqual(
+      createGalleryState("echarts", "histogram").adapterModel.dataset
+    );
+    expect(toUPlotEngineTimeSeriesModel(wide).data).toEqual(
+      createGalleryState("uplot", "line").adapterModel.data
+    );
+    expect(toNivoEngineBarModel(wide)).toEqual(createGalleryState("nivo", "bar").adapterModel);
+    expect(toObservablePlotEngineModel(wide).marks).toEqual(
+      createGalleryState("observable", "line").adapterModel.marks
+    );
+    expect(toPlotlyEngineLatestValuesModel(latest).data).toEqual(
+      createGalleryState("plotly", "donut").adapterModel.data
+    );
+    expect(toApexChartsEngineLatestValuesOptions(latest, { chartType: "gauge" }).series).toEqual(
+      createGalleryState("apexcharts", "gauge").adapterModel.series
+    );
+    expect(toVictoryEngineSeries(wide).map((series) => series.component)).toEqual(
+      createGalleryState("victory", "line").adapterModel.map((series) => series.component)
+    );
+    expect(toAgChartsEngineTimeSeriesOptions(wide).series).toEqual(
+      createGalleryState("agcharts", "line").adapterModel.series
+    );
+    expect(toHighchartsEngineTimeSeriesOptions(wide).series).toEqual(
+      createGalleryState("highcharts", "line").adapterModel.series
+    );
+    expect(toVegaLiteEngineSpec(wide).mark).toBe(
+      createGalleryState("vegalite", "line").adapterModel.mark
+    );
   });
 });
 

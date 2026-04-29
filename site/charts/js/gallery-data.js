@@ -1,3 +1,52 @@
+import {
+  toAgChartsEngineLatestValuesOptions,
+  toAgChartsEngineTimeSeriesOptions,
+} from "../../../packages/adapters/src/agcharts.ts";
+import {
+  toApexChartsEngineLatestValuesOptions,
+  toApexChartsEngineTimeSeriesOptions,
+} from "../../../packages/adapters/src/apexcharts.ts";
+import {
+  toChartJsEngineHistogramConfig,
+  toChartJsEngineLatestValuesConfig,
+  toChartJsEngineTimeSeriesConfig,
+} from "../../../packages/adapters/src/chartjs.ts";
+import {
+  toEChartsEngineHistogramOption,
+  toEChartsEngineLatestValuesOption,
+  toEChartsEngineTimeSeriesOption,
+} from "../../../packages/adapters/src/echarts.ts";
+import { toEngineHistogramModel as toAdapterEngineHistogramModel } from "../../../packages/adapters/src/engine.ts";
+import {
+  toHighchartsEngineHistogramOptions,
+  toHighchartsEngineLatestValuesOptions,
+  toHighchartsEngineTimeSeriesOptions,
+} from "../../../packages/adapters/src/highcharts.ts";
+import {
+  toNivoEngineBarModel,
+  toNivoEngineLineSeries,
+  toNivoEnginePieData,
+  toNivoEngineScatterSeries,
+} from "../../../packages/adapters/src/nivo.ts";
+import {
+  toObservablePlotEngineHistogramModel,
+  toObservablePlotEngineModel,
+} from "../../../packages/adapters/src/observable.ts";
+import {
+  toPlotlyEngineHistogramModel,
+  toPlotlyEngineLatestValuesModel,
+  toPlotlyEngineTimeSeriesModel,
+} from "../../../packages/adapters/src/plotly.ts";
+import { toUPlotEngineTimeSeriesModel } from "../../../packages/adapters/src/uplot.ts";
+import {
+  toVegaLiteEngineHistogramSpec,
+  toVegaLiteEngineSpec,
+} from "../../../packages/adapters/src/vegalite.ts";
+import {
+  toVictoryEngineLatestData,
+  toVictoryEngineSeries,
+} from "../../../packages/adapters/src/victory.ts";
+
 export const CHART_TYPES = [
   { id: "line", label: "Line" },
   { id: "area", label: "Area" },
@@ -36,8 +85,8 @@ export const LIBRARIES = [
     name: "Chart.js",
     primaryApi: "configuration",
     updateModel: "controller.update('none')",
-    status: "planned",
-    package: "planned engine adapter",
+    status: "exported",
+    package: "@otlpkit/adapters/chartjs",
     charts: ["line", "area", "bar", "donut", "histogram", "scatter", "sparkline", "gauge"],
     note: "Produce chart configs with parsing disabled so large time-series stay cheap to update.",
   },
@@ -46,8 +95,8 @@ export const LIBRARIES = [
     name: "ECharts",
     primaryApi: "dataset + encode",
     updateModel: "setOption",
-    status: "planned",
-    package: "planned engine adapter",
+    status: "exported",
+    package: "@otlpkit/adapters/echarts",
     charts: ["line", "area", "bar", "donut", "histogram", "scatter", "sparkline", "gauge"],
     note: "Use dataset source and encode fields so ECharts keeps transforms and tooltips native.",
   },
@@ -56,8 +105,8 @@ export const LIBRARIES = [
     name: "uPlot",
     primaryApi: "aligned arrays",
     updateModel: "setData",
-    status: "planned",
-    package: "planned engine adapter",
+    status: "exported",
+    package: "@otlpkit/adapters/uplot",
     charts: ["line", "area", "sparkline"],
     note: "Keep the hot path as aligned numeric arrays, matching uPlot's low-allocation model.",
   },
@@ -66,8 +115,8 @@ export const LIBRARIES = [
     name: "Nivo",
     primaryApi: "series objects",
     updateModel: "React data updates",
-    status: "research",
-    package: "@nivo/*",
+    status: "exported",
+    package: "@otlpkit/adapters/nivo",
     charts: ["line", "area", "bar", "donut", "scatter"],
     note: "Map engine series into Nivo's nested data while keeping labels and colors predictable.",
   },
@@ -86,8 +135,8 @@ export const LIBRARIES = [
     name: "Observable Plot",
     primaryApi: "marks",
     updateModel: "plot rebuild",
-    status: "research",
-    package: "@observablehq/plot",
+    status: "exported",
+    package: "@otlpkit/adapters/observable",
     charts: ["line", "area", "bar", "histogram", "scatter", "sparkline"],
     note: "Flatten wide rows into tidy records and return Plot marks users can drop into Plot.plot.",
   },
@@ -96,8 +145,8 @@ export const LIBRARIES = [
     name: "Plotly",
     primaryApi: "traces",
     updateModel: "extendTraces",
-    status: "research",
-    package: "research shape",
+    status: "exported",
+    package: "@otlpkit/adapters/plotly",
     charts: ["line", "area", "bar", "donut", "histogram", "scatter", "sparkline", "gauge"],
     note: "Produce traces and layouts, with a path toward extendTraces for live dashboards.",
   },
@@ -106,8 +155,8 @@ export const LIBRARIES = [
     name: "ApexCharts",
     primaryApi: "options + series",
     updateModel: "updateSeries",
-    status: "research",
-    package: "research shape",
+    status: "exported",
+    package: "@otlpkit/adapters/apexcharts",
     charts: ["line", "area", "bar", "donut", "scatter", "sparkline", "gauge"],
     note: "Return compact options plus series arrays, including sparkline and radial gauge shapes.",
   },
@@ -116,8 +165,8 @@ export const LIBRARIES = [
     name: "Victory",
     primaryApi: "components + data",
     updateModel: "React data updates",
-    status: "research",
-    package: "victory",
+    status: "exported",
+    package: "@otlpkit/adapters/victory",
     charts: ["line", "area", "bar", "donut", "scatter"],
     note: "Keep data arrays small and component-friendly for Victory's declarative chart primitives.",
   },
@@ -126,8 +175,8 @@ export const LIBRARIES = [
     name: "AG Charts",
     primaryApi: "options",
     updateModel: "update options",
-    status: "research",
-    package: "ag-charts-community",
+    status: "exported",
+    package: "@otlpkit/adapters/agcharts",
     charts: ["line", "area", "bar", "donut", "scatter", "gauge"],
     note: "Project engine rows into AG Charts options with explicit keys and series definitions.",
   },
@@ -136,8 +185,8 @@ export const LIBRARIES = [
     name: "Highcharts",
     primaryApi: "options + series",
     updateModel: "setData",
-    status: "research",
-    package: "research shape",
+    status: "exported",
+    package: "@otlpkit/adapters/highcharts",
     charts: ["line", "area", "bar", "donut", "scatter", "sparkline", "gauge"],
     note: "Return Highcharts-style options while preserving stable engine ids for updates.",
   },
@@ -146,8 +195,8 @@ export const LIBRARIES = [
     name: "Vega-Lite",
     primaryApi: "spec",
     updateModel: "view changeset",
-    status: "research",
-    package: "research shape",
+    status: "exported",
+    package: "@otlpkit/adapters/vegalite",
     charts: ["line", "area", "bar", "histogram", "scatter"],
     note: "Emit tidy records and declarative encodings that can become Vega-Lite specs.",
   },
@@ -260,7 +309,7 @@ export function createLibraryGalleryState(libraryId = "tremor", liveStep = 0) {
   const result = createEngineResult(liveStep);
   const wide = toEngineWideTableModel(result);
   const latest = toEngineLatestValueModel(result);
-  const histogram = toHistogramModel(wide);
+  const histogram = toAdapterEngineHistogramModel(wide);
 
   return {
     library,
@@ -288,49 +337,60 @@ export function toAdapterModel(library, chartType, wide, latest, histogram) {
     case "recharts":
       return rechartsModel(chartType, wide, latest, histogram);
     case "chartjs":
-      return chartJsModel(chartType, wide, latest, histogram);
+      return chartType === "histogram"
+        ? toChartJsEngineHistogramConfig(histogram)
+        : chartType === "donut" || chartType === "gauge"
+          ? toChartJsEngineLatestValuesConfig(latest, { chartType })
+          : toChartJsEngineTimeSeriesConfig(wide, { chartType });
     case "echarts":
-      return echartsModel(chartType, wide, latest, histogram);
+      return chartType === "histogram"
+        ? toEChartsEngineHistogramOption(histogram)
+        : chartType === "donut" || chartType === "gauge"
+          ? toEChartsEngineLatestValuesOption(latest, { chartType })
+          : toEChartsEngineTimeSeriesOption(wide, { chartType });
     case "uplot":
-      return uPlotModel(chartType, wide);
+      return toUPlotEngineTimeSeriesModel(wide, { chartType });
     case "nivo":
       return nivoModel(chartType, wide, latest);
     case "visx":
       return visxModel(chartType, wide, latest, histogram);
     case "observable":
-      return observablePlotModel(chartType, wide, histogram);
+      return chartType === "histogram"
+        ? toObservablePlotEngineHistogramModel(histogram)
+        : toObservablePlotEngineModel(wide, { chartType });
     case "plotly":
-      return plotlyModel(chartType, wide, latest, histogram);
+      return chartType === "histogram"
+        ? toPlotlyEngineHistogramModel(histogram)
+        : chartType === "donut" || chartType === "gauge"
+          ? toPlotlyEngineLatestValuesModel(latest, { chartType })
+          : toPlotlyEngineTimeSeriesModel(wide, { chartType });
     case "apexcharts":
-      return apexChartsModel(chartType, wide, latest, histogram);
+      return chartType === "donut" || chartType === "gauge"
+        ? toApexChartsEngineLatestValuesOptions(latest, { chartType })
+        : toApexChartsEngineTimeSeriesOptions(wide, { chartType });
     case "victory":
       return victoryModel(chartType, wide, latest);
     case "agcharts":
-      return agChartsModel(chartType, wide, latest);
+      return chartType === "donut" || chartType === "gauge"
+        ? toAgChartsEngineLatestValuesOptions(latest, { chartType })
+        : toAgChartsEngineTimeSeriesOptions(wide, { chartType });
     case "highcharts":
-      return highchartsModel(chartType, wide, latest, histogram);
+      return chartType === "histogram"
+        ? toHighchartsEngineHistogramOptions(histogram)
+        : chartType === "donut" || chartType === "gauge"
+          ? toHighchartsEngineLatestValuesOptions(latest, { chartType })
+          : toHighchartsEngineTimeSeriesOptions(wide, { chartType });
     case "vegalite":
-      return vegaLiteModel(chartType, wide, histogram);
+      return chartType === "histogram"
+        ? toVegaLiteEngineHistogramSpec(histogram)
+        : toVegaLiteEngineSpec(wide, { mark: chartType });
     default:
       return { data: wide.rows };
   }
 }
 
 export function toHistogramModel(wide) {
-  const values = wide.rows.flatMap((row) => row.values.filter((value) => value !== null));
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const bucketCount = 7;
-  const width = (max - min || 1) / bucketCount;
-  const buckets = Array.from({ length: bucketCount }, (_, index) => ({
-    label: `${Math.round(min + index * width)}-${Math.round(min + (index + 1) * width)}`,
-    count: 0,
-  }));
-  for (const value of values) {
-    const bucketIndex = Math.min(bucketCount - 1, Math.max(0, Math.floor((value - min) / width)));
-    buckets[bucketIndex].count += 1;
-  }
-  return { kind: "histogram", buckets };
+  return toAdapterEngineHistogramModel(wide);
 }
 
 export function serializableAdapterModel(model) {
@@ -404,145 +464,20 @@ function rechartsModel(chartType, wide, latest, histogram) {
   };
 }
 
-function chartJsModel(chartType, wide, latest, histogram) {
-  if (chartType === "gauge") {
-    const value = gaugeValue(latest);
-    return {
-      type: "doughnut",
-      data: { datasets: [{ data: [value, 200 - value], backgroundColor: [COLORS[0], "#e5e1d8"] }] },
-      options: { circumference: 180, rotation: 270 },
-    };
-  }
-  if (chartType === "donut") {
-    return {
-      type: "doughnut",
-      data: {
-        labels: latest.rows.map((row) => row.label),
-        datasets: [{ data: latest.rows.map((row) => row.value), backgroundColor: COLORS }],
-      },
-    };
-  }
-  if (chartType === "histogram") {
-    return {
-      type: "bar",
-      data: {
-        labels: histogram.buckets.map((bucket) => bucket.label),
-        datasets: [{ label: "samples", data: histogram.buckets.map((bucket) => bucket.count) }],
-      },
-    };
-  }
-  return {
-    type: chartType === "bar" ? "bar" : chartType === "scatter" ? "scatter" : "line",
-    data: {
-      datasets: wide.series.map((series, index) => ({
-        label: series.label,
-        data: wide.rows.map((row) => ({ x: row.t, y: row.values[index] })),
-        parsing: false,
-        borderColor: COLORS[index % COLORS.length],
-        backgroundColor:
-          chartType === "area"
-            ? `${COLORS[index % COLORS.length]}33`
-            : COLORS[index % COLORS.length],
-        borderWidth: 2,
-        pointRadius: chartType === "scatter" ? 3 : 0,
-        tension: chartType === "scatter" ? 0 : 0.25,
-        fill: chartType === "area",
-      })),
-    },
-    options: {
-      parsing: false,
-      animation: false,
-      scales: {
-        x: { type: "linear", display: chartType !== "sparkline", ticks: { display: false } },
-        y: { display: chartType !== "sparkline" },
-      },
-      ...(chartType === "sparkline"
-        ? { plugins: { legend: { display: false } }, scales: false }
-        : {}),
-    },
-  };
-}
-
-function echartsModel(chartType, wide, latest, histogram) {
-  if (chartType === "gauge") {
-    return {
-      series: [{ type: "gauge", data: [{ name: "p95", value: gaugeValue(latest) }] }],
-    };
-  }
-  if (chartType === "donut") {
-    return {
-      series: [
-        { type: "pie", data: latest.rows.map((row) => ({ name: row.label, value: row.value })) },
-      ],
-    };
-  }
-  if (chartType === "histogram") {
-    return {
-      dataset: {
-        source: [
-          ["bucket", "count"],
-          ...histogram.buckets.map((bucket) => [bucket.label, bucket.count]),
-        ],
-      },
-      series: [{ type: "bar", encode: { x: "bucket", y: "count" } }],
-    };
-  }
-  return {
-    dataset: {
-      source: [
-        ["time", ...wide.series.map((series) => series.label)],
-        ...wide.rows.map((row) => [row.t, ...row.values]),
-      ],
-    },
-    series: wide.series.map((series) => ({
-      type: chartType === "bar" ? "bar" : chartType === "scatter" ? "scatter" : "line",
-      name: series.label,
-      encode: { x: "time", y: series.label },
-      areaStyle: chartType === "area" ? {} : undefined,
-      showSymbol: chartType !== "sparkline",
-    })),
-  };
-}
-
-function uPlotModel(_chartType, wide) {
-  return {
-    data: [
-      wide.rows.map((row) => Math.round(row.t / 1000)),
-      ...wide.series.map((_series, index) => wide.rows.map((row) => row.values[index])),
-    ],
-    options: {
-      scales: { x: { time: true } },
-      series: [{ label: "time" }, ...wide.series.map((series) => ({ label: series.label }))],
-    },
-  };
-}
-
 function nivoModel(chartType, wide, latest) {
   if (chartType === "donut") {
-    return latest.rows.map((row, index) => ({
-      id: row.label,
-      label: row.label,
-      value: row.value,
+    return toNivoEnginePieData(latest).map((row, index) => ({
+      ...row,
       color: COLORS[index % COLORS.length],
     }));
   }
   if (chartType === "bar") {
-    return {
-      data: wide.rows.map((row) => rowToRecord(row, wide.series, "time")),
-      keys: wide.series.map((series) => series.id),
-      indexBy: "time",
-    };
+    return toNivoEngineBarModel(wide);
   }
   if (chartType === "scatter") {
-    return wide.series.map((series, index) => ({
-      id: series.label,
-      data: wide.rows.map((row) => ({ x: row.t, y: row.values[index] })),
-    }));
+    return toNivoEngineScatterSeries(wide);
   }
-  return wide.series.map((series, index) => ({
-    id: series.label,
-    data: wide.rows.map((row) => ({ x: row.t, y: row.values[index] })),
-  }));
+  return toNivoEngineLineSeries(wide);
 }
 
 function visxModel(chartType, wide, latest, histogram) {
@@ -565,206 +500,14 @@ function visxModel(chartType, wide, latest, histogram) {
   };
 }
 
-function observablePlotModel(chartType, wide, histogram) {
-  if (chartType === "histogram") {
-    return {
-      data: histogram.buckets,
-      marks: [{ mark: "barY", x: "label", y: "count" }],
-    };
-  }
-  return {
-    data: wide.rows.flatMap((row) =>
-      wide.series.map((series, index) => ({
-        time: row.t,
-        value: row.values[index],
-        series: series.label,
-      }))
-    ),
-    marks: [
-      {
-        mark:
-          chartType === "bar"
-            ? "barY"
-            : chartType === "scatter"
-              ? "dot"
-              : chartType === "sparkline"
-                ? "lineY"
-                : `${chartType}Y`,
-        x: "time",
-        y: "value",
-        stroke: "series",
-      },
-    ],
-  };
-}
-
-function plotlyModel(chartType, wide, latest, histogram) {
-  if (chartType === "gauge") {
-    return {
-      data: [{ type: "indicator", mode: "gauge+number", value: gaugeValue(latest) }],
-      layout: { margin: { t: 16, b: 16 } },
-    };
-  }
-  if (chartType === "donut") {
-    return {
-      data: [
-        {
-          type: "pie",
-          labels: latest.rows.map((row) => row.label),
-          values: latest.rows.map((row) => row.value),
-        },
-      ],
-    };
-  }
-  if (chartType === "histogram") {
-    return {
-      data: [
-        {
-          type: "bar",
-          x: histogram.buckets.map((bucket) => bucket.label),
-          y: histogram.buckets.map((bucket) => bucket.count),
-        },
-      ],
-    };
-  }
-  return {
-    data: wide.series.map((series, index) => ({
-      type: chartType === "bar" ? "bar" : "scatter",
-      mode: chartType === "bar" ? undefined : chartType === "scatter" ? "markers" : "lines",
-      name: series.label,
-      x: wide.rows.map((row) => row.t),
-      y: wide.rows.map((row) => row.values[index]),
-      fill: chartType === "area" ? "tozeroy" : undefined,
-    })),
-    layout: { xaxis: { type: "date" } },
-  };
-}
-
-function apexChartsModel(chartType, wide, latest, _histogram) {
-  if (chartType === "gauge") {
-    return {
-      chart: { type: "radialBar", sparkline: { enabled: true } },
-      series: [gaugeValue(latest)],
-      labels: ["p95 latency"],
-    };
-  }
-  if (chartType === "donut") {
-    return {
-      chart: { type: "donut" },
-      labels: latest.rows.map((row) => row.label),
-      series: latest.rows.map((row) => row.value),
-    };
-  }
-  return {
-    chart: {
-      type: chartType === "bar" ? "bar" : chartType === "scatter" ? "scatter" : "line",
-      sparkline: { enabled: chartType === "sparkline" },
-    },
-    series: wide.series.map((series, index) => ({
-      name: series.label,
-      data: wide.rows.map((row) => [row.t, row.values[index]]),
-    })),
-    stroke: { curve: "smooth" },
-    fill: { opacity: chartType === "area" ? 0.22 : 1 },
-  };
-}
-
 function victoryModel(chartType, wide, latest) {
   if (chartType === "donut") {
-    return latest.rows.map((row) => ({ x: row.label, y: row.value }));
+    return toVictoryEngineLatestData(latest);
   }
   if (chartType === "bar") {
-    return latest.rows.map((row) => ({ x: row.label, y: row.value }));
+    return toVictoryEngineLatestData(latest);
   }
-  return wide.series.map((series, index) => ({
-    key: series.id,
-    label: series.label,
-    data: wide.rows.map((row) => ({ x: row.t, y: row.values[index] })),
-    component: chartType === "scatter" ? "VictoryScatter" : "VictoryLine",
-  }));
-}
-
-function agChartsModel(chartType, wide, latest) {
-  if (chartType === "gauge") {
-    return {
-      type: "radial-gauge",
-      value: gaugeValue(latest),
-      scale: { min: 0, max: 200 },
-    };
-  }
-  if (chartType === "donut") {
-    return {
-      data: latest.rows.map((row) => ({ label: row.label, value: row.value })),
-      series: [{ type: "donut", angleKey: "value", calloutLabelKey: "label" }],
-    };
-  }
-  return {
-    data: wide.rows.map((row) => rowToRecord(row, wide.series, "time")),
-    series: wide.series.map((series) => ({
-      type:
-        chartType === "bar"
-          ? "bar"
-          : chartType === "scatter"
-            ? "scatter"
-            : chartType === "area"
-              ? "area"
-              : "line",
-      xKey: "time",
-      yKey: series.id,
-      yName: series.label,
-    })),
-  };
-}
-
-function highchartsModel(chartType, wide, latest, histogram) {
-  if (chartType === "gauge") {
-    return {
-      chart: { type: "gauge" },
-      series: [{ name: "p95 latency", data: [gaugeValue(latest)] }],
-    };
-  }
-  if (chartType === "donut") {
-    return {
-      chart: { type: "pie" },
-      plotOptions: { pie: { innerSize: "55%" } },
-      series: [{ data: latest.rows.map((row) => [row.label, row.value]) }],
-    };
-  }
-  if (chartType === "histogram") {
-    return {
-      chart: { type: "column" },
-      xAxis: { categories: histogram.buckets.map((bucket) => bucket.label) },
-      series: [{ name: "samples", data: histogram.buckets.map((bucket) => bucket.count) }],
-    };
-  }
-  return {
-    chart: { type: chartType === "bar" ? "bar" : chartType === "scatter" ? "scatter" : "line" },
-    series: wide.series.map((series, index) => ({
-      id: series.id,
-      name: series.label,
-      data: wide.rows.map((row) => [row.t, row.values[index]]),
-      type: chartType === "area" ? "area" : chartType === "sparkline" ? "line" : undefined,
-    })),
-  };
-}
-
-function vegaLiteModel(chartType, wide, histogram) {
-  if (chartType === "histogram") {
-    return {
-      data: { values: histogram.buckets },
-      mark: "bar",
-      encoding: { x: { field: "label" }, y: { field: "count", type: "quantitative" } },
-    };
-  }
-  return {
-    data: { values: tidyRows(wide) },
-    mark: chartType === "bar" ? "bar" : chartType === "scatter" ? "point" : chartType,
-    encoding: {
-      x: { field: "time", type: "temporal" },
-      y: { field: "value", type: "quantitative" },
-      color: { field: "series", type: "nominal" },
-    },
-  };
+  return toVictoryEngineSeries(wide, { chartType });
 }
 
 function snippetsFor(library, chartType) {
@@ -782,7 +525,7 @@ function snippetsFor(library, chartType) {
 }
 
 function adapterSnippet(libraryId, chartType) {
-  // Implemented libraries show copy-ready imports; future libraries are labeled as API sketches.
+  // Exported libraries show copy-ready imports; Visx remains an adapter-shape-only sketch.
   if (libraryId === "tremor") {
     const fn =
       chartType === "donut"
@@ -818,74 +561,209 @@ const model = toRechartsEngineTimeSeriesModel(wide, {
 });`;
   }
   if (libraryId === "uplot") {
-    return `// Planned API sketch: this adapter is not exported yet.
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toUPlotEngineTimeSeriesModel } from "@otlpkit/adapters/uplot";
+
 const wide = toEngineWideTableModel(result);
-const model = toUPlotAlignedModel(wide, {
-  maxPoints: 600,
+const model = toUPlotEngineTimeSeriesModel(wide, {
+  chartType: "${chartType}",
 });`;
   }
   if (libraryId === "echarts") {
-    return `// Planned API sketch: this adapter is not exported yet.
+    if (chartType === "histogram") {
+      return `import {
+  toEngineHistogramModel,
+  toEngineWideTableModel,
+} from "@otlpkit/adapters/engine";
+import { toEChartsEngineHistogramOption } from "@otlpkit/adapters/echarts";
+
 const wide = toEngineWideTableModel(result);
-const option = toEChartsDatasetOption(wide, {
+const histogram = toEngineHistogramModel(wide);
+const option = toEChartsEngineHistogramOption(histogram);`;
+    }
+    if (chartType === "donut" || chartType === "gauge") {
+      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
+import { toEChartsEngineLatestValuesOption } from "@otlpkit/adapters/echarts";
+
+const latest = toEngineLatestValueModel(result);
+const option = toEChartsEngineLatestValuesOption(latest, {
+  chartType: "${chartType}",
+});`;
+    }
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toEChartsEngineTimeSeriesOption } from "@otlpkit/adapters/echarts";
+
+const wide = toEngineWideTableModel(result);
+const option = toEChartsEngineTimeSeriesOption(wide, {
   chartType: "${chartType}",
 });`;
   }
   if (libraryId === "chartjs") {
-    return `// Planned API sketch: this adapter is not exported yet.
+    if (chartType === "histogram") {
+      return `import {
+  toEngineHistogramModel,
+  toEngineWideTableModel,
+} from "@otlpkit/adapters/engine";
+import { toChartJsEngineHistogramConfig } from "@otlpkit/adapters/chartjs";
+
 const wide = toEngineWideTableModel(result);
-const config = toChartJsConfig(wide, {
-  type: "${chartType === "area" ? "line" : chartType}",
-  parsing: false,
+const histogram = toEngineHistogramModel(wide);
+const config = toChartJsEngineHistogramConfig(histogram);`;
+    }
+    if (chartType === "donut" || chartType === "gauge") {
+      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
+import { toChartJsEngineLatestValuesConfig } from "@otlpkit/adapters/chartjs";
+
+const latest = toEngineLatestValueModel(result);
+const config = toChartJsEngineLatestValuesConfig(latest, {
+  chartType: "${chartType}",
+});`;
+    }
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toChartJsEngineTimeSeriesConfig } from "@otlpkit/adapters/chartjs";
+
+const wide = toEngineWideTableModel(result);
+const config = toChartJsEngineTimeSeriesConfig(wide, {
+  chartType: "${chartType}",
 });`;
   }
   if (libraryId === "plotly") {
-    return `// Research shape: this adapter is not exported yet.
+    if (chartType === "histogram") {
+      return `import {
+  toEngineHistogramModel,
+  toEngineWideTableModel,
+} from "@otlpkit/adapters/engine";
+import { toPlotlyEngineHistogramModel } from "@otlpkit/adapters/plotly";
+
 const wide = toEngineWideTableModel(result);
-const traces = toPlotlyTraces(wide, {
-  mode: "${chartType}",
+const histogram = toEngineHistogramModel(wide);
+const traces = toPlotlyEngineHistogramModel(histogram);`;
+    }
+    if (chartType === "donut" || chartType === "gauge") {
+      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
+import { toPlotlyEngineLatestValuesModel } from "@otlpkit/adapters/plotly";
+
+const latest = toEngineLatestValueModel(result);
+const traces = toPlotlyEngineLatestValuesModel(latest, {
+  chartType: "${chartType}",
+});`;
+    }
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toPlotlyEngineTimeSeriesModel } from "@otlpkit/adapters/plotly";
+
+const wide = toEngineWideTableModel(result);
+const traces = toPlotlyEngineTimeSeriesModel(wide, {
+  chartType: "${chartType}",
 });`;
   }
   if (libraryId === "apexcharts") {
-    return `// Research shape: this adapter is not exported yet.
+    if (chartType === "donut" || chartType === "gauge") {
+      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
+import { toApexChartsEngineLatestValuesOptions } from "@otlpkit/adapters/apexcharts";
+
+const latest = toEngineLatestValueModel(result);
+const options = toApexChartsEngineLatestValuesOptions(latest, {
+  chartType: "${chartType}",
+});`;
+    }
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toApexChartsEngineTimeSeriesOptions } from "@otlpkit/adapters/apexcharts";
+
 const wide = toEngineWideTableModel(result);
-const options = toApexChartsOptions(wide, {
+const options = toApexChartsEngineTimeSeriesOptions(wide, {
   chartType: "${chartType}",
 });`;
   }
   if (libraryId === "victory") {
-    return `// Research shape: this adapter is not exported yet.
+    if (chartType === "donut" || chartType === "bar") {
+      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
+import { toVictoryEngineLatestData } from "@otlpkit/adapters/victory";
+
+const latest = toEngineLatestValueModel(result);
+const data = toVictoryEngineLatestData(latest);`;
+    }
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toVictoryEngineSeries } from "@otlpkit/adapters/victory";
+
 const wide = toEngineWideTableModel(result);
-const series = toVictorySeries(wide, {
+const series = toVictoryEngineSeries(wide, {
   chartType: "${chartType}",
 });`;
   }
   if (libraryId === "agcharts") {
-    return `// Research shape: this adapter is not exported yet.
+    if (chartType === "donut" || chartType === "gauge") {
+      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
+import { toAgChartsEngineLatestValuesOptions } from "@otlpkit/adapters/agcharts";
+
+const latest = toEngineLatestValueModel(result);
+const options = toAgChartsEngineLatestValuesOptions(latest, {
+  chartType: "${chartType}",
+});`;
+    }
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toAgChartsEngineTimeSeriesOptions } from "@otlpkit/adapters/agcharts";
+
 const wide = toEngineWideTableModel(result);
-const options = toAgChartsOptions(wide, {
+const options = toAgChartsEngineTimeSeriesOptions(wide, {
   chartType: "${chartType}",
 });`;
   }
   if (libraryId === "highcharts") {
-    return `// Research shape: this adapter is not exported yet.
+    if (chartType === "histogram") {
+      return `import {
+  toEngineHistogramModel,
+  toEngineWideTableModel,
+} from "@otlpkit/adapters/engine";
+import { toHighchartsEngineHistogramOptions } from "@otlpkit/adapters/highcharts";
+
 const wide = toEngineWideTableModel(result);
-const options = toHighchartsOptions(wide, {
+const histogram = toEngineHistogramModel(wide);
+const options = toHighchartsEngineHistogramOptions(histogram);`;
+    }
+    if (chartType === "donut" || chartType === "gauge") {
+      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
+import { toHighchartsEngineLatestValuesOptions } from "@otlpkit/adapters/highcharts";
+
+const latest = toEngineLatestValueModel(result);
+const options = toHighchartsEngineLatestValuesOptions(latest, {
+  chartType: "${chartType}",
+});`;
+    }
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toHighchartsEngineTimeSeriesOptions } from "@otlpkit/adapters/highcharts";
+
+const wide = toEngineWideTableModel(result);
+const options = toHighchartsEngineTimeSeriesOptions(wide, {
   chartType: "${chartType}",
 });`;
   }
   if (libraryId === "vegalite") {
-    return `// Research shape: this adapter is not exported yet.
+    if (chartType === "histogram") {
+      return `import {
+  toEngineHistogramModel,
+  toEngineWideTableModel,
+} from "@otlpkit/adapters/engine";
+import { toVegaLiteEngineHistogramSpec } from "@otlpkit/adapters/vegalite";
+
 const wide = toEngineWideTableModel(result);
-const spec = toVegaLiteSpec(wide, {
+const histogram = toEngineHistogramModel(wide);
+const spec = toVegaLiteEngineHistogramSpec(histogram);`;
+    }
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toVegaLiteEngineSpec } from "@otlpkit/adapters/vegalite";
+
+const wide = toEngineWideTableModel(result);
+const spec = toVegaLiteEngineSpec(wide, {
   mark: "${chartType}",
 });`;
   }
   if (libraryId === "observable") {
-    return `// Research shape: this adapter is not exported yet.
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toObservablePlotEngineModel } from "@otlpkit/adapters/observable";
+
 const wide = toEngineWideTableModel(result);
-const plot = toObservablePlotMarks(wide, {
-  mark: "${chartType}",
+const plot = toObservablePlotEngineModel(wide, {
+  chartType: "${chartType}",
 });`;
   }
   if (libraryId === "visx") {
@@ -895,9 +773,32 @@ const model = toVisxSeries(wide, {
   accessors: true,
 });`;
   }
-  return `// Research shape: this adapter is not exported yet.
+  if (libraryId === "nivo" && chartType === "donut") {
+    return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
+import { toNivoEnginePieData } from "@otlpkit/adapters/nivo";
+
+const latest = toEngineLatestValueModel(result);
+const data = toNivoEnginePieData(latest);`;
+  }
+  if (libraryId === "nivo" && chartType === "bar") {
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toNivoEngineBarModel } from "@otlpkit/adapters/nivo";
+
 const wide = toEngineWideTableModel(result);
-const data = toNivoSeries(wide);`;
+const data = toNivoEngineBarModel(wide);`;
+  }
+  if (libraryId === "nivo" && chartType === "scatter") {
+    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toNivoEngineScatterSeries } from "@otlpkit/adapters/nivo";
+
+const wide = toEngineWideTableModel(result);
+const data = toNivoEngineScatterSeries(wide);`;
+  }
+  return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
+import { toNivoEngineLineSeries } from "@otlpkit/adapters/nivo";
+
+const wide = toEngineWideTableModel(result);
+const data = toNivoEngineLineSeries(wide);`;
 }
 
 function librarySnippet(libraryId, _chartType, componentName) {
@@ -988,17 +889,6 @@ function scatterRows(wide) {
       id: series.id,
     }))
   );
-}
-
-function tidyRows(wide) {
-  return scatterRows(wide).filter((row) => row.value !== null);
-}
-
-function gaugeValue(latest) {
-  const values = latest.rows.map((row) => row.value).filter((value) => value !== null);
-  if (values.length === 0) return 0;
-  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
-  return Math.round(Math.max(0, Math.min(200, average)));
 }
 
 function seriesId(series, index) {
