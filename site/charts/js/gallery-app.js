@@ -82,11 +82,8 @@ function renderChartGallery(gallery) {
     .map((chart) => {
       const selected = chart.chartType === state.chartType;
       return `
-        <button
-          type="button"
+        <article
           class="chart-card ${selected ? "is-selected" : ""}"
-          data-chart="${chart.chartType}"
-          aria-pressed="${selected}"
         >
           <span class="chart-card-heading">
             <span>
@@ -106,14 +103,21 @@ function renderChartGallery(gallery) {
             </svg>
           </span>
           <span class="mini-legend">${renderLegend(chart)}</span>
-        </button>
+          <span class="chart-card-actions">
+            <button type="button" class="chart-code-button" data-chart="${chart.chartType}">
+              View code
+            </button>
+          </span>
+        </article>
       `;
     })
     .join("");
-  elements.chartGallery.querySelectorAll(".chart-card").forEach((button) => {
+  elements.chartGallery.querySelectorAll(".chart-code-button").forEach((button) => {
     button.addEventListener("click", () => {
       state.chartType = button.dataset.chart;
+      setActiveTab("adapter");
       render();
+      document.querySelector(".code-panel")?.scrollIntoView({ block: "nearest" });
     });
   });
 }
@@ -128,6 +132,15 @@ function renderPreview(gallery) {
   }
   if (chartType === "histogram") {
     return renderHistogram(histogram);
+  }
+  if (chartType === "scatter") {
+    return renderScatter(wide);
+  }
+  if (chartType === "sparkline") {
+    return renderSparkline(wide);
+  }
+  if (chartType === "gauge") {
+    return renderGauge(latest);
   }
   if (chartType === "bar") {
     return renderBars(wide);
@@ -248,6 +261,64 @@ function renderHistogram(histogram) {
   return svgShell(`${renderGrid(frame)}${bars}`);
 }
 
+function renderScatter(wide) {
+  const frame = chartFrame(wide);
+  const dots = wide.series
+    .map((_series, seriesIndex) =>
+      wide.rows
+        .map((row, pointIndex) => {
+          const value = row.values[seriesIndex];
+          if (value === null) return "";
+          const point = projectPoint(frame, row.t, value);
+          const jitter = ((pointIndex % 3) - 1) * 2.5;
+          return `<circle cx="${(point.x + jitter).toFixed(1)}" cy="${point.y.toFixed(1)}" r="4" fill="${COLOR_SCALE[seriesIndex % COLOR_SCALE.length]}" opacity="0.82"></circle>`;
+        })
+        .join("")
+    )
+    .join("");
+  return svgShell(`${renderGrid(frame)}${dots}${renderAxisLabels(frame)}`);
+}
+
+function renderSparkline(wide) {
+  const frame = { ...chartFrame(wide), x: 36, y: 70, width: 648, height: 190 };
+  const series = wide.series
+    .map((_series, seriesIndex) => {
+      const points = wide.rows
+        .map((row) => {
+          const value = row.values[seriesIndex];
+          return value === null ? null : projectPoint(frame, row.t, value);
+        })
+        .filter(Boolean);
+      return `<path d="${linePath(points)}" fill="none" stroke="${COLOR_SCALE[seriesIndex % COLOR_SCALE.length]}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>`;
+    })
+    .join("");
+  const latest = wide.rows.at(-1)?.values.filter((value) => value !== null) ?? [];
+  const latestAverage =
+    latest.length > 0
+      ? Math.round(latest.reduce((sum, value) => sum + value, 0) / latest.length)
+      : 0;
+  return svgShell(`
+    ${series}
+    <text x="40" y="44" font-family="var(--mono)" font-size="28" font-weight="700" fill="var(--ink)">${latestAverage} ms</text>
+    <text x="40" y="270" class="chart-label">latest average</text>
+  `);
+}
+
+function renderGauge(latest) {
+  const value = gaugeValue(latest);
+  const clamped = Math.max(0, Math.min(200, value));
+  const percent = clamped / 200;
+  const radius = 112;
+  const circumference = Math.PI * radius;
+  const dash = `${circumference * percent} ${circumference * (1 - percent)}`;
+  return svgShell(`
+    <path d="M 248 220 A ${radius} ${radius} 0 0 1 472 220" fill="none" stroke="rgba(17,17,15,0.1)" stroke-width="34" stroke-linecap="round"></path>
+    <path d="M 248 220 A ${radius} ${radius} 0 0 1 472 220" fill="none" stroke="${COLOR_SCALE[0]}" stroke-width="34" stroke-linecap="round" stroke-dasharray="${dash}"></path>
+    <text x="360" y="198" text-anchor="middle" class="chart-label">latest average</text>
+    <text x="360" y="236" text-anchor="middle" font-family="var(--mono)" font-size="32" font-weight="700" fill="var(--ink)">${value} ms</text>
+  `);
+}
+
 function renderGrid(frame) {
   const rows = [0, 1, 2, 3, 4]
     .map((tick) => {
@@ -328,12 +399,16 @@ function renderCoverageTable() {
 function bindTabs() {
   elements.codeTabs.forEach((button) => {
     button.addEventListener("click", () => {
-      state.tab = button.dataset.tab;
-      elements.codeTabs.forEach((candidate) => {
-        candidate.classList.toggle("is-active", candidate === button);
-      });
+      setActiveTab(button.dataset.tab);
       render();
     });
+  });
+}
+
+function setActiveTab(tab) {
+  state.tab = tab;
+  elements.codeTabs.forEach((candidate) => {
+    candidate.classList.toggle("is-active", candidate.dataset.tab === tab);
   });
 }
 
@@ -393,6 +468,13 @@ function svgShell(content) {
 
 function chartLabel(chartType) {
   return CHART_TYPES.find((chart) => chart.id === chartType)?.label ?? chartType;
+}
+
+function gaugeValue(latest) {
+  const values = latest.rows.map((row) => row.value).filter((value) => value !== null);
+  if (values.length === 0) return 0;
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return Math.round(Math.max(0, Math.min(200, average)));
 }
 
 function escapeHtml(value) {

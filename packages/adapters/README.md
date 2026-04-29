@@ -26,7 +26,8 @@ The goal is to preserve each chart library's idioms:
 ## Chart Gallery
 
 The interactive gallery at `/o11ykit/charts/` shows the same engine result rendered as Tremor,
-Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, and Plotly shapes.
+Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, Plotly, ApexCharts, Victory,
+AG Charts, Highcharts, and Vega-Lite shapes.
 
 Tremor and Recharts are implemented engine-backed adapters today. The other gallery entries are
 the design target for future first-class adapters: they show the native shape we want, not a generic
@@ -40,6 +41,7 @@ cross-library DTO.
 | ECharts | planned | dataset and encode option |
 | uPlot | planned | aligned arrays |
 | Nivo, Visx, Observable Plot, Plotly | research | library-native sketches |
+| ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite | research | library-native sketches |
 
 ## Quick Example
 

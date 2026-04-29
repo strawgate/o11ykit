@@ -22,6 +22,8 @@ describe("chart gallery data", () => {
 
     expect(result.series).toHaveLength(4);
     expect(wide.rows).toHaveLength(18);
+    expect(LIBRARIES).toHaveLength(14);
+    expect(CHART_TYPES).toHaveLength(9);
     expect(wide.series.map((series) => series.label)).toEqual([
       "checkout /cart 2xx",
       "checkout /pay 5xx",
@@ -106,6 +108,9 @@ describe("chart gallery data", () => {
     ]);
     expect(createGalleryState("uplot", "line").adapterModel.data).toHaveLength(5);
     expect(createGalleryState("plotly", "donut").adapterModel.data[0].type).toBe("pie");
+    expect(createGalleryState("apexcharts", "gauge").adapterModel.chart.type).toBe("radialBar");
+    expect(createGalleryState("highcharts", "scatter").adapterModel.chart.type).toBe("scatter");
+    expect(createGalleryState("vegalite", "scatter").adapterModel.mark).toBe("point");
   });
 
   it("changes preview values during live updates without changing adapter shape", () => {
