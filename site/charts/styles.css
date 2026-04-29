@@ -200,7 +200,7 @@
 
 .chart-card {
   display: grid;
-  grid-template-rows: auto minmax(220px, auto) auto auto;
+  grid-template-rows: auto auto minmax(220px, auto) auto auto;
   gap: 0;
   min-width: 0;
   min-height: 0;
@@ -263,6 +263,30 @@
   text-transform: none;
 }
 
+.chart-card-proof {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.chart-card-proof span {
+  min-width: 0;
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.chart-card-proof strong {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
 .chart-card-frame {
   min-height: 220px;
   padding: 12px;
@@ -270,6 +294,132 @@
     linear-gradient(var(--chart-grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--chart-grid) 1px, transparent 1px);
   background-size: 38px 38px;
+}
+
+.chart-card-render {
+  display: block;
+  width: 100%;
+  height: 220px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.chart-card-render canvas,
+.chart-card-render svg {
+  display: block;
+}
+
+.native-react-chart {
+  width: 100%;
+  height: 220px;
+}
+
+.chart-card-render .w-full {
+  width: 100%;
+}
+
+.chart-card-render .h-full,
+.chart-card-render .h-40,
+.chart-card-render .h-80 {
+  height: 100%;
+}
+
+.chart-card-render .stroke-tremor-border {
+  stroke: rgba(17, 17, 15, 0.12);
+}
+
+.chart-card-render .fill-tremor-content,
+.chart-card-render .text-tremor-content {
+  fill: var(--ink-3);
+  color: var(--ink-3);
+}
+
+.chart-card-render .fill-tremor-content-emphasis,
+.chart-card-render .text-tremor-content-emphasis {
+  fill: var(--ink);
+  color: var(--ink);
+}
+
+.chart-card-render .text-tremor-label {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.chart-card-render .stroke-blue-500 {
+  stroke: var(--chart-blue);
+}
+
+.chart-card-render .stroke-cyan-500 {
+  stroke: var(--chart-cyan);
+}
+
+.chart-card-render .stroke-sky-500 {
+  stroke: #0284c7;
+}
+
+.chart-card-render .stroke-indigo-500 {
+  stroke: var(--chart-violet);
+}
+
+.chart-card-render .fill-blue-500 {
+  fill: var(--chart-blue);
+}
+
+.chart-card-render .fill-cyan-500 {
+  fill: var(--chart-cyan);
+}
+
+.chart-card-render .fill-sky-500 {
+  fill: #0284c7;
+}
+
+.chart-card-render .fill-indigo-500 {
+  fill: var(--chart-violet);
+}
+
+.chart-card-render .text-blue-500 {
+  color: var(--chart-blue);
+}
+
+.chart-card-render .text-cyan-500 {
+  color: var(--chart-cyan);
+}
+
+.chart-card-render .text-sky-500 {
+  color: #0284c7;
+}
+
+.chart-card-render .text-indigo-500 {
+  color: var(--chart-violet);
+}
+
+.chart-render-placeholder {
+  height: 100%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 16px;
+  border: 1px dashed var(--rule);
+  background: rgba(255, 255, 255, 0.6);
+  text-align: center;
+}
+
+.chart-render-placeholder strong,
+.chart-render-placeholder span {
+  max-width: 28ch;
+  font-family: var(--mono);
+}
+
+.chart-render-placeholder strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.chart-render-placeholder span {
+  color: var(--ink-3);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .chart-card-preview {
@@ -393,6 +543,77 @@
 .chart-code-button:focus-visible {
   background: var(--ink);
   color: var(--paper);
+}
+
+.chart-card-code {
+  min-width: 0;
+  border-top: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.chart-card-code-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.chart-card-code-heading strong {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.chart-card-code .chart-card-kicker,
+.chart-card-code .chart-card-pill {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.chart-card-code .chart-card-pill {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.card-code-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  overflow-x: auto;
+}
+
+.card-code-tab {
+  min-height: 30px;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.76);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.card-code-tab.is-active,
+.card-code-tab:hover,
+.card-code-tab:focus-visible {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.card-code-block {
+  max-height: 300px;
+  margin: 0;
+  padding: 0 14px 14px;
+  overflow: auto;
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre;
 }
 
 .code-panel {
@@ -628,6 +849,10 @@
   }
 
   .chart-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-card-proof {
     grid-template-columns: 1fr;
   }
 

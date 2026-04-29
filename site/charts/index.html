@@ -43,8 +43,8 @@
             <p class="hero-sub">
               The engine returns typed time-series results. The adapters turn that into the thing
               each chart library actually wants: props, rows, configs, datasets, aligned arrays, or
-              traces. Switch libraries below; every supported chart for that library renders from
-              the same source data.
+              traces. Switch libraries below; package-backed adapters render with the actual chart
+              package, and research shapes are labeled clearly.
             </p>
             <div class="hero-actions charts-actions">
               <a class="stamp-fill" href="#gallery">Open Gallery</a>
@@ -100,20 +100,6 @@ const recharts =
 
         <div class="gallery-grid">
           <div id="chartGallery" class="chart-card-grid" aria-label="Chart previews"></div>
-
-          <aside class="code-panel">
-            <div class="code-panel-heading">
-              <p class="t-eyebrow" id="codeEyebrow">adapter output</p>
-              <h2 class="t-h2" id="codeTitle">Tremor Line</h2>
-            </div>
-            <div class="code-tabs" role="tablist" aria-label="Code examples">
-              <button type="button" class="code-tab" data-tab="query">query</button>
-              <button type="button" class="code-tab is-active" data-tab="adapter">adapter</button>
-              <button type="button" class="code-tab" data-tab="library">library</button>
-              <button type="button" class="code-tab" data-tab="output">output</button>
-            </div>
-            <pre id="codeBlock" class="code-block gallery-code"></pre>
-          </aside>
         </div>
       </section>
 
@@ -125,8 +111,8 @@ const recharts =
             The engine model is the stable part. Pick the model that matches the chart you are
             rendering, then use the library adapter to get the object that chart library expects.
             The copy-ready adapters today are Tremor and Recharts; planned and research cards show
-            the native API shape we are building toward. Use the View code button on any chart card
-            to inspect that chart's adapter and render path.
+            the native API shape we are building toward. Use the Show code button on any chart card
+            to inspect that chart's adapter output beside the package-rendered chart.
           </p>
           <div class="adapter-doc-grid">
             <article class="adapter-doc">

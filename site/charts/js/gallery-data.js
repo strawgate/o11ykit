@@ -438,12 +438,24 @@ function chartJsModel(chartType, wide, latest, histogram) {
         label: series.label,
         data: wide.rows.map((row) => ({ x: row.t, y: row.values[index] })),
         parsing: false,
+        borderColor: COLORS[index % COLORS.length],
+        backgroundColor:
+          chartType === "area"
+            ? `${COLORS[index % COLORS.length]}33`
+            : COLORS[index % COLORS.length],
+        borderWidth: 2,
+        pointRadius: chartType === "scatter" ? 3 : 0,
+        tension: chartType === "scatter" ? 0 : 0.25,
         fill: chartType === "area",
       })),
     },
     options: {
       parsing: false,
       animation: false,
+      scales: {
+        x: { type: "linear", display: chartType !== "sparkline", ticks: { display: false } },
+        y: { display: chartType !== "sparkline" },
+      },
       ...(chartType === "sparkline"
         ? { plugins: { legend: { display: false } }, scales: false }
         : {}),

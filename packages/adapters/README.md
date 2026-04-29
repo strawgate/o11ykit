@@ -25,13 +25,15 @@ The goal is to preserve each chart library's idioms:
 
 ## Chart Gallery
 
-The interactive gallery at `/o11ykit/charts/` shows the same engine result rendered as Tremor,
+The interactive gallery at `/o11ykit/charts/` shows the same engine result across Tremor,
 Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, Plotly, ApexCharts, Victory,
-AG Charts, Highcharts, and Vega-Lite shapes.
+AG Charts, Highcharts, and Vega-Lite shapes. Package-backed entries mount the actual chart package
+in the browser; research entries are explicitly labeled as adapter shapes until their renderers land.
 
-Tremor and Recharts are implemented engine-backed adapters today. The other gallery entries are
-the design target for future first-class adapters: they show the native shape we want, not a generic
-cross-library DTO.
+Tremor and Recharts are implemented engine-backed adapters today. Chart.js, ECharts, and uPlot also
+render through their real packages in the gallery while their engine-adapter APIs are still being
+hardened. The remaining gallery entries are the design target for future first-class adapters: they
+show the native shape we want, not a generic cross-library DTO.
 
 | Library | Engine-backed status | User-facing shape |
 | --- | --- | --- |
