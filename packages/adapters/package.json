@@ -32,10 +32,20 @@
       "import": "./dist/echarts.js",
       "default": "./dist/echarts.js"
     },
+    "./engine": {
+      "types": "./dist/engine.d.ts",
+      "import": "./dist/engine.js",
+      "default": "./dist/engine.js"
+    },
     "./recharts": {
       "types": "./dist/recharts.d.ts",
       "import": "./dist/recharts.js",
       "default": "./dist/recharts.js"
+    },
+    "./tremor": {
+      "types": "./dist/tremor.d.ts",
+      "import": "./dist/tremor.js",
+      "default": "./dist/tremor.js"
     },
     "./uplot": {
       "types": "./dist/uplot.d.ts",

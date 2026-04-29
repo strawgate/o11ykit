@@ -15,9 +15,18 @@ import {
   toEChartsHistogramOption,
   toEChartsLatestValuesOption,
   toEChartsTimeSeriesOption,
+  toEngineLatestValueModel,
+  toEngineLineSeriesModel,
+  toEngineWideTableModel,
+  toRechartsEngineLatestValuesModel,
+  toRechartsEngineTimeSeriesModel,
   toRechartsHistogramModel,
   toRechartsLatestValuesModel,
   toRechartsTimeSeriesModel,
+  toTremorBarChartProps,
+  toTremorBarListProps,
+  toTremorDonutChartProps,
+  toTremorLineChartProps,
   toUPlotLatestValuesModel,
   toUPlotTimeSeriesModel,
   traceWaterfallToLaneRows,
@@ -25,6 +34,28 @@ import {
 import { histogramRows, pivotTimeSeriesFrame } from "../src/shared.js";
 
 describe("@otlpkit/adapters", () => {
+  const engineResult = {
+    scannedSeries: 2,
+    scannedSamples: 5,
+    series: [
+      {
+        labels: new Map([
+          ["__name__", "cpu"],
+          ["host", "a"],
+        ]),
+        timestamps: new BigInt64Array([1_000_000n, 2_000_000n, 3_000_000n]),
+        values: new Float64Array([1, Number.NaN, 3]),
+      },
+      {
+        labels: new Map([
+          ["__name__", "cpu"],
+          ["host", "b"],
+        ]),
+        timestamps: new BigInt64Array([2_000_000n, 3_000_000n]),
+        values: new Float64Array([20, 30]),
+      },
+    ],
+  };
   const timeSeriesFrame = buildTimeSeriesFrame(metricsDocument, {
     metricName: "logfwd.inflight_batches",
     intervalMs: 1000,
@@ -61,6 +92,171 @@ describe("@otlpkit/adapters", () => {
     expect(timeSeries.series).toHaveLength(2);
     expect(latest.categoryKey).toBe("label");
     expect(histogram.valueKey).toBe("count");
+  });
+
+  it("builds shared engine chart models from query results", () => {
+    const line = toEngineLineSeriesModel(engineResult, {
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
+    const wide = toEngineWideTableModel(engineResult, {
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
+    const latest = toEngineLatestValueModel(engineResult, {
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
+
+    expect(line.series[0]?.points).toEqual([
+      { t: 1, v: 1 },
+      { t: 2, v: null },
+      { t: 3, v: 3 },
+    ]);
+    expect(wide.columns).toEqual(["t", "a", "b"]);
+    expect(wide.rows).toEqual([
+      { t: 1, values: [1, null] },
+      { t: 2, values: [null, 20] },
+      { t: 3, values: [3, 30] },
+    ]);
+    expect(latest.rows.map((row) => [row.label, row.value])).toEqual([
+      ["a", 3],
+      ["b", 30],
+    ]);
+  });
+
+  it("handles engine timestamp units, point budgets, and invalid query results", () => {
+    const wide = toEngineWideTableModel(engineResult, {
+      maxPoints: 1,
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
+    const seconds = toEngineLineSeriesModel(
+      {
+        series: [
+          {
+            labels: new Map([["__name__", "requests"]]),
+            timestamps: new BigInt64Array([1n, 2n]),
+            values: new Float64Array([10, 20]),
+          },
+        ],
+      },
+      { timestampUnit: "seconds" }
+    );
+    const milliseconds = toEngineLineSeriesModel(
+      {
+        series: [
+          {
+            labels: new Map([["__name__", "requests"]]),
+            timestamps: new BigInt64Array([1n, 2n]),
+            values: new Float64Array([10, 20]),
+          },
+        ],
+      },
+      { timestampUnit: "milliseconds" }
+    );
+
+    expect(wide.rows).toEqual([{ t: 3, values: [3, 30] }]);
+    expect(seconds.series[0]?.points.map((point) => point.t)).toEqual([1000, 2000]);
+    expect(milliseconds.series[0]?.points.map((point) => point.t)).toEqual([1, 2]);
+    expect(() =>
+      toEngineLineSeriesModel({
+        series: [
+          {
+            labels: new Map([["__name__", "broken"]]),
+            timestamps: new BigInt64Array([1n, 2n]),
+            values: new Float64Array([1]),
+          },
+        ],
+      })
+    ).toThrow(/mismatched timestamps/);
+  });
+
+  it("builds engine-backed Recharts models", () => {
+    const wide = toEngineWideTableModel(engineResult, {
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
+    const latest = toEngineLatestValueModel(engineResult, {
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
+    const timeSeries = toRechartsEngineTimeSeriesModel(wide, { unit: "%" });
+    const latestValues = toRechartsEngineLatestValuesModel(latest, { unit: "%" });
+
+    expect(timeSeries.xAxisKey).toBe("time");
+    expect(timeSeries.series).toEqual([
+      { id: "__name__=cpu,host=a", dataKey: "__name__=cpu,host=a", name: "a" },
+      { id: "__name__=cpu,host=b", dataKey: "__name__=cpu,host=b", name: "b" },
+    ]);
+    expect(timeSeries.data[1]?.["__name__=cpu,host=a"]).toBeNull();
+    expect(timeSeries.unit).toBe("%");
+    expect(latestValues.data).toEqual([
+      { label: "a", value: 3 },
+      { label: "b", value: 30 },
+    ]);
+  });
+
+  it("builds Tremor-native props from engine models", () => {
+    const wide = toEngineWideTableModel(engineResult, {
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
+    const latest = toEngineLatestValueModel(engineResult, {
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
+    const line = toTremorLineChartProps(wide, { connectNulls: false });
+    const bar = toTremorBarChartProps(wide, { layout: "horizontal", type: "stacked" });
+    const donut = toTremorDonutChartProps(latest);
+    const barList = toTremorBarListProps(latest);
+
+    expect(line.index).toBe("time");
+    expect(line.categories).toEqual(["a", "b"]);
+    expect(line.meta.series.map((series) => [series.id, series.key, series.label])).toEqual([
+      ["__name__=cpu,host=a", "a", "a"],
+      ["__name__=cpu,host=b", "b", "b"],
+    ]);
+    expect(line.data[1]?.a).toBeNull();
+    expect(bar.layout).toBe("horizontal");
+    expect(bar.type).toBe("stacked");
+    expect(donut.index).toBe("label");
+    expect(donut.category).toBe("value");
+    expect(barList.data).toEqual([
+      { name: "a", value: 3 },
+      { name: "b", value: 30 },
+    ]);
+  });
+
+  it("keeps Tremor legends readable and filters null latest values", () => {
+    const wide = toEngineWideTableModel(engineResult, {
+      seriesLabel: () => "cpu",
+    });
+    const latest = toEngineLatestValueModel({
+      series: [
+        {
+          labels: new Map([
+            ["__name__", "cpu"],
+            ["host", "a"],
+          ]),
+          timestamps: new BigInt64Array([1_000_000n]),
+          values: new Float64Array([Number.NaN]),
+        },
+        {
+          labels: new Map([
+            ["__name__", "cpu"],
+            ["host", "b"],
+          ]),
+          timestamps: new BigInt64Array([1_000_000n]),
+          values: new Float64Array([30]),
+        },
+      ],
+    });
+    const line = toTremorLineChartProps(wide);
+    const renamed = toTremorLineChartProps(wide, {
+      categoryLabel: (_series, index) => `CPU ${index + 1}`,
+    });
+    const donut = toTremorDonutChartProps(latest);
+    const barList = toTremorBarListProps(latest);
+
+    expect(line.categories).toEqual(["cpu", "cpu (2)"]);
+    expect(line.data[0]?.cpu).toBe(1);
+    expect(line.data[0]?.["cpu (2)"]).toBeNull();
+    expect(renamed.categories).toEqual(["CPU 1", "CPU 2"]);
+    expect(donut.data).toEqual([{ label: "cpu{host=b}", value: 30 }]);
+    expect(barList.data).toEqual([{ name: "cpu{host=b}", value: 30 }]);
   });
 
   it("builds aligned uPlot models", () => {

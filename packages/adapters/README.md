@@ -5,7 +5,9 @@ Library-native adapters that project `@otlpkit/views` frames into chart-ready mo
 ## Adapter Modules
 
 - `@otlpkit/adapters/chartjs`
+- `@otlpkit/adapters/engine`
 - `@otlpkit/adapters/recharts`
+- `@otlpkit/adapters/tremor`
 - `@otlpkit/adapters/echarts`
 - `@otlpkit/adapters/uplot`
 - `@otlpkit/adapters/waterfall`
@@ -46,6 +48,36 @@ new uPlot(
   model.data,
   element
 );
+```
+
+## Engine-backed adapters
+
+The engine layer converts `QueryResult`-shaped data into reusable chart models:
+
+```ts
+import { toEngineWideTableModel, toEngineLatestValueModel } from "@otlpkit/adapters/engine";
+
+const wide = toEngineWideTableModel(result, {
+  seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+});
+const latest = toEngineLatestValueModel(result);
+```
+
+Tremor adapters then return native props:
+
+```ts
+import { toTremorLineChartProps, toTremorDonutChartProps } from "@otlpkit/adapters/tremor";
+
+const line = toTremorLineChartProps(wide);
+const donut = toTremorDonutChartProps(latest);
+```
+
+Recharts adapters expose the same engine substrate as row data plus `dataKey` metadata:
+
+```ts
+import { toRechartsEngineTimeSeriesModel } from "@otlpkit/adapters/recharts";
+
+const model = toRechartsEngineTimeSeriesModel(wide, { unit: "ms" });
 ```
 
 ```ts

@@ -59,6 +59,7 @@ GitHub Pages publishes a small portal:
 - `/o11ykit/` platform overview for OtlpKit, o11ytsdb, Octo11y, and Benchkit
 - `/o11ykit/tsdb-engine/` TSDB engine site and interactive codec demos
 - `/o11ykit/otlpkit/` OtlpKit incident-story site
+- `/o11ykit/charts/` chart adapter gallery plan for engine-backed Tremor, Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, and Plotly demos
 - `/o11ykit/octo11y/` Octo11y guide and pipeline walkthrough
 - `/o11ykit/benchkit/` Benchkit demo and regression-automation handoff
 - `/o11ykit/logsdb-engine/` LogsDB engine site and interactive log storage/query demo
