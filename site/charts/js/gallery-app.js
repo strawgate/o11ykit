@@ -6,6 +6,11 @@ import {
   serializableAdapterModel,
 } from "./gallery-data.js";
 import {
+  DEFAULT_LIVE_REFRESH_RATE_ID,
+  getLiveRefreshRate,
+  LIVE_REFRESH_RATES,
+} from "./gallery-live.js";
+import {
   destroyNativeCharts,
   hasPackageRenderer,
   renderNativeCharts,
@@ -18,6 +23,7 @@ const state = {
   tab: "adapter",
   live: false,
   liveStep: 0,
+  liveRateId: DEFAULT_LIVE_REFRESH_RATE_ID,
   timer: null,
 };
 
@@ -25,6 +31,8 @@ const elements = {
   libraryButtons: document.querySelector("#libraryButtons"),
   librarySummary: document.querySelector("#librarySummary"),
   liveToggle: document.querySelector("#liveToggle"),
+  liveToggleLabel: document.querySelector("#liveToggleLabel"),
+  refreshRate: document.querySelector("#refreshRate"),
   chartGallery: document.querySelector("#chartGallery"),
   libraryCards: document.querySelector("#libraryCards"),
   coverageTable: document.querySelector("#coverageTable"),
@@ -33,10 +41,16 @@ const elements = {
 init();
 
 function init() {
+  renderRefreshRates();
   renderLibraryButtons();
   renderLibraryCards();
   renderCoverageTable();
   elements.liveToggle.addEventListener("click", toggleLive);
+  elements.refreshRate.addEventListener("change", () => {
+    state.liveRateId = elements.refreshRate.value;
+    syncLiveControls();
+    if (state.live) restartLiveTimer();
+  });
   render();
 }
 
@@ -223,19 +237,48 @@ function renderCoverageTable() {
   elements.coverageTable.innerHTML = `${header}<tbody>${rows}</tbody>`;
 }
 
+function renderRefreshRates() {
+  elements.refreshRate.innerHTML = LIVE_REFRESH_RATES.map(
+    (rate) =>
+      `<option value="${rate.id}" ${rate.id === state.liveRateId ? "selected" : ""}>${rate.label}</option>`
+  ).join("");
+  syncLiveControls();
+}
+
 function toggleLive() {
   state.live = !state.live;
-  elements.liveToggle.setAttribute("aria-pressed", String(state.live));
+  syncLiveControls();
   if (state.live) {
-    state.timer = window.setInterval(() => {
-      state.liveStep += 1;
-      render();
-    }, 900);
+    restartLiveTimer();
   } else {
+    stopLiveTimer();
+  }
+}
+
+function syncLiveControls() {
+  const rate = getLiveRefreshRate(state.liveRateId);
+  elements.liveToggle.setAttribute("aria-pressed", String(state.live));
+  elements.liveToggleLabel.textContent = state.live ? `Live at ${rate.label}` : `Live updates`;
+  elements.liveToggle.title = `Render every ${rate.intervalMs}ms`;
+}
+
+function restartLiveTimer() {
+  stopLiveTimer();
+  const rate = getLiveRefreshRate(state.liveRateId);
+  state.timer = window.setInterval(() => {
+    state.liveStep += 1;
+    render();
+  }, rate.intervalMs);
+}
+
+function stopLiveTimer() {
+  if (state.timer !== null) {
     window.clearInterval(state.timer);
     state.timer = null;
   }
 }
+
+window.addEventListener("pagehide", stopLiveTimer);
 
 function chartLabel(chartType) {
   return CHART_TYPES.find((chart) => chart.id === chartType)?.label ?? chartType;

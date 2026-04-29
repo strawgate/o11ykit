@@ -92,10 +92,14 @@ const recharts =
             <div id="libraryButtons" class="segmented-control"></div>
           </div>
           <div id="librarySummary" class="library-summary"></div>
-          <button id="liveToggle" class="live-toggle" type="button" aria-pressed="false">
-            <span class="live-dot" aria-hidden="true"></span>
-            Live updates
-          </button>
+          <div class="live-controls" aria-label="Live update controls">
+            <label class="refresh-rate-label" for="refreshRate">Refresh rate</label>
+            <select id="refreshRate" class="refresh-rate-select" aria-label="Refresh rate"></select>
+            <button id="liveToggle" class="live-toggle" type="button" aria-pressed="false">
+              <span class="live-dot" aria-hidden="true"></span>
+              <span id="liveToggleLabel">Live updates</span>
+            </button>
+          </div>
         </div>
 
         <div class="gallery-grid">
