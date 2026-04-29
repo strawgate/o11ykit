@@ -1,5 +1,5 @@
 const COLORS = ["#2563eb", "#059669", "#dc2626", "#7c3aed", "#d97706", "#0891b2"];
-const activeDisposers = [];
+const activeDisposers = new Map();
 const renderedLibraries = new Set([
   "tremor",
   "recharts",
@@ -38,13 +38,14 @@ export function hasPackageRenderer(libraryId) {
 
 export function destroyNativeCharts() {
   renderGeneration += 1;
-  while (activeDisposers.length > 0) {
-    activeDisposers.pop()?.();
+  for (const dispose of activeDisposers.values()) {
+    dispose();
   }
+  activeDisposers.clear();
 }
 
 export function renderNativeCharts(charts, root) {
-  const generation = renderGeneration;
+  const generation = ++renderGeneration;
   for (const chart of charts) {
     const target = root.querySelector(`[data-render-target="${chart.chartType}"]`);
     if (target instanceof HTMLElement) {
@@ -54,24 +55,29 @@ export function renderNativeCharts(charts, root) {
 }
 
 async function renderNativeChart(target, chart, generation) {
-  target.replaceChildren();
-  target.dataset.rendered = "false";
+  const hasRenderedChart = target.dataset.rendered === "true";
 
   if (!hasPackageRenderer(chart.library.id)) {
+    target.dataset.rendered = "false";
     renderPlaceholder(target, chart, "Renderer package is not mounted in this gallery yet.");
     return;
   }
 
-  target.innerHTML = `<div class="chart-render-placeholder">
-    <strong>Loading ${escapeHtml(chart.library.name)}</strong>
-    <span>Mounting the chart package...</span>
-  </div>`;
+  if (!hasRenderedChart) {
+    target.dataset.rendered = "false";
+    target.innerHTML = `<div class="chart-render-placeholder">
+      <strong>Loading ${escapeHtml(chart.library.name)}</strong>
+      <span>Mounting the chart package...</span>
+    </div>`;
+  }
 
   try {
+    activeDisposers.get(target)?.();
+    activeDisposers.delete(target);
     const dispose = await renderWithPackage(target, chart, generation);
     if (!isCurrentRender(target, generation)) return;
     target.dataset.rendered = "true";
-    if (dispose) activeDisposers.push(dispose);
+    if (dispose) activeDisposers.set(target, dispose);
   } catch (error) {
     if (!isCurrentRender(target, generation)) return;
     renderPlaceholder(

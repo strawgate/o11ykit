@@ -25,6 +25,10 @@ const state = {
   liveStep: 0,
   liveRateId: DEFAULT_LIVE_REFRESH_RATE_ID,
   timer: null,
+  raf: null,
+  renderBusy: false,
+  renderQueued: false,
+  lastLayoutKey: "",
 };
 
 const elements = {
@@ -59,9 +63,15 @@ function render() {
   if (state.expandedChart && !gallery.library.charts.includes(state.expandedChart)) {
     state.expandedChart = null;
   }
-  renderLibraryButtons();
+  const layoutKey = `${gallery.library.id}:${gallery.charts.join(",")}:${state.expandedChart ?? ""}:${state.tab}`;
   renderLibrarySummary(gallery);
-  renderChartGallery(gallery);
+  if (layoutKey !== state.lastLayoutKey) {
+    state.lastLayoutKey = layoutKey;
+    renderLibraryButtons();
+    renderChartGallery(gallery);
+    return;
+  }
+  updateChartGallery(gallery);
 }
 
 function renderLibraryButtons() {
@@ -83,12 +93,11 @@ function renderLibraryButtons() {
 function renderLibrarySummary(gallery) {
   elements.librarySummary.innerHTML = `
     <p class="t-eyebrow">rendering</p>
-    <div class="library-summary-line">
+    <div class="library-summary-line" aria-label="${gallery.library.name} rendering details">
       <strong>${gallery.library.name}</strong>
-      <span>${gallery.charts.length} chart${gallery.charts.length === 1 ? "" : "s"}</span>
-      <span>${gallery.library.package}</span>
-      <span>${hasPackageRenderer(gallery.library.id) ? "rendered by package" : "adapter shape only"}</span>
-      <span>adapter: ${gallery.library.primaryApi}</span>
+      <span>${gallery.charts.length} charts</span>
+      <span>${gallery.library.primaryApi}</span>
+      <span>${hasPackageRenderer(gallery.library.id) ? "package renderer" : "adapter shape"}</span>
     </div>
   `;
 }
@@ -107,11 +116,7 @@ function renderChartGallery(gallery) {
               <span class="chart-card-kicker">${chart.library.primaryApi}</span>
               <strong>${chartLabel(chart.chartType)}</strong>
             </span>
-            <span class="chart-card-pill">${chart.library.status}</span>
-          </span>
-          <span class="chart-card-proof">
-            <span><strong>Render</strong> ${renderProof(chart)}</span>
-            <span><strong>Adapter</strong> ${adapterProof(chart)}</span>
+            <span class="chart-card-meta">${adapterSummary(chart.adapterModel)}</span>
           </span>
           <span class="chart-card-frame">
             <span
@@ -152,6 +157,24 @@ function renderChartGallery(gallery) {
   renderNativeCharts(gallery.charts, elements.chartGallery);
 }
 
+function updateChartGallery(gallery) {
+  for (const chart of gallery.charts) {
+    const card = elements.chartGallery
+      .querySelector(`[data-render-target="${chart.chartType}"]`)
+      ?.closest(".chart-card");
+    if (!card) continue;
+    const meta = card.querySelector(".chart-card-meta");
+    if (meta) meta.textContent = adapterSummary(chart.adapterModel);
+    const legend = card.querySelector(".mini-legend");
+    if (legend) legend.innerHTML = renderLegend(chart);
+    if (chart.chartType === state.expandedChart) {
+      const code = card.querySelector(".card-code-block");
+      if (code) code.textContent = codeFor(chart);
+    }
+  }
+  renderNativeCharts(gallery.charts, elements.chartGallery);
+}
+
 function renderLegend(gallery) {
   const rows =
     gallery.chartType === "histogram" ? gallery.histogram.buckets.slice(0, 4) : gallery.wide.series;
@@ -183,7 +206,6 @@ function renderInlineCode(gallery) {
           <span class="chart-card-kicker">${gallery.library.primaryApi} adapter</span>
           <strong>${gallery.library.name} ${chartLabel(gallery.chartType)}</strong>
         </span>
-        <span class="chart-card-pill">${gallery.library.status}</span>
       </div>
       <div class="card-code-tabs" role="tablist" aria-label="${gallery.library.name} ${chartLabel(gallery.chartType)} code">
         ${tabs}
@@ -267,7 +289,7 @@ function restartLiveTimer() {
   const rate = getLiveRefreshRate(state.liveRateId);
   state.timer = window.setInterval(() => {
     state.liveStep += 1;
-    render();
+    scheduleRender();
   }, rate.intervalMs);
 }
 
@@ -278,24 +300,33 @@ function stopLiveTimer() {
   }
 }
 
-window.addEventListener("pagehide", stopLiveTimer);
+function scheduleRender() {
+  state.renderQueued = true;
+  if (state.raf !== null) return;
+  state.raf = window.requestAnimationFrame(() => {
+    state.raf = null;
+    if (state.renderBusy || !state.renderQueued) return;
+    state.renderQueued = false;
+    state.renderBusy = true;
+    try {
+      render();
+    } finally {
+      state.renderBusy = false;
+      if (state.renderQueued) scheduleRender();
+    }
+  });
+}
+
+window.addEventListener("pagehide", () => {
+  stopLiveTimer();
+  if (state.raf !== null) {
+    window.cancelAnimationFrame(state.raf);
+    state.raf = null;
+  }
+});
 
 function chartLabel(chartType) {
   return CHART_TYPES.find((chart) => chart.id === chartType)?.label ?? chartType;
-}
-
-function adapterProof(gallery) {
-  const status =
-    gallery.library.status === "implemented" || gallery.library.status === "exported"
-      ? "package-backed"
-      : `${gallery.library.status} adapter shape`;
-  return `${status}; ${adapterSummary(gallery.adapterModel)}`;
-}
-
-function renderProof(gallery) {
-  return hasPackageRenderer(gallery.library.id)
-    ? `${gallery.library.name} package`
-    : "adapter shape only";
 }
 
 function adapterSummary(model) {
