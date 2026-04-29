@@ -32,6 +32,15 @@ Tremor and Recharts are implemented engine-backed adapters today. The other gall
 the design target for future first-class adapters: they show the native shape we want, not a generic
 cross-library DTO.
 
+| Library | Engine-backed status | User-facing shape |
+| --- | --- | --- |
+| Tremor | implemented | component props |
+| Recharts | implemented | rows plus `dataKey` descriptors |
+| Chart.js | planned | config with parsing disabled |
+| ECharts | planned | dataset and encode option |
+| uPlot | planned | aligned arrays |
+| Nivo, Visx, Observable Plot, Plotly | research | library-native sketches |
+
 ## Quick Example
 
 ```ts
@@ -86,6 +95,17 @@ const latest = toEngineLatestValueModel(result);
 
 All engine models canonicalize series ids from sorted labels, turn non-finite values into `null`,
 validate timestamp/value length alignment, and support `maxPoints` for dashboard previews.
+
+### Adapter author checklist
+
+New engine-backed adapters should keep the same user contract:
+
+- Accept one of the engine models, not raw query results.
+- Return the library's native shape: props, rows, config, dataset, traces, or aligned arrays.
+- Preserve stable engine series ids in metadata even when the display label is shortened.
+- Keep sparse points as `null` when the chart library can represent gaps.
+- Filter `null` latest values for donut, pie, and bar-list charts.
+- Add gallery coverage and tests that compare the gallery example with the exported adapter.
 
 ### Tremor
 

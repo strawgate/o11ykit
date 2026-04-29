@@ -46,6 +46,22 @@ describe("chart gallery data", () => {
     }
   });
 
+  it("marks copy-ready snippets separately from planned and research sketches", () => {
+    for (const library of LIBRARIES) {
+      const gallery = createGalleryState(library.id, library.charts[0]);
+
+      expect(library.package).toBeTruthy();
+      if (library.status === "implemented") {
+        expect(library.package).toContain("@otlpkit/adapters/");
+        expect(gallery.snippets.adapter).toContain(library.package);
+        expect(gallery.snippets.adapter).not.toContain("not exported yet");
+      } else {
+        expect(library.package).not.toContain("@otlpkit/adapters/");
+        expect(gallery.snippets.adapter).toContain("not exported yet");
+      }
+    }
+  });
+
   it("falls back to the first natural chart type when a library does not support a shape", () => {
     expect(getSupportedChart("uplot", "donut")).toBe("line");
     expect(getSupportedChart("tremor", "donut")).toBe("donut");

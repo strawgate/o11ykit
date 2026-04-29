@@ -57,8 +57,10 @@ const result = engine.query(store, query);
 const wide = toEngineWideTableModel(result);
 
 const tremor = toTremorLineChartProps(wide);
-const recharts = toRechartsEngineTimeSeriesModel(wide);
-const echarts = toEChartsOption(wide);</pre>
+const recharts =
+  toRechartsEngineTimeSeriesModel(wide);
+// Planned adapters keep
+// the same engine input.</pre>
           </div>
         </div>
       </section>
@@ -130,6 +132,36 @@ const echarts = toEChartsOption(wide);</pre>
             </div>
             <pre id="codeBlock" class="code-block gallery-code"></pre>
           </aside>
+        </div>
+      </section>
+
+      <section id="adapter-docs" class="adapter-docs">
+        <div class="section-inner">
+          <p class="t-eyebrow">user docs</p>
+          <h2 class="t-h2" style="margin:8px 0 8px">Start with the chart shape.</h2>
+          <p class="t-body" style="max-width:72ch;margin:0 0 28px">
+            The engine model is the stable part. Pick the model that matches the chart you are
+            rendering, then use the library adapter to get the object that chart library expects.
+            The copy-ready adapters today are Tremor and Recharts; planned and research cards show
+            the native API shape we are building toward.
+          </p>
+          <div class="adapter-doc-grid">
+            <article class="adapter-doc">
+              <h3>Time series</h3>
+              <p>Use `toEngineWideTableModel` for line, area, and grouped bar charts.</p>
+              <code>rows: [{ t, values[] }]</code>
+            </article>
+            <article class="adapter-doc">
+              <h3>Latest values</h3>
+              <p>Use `toEngineLatestValueModel` for donut charts, pie charts, and bar lists.</p>
+              <code>rows: [{ label, value }]</code>
+            </article>
+            <article class="adapter-doc">
+              <h3>Custom marks</h3>
+              <p>Use `toEngineLineSeriesModel` when the library wants one point array per series.</p>
+              <code>series: [{ id, points[] }]</code>
+            </article>
+          </div>
         </div>
       </section>
 

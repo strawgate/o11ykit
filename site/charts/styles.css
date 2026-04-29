@@ -259,6 +259,46 @@
   overflow: auto;
 }
 
+.adapter-doc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.adapter-doc {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.adapter-doc h3 {
+  margin: 0 0 8px;
+  font-family: var(--mono);
+  font-size: 15px;
+}
+
+.adapter-doc p {
+  margin: 0 0 14px;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.adapter-doc code {
+  display: block;
+  max-width: 100%;
+  padding: 7px 8px;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
 .library-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -311,6 +351,21 @@
   font-size: 11px;
 }
 
+.library-package {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 8px;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--paper-2);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
 .coverage-table-wrap {
   overflow: auto;
   border: 1px solid var(--ink);
@@ -360,7 +415,8 @@
 @media (max-width: 980px) {
   .charts-hero-inner,
   .gallery-grid,
-  .gallery-toolbar {
+  .gallery-toolbar,
+  .adapter-doc-grid {
     grid-template-columns: 1fr;
   }
 

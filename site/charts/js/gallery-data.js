@@ -14,6 +14,7 @@ export const LIBRARIES = [
     primaryApi: "props",
     updateModel: "React data updates",
     status: "implemented",
+    package: "@otlpkit/adapters/tremor",
     charts: ["line", "area", "bar", "donut", "barList"],
     note: "Return the prop bag users spread onto Tremor components, with readable categories and source metadata.",
   },
@@ -23,6 +24,7 @@ export const LIBRARIES = [
     primaryApi: "rows + dataKey",
     updateModel: "React data updates",
     status: "implemented",
+    package: "@otlpkit/adapters/recharts",
     charts: ["line", "area", "bar", "histogram"],
     note: "Keep Recharts ergonomic: rows for data, descriptors for Line/Area/Bar dataKey wiring.",
   },
@@ -32,6 +34,7 @@ export const LIBRARIES = [
     primaryApi: "configuration",
     updateModel: "controller.update('none')",
     status: "planned",
+    package: "planned engine adapter",
     charts: ["line", "area", "bar", "donut", "histogram"],
     note: "Produce chart configs with parsing disabled so large time-series stay cheap to update.",
   },
@@ -41,6 +44,7 @@ export const LIBRARIES = [
     primaryApi: "dataset + encode",
     updateModel: "setOption",
     status: "planned",
+    package: "planned engine adapter",
     charts: ["line", "area", "bar", "donut", "histogram"],
     note: "Use dataset source and encode fields so ECharts keeps transforms and tooltips native.",
   },
@@ -50,6 +54,7 @@ export const LIBRARIES = [
     primaryApi: "aligned arrays",
     updateModel: "setData",
     status: "planned",
+    package: "planned engine adapter",
     charts: ["line", "area"],
     note: "Keep the hot path as aligned numeric arrays, matching uPlot's low-allocation model.",
   },
@@ -59,6 +64,7 @@ export const LIBRARIES = [
     primaryApi: "series objects",
     updateModel: "React data updates",
     status: "research",
+    package: "research shape",
     charts: ["line", "area", "bar", "donut"],
     note: "Map engine series into Nivo's nested data while keeping labels and colors predictable.",
   },
@@ -68,6 +74,7 @@ export const LIBRARIES = [
     primaryApi: "accessors + arrays",
     updateModel: "caller state updates",
     status: "research",
+    package: "research shape",
     charts: ["line", "area", "bar", "histogram"],
     note: "Expose arrays and accessors, because Visx users compose marks rather than consume configs.",
   },
@@ -77,6 +84,7 @@ export const LIBRARIES = [
     primaryApi: "marks",
     updateModel: "plot rebuild",
     status: "research",
+    package: "research shape",
     charts: ["line", "area", "bar", "histogram"],
     note: "Flatten wide rows into tidy records and return Plot marks users can drop into Plot.plot.",
   },
@@ -86,6 +94,7 @@ export const LIBRARIES = [
     primaryApi: "traces",
     updateModel: "extendTraces",
     status: "research",
+    package: "research shape",
     charts: ["line", "area", "bar", "donut", "histogram"],
     note: "Produce traces and layouts, with a path toward extendTraces for live dashboards.",
   },
@@ -503,6 +512,7 @@ function snippetsFor(library, chartType) {
 }
 
 function adapterSnippet(libraryId, chartType) {
+  // Implemented libraries show copy-ready imports; future libraries are labeled as API sketches.
   if (libraryId === "tremor") {
     const fn =
       chartType === "donut"
@@ -510,56 +520,78 @@ function adapterSnippet(libraryId, chartType) {
         : chartType === "barList"
           ? "toTremorBarListProps"
           : `toTremor${capitalize(chartType)}ChartProps`;
-    return `const wide = toEngineWideTableModel(result, {
+    return `import {
+  toEngineLatestValueModel,
+  toEngineWideTableModel,
+} from "@otlpkit/adapters/engine";
+import {
+  ${fn},
+} from "@otlpkit/adapters/tremor";
+
+const wide = toEngineWideTableModel(result, {
   seriesLabel: (s) => s.labels.get("service") ?? "service",
 });
 const latest = toEngineLatestValueModel(result);
 const props = ${fn}(${chartType === "donut" || chartType === "barList" ? "latest" : "wide"});`;
   }
   if (libraryId === "recharts") {
-    return `const wide = toEngineWideTableModel(result);
+    return `import {
+  toEngineWideTableModel,
+} from "@otlpkit/adapters/engine";
+import {
+  toRechartsEngineTimeSeriesModel,
+} from "@otlpkit/adapters/recharts";
+
+const wide = toEngineWideTableModel(result);
 const model = toRechartsEngineTimeSeriesModel(wide, {
   unit: "ms",
 });`;
   }
   if (libraryId === "uplot") {
-    return `const wide = toEngineWideTableModel(result);
+    return `// Planned API sketch: this adapter is not exported yet.
+const wide = toEngineWideTableModel(result);
 const model = toUPlotAlignedModel(wide, {
   maxPoints: 600,
 });`;
   }
   if (libraryId === "echarts") {
-    return `const wide = toEngineWideTableModel(result);
+    return `// Planned API sketch: this adapter is not exported yet.
+const wide = toEngineWideTableModel(result);
 const option = toEChartsDatasetOption(wide, {
   chartType: "${chartType}",
 });`;
   }
   if (libraryId === "chartjs") {
-    return `const wide = toEngineWideTableModel(result);
+    return `// Planned API sketch: this adapter is not exported yet.
+const wide = toEngineWideTableModel(result);
 const config = toChartJsConfig(wide, {
   type: "${chartType === "area" ? "line" : chartType}",
   parsing: false,
 });`;
   }
   if (libraryId === "plotly") {
-    return `const wide = toEngineWideTableModel(result);
+    return `// Research shape: this adapter is not exported yet.
+const wide = toEngineWideTableModel(result);
 const traces = toPlotlyTraces(wide, {
   mode: "${chartType}",
 });`;
   }
   if (libraryId === "observable") {
-    return `const wide = toEngineWideTableModel(result);
+    return `// Research shape: this adapter is not exported yet.
+const wide = toEngineWideTableModel(result);
 const plot = toObservablePlotMarks(wide, {
   mark: "${chartType}",
 });`;
   }
   if (libraryId === "visx") {
-    return `const wide = toEngineWideTableModel(result);
+    return `// Research shape: this adapter is not exported yet.
+const wide = toEngineWideTableModel(result);
 const model = toVisxSeries(wide, {
   accessors: true,
 });`;
   }
-  return `const wide = toEngineWideTableModel(result);
+  return `// Research shape: this adapter is not exported yet.
+const wide = toEngineWideTableModel(result);
 const data = toNivoSeries(wide);`;
 }
 

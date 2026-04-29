@@ -272,13 +272,14 @@ function renderLibraryCards() {
           <span>${library.updateModel}</span>
           <span>${library.charts.length} shapes</span>
         </div>
+        <code class="library-package">${library.package}</code>
       </article>
     `
   ).join("");
 }
 
 function renderCoverageTable() {
-  const header = `<thead><tr><th>Library</th>${CHART_TYPES.map((chart) => `<th>${chart.label}</th>`).join("")}<th>Primary API</th></tr></thead>`;
+  const header = `<thead><tr><th>Library</th>${CHART_TYPES.map((chart) => `<th>${chart.label}</th>`).join("")}<th>Status</th><th>Primary API</th></tr></thead>`;
   const rows = LIBRARIES.map(
     (library) => `<tr>
       <td>${library.name}</td>
@@ -286,6 +287,7 @@ function renderCoverageTable() {
         const supported = library.charts.includes(chart.id);
         return `<td class="${supported ? "coverage-hit" : "coverage-partial"}">${supported ? "yes" : "recipe"}</td>`;
       }).join("")}
+      <td>${library.status}</td>
       <td>${library.primaryApi}</td>
     </tr>`
   ).join("");
