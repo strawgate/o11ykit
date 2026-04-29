@@ -2,6 +2,10 @@
 
 Library-native adapters that project `@otlpkit/views` frames into chart-ready models.
 
+The adapter rule is simple: keep the data engine shared, but make the final object feel native to
+the chart library. Tremor users should spread props. Recharts users should map `dataKey`s. uPlot
+users should get aligned arrays. ECharts users should get dataset/encode options.
+
 ## Adapter Modules
 
 - `@otlpkit/adapters/chartjs`
@@ -18,6 +22,15 @@ The goal is to preserve each chart library's idioms:
 - Recharts: row-model + `dataKey` composition
 - ECharts: dataset/encode-first option trees
 - uPlot: aligned columnar arrays + minimal option scaffolding
+
+## Chart Gallery
+
+The interactive gallery at `/o11ykit/charts/` shows the same engine result rendered as Tremor,
+Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, and Plotly shapes.
+
+Tremor and Recharts are implemented engine-backed adapters today. The other gallery entries are
+the design target for future first-class adapters: they show the native shape we want, not a generic
+cross-library DTO.
 
 ## Quick Example
 
@@ -63,14 +76,40 @@ const wide = toEngineWideTableModel(result, {
 const latest = toEngineLatestValueModel(result);
 ```
 
+### Choosing a model
+
+- `toEngineWideTableModel(result)`: line, area, stacked area, grouped bar, and any library that
+  wants one row per timestamp.
+- `toEngineLatestValueModel(result)`: donut, pie, bar list, KPI rows, and "current value" charts.
+- `toEngineLineSeriesModel(result)`: custom marks, canvases, or libraries that prefer one array per
+  series.
+
+All engine models canonicalize series ids from sorted labels, turn non-finite values into `null`,
+validate timestamp/value length alignment, and support `maxPoints` for dashboard previews.
+
+### Tremor
+
 Tremor adapters then return native props:
 
 ```ts
 import { toTremorLineChartProps, toTremorDonutChartProps } from "@otlpkit/adapters/tremor";
 
-const line = toTremorLineChartProps(wide);
+const line = toTremorLineChartProps(wide, {
+  categoryLabel: (series) => series.labels.get("service") ?? series.label,
+  connectNulls: false,
+});
 const donut = toTremorDonutChartProps(latest);
 ```
+
+```tsx
+<LineChart {...line} />
+<DonutChart {...donut} />
+```
+
+Tremor uses category names as object keys, so duplicate labels are de-duped and the original engine
+series ids stay available in `line.meta.series`.
+
+### Recharts
 
 Recharts adapters expose the same engine substrate as row data plus `dataKey` metadata:
 
@@ -79,6 +118,20 @@ import { toRechartsEngineTimeSeriesModel } from "@otlpkit/adapters/recharts";
 
 const model = toRechartsEngineTimeSeriesModel(wide, { unit: "ms" });
 ```
+
+```tsx
+<LineChart data={model.data}>
+  <XAxis dataKey={model.xAxisKey} />
+  {model.series.map((series) => (
+    <Line key={series.id} dataKey={series.dataKey} name={series.name} />
+  ))}
+</LineChart>
+```
+
+Recharts data keys are collision-safe with the x-axis and tooltip keys, while keeping the stable
+engine series id on each descriptor.
+
+### Existing view-frame adapters
 
 ```ts
 import { toUPlotLatestValuesModel } from "@otlpkit/adapters/uplot";
