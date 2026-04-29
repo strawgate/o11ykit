@@ -37,6 +37,17 @@ import {
   toPlotlyEngineLatestValuesModel,
   toPlotlyEngineTimeSeriesModel,
 } from "../../../packages/adapters/src/plotly.ts";
+import {
+  toRechartsEngineHistogramModel,
+  toRechartsEngineScatterModel,
+} from "../../../packages/adapters/src/recharts.ts";
+import {
+  toTremorAreaChartProps,
+  toTremorBarChartProps,
+  toTremorBarListProps,
+  toTremorDonutChartProps,
+  toTremorLineChartProps,
+} from "../../../packages/adapters/src/tremor.ts";
 import { toUPlotEngineTimeSeriesModel } from "../../../packages/adapters/src/uplot.ts";
 import {
   toVegaLiteEngineHistogramSpec,
@@ -413,48 +424,22 @@ export function serializableAdapterModel(model) {
 
 function tremorModel(chartType, wide, latest) {
   if (chartType === "donut") {
-    return {
-      data: latest.rows.map((row) => ({ label: row.label, value: row.value })),
-      index: "label",
-      category: "value",
-    };
+    return toTremorDonutChartProps(latest);
   }
   if (chartType === "barList") {
-    return {
-      data: latest.rows.map((row) => ({ name: row.label, value: row.value })),
-    };
+    return toTremorBarListProps(latest);
   }
-  const categories = wide.series.map((series) => series.label);
-  return {
-    data: wide.rows.map((row) => {
-      const output = { time: formatTime(row.t) };
-      row.values.forEach((value, index) => {
-        output[categories[index]] = value;
-      });
-      return output;
-    }),
-    index: "time",
-    categories,
-    ...(chartType === "area" ? { type: "default" } : {}),
-    ...(chartType === "bar" ? { layout: "vertical" } : {}),
-  };
+  if (chartType === "area") return toTremorAreaChartProps(wide, { type: "default" });
+  if (chartType === "bar") return toTremorBarChartProps(wide, { layout: "vertical" });
+  return toTremorLineChartProps(wide);
 }
 
 function rechartsModel(chartType, wide, latest, histogram) {
   if (chartType === "histogram") {
-    return {
-      data: histogram.buckets,
-      categoryKey: "label",
-      valueKey: "count",
-    };
+    return toRechartsEngineHistogramModel(histogram);
   }
   if (chartType === "scatter") {
-    return {
-      data: scatterRows(wide),
-      xAxisKey: "time",
-      yAxisKey: "value",
-      seriesKey: "series",
-    };
+    return toRechartsEngineScatterModel(wide);
   }
   return {
     data: wide.rows.map((row) => rowToRecord(row, wide.series, "time")),
@@ -542,6 +527,34 @@ const latest = toEngineLatestValueModel(result);
 const props = ${fn}(${chartType === "donut" || chartType === "barList" ? "latest" : "wide"});`;
   }
   if (libraryId === "recharts") {
+    if (chartType === "histogram") {
+      return `import {
+  toEngineHistogramModel,
+  toEngineWideTableModel,
+} from "@otlpkit/adapters/engine";
+import {
+  toRechartsEngineHistogramModel,
+} from "@otlpkit/adapters/recharts";
+
+const wide = toEngineWideTableModel(result);
+const histogram = toEngineHistogramModel(wide);
+const model = toRechartsEngineHistogramModel(histogram, {
+  unit: "samples",
+});`;
+    }
+    if (chartType === "scatter") {
+      return `import {
+  toEngineWideTableModel,
+} from "@otlpkit/adapters/engine";
+import {
+  toRechartsEngineScatterModel,
+} from "@otlpkit/adapters/recharts";
+
+const wide = toEngineWideTableModel(result);
+const model = toRechartsEngineScatterModel(wide, {
+  unit: "ms",
+});`;
+    }
     return `import {
   toEngineWideTableModel,
 } from "@otlpkit/adapters/engine";
@@ -876,17 +889,6 @@ function rowToRecord(row, series, timeKey) {
   return output;
 }
 
-function scatterRows(wide) {
-  return wide.rows.flatMap((row) =>
-    wide.series.map((series, index) => ({
-      time: row.t,
-      value: row.values[index],
-      series: series.label,
-      id: series.id,
-    }))
-  );
-}
-
 function seriesId(series, index) {
   const parts = sortedLabelEntries(series.labels).map(([key, value]) => `${key}=${value}`);
   return parts.length > 0 ? parts.join(",") : `series-${index}`;
@@ -897,10 +899,6 @@ function seriesLabel(series, index) {
   const route = series.labels.get("route");
   const status = series.labels.get("status_class");
   return [service, route, status].filter(Boolean).join(" ");
-}
-
-function formatTime(ms) {
-  return new Date(ms).toISOString().slice(11, 19);
 }
 
 function capitalize(value) {

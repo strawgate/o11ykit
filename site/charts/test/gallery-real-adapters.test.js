@@ -12,7 +12,11 @@ import { toHighchartsEngineTimeSeriesOptions } from "../../../packages/adapters/
 import { toNivoEngineBarModel } from "../../../packages/adapters/src/nivo.js";
 import { toObservablePlotEngineModel } from "../../../packages/adapters/src/observable.js";
 import { toPlotlyEngineLatestValuesModel } from "../../../packages/adapters/src/plotly.js";
-import { toRechartsEngineTimeSeriesModel } from "../../../packages/adapters/src/recharts.js";
+import {
+  toRechartsEngineHistogramModel,
+  toRechartsEngineScatterModel,
+  toRechartsEngineTimeSeriesModel,
+} from "../../../packages/adapters/src/recharts.js";
 import {
   toTremorBarListProps,
   toTremorDonutChartProps,
@@ -82,6 +86,12 @@ describe("chart gallery integration with real adapters", () => {
     expect(model.tooltipKey).toBe(galleryLine.tooltipKey);
     expect(model.series).toEqual(galleryLine.series);
     expect(model.data).toEqual(galleryLine.data);
+    expect(toRechartsEngineHistogramModel(toEngineHistogramModel(wide))).toEqual(
+      createGalleryState("recharts", "histogram").adapterModel
+    );
+    expect(toRechartsEngineScatterModel(wide)).toEqual(
+      createGalleryState("recharts", "scatter").adapterModel
+    );
   });
 
   it("backs package-rendered gallery examples with exported engine adapters", () => {

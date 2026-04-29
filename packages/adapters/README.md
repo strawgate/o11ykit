@@ -178,9 +178,17 @@ series ids stay available in `line.meta.series`.
 Recharts adapters expose the same engine substrate as row data plus `dataKey` metadata:
 
 ```ts
-import { toRechartsEngineTimeSeriesModel } from "@otlpkit/adapters/recharts";
+import { toEngineHistogramModel } from "@otlpkit/adapters/engine";
+import {
+  toRechartsEngineHistogramModel,
+  toRechartsEngineScatterModel,
+  toRechartsEngineTimeSeriesModel,
+} from "@otlpkit/adapters/recharts";
 
 const model = toRechartsEngineTimeSeriesModel(wide, { unit: "ms" });
+const scatter = toRechartsEngineScatterModel(wide, { unit: "ms" });
+const buckets = toEngineHistogramModel(wide);
+const histogram = toRechartsEngineHistogramModel(buckets, { unit: "samples" });
 ```
 
 ```tsx
@@ -193,7 +201,9 @@ const model = toRechartsEngineTimeSeriesModel(wide, { unit: "ms" });
 ```
 
 Recharts data keys are collision-safe with the x-axis and tooltip keys, while keeping the stable
-engine series id on each descriptor.
+engine series id on each descriptor. The scatter adapter returns one flat row per series point plus
+`xAxisKey`, `yAxisKey`, and `seriesKey`; the histogram adapter returns the same `categoryKey` /
+`valueKey` shape as the view-frame histogram adapter.
 
 ### Existing view-frame adapters
 

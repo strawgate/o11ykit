@@ -36,7 +36,9 @@ import {
   toObservablePlotEngineModel,
   toPlotlyEngineLatestValuesFigure,
   toPlotlyEngineTimeSeriesModel,
+  toRechartsEngineHistogramModel,
   toRechartsEngineLatestValuesModel,
+  toRechartsEngineScatterModel,
   toRechartsEngineTimeSeriesModel,
   toRechartsHistogramModel,
   toRechartsLatestValuesModel,
@@ -172,6 +174,11 @@ describe("@otlpkit/adapters", () => {
     expect(toPlotlyEngineTimeSeriesModel(wide).data[0]?.type).toBe("scatter");
     expect(toPlotlyEngineTimeSeriesModel(wide).data[0]?.uid).toBe("__name__=cpu,host=a");
     expect(toPlotlyEngineLatestValuesFigure(latest).config.responsive).toBe(true);
+    expect(toRechartsEngineHistogramModel(histogram).valueKey).toBe("count");
+    expect(toRechartsEngineScatterModel(wide).series.map((series) => series.name)).toEqual([
+      "a",
+      "b",
+    ]);
     expect(toApexChartsEngineLatestValuesOptions(latest, { chartType: "gauge" }).chart.type).toBe(
       "radialBar"
     );
@@ -343,8 +350,11 @@ describe("@otlpkit/adapters", () => {
     const latest = toEngineLatestValueModel(engineResult, {
       seriesLabel: (series) => series.labels.get("host") ?? "unknown",
     });
+    const histogram = toEngineHistogramModel(wide, { bucketCount: 3 });
     const timeSeries = toRechartsEngineTimeSeriesModel(wide, { unit: "%" });
     const latestValues = toRechartsEngineLatestValuesModel(latest, { unit: "%" });
+    const histogramModel = toRechartsEngineHistogramModel(histogram, { unit: "count" });
+    const scatter = toRechartsEngineScatterModel(wide, { unit: "%" });
 
     expect(timeSeries.xAxisKey).toBe("time");
     expect(timeSeries.series).toEqual([
@@ -357,6 +367,30 @@ describe("@otlpkit/adapters", () => {
       { label: "a", value: 3 },
       { label: "b", value: 30 },
     ]);
+    expect(histogramModel.data).toEqual(
+      histogram.buckets.map((bucket) => ({
+        label: bucket.label,
+        count: bucket.count,
+        start: bucket.start,
+        end: bucket.end,
+      }))
+    );
+    expect(histogramModel.unit).toBe("count");
+    expect(scatter.xAxisKey).toBe("time");
+    expect(scatter.yAxisKey).toBe("value");
+    expect(scatter.seriesKey).toBe("series");
+    expect(scatter.data[0]).toEqual({
+      time: 1,
+      value: 1,
+      series: "a",
+      id: "__name__=cpu,host=a",
+    });
+    expect(scatter.data[1]).toEqual({
+      time: 1,
+      value: null,
+      series: "b",
+      id: "__name__=cpu,host=b",
+    });
   });
 
   it("keeps engine-backed Recharts data keys distinct from axis and tooltip keys", () => {
@@ -389,6 +423,23 @@ describe("@otlpkit/adapters", () => {
     expect(timeSeries.data[0]?.["__name__=tooltip"]).toBe(1);
     expect(timeSeries.data[0]?.["__name__=time (2)"]).toBe(1);
     expect(timeSeries.data[0]?.["__name__=tooltip (2)"]).toBe(2);
+  });
+
+  it("keeps engine-backed Recharts scatter keys distinct", () => {
+    const wide = toEngineWideTableModel(engineResult);
+
+    expect(() =>
+      toRechartsEngineScatterModel(wide, {
+        xAxisKey: "value",
+        yAxisKey: "value",
+      })
+    ).toThrow(/must be distinct/);
+    expect(() =>
+      toRechartsEngineScatterModel(wide, {
+        xAxisKey: "time",
+        seriesKey: "time",
+      })
+    ).toThrow(/must be distinct/);
   });
 
   it("builds Tremor-native props from engine models", () => {

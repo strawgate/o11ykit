@@ -52,7 +52,9 @@ import {
   toPlotlyEngineTimeSeriesModel,
 } from "./plotly.js";
 import {
+  toRechartsEngineHistogramModel,
   toRechartsEngineLatestValuesModel,
+  toRechartsEngineScatterModel,
   toRechartsEngineTimeSeriesModel,
   toRechartsHistogramModel,
   toRechartsLatestValuesModel,
@@ -123,6 +125,8 @@ export const adapterModules: {
   readonly toPlotlyEngineTimeSeriesFigure: typeof toPlotlyEngineTimeSeriesFigure;
   readonly toPlotlyEngineTimeSeriesModel: typeof toPlotlyEngineTimeSeriesModel;
   readonly toRechartsEngineLatestValuesModel: typeof toRechartsEngineLatestValuesModel;
+  readonly toRechartsEngineHistogramModel: typeof toRechartsEngineHistogramModel;
+  readonly toRechartsEngineScatterModel: typeof toRechartsEngineScatterModel;
   readonly toRechartsEngineTimeSeriesModel: typeof toRechartsEngineTimeSeriesModel;
   readonly toRechartsHistogramModel: typeof toRechartsHistogramModel;
   readonly toRechartsLatestValuesModel: typeof toRechartsLatestValuesModel;
@@ -184,6 +188,8 @@ export const adapterModules: {
   toPlotlyEngineTimeSeriesFigure,
   toPlotlyEngineTimeSeriesModel,
   toRechartsEngineLatestValuesModel,
+  toRechartsEngineHistogramModel,
+  toRechartsEngineScatterModel,
   toRechartsEngineTimeSeriesModel,
   toRechartsHistogramModel,
   toRechartsLatestValuesModel,
@@ -242,6 +248,14 @@ export {
   toEngineWideTableModel,
 } from "./engine.js";
 export type {
+  RechartsBarModel,
+  RechartsEngineScatterModel,
+  RechartsEngineTimeSeriesModel,
+  RechartsEngineTimeSeriesOptions,
+  RechartsSeriesDescriptor,
+  RechartsTimeSeriesModel,
+} from "./recharts.js";
+export type {
   TremorAreaChartProps,
   TremorBarChartProps,
   TremorBarListProps,
@@ -283,7 +297,9 @@ export {
   toPlotlyEngineLatestValuesModel,
   toPlotlyEngineTimeSeriesFigure,
   toPlotlyEngineTimeSeriesModel,
+  toRechartsEngineHistogramModel,
   toRechartsEngineLatestValuesModel,
+  toRechartsEngineScatterModel,
   toRechartsEngineTimeSeriesModel,
   toRechartsHistogramModel,
   toRechartsLatestValuesModel,
