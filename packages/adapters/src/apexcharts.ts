@@ -1,7 +1,10 @@
 import {
+  asEngineHistogramModel,
   asEngineLatestValueModel,
   asEngineWideTableModel,
   type EngineAdapterOptions,
+  type EngineHistogramInput,
+  type EngineHistogramOptions,
   type EngineLatestValueInput,
   type EngineWideTableInput,
 } from "./engine.js";
@@ -12,6 +15,8 @@ export type ApexChartsChartType =
   | "area"
   | "bar"
   | "donut"
+  | "latestBar"
+  | "histogram"
   | "scatter"
   | "sparkline"
   | "gauge";
@@ -19,6 +24,7 @@ export type ApexChartsChartType =
 export interface ApexChartsAdapterOptions extends EngineAdapterOptions {
   readonly chartType?: ApexChartsChartType;
   readonly chartId?: string;
+  readonly title?: string;
 }
 
 export interface ApexChartsOptions {
@@ -29,7 +35,10 @@ export interface ApexChartsOptions {
   };
   readonly series: readonly unknown[];
   readonly labels?: readonly string[];
-  readonly xaxis?: { readonly type: "datetime" | "category" };
+  readonly xaxis?: {
+    readonly type: "datetime" | "category";
+    readonly categories?: readonly string[];
+  };
   readonly stroke?: { readonly curve: "smooth" };
   readonly fill?: { readonly opacity: number };
 }
@@ -74,10 +83,31 @@ export function toApexChartsLatestValuesOptions(
     };
   }
   const rows = latest.rows.filter((row) => row.value !== null);
+  if (chartType === "bar" || chartType === "latestBar") {
+    return {
+      chart: { ...(options.chartId ? { id: options.chartId } : {}), type: "bar" },
+      xaxis: { type: "category", categories: rows.map((row) => row.label) },
+      series: [{ name: options.title ?? "latest", data: rows.map((row) => row.value ?? 0) }],
+    };
+  }
   return {
     chart: { ...(options.chartId ? { id: options.chartId } : {}), type: "donut" },
     labels: rows.map((row) => row.label),
     series: rows.map((row) => row.value ?? 0),
+  };
+}
+
+export function toApexChartsHistogramOptions(
+  model: EngineHistogramInput,
+  options: ApexChartsAdapterOptions & EngineHistogramOptions = {}
+): ApexChartsOptions {
+  const histogram = asEngineHistogramModel(model, options);
+  return {
+    chart: { ...(options.chartId ? { id: options.chartId } : {}), type: "bar" },
+    xaxis: { type: "category", categories: histogram.buckets.map((bucket) => bucket.label) },
+    series: [
+      { name: options.title ?? "samples", data: histogram.buckets.map((bucket) => bucket.count) },
+    ],
   };
 }
 

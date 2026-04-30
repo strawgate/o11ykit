@@ -547,6 +547,7 @@ async function renderPlotly(target, chart, generation) {
 
   const model = chart.adapterOutput;
   const timeRange = timeRangeForChart(chart);
+  const isCategoryChart = chart.chartType === "histogram" || chart.chartType === "latestBar";
   const layout = {
     ...model.layout,
     autosize: true,
@@ -559,12 +560,12 @@ async function renderPlotly(target, chart, generation) {
     xaxis: {
       ...(model.layout?.xaxis ?? {}),
       visible: chart.chartType !== "sparkline",
-      ...(timeRange ? { range: [timeRange.min, timeRange.max] } : {}),
+      ...(timeRange && !isCategoryChart ? { range: [timeRange.min, timeRange.max] } : {}),
     },
     yaxis: {
       ...(model.layout?.yaxis ?? {}),
       visible: chart.chartType !== "sparkline",
-      range: [VALUE_DOMAIN.min, VALUE_DOMAIN.max],
+      range: isCategoryChart ? undefined : [VALUE_DOMAIN.min, VALUE_DOMAIN.max],
     },
   };
   const config = {
@@ -589,6 +590,7 @@ async function renderApexCharts(target, chart, generation) {
 
   const model = chart.adapterOutput;
   const timeRange = timeRangeForChart(chart);
+  const isCategoryChart = chart.chartType === "histogram" || chart.chartType === "latestBar";
   const options = {
     ...model,
     chart: {
@@ -608,13 +610,14 @@ async function renderApexCharts(target, chart, generation) {
     grid: { borderColor: "rgba(17,17,15,0.12)" },
     legend: { show: chart.chartType !== "sparkline" && chart.chartType !== "gauge" },
     xaxis: {
-      type: "datetime",
+      ...(model.xaxis ?? {}),
+      type: model.xaxis?.type ?? "datetime",
       labels: { show: chart.chartType !== "sparkline" },
-      ...(timeRange ?? {}),
+      ...(timeRange && !isCategoryChart ? timeRange : {}),
     },
     yaxis: {
-      min: VALUE_DOMAIN.min,
-      max: VALUE_DOMAIN.max,
+      min: isCategoryChart ? 0 : VALUE_DOMAIN.min,
+      max: isCategoryChart ? undefined : VALUE_DOMAIN.max,
       labels: { show: chart.chartType !== "sparkline" },
     },
   };
@@ -637,6 +640,7 @@ async function renderHighcharts(target, chart, generation) {
 
   const model = chart.adapterOutput;
   const timeRange = timeRangeForChart(chart);
+  const isCategoryChart = chart.chartType === "histogram" || chart.chartType === "latestBar";
   const options = {
     ...model,
     chart: {
@@ -654,14 +658,14 @@ async function renderHighcharts(target, chart, generation) {
     xAxis: {
       ...(model.xAxis ?? {}),
       visible: chart.chartType !== "sparkline",
-      type: chart.chartType === "histogram" ? undefined : "datetime",
-      ...(timeRange ?? {}),
+      type: isCategoryChart ? undefined : "datetime",
+      ...(timeRange && !isCategoryChart ? timeRange : {}),
     },
     yAxis: {
       title: { text: undefined },
       visible: chart.chartType !== "sparkline",
-      min: VALUE_DOMAIN.min,
-      max: VALUE_DOMAIN.max,
+      min: isCategoryChart ? 0 : VALUE_DOMAIN.min,
+      max: isCategoryChart ? undefined : VALUE_DOMAIN.max,
     },
     plotOptions: {
       ...(model.plotOptions ?? {}),
@@ -743,22 +747,12 @@ async function renderNivo(target, chart, generation) {
       runtime.createRoot
     );
   }
-  if (chart.chartType === "bar") {
-    return renderReact(
-      target,
-      React.createElement(runtime.ResponsiveBar, {
-        ...common,
-        data: chart.adapterOutput.data,
-        keys: chart.adapterOutput.keys,
-        indexBy: chart.adapterOutput.indexBy,
-        groupMode: "grouped",
-        enableLabel: false,
-        axisBottom: { tickSize: 0, tickPadding: 6, format: () => "" },
-        axisLeft: { tickSize: 0, tickPadding: 6 },
-        isInteractive: false,
-      }),
-      runtime.createRoot
-    );
+  if (
+    chart.chartType === "bar" ||
+    chart.chartType === "latestBar" ||
+    chart.chartType === "histogram"
+  ) {
+    return renderNivoBar(target, runtime, common, chart);
   }
   if (chart.chartType === "scatter") {
     return renderReact(
@@ -795,6 +789,25 @@ async function renderNivo(target, chart, generation) {
       yScale: { type: "linear", stacked: false, min: VALUE_DOMAIN.min, max: VALUE_DOMAIN.max },
       axisBottom: { tickSize: 0, tickPadding: 6, format: () => "" },
       axisLeft: { tickSize: 0, tickPadding: 6 },
+    }),
+    runtime.createRoot
+  );
+}
+
+function renderNivoBar(target, runtime, common, chart) {
+  const { React } = runtime;
+  return renderReact(
+    target,
+    React.createElement(runtime.ResponsiveBar, {
+      ...common,
+      data: chart.adapterOutput.data,
+      keys: chart.adapterOutput.keys,
+      indexBy: chart.adapterOutput.indexBy,
+      groupMode: "grouped",
+      enableLabel: false,
+      axisBottom: { tickSize: 0, tickPadding: 6, format: () => "" },
+      axisLeft: { tickSize: 0, tickPadding: 6 },
+      isInteractive: false,
     }),
     runtime.createRoot
   );
@@ -929,6 +942,8 @@ async function renderAgCharts(target, chart, generation) {
   if (!isCurrentRender(target, generation)) return undefined;
 
   const model = chart.adapterOutput;
+  const isCategoryChart = chart.chartType === "bar" || chart.chartType === "latestBar";
+  const isHistogram = chart.chartType === "histogram";
   const baseOptions = {
     ...model,
     container: target,
@@ -941,15 +956,15 @@ async function renderAgCharts(target, chart, generation) {
         ? undefined
         : {
             x: {
-              type: chart.chartType === "bar" ? "category" : "number",
+              type: isCategoryChart ? "category" : "number",
               position: "bottom",
               label: { enabled: false },
             },
             y: {
               type: "number",
               position: "left",
-              min: VALUE_DOMAIN.min,
-              max: VALUE_DOMAIN.max,
+              min: isHistogram ? 0 : VALUE_DOMAIN.min,
+              max: isHistogram ? undefined : VALUE_DOMAIN.max,
             },
           },
     theme: {

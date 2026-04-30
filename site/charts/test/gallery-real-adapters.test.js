@@ -1,13 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { toAgChartsTimeSeriesOptions } from "../../../packages/adapters/src/agcharts.js";
-import { toApexChartsLatestValuesOptions } from "../../../packages/adapters/src/apexcharts.js";
+import {
+  toAgChartsHistogramOptions,
+  toAgChartsLatestValuesOptions,
+  toAgChartsTimeSeriesOptions,
+} from "../../../packages/adapters/src/agcharts.js";
+import {
+  toApexChartsHistogramOptions,
+  toApexChartsLatestValuesOptions,
+} from "../../../packages/adapters/src/apexcharts.js";
 import { toChartJsTimeSeriesConfig } from "../../../packages/adapters/src/chartjs.js";
 import { toEChartsHistogramOption } from "../../../packages/adapters/src/echarts.js";
 import {
   toHighchartsHistogramOptions,
+  toHighchartsLatestValuesOptions,
   toHighchartsTimeSeriesOptions,
 } from "../../../packages/adapters/src/highcharts.js";
-import { toNivoBarData } from "../../../packages/adapters/src/nivo.js";
+import {
+  toNivoBarData,
+  toNivoHistogramBarData,
+  toNivoLatestBarData,
+} from "../../../packages/adapters/src/nivo.js";
 import { toObservablePlotOptions } from "../../../packages/adapters/src/observable.js";
 import { toPlotlyLatestValuesFigure } from "../../../packages/adapters/src/plotly.js";
 import {
@@ -82,6 +94,12 @@ describe("chart gallery integration with real adapters", () => {
     expect(toNivoBarData(result, { seriesLabel: gallerySeriesLabel })).toEqual(
       createGalleryState("nivo", "bar").adapterOutput
     );
+    expect(toNivoLatestBarData(result, { seriesLabel: gallerySeriesLabel })).toEqual(
+      createGalleryState("nivo", "latestBar").adapterOutput
+    );
+    expect(toNivoHistogramBarData(result, { seriesLabel: gallerySeriesLabel })).toEqual(
+      createGalleryState("nivo", "histogram").adapterOutput
+    );
     expect(toObservablePlotOptions(result, { seriesLabel: gallerySeriesLabel }).marks).toEqual(
       createGalleryState("observable", "line").adapterOutput.marks
     );
@@ -89,11 +107,26 @@ describe("chart gallery integration with real adapters", () => {
       createGalleryState("plotly", "donut").adapterOutput.data
     );
     expect(
+      toPlotlyLatestValuesFigure(result, {
+        chartType: "latestBar",
+        seriesLabel: gallerySeriesLabel,
+      }).data
+    ).toEqual(createGalleryState("plotly", "latestBar").adapterOutput.data);
+    expect(
       toApexChartsLatestValuesOptions(result, {
         chartType: "gauge",
         seriesLabel: gallerySeriesLabel,
       }).series
     ).toEqual(createGalleryState("apexcharts", "gauge").adapterOutput.series);
+    expect(
+      toApexChartsLatestValuesOptions(result, {
+        chartType: "latestBar",
+        seriesLabel: gallerySeriesLabel,
+      }).series
+    ).toEqual(createGalleryState("apexcharts", "latestBar").adapterOutput.series);
+    expect(
+      toApexChartsHistogramOptions(result, { seriesLabel: gallerySeriesLabel }).series
+    ).toEqual(createGalleryState("apexcharts", "histogram").adapterOutput.series);
     expect(
       toVictorySeries(result, { seriesLabel: gallerySeriesLabel }).map((series) => series.component)
     ).toEqual(
@@ -103,11 +136,26 @@ describe("chart gallery integration with real adapters", () => {
       createGalleryState("agcharts", "line").adapterOutput.series
     );
     expect(
+      toAgChartsLatestValuesOptions(result, {
+        chartType: "latestBar",
+        seriesLabel: gallerySeriesLabel,
+      }).series
+    ).toEqual(createGalleryState("agcharts", "latestBar").adapterOutput.series);
+    expect(toAgChartsHistogramOptions(result, { seriesLabel: gallerySeriesLabel }).series).toEqual(
+      createGalleryState("agcharts", "histogram").adapterOutput.series
+    );
+    expect(
       toHighchartsTimeSeriesOptions(result, { seriesLabel: gallerySeriesLabel }).series
     ).toEqual(createGalleryState("highcharts", "line").adapterOutput.series);
     expect(
       toHighchartsHistogramOptions(result, { seriesLabel: gallerySeriesLabel }).series
     ).toEqual(createGalleryState("highcharts", "histogram").adapterOutput.series);
+    expect(
+      toHighchartsLatestValuesOptions(result, {
+        chartType: "latestBar",
+        seriesLabel: gallerySeriesLabel,
+      }).series
+    ).toEqual(createGalleryState("highcharts", "latestBar").adapterOutput.series);
     expect(toVegaLiteSpec(result, { seriesLabel: gallerySeriesLabel }).mark).toBe(
       createGalleryState("vegalite", "line").adapterOutput.mark
     );
