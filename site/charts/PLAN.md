@@ -76,7 +76,7 @@ site/charts/
 | Library | Time series | Area | Bar/latest | Donut/pie | Histogram | Live/update | Demo stance |
 |---|---:|---:|---:|---:|---:|---|---|
 | Tremor | yes | yes | yes | yes | recipe | React data updates | first wave |
-| Recharts | yes | yes | yes | pie via recipe | yes | React data updates | first wave |
+| Recharts | yes | yes | yes | donut | yes | React data updates | first wave |
 | Chart.js | yes | yes | yes | doughnut | yes | controller + `update('none')` | second wave |
 | ECharts | yes | yes | yes | pie | yes | `setOption` plan, append spike | second wave |
 | uPlot | yes | no native area focus | latest recipe | no | no | live controller + `setData` | second wave |
@@ -115,7 +115,7 @@ Each library page should include:
 
 - Add React/Vite example pages or iframe from workspace examples.
 - Show line, area, bar, donut/barlist for Tremor.
-- Show line, area, bar, composed chart for Recharts.
+- Show line, area, bar, donut, histogram, and scatter chart for Recharts.
 
 ### Phase 3: Existing Adapter Libraries
 

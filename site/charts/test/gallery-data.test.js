@@ -99,6 +99,10 @@ describe("chart gallery data", () => {
         }),
       ]),
     });
+    expect(createGalleryState("recharts", "donut").adapterModel).toMatchObject({
+      categoryKey: "label",
+      valueKey: "value",
+    });
     expect(createGalleryState("echarts", "line").adapterModel.dataset[0].dimensions).toEqual([
       "time",
       "checkout /cart 2xx",
@@ -122,6 +126,7 @@ describe("chart gallery data", () => {
     });
     expect(createGalleryState("agcharts", "area").adapterModel.series[0].type).toBe("area");
     expect(createGalleryState("highcharts", "scatter").adapterModel.chart.type).toBe("scatter");
+    expect(createGalleryState("highcharts", "histogram").adapterModel.chart.type).toBe("column");
     expect(createGalleryState("vegalite", "scatter").adapterModel.mark).toBe("point");
   });
 

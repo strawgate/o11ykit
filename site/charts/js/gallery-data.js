@@ -39,6 +39,7 @@ import {
 } from "../../../packages/adapters/src/plotly.ts";
 import {
   toRechartsEngineHistogramModel,
+  toRechartsEngineLatestValuesModel,
   toRechartsEngineScatterModel,
 } from "../../../packages/adapters/src/recharts.ts";
 import {
@@ -93,7 +94,7 @@ export const LIBRARIES = [
     updateModel: "React data updates",
     status: "implemented",
     package: "@otlpkit/adapters/recharts",
-    charts: ["line", "area", "bar", "histogram", "scatter"],
+    charts: ["line", "area", "bar", "donut", "histogram", "scatter"],
     note: "Keep Recharts ergonomic: rows for data, descriptors for Line/Area/Bar dataKey wiring.",
   },
   {
@@ -173,7 +174,7 @@ export const LIBRARIES = [
     updateModel: "updateSeries",
     status: "exported",
     package: "@otlpkit/adapters/apexcharts",
-    charts: ["line", "area", "bar", "donut", "scatter", "sparkline", "gauge"],
+    charts: ["line", "area", "bar", "donut", "histogram", "scatter", "sparkline", "gauge"],
     note: "Return compact options plus series arrays, including sparkline and radial gauge shapes.",
   },
   {
@@ -203,7 +204,7 @@ export const LIBRARIES = [
     updateModel: "setData",
     status: "exported",
     package: "@otlpkit/adapters/highcharts",
-    charts: ["line", "area", "bar", "donut", "scatter", "sparkline", "gauge"],
+    charts: ["line", "area", "bar", "donut", "histogram", "scatter", "sparkline", "gauge"],
     note: "Return Highcharts-style options while preserving stable engine ids for updates.",
   },
   {
@@ -435,6 +436,9 @@ function tremorModel(chartType, wide, latest) {
 }
 
 function rechartsModel(chartType, wide, latest, histogram) {
+  if (chartType === "donut") {
+    return toRechartsEngineLatestValuesModel(latest);
+  }
   if (chartType === "histogram") {
     return toRechartsEngineHistogramModel(histogram);
   }
@@ -527,6 +531,19 @@ const latest = toEngineLatestValueModel(result);
 const props = ${fn}(${chartType === "donut" || chartType === "barList" ? "latest" : "wide"});`;
   }
   if (libraryId === "recharts") {
+    if (chartType === "donut") {
+      return `import {
+  toEngineLatestValueModel,
+} from "@otlpkit/adapters/engine";
+import {
+  toRechartsEngineLatestValuesModel,
+} from "@otlpkit/adapters/recharts";
+
+const latest = toEngineLatestValueModel(result);
+const model = toRechartsEngineLatestValuesModel(latest, {
+  unit: "ms",
+});`;
+    }
     if (chartType === "histogram") {
       return `import {
   toEngineHistogramModel,
@@ -810,9 +827,38 @@ const wide = toEngineWideTableModel(result);
 const data = toNivoEngineLineSeries(wide);`;
 }
 
-function librarySnippet(libraryId, _chartType, componentName) {
+function librarySnippet(libraryId, chartType, componentName) {
   if (libraryId === "tremor") return `<${componentName} {...props} />`;
   if (libraryId === "recharts") {
+    if (chartType === "donut") {
+      return `<PieChart>
+  <Pie
+    data={model.data}
+    dataKey={model.valueKey}
+    nameKey={model.categoryKey}
+    innerRadius={48}
+  />
+</PieChart>`;
+    }
+    if (chartType === "histogram") {
+      return `<BarChart data={model.data}>
+  <XAxis dataKey={model.categoryKey} />
+  <Bar dataKey={model.valueKey} />
+</BarChart>`;
+    }
+    if (chartType === "scatter") {
+      return `<ScatterChart>
+  <XAxis dataKey={model.xAxisKey} type="number" />
+  <YAxis dataKey={model.yAxisKey} />
+  {model.series.map((s) => (
+    <Scatter
+      key={s.id}
+      name={s.name}
+      data={model.data.filter((row) => row[model.seriesKey] === s.name)}
+    />
+  ))}
+</ScatterChart>`;
+    }
     return `<${componentName} data={model.data}>
   <XAxis dataKey={model.xAxisKey} />
   {model.series.map((s) => <Line key={s.id} dataKey={s.dataKey} name={s.name} />)}

@@ -8,12 +8,16 @@ import {
   toEngineLatestValueModel,
   toEngineWideTableModel,
 } from "../../../packages/adapters/src/engine.js";
-import { toHighchartsEngineTimeSeriesOptions } from "../../../packages/adapters/src/highcharts.js";
+import {
+  toHighchartsEngineHistogramOptions,
+  toHighchartsEngineTimeSeriesOptions,
+} from "../../../packages/adapters/src/highcharts.js";
 import { toNivoEngineBarModel } from "../../../packages/adapters/src/nivo.js";
 import { toObservablePlotEngineModel } from "../../../packages/adapters/src/observable.js";
 import { toPlotlyEngineLatestValuesModel } from "../../../packages/adapters/src/plotly.js";
 import {
   toRechartsEngineHistogramModel,
+  toRechartsEngineLatestValuesModel,
   toRechartsEngineScatterModel,
   toRechartsEngineTimeSeriesModel,
 } from "../../../packages/adapters/src/recharts.js";
@@ -79,6 +83,7 @@ describe("chart gallery integration with real adapters", () => {
   it("backs the Recharts gallery examples with implemented row and dataKey adapters", () => {
     const result = createEngineResult();
     const wide = toEngineWideTableModel(result, { seriesLabel: gallerySeriesLabel });
+    const latest = toEngineLatestValueModel(result, { seriesLabel: gallerySeriesLabel });
     const model = toRechartsEngineTimeSeriesModel(wide, { unit: "ms" });
     const galleryLine = createGalleryState("recharts", "line").adapterModel;
 
@@ -86,6 +91,9 @@ describe("chart gallery integration with real adapters", () => {
     expect(model.tooltipKey).toBe(galleryLine.tooltipKey);
     expect(model.series).toEqual(galleryLine.series);
     expect(model.data).toEqual(galleryLine.data);
+    expect(toRechartsEngineLatestValuesModel(latest)).toEqual(
+      createGalleryState("recharts", "donut").adapterModel
+    );
     expect(toRechartsEngineHistogramModel(toEngineHistogramModel(wide))).toEqual(
       createGalleryState("recharts", "histogram").adapterModel
     );
@@ -127,6 +135,9 @@ describe("chart gallery integration with real adapters", () => {
     );
     expect(toHighchartsEngineTimeSeriesOptions(wide).series).toEqual(
       createGalleryState("highcharts", "line").adapterModel.series
+    );
+    expect(toHighchartsEngineHistogramOptions(histogram).series).toEqual(
+      createGalleryState("highcharts", "histogram").adapterModel.series
     );
     expect(toVegaLiteEngineSpec(wide).mark).toBe(
       createGalleryState("vegalite", "line").adapterModel.mark

@@ -178,9 +178,10 @@ series ids stay available in `line.meta.series`.
 Recharts adapters expose the same engine substrate as row data plus `dataKey` metadata:
 
 ```ts
-import { toEngineHistogramModel } from "@otlpkit/adapters/engine";
+import { toEngineHistogramModel, toEngineLatestValueModel } from "@otlpkit/adapters/engine";
 import {
   toRechartsEngineHistogramModel,
+  toRechartsEngineLatestValuesModel,
   toRechartsEngineScatterModel,
   toRechartsEngineTimeSeriesModel,
 } from "@otlpkit/adapters/recharts";
@@ -189,6 +190,8 @@ const model = toRechartsEngineTimeSeriesModel(wide, { unit: "ms" });
 const scatter = toRechartsEngineScatterModel(wide, { unit: "ms" });
 const buckets = toEngineHistogramModel(wide);
 const histogram = toRechartsEngineHistogramModel(buckets, { unit: "samples" });
+const latest = toEngineLatestValueModel(result);
+const donut = toRechartsEngineLatestValuesModel(latest, { unit: "ms" });
 ```
 
 ```tsx
