@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>o11ykit Charts &middot; Engine to every chart library</title>
+    <meta
+      name="description"
+      content="An interactive adapter gallery showing how the o11ykit engine feeds Tremor, Recharts, Chart.js, ECharts, uPlot, Plotly, ApexCharts, Highcharts, Vega-Lite, and more."
+    />
+    <meta name="theme-color" content="#F2EFE7" />
+    <link rel="icon" href="../logo.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght,SOFT,WONK@9..144,300..700,0..100,0..1&family=Inter+Tight:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to main content</a>
+    <header class="topbar">
+      <a class="brand" href="/o11ykit/">
+        <img class="brand-mark" src="../logo.svg" width="20" height="20" alt="" aria-hidden="true" />
+        o11ykit
+      </a>
+      <nav class="topnav" aria-label="Primary">
+        <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
+        <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+        <a href="/o11ykit/charts/" aria-current="page">Charts</a>
+        <a href="/o11ykit/tracesdb-engine/">TracesDB</a>
+        <a href="/o11ykit/octo11y/">Octo11y</a>
+        <a href="/o11ykit/benchkit/">Benchkit</a>
+        <a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="charts-hero grid-bg">
+        <div class="charts-hero-inner">
+          <div>
+            <p class="t-eyebrow">chart adapter gallery</p>
+            <h1 class="t-display hero-headline">One query.<br />Native charts.</h1>
+            <p class="hero-sub">
+              The engine returns typed time-series results. The adapters turn that into the thing
+              each chart library actually wants: props, rows, configs, datasets, aligned arrays, or
+              traces. Switch libraries below; exported adapters render with the actual chart
+              package, and adapter-shape-only entries are labeled clearly.
+            </p>
+            <div class="hero-actions charts-actions">
+              <a class="stamp-fill" href="#gallery">Open Gallery</a>
+              <a class="stamp" href="#coverage">Coverage</a>
+              <a class="stamp" href="/o11ykit/tsdb-engine/">Engine Demo</a>
+            </div>
+          </div>
+          <div class="hero-terminal" aria-label="Adapter flow code sample">
+            <pre><span class="code-comment">// Query once. Render anywhere.</span>
+const result = engine.query(store, query);
+const wide = toEngineWideTableModel(result);
+
+const tremor = toTremorLineChartProps(wide);
+const recharts =
+  toRechartsEngineTimeSeriesModel(wide);
+// Planned adapters keep
+// the same engine input.</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="gallery-stats" aria-label="Gallery scope">
+        <div class="stat">
+          <span class="stat-value">14</span>
+          <span class="stat-label">chart libraries</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">9</span>
+          <span class="stat-label">chart shapes</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">1</span>
+          <span class="stat-label">engine result</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value">0</span>
+          <span class="stat-label">generic chart DTOs</span>
+        </div>
+      </section>
+
+      <section id="gallery" class="gallery-shell">
+        <div class="gallery-toolbar" aria-label="Gallery controls">
+          <div>
+            <p class="t-eyebrow">library</p>
+            <div id="libraryButtons" class="segmented-control"></div>
+          </div>
+          <div id="librarySummary" class="library-summary"></div>
+          <div class="live-controls" aria-label="Live update controls">
+            <label class="refresh-rate-label" for="refreshRate">Refresh rate</label>
+            <select id="refreshRate" class="refresh-rate-select" aria-label="Refresh rate"></select>
+            <button id="liveToggle" class="live-toggle" type="button" aria-pressed="false">
+              <span class="live-dot" aria-hidden="true"></span>
+              <span id="liveToggleLabel">Live updates</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="gallery-grid">
+          <div id="chartGallery" class="chart-card-grid" aria-label="Chart previews"></div>
+        </div>
+      </section>
+
+      <section id="adapter-docs" class="adapter-docs">
+        <div class="section-inner">
+          <p class="t-eyebrow">user docs</p>
+          <h2 class="t-h2" style="margin:8px 0 8px">Start with the chart shape.</h2>
+          <p class="t-body" style="max-width:72ch;margin:0 0 28px">
+            The engine model is the stable part. Pick the model that matches the chart you are
+            rendering, then use the library adapter to get the object that chart library expects.
+            The most polished adapters today are Tremor and Recharts. Chart.js, ECharts, uPlot,
+            Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, and Vega-Lite
+            also expose real engine-backed adapter exports. Use the Show code button on any chart
+            card to inspect that adapter output beside the package-rendered chart.
+          </p>
+          <div class="adapter-doc-grid">
+            <article class="adapter-doc">
+              <h3>Time series</h3>
+              <p>Use `toEngineWideTableModel` for line, area, and grouped bar charts.</p>
+              <code>rows: [{ t, values[] }]</code>
+            </article>
+            <article class="adapter-doc">
+              <h3>Latest values</h3>
+              <p>Use `toEngineLatestValueModel` for donut charts, pie charts, and bar lists.</p>
+              <code>rows: [{ label, value }]</code>
+            </article>
+            <article class="adapter-doc">
+              <h3>Custom marks</h3>
+              <p>Use `toEngineLineSeriesModel` when the library wants one point array per series.</p>
+              <code>series: [{ id, points[] }]</code>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="ergonomics-audit" class="adapter-docs">
+        <div class="section-inner">
+          <p class="t-eyebrow">ergonomics audit</p>
+          <h2 class="t-h2" style="margin:8px 0 8px">Compared with raw data sources.</h2>
+          <p class="t-body" style="max-width:76ch;margin:0 0 28px">
+            Raw APIs make chart users solve transport, time alignment, grouping, sparse values, and
+            chart-library shape differences at the same time. The engine splits that work: queries
+            produce typed series once, engine models normalize dashboard data once, and adapters
+            return the package-native object a chart user already recognizes.
+          </p>
+          <div class="ergonomics-grid">
+            <article class="ergonomics-card">
+              <h3>Raw source data</h3>
+              <p>
+                Users hand-roll timestamp conversion, joins, latest-value extraction, null
+                handling, and label naming before they can even start writing chart code.
+              </p>
+              <code>fetch() -> reshape -> chart config</code>
+            </article>
+            <article class="ergonomics-card">
+              <h3>Chart-native data</h3>
+              <p>
+                The chart package feels good once the data is shaped, but every package wants a
+                different shape: props, rows, traces, specs, options, marks, or aligned arrays.
+              </p>
+              <code>rows | props | traces | spec | marks</code>
+            </article>
+            <article class="ergonomics-card">
+              <h3>Engine adapters</h3>
+              <p>
+                Users keep one query and one set of engine transforms, then pick the adapter that
+                speaks their chart library's dialect without learning an o11ykit-only chart DTO.
+              </p>
+              <code>engine model -> library-native output</code>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="library-notes">
+        <div class="section-inner">
+          <p class="t-eyebrow">why it feels good</p>
+          <h2 class="t-h2" style="margin:8px 0 8px">Each adapter speaks the library's dialect.</h2>
+          <p class="t-body" style="max-width:72ch;margin:0 0 28px">
+            The shared engine model handles timestamps, sparse rows, nulls, labels, and latest
+            values. Library adapters stay thin and lovable: a Tremor user gets props, a Recharts
+            user gets rows and data keys, uPlot gets aligned arrays, and ECharts gets
+            dataset/encode.
+          </p>
+          <div id="libraryCards" class="library-card-grid"></div>
+        </div>
+      </section>
+
+      <section id="coverage">
+        <div class="section-inner">
+          <p class="t-eyebrow">coverage</p>
+          <h2 class="t-h2" style="margin:8px 0 8px">Chart shape by chart shape.</h2>
+          <p class="t-body" style="max-width:72ch;margin:0 0 28px">
+            First-class does not mean every adapter exposes the same API. It means every chart type
+            has the smallest useful bridge from engine output to that library's natural runtime.
+          </p>
+          <div class="coverage-table-wrap">
+            <table id="coverageTable" class="coverage-table"></table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./js/gallery-app.js"></script>
+  </body>
+</html>
