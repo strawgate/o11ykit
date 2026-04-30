@@ -88,11 +88,22 @@ Those should be incremental helpers, not a second required API for everyone.
 
 ## Quick Example
 
-```ts
-import { toChartJsViewLineConfig } from "@otlpkit/adapters/chartjs";
+For metrics queried through the TSDB engine, pass the query result directly to the chart-library
+adapter:
 
-const config = toChartJsViewLineConfig(timeSeriesFrame);
+```ts
+import { toChartJsTimeSeriesConfig } from "@otlpkit/adapters/chartjs";
+import { toRechartsTimeSeriesData } from "@otlpkit/adapters/recharts";
+import { toTremorLineChartProps } from "@otlpkit/adapters/tremor";
+
+const seriesLabel = (series) => series.labels.get("host") ?? "unknown";
+
+const tremor = toTremorLineChartProps(result, { seriesLabel });
+const recharts = toRechartsTimeSeriesData(result, { seriesLabel, unit: "ms" });
+const chartjs = toChartJsTimeSeriesConfig(result, { seriesLabel });
 ```
+
+View-frame adapters are still available for applications already using `@otlpkit/views` frames:
 
 ```ts
 import { toUPlotViewTimeSeriesArgs } from "@otlpkit/adapters/uplot";
@@ -120,19 +131,7 @@ new uPlot(
 ## Engine-backed adapters
 
 Chart-library adapters accept `QueryResult`-shaped data directly and return the native shape for
-that package:
-
-```ts
-import { toChartJsTimeSeriesConfig } from "@otlpkit/adapters/chartjs";
-import { toRechartsTimeSeriesData } from "@otlpkit/adapters/recharts";
-import { toTremorLineChartProps } from "@otlpkit/adapters/tremor";
-
-const seriesLabel = (series) => series.labels.get("host") ?? "unknown";
-
-const tremor = toTremorLineChartProps(result, { seriesLabel });
-const recharts = toRechartsTimeSeriesData(result, { seriesLabel, unit: "ms" });
-const chartjs = toChartJsTimeSeriesConfig(result, { seriesLabel });
-```
+that package. The quick example above is the preferred engine-backed path.
 
 The reusable engine normalization helpers still exist in `@otlpkit/adapters/engine` for advanced
 cases where an application wants to normalize once and feed many adapters:
