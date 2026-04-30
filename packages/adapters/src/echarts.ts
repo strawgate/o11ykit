@@ -1,5 +1,10 @@
 import type { HistogramFrame, LatestValuesFrame, TimeSeriesFrame } from "@otlpkit/views";
 
+import type {
+  EngineHistogramModel,
+  EngineLatestValueModel,
+  EngineWideTableModel,
+} from "./engine.js";
 import { histogramRows, pivotTimeSeriesFrame } from "./shared.js";
 
 export interface EChartsDataset {
@@ -28,15 +33,169 @@ export interface EChartsOption {
     readonly name: string;
   };
   readonly series: readonly {
-    readonly type: "line" | "bar";
+    readonly type: "line" | "bar" | "scatter" | "pie" | "gauge";
     readonly name: string;
     readonly datasetId: string;
     readonly encode: Record<string, string | string[]>;
+    readonly data?: readonly unknown[];
     readonly showSymbol?: boolean;
+    readonly areaStyle?: Record<string, unknown> | undefined;
     readonly emphasis?: {
       readonly focus: "series";
     };
   }[];
+}
+
+export type EChartsEngineChartType =
+  | "line"
+  | "area"
+  | "bar"
+  | "donut"
+  | "histogram"
+  | "scatter"
+  | "sparkline"
+  | "gauge";
+
+export interface EChartsEngineOptions {
+  readonly chartType?: EChartsEngineChartType;
+  readonly unit?: string | null;
+}
+
+export function toEChartsEngineTimeSeriesOption(
+  model: EngineWideTableModel,
+  options: EChartsEngineOptions = {}
+): EChartsOption {
+  const chartType = options.chartType ?? "line";
+  return {
+    aria: { enabled: true },
+    legend: { type: "scroll" },
+    tooltip: { trigger: "axis" },
+    dataset: [
+      {
+        id: "telemetry",
+        dimensions: ["time", ...model.series.map((series) => series.label)],
+        source: model.rows.map((row) => {
+          const output: Record<string, number | string | null> = { time: row.t };
+          model.series.forEach((series, index) => {
+            output[series.label] = row.values[index] ?? null;
+          });
+          return output;
+        }),
+      },
+    ],
+    xAxis: { type: "time" },
+    yAxis: { type: "value", name: options.unit ?? "" },
+    series: model.series.map((series) => ({
+      type: chartType === "bar" ? "bar" : chartType === "scatter" ? "scatter" : "line",
+      name: series.label,
+      datasetId: "telemetry",
+      encode: { x: "time", y: series.label, tooltip: ["time", series.label] },
+      showSymbol: chartType !== "sparkline",
+      areaStyle: chartType === "area" ? {} : undefined,
+      emphasis: { focus: "series" },
+    })),
+  };
+}
+
+export function toEChartsEngineLatestValuesOption(
+  model: EngineLatestValueModel,
+  options: EChartsEngineOptions = {}
+): EChartsOption {
+  const chartType = options.chartType ?? "bar";
+  if (chartType === "donut") {
+    return {
+      aria: { enabled: true },
+      legend: { type: "scroll" },
+      tooltip: { trigger: "item" },
+      dataset: [],
+      xAxis: { type: "category" },
+      yAxis: { type: "value", name: options.unit ?? "" },
+      series: [
+        {
+          type: "pie",
+          name: "latest",
+          datasetId: "",
+          encode: {},
+          data: model.rows.flatMap((row) =>
+            row.value === null ? [] : [{ name: row.label, value: row.value }]
+          ),
+        },
+      ],
+    };
+  }
+  if (chartType === "gauge") {
+    return {
+      aria: { enabled: true },
+      legend: { type: "scroll" },
+      tooltip: { trigger: "item" },
+      dataset: [],
+      xAxis: { type: "category" },
+      yAxis: { type: "value", name: options.unit ?? "" },
+      series: [
+        {
+          type: "gauge",
+          name: "latest",
+          datasetId: "",
+          encode: {},
+          data: [{ name: "average", value: gaugeValue(model) }],
+        },
+      ],
+    };
+  }
+  return {
+    aria: { enabled: true },
+    legend: { type: "scroll" },
+    tooltip: { trigger: "item" },
+    dataset: [
+      {
+        id: "latest-values",
+        dimensions: ["label", "value"],
+        source: model.rows.flatMap((row) =>
+          row.value === null ? [] : [{ label: row.label, value: row.value }]
+        ),
+      },
+    ],
+    xAxis: { type: "category" },
+    yAxis: { type: "value", name: options.unit ?? "" },
+    series: [
+      {
+        type: "bar",
+        name: "latest",
+        datasetId: "latest-values",
+        encode: { x: "label", y: "value", tooltip: ["label", "value"] },
+      },
+    ],
+  };
+}
+
+export function toEChartsEngineHistogramOption(model: EngineHistogramModel): EChartsOption {
+  return {
+    aria: { enabled: true },
+    legend: { type: "scroll" },
+    tooltip: { trigger: "item" },
+    dataset: [
+      {
+        id: "histogram",
+        dimensions: ["label", "count", "start", "end"],
+        source: model.buckets.map((bucket) => ({
+          label: bucket.label,
+          count: bucket.count,
+          start: bucket.start,
+          end: bucket.end,
+        })),
+      },
+    ],
+    xAxis: { type: "category" },
+    yAxis: { type: "value", name: "Count" },
+    series: [
+      {
+        type: "bar",
+        name: "samples",
+        datasetId: "histogram",
+        encode: { x: "label", y: "count", tooltip: ["label", "count", "start", "end"] },
+      },
+    ],
+  };
 }
 
 export function toEChartsTimeSeriesOption(frame: TimeSeriesFrame): EChartsOption {
@@ -81,6 +240,15 @@ export function toEChartsTimeSeriesOption(frame: TimeSeriesFrame): EChartsOption
       },
     })),
   };
+}
+
+function gaugeValue(model: EngineLatestValueModel): number {
+  const values = model.rows
+    .map((row) => row.value)
+    .filter((value): value is number => value !== null);
+  if (values.length === 0) return 0;
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return Math.round(Math.max(0, Math.min(200, average)));
 }
 
 export function toEChartsLatestValuesOption(frame: LatestValuesFrame): EChartsOption {

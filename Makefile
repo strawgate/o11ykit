@@ -89,9 +89,12 @@ pages-build:
 	BASE_PATH=/o11ykit/logsdb-engine/ npx vite build site/logsdb-engine
 	BASE_PATH=/o11ykit/tracesdb-engine/ npx vite build site/tracesdb-engine
 	BASE_PATH=/o11ykit/tsdb-engine/ npx vite build site/tsdb-engine
+	BASE_PATH=/o11ykit/charts/ npx vite build site/charts
 	rm -rf .site
 	mkdir -p .site/otlpkit
 	cp -R site/* .site/
+	rm -rf .site/charts/js .site/charts/dist
+	cp -R site/charts/dist/* .site/charts/
 	rm -rf .site/logsdb-engine/js .site/logsdb-engine/dist
 	cp -R site/logsdb-engine/dist/* .site/logsdb-engine/
 	rm -rf .site/tracesdb-engine/js .site/tracesdb-engine/dist

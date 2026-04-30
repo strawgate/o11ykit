@@ -1,10 +1,16 @@
 import type { HistogramFrame, LatestValuesFrame, TimeSeriesFrame } from "@otlpkit/views";
 
+import type {
+  EngineHistogramModel,
+  EngineLatestValueModel,
+  EngineWideTableModel,
+} from "./engine.js";
 import { histogramRows, pivotTimeSeriesFrame } from "./shared.js";
 
 export interface RechartsSeriesDescriptor {
   readonly dataKey: string;
   readonly name: string;
+  readonly id?: string;
 }
 
 export interface RechartsTimeSeriesModel {
@@ -15,11 +21,31 @@ export interface RechartsTimeSeriesModel {
   readonly series: readonly RechartsSeriesDescriptor[];
 }
 
+export interface RechartsEngineTimeSeriesModel {
+  readonly data: readonly Record<string, number | string | null>[];
+  readonly xAxisKey: string;
+  readonly tooltipKey: string;
+  readonly unit: string | null;
+  readonly series: readonly RechartsSeriesDescriptor[];
+}
+
 export interface RechartsBarModel {
   readonly data: readonly Record<string, number | string>[];
   readonly categoryKey: string;
   readonly valueKey: string;
   readonly unit: string | null;
+}
+
+export interface RechartsEngineScatterModel {
+  readonly data: readonly Record<string, number | string | null>[];
+  readonly xAxisKey: string;
+  readonly yAxisKey: string;
+  readonly seriesKey: string;
+  readonly unit: string | null;
+  readonly series: readonly {
+    readonly id: string;
+    readonly name: string;
+  }[];
 }
 
 export function toRechartsTimeSeriesModel(frame: TimeSeriesFrame): RechartsTimeSeriesModel {
@@ -55,4 +81,134 @@ export function toRechartsHistogramModel(frame: HistogramFrame): RechartsBarMode
     valueKey: "count",
     unit: frame.unit,
   };
+}
+
+export interface RechartsEngineTimeSeriesOptions {
+  readonly xAxisKey?: string;
+  readonly tooltipKey?: string;
+  readonly unit?: string | null;
+  readonly seriesName?: (series: EngineWideTableModel["series"][number], index: number) => string;
+}
+
+export function toRechartsEngineTimeSeriesModel(
+  model: EngineWideTableModel,
+  options: RechartsEngineTimeSeriesOptions = {}
+): RechartsEngineTimeSeriesModel {
+  const xAxisKey = options.xAxisKey ?? "time";
+  const tooltipKey = options.tooltipKey ?? xAxisKey;
+  const reservedKeys = new Set([xAxisKey, tooltipKey]);
+  const series = model.series.map((series, index) => ({
+    id: series.id,
+    dataKey: uniqueDataKey(series.id, reservedKeys),
+    name: options.seriesName?.(series, index) ?? series.label,
+  }));
+
+  return {
+    data: model.rows.map((row) => {
+      const output: Record<string, number | string | null> = {
+        [xAxisKey]: row.t,
+      };
+      if (tooltipKey !== xAxisKey) {
+        output[tooltipKey] = row.t;
+      }
+      for (let i = 0; i < model.series.length; i++) {
+        const seriesMeta = series[i];
+        if (!seriesMeta) continue;
+        output[seriesMeta.dataKey] = row.values[i] ?? null;
+      }
+      return output;
+    }),
+    xAxisKey,
+    tooltipKey,
+    unit: options.unit ?? null,
+    series,
+  };
+}
+
+export function toRechartsEngineLatestValuesModel(
+  model: EngineLatestValueModel,
+  options: { readonly unit?: string | null } = {}
+): RechartsBarModel {
+  return {
+    data: model.rows.flatMap((row) =>
+      row.value === null
+        ? []
+        : [
+            {
+              label: row.label,
+              value: row.value,
+            },
+          ]
+    ),
+    categoryKey: "label",
+    valueKey: "value",
+    unit: options.unit ?? null,
+  };
+}
+
+export function toRechartsEngineHistogramModel(
+  model: EngineHistogramModel,
+  options: { readonly unit?: string | null } = {}
+): RechartsBarModel {
+  return {
+    data: model.buckets.map((bucket) => ({
+      label: bucket.label,
+      count: bucket.count,
+      start: bucket.start,
+      end: bucket.end,
+    })),
+    categoryKey: "label",
+    valueKey: "count",
+    unit: options.unit ?? null,
+  };
+}
+
+export function toRechartsEngineScatterModel(
+  model: EngineWideTableModel,
+  options: {
+    readonly xAxisKey?: string;
+    readonly yAxisKey?: string;
+    readonly seriesKey?: string;
+    readonly unit?: string | null;
+    readonly seriesName?: (series: EngineWideTableModel["series"][number], index: number) => string;
+  } = {}
+): RechartsEngineScatterModel {
+  const xAxisKey = options.xAxisKey ?? "time";
+  const yAxisKey = options.yAxisKey ?? "value";
+  const seriesKey = options.seriesKey ?? "series";
+  if (xAxisKey === yAxisKey || xAxisKey === seriesKey || yAxisKey === seriesKey) {
+    throw new RangeError("Recharts scatter xAxisKey, yAxisKey, and seriesKey must be distinct");
+  }
+  const series = model.series.map((series, index) => ({
+    id: series.id,
+    name: options.seriesName?.(series, index) ?? series.label,
+  }));
+
+  return {
+    data: model.rows.flatMap((row) =>
+      series.map((series, index) => ({
+        [xAxisKey]: row.t,
+        [yAxisKey]: row.values[index] ?? null,
+        [seriesKey]: series.name,
+        id: series.id,
+      }))
+    ),
+    xAxisKey,
+    yAxisKey,
+    seriesKey,
+    unit: options.unit ?? null,
+    series,
+  };
+}
+
+function uniqueDataKey(base: string, used: Set<string>): string {
+  const fallback = base.length > 0 ? base : `series-${used.size}`;
+  let key = fallback;
+  let suffix = 2;
+  while (used.has(key)) {
+    key = `${fallback} (${suffix})`;
+    suffix += 1;
+  }
+  used.add(key);
+  return key;
 }

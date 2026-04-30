@@ -27,20 +27,75 @@
       "import": "./dist/chartjs.js",
       "default": "./dist/chartjs.js"
     },
+    "./agcharts": {
+      "types": "./dist/agcharts.d.ts",
+      "import": "./dist/agcharts.js",
+      "default": "./dist/agcharts.js"
+    },
+    "./apexcharts": {
+      "types": "./dist/apexcharts.d.ts",
+      "import": "./dist/apexcharts.js",
+      "default": "./dist/apexcharts.js"
+    },
     "./echarts": {
       "types": "./dist/echarts.d.ts",
       "import": "./dist/echarts.js",
       "default": "./dist/echarts.js"
+    },
+    "./engine": {
+      "types": "./dist/engine.d.ts",
+      "import": "./dist/engine.js",
+      "default": "./dist/engine.js"
     },
     "./recharts": {
       "types": "./dist/recharts.d.ts",
       "import": "./dist/recharts.js",
       "default": "./dist/recharts.js"
     },
+    "./highcharts": {
+      "types": "./dist/highcharts.d.ts",
+      "import": "./dist/highcharts.js",
+      "default": "./dist/highcharts.js"
+    },
+    "./nivo": {
+      "types": "./dist/nivo.d.ts",
+      "import": "./dist/nivo.js",
+      "default": "./dist/nivo.js"
+    },
+    "./observable": {
+      "types": "./dist/observable.d.ts",
+      "import": "./dist/observable.js",
+      "default": "./dist/observable.js"
+    },
+    "./plotly": {
+      "types": "./dist/plotly.d.ts",
+      "import": "./dist/plotly.js",
+      "default": "./dist/plotly.js"
+    },
+    "./tremor": {
+      "types": "./dist/tremor.d.ts",
+      "import": "./dist/tremor.js",
+      "default": "./dist/tremor.js"
+    },
     "./uplot": {
       "types": "./dist/uplot.d.ts",
       "import": "./dist/uplot.js",
       "default": "./dist/uplot.js"
+    },
+    "./vegalite": {
+      "types": "./dist/vegalite.d.ts",
+      "import": "./dist/vegalite.js",
+      "default": "./dist/vegalite.js"
+    },
+    "./victory": {
+      "types": "./dist/victory.d.ts",
+      "import": "./dist/victory.js",
+      "default": "./dist/victory.js"
+    },
+    "./visx": {
+      "types": "./dist/visx.d.ts",
+      "import": "./dist/visx.js",
+      "default": "./dist/visx.js"
     },
     "./waterfall": {
       "types": "./dist/waterfall.d.ts",
