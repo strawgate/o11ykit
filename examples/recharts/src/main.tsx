@@ -1,7 +1,7 @@
 import {
-  toRechartsHistogramModel,
-  toRechartsLatestValuesModel,
-  toRechartsTimeSeriesModel,
+  toRechartsViewHistogramData,
+  toRechartsViewLatestValuesData,
+  toRechartsViewTimeSeriesData,
 } from "@otlpkit/adapters/recharts";
 import { buildHistogramFrame, buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
 import type { JSX } from "react";
@@ -37,9 +37,9 @@ const histogramFrame = buildHistogramFrame(sampleMetricsDocument, {
   title: "Output duration histogram",
   binCount: 6,
 });
-const timeSeriesModel = toRechartsTimeSeriesModel(frame);
-const latestValuesModel = toRechartsLatestValuesModel(latestValuesFrame);
-const histogramModel = toRechartsHistogramModel(histogramFrame);
+const timeSeriesModel = toRechartsViewTimeSeriesData(frame);
+const latestValuesModel = toRechartsViewLatestValuesData(latestValuesFrame);
+const histogramModel = toRechartsViewHistogramData(histogramFrame);
 
 function App(): JSX.Element {
   return (
