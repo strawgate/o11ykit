@@ -1,7 +1,10 @@
 import {
+  asEngineHistogramModel,
   asEngineLatestValueModel,
   asEngineWideTableModel,
   type EngineAdapterOptions,
+  type EngineHistogramInput,
+  type EngineHistogramOptions,
   type EngineLatestValueInput,
   type EngineWideTableInput,
 } from "./engine.js";
@@ -18,7 +21,7 @@ export interface NivoSeries {
 }
 
 export interface NivoBarData {
-  readonly data: readonly Record<string, number | null>[];
+  readonly data: readonly Record<string, number | string | null>[];
   readonly keys: readonly string[];
   readonly indexBy: string;
 }
@@ -93,6 +96,52 @@ export function toNivoBarProps(
 ): NivoBarProps {
   return {
     ...toNivoBarData(model, options),
+    groupMode: options.groupMode ?? "grouped",
+  };
+}
+
+export function toNivoLatestBarData(
+  model: EngineLatestValueInput,
+  options: EngineAdapterOptions = {}
+): NivoBarData {
+  return {
+    data: asEngineLatestValueModel(model, options).rows.flatMap((row) =>
+      row.value === null ? [] : [{ label: row.label, value: row.value }]
+    ),
+    keys: ["value"],
+    indexBy: "label",
+  };
+}
+
+export function toNivoLatestBarProps(
+  model: EngineLatestValueInput,
+  options: EngineAdapterOptions & { readonly groupMode?: "grouped" | "stacked" } = {}
+): NivoBarProps {
+  return {
+    ...toNivoLatestBarData(model, options),
+    groupMode: options.groupMode ?? "grouped",
+  };
+}
+
+export function toNivoHistogramBarData(
+  model: EngineHistogramInput,
+  options: EngineAdapterOptions & EngineHistogramOptions = {}
+): NivoBarData {
+  const histogram = asEngineHistogramModel(model, options);
+  return {
+    data: histogram.buckets.map((bucket) => ({ label: bucket.label, count: bucket.count })),
+    keys: ["count"],
+    indexBy: "label",
+  };
+}
+
+export function toNivoHistogramBarProps(
+  model: EngineHistogramInput,
+  options: EngineAdapterOptions &
+    EngineHistogramOptions & { readonly groupMode?: "grouped" | "stacked" } = {}
+): NivoBarProps {
+  return {
+    ...toNivoHistogramBarData(model, options),
     groupMode: options.groupMode ?? "grouped",
   };
 }

@@ -85,7 +85,7 @@ describe("chart gallery data", () => {
     }
   });
 
-  it("only advertises ApexCharts shapes backed by exported ApexCharts adapters", () => {
+  it("advertises ApexCharts shapes only after exported adapter support exists", () => {
     const apexCharts = LIBRARIES.find((library) => library.id === "apexcharts");
 
     expect(apexCharts?.charts).toEqual([
@@ -93,12 +93,12 @@ describe("chart gallery data", () => {
       "area",
       "bar",
       "donut",
+      "latestBar",
+      "histogram",
       "scatter",
       "sparkline",
       "gauge",
     ]);
-    expect(apexCharts?.charts).not.toContain("histogram");
-    expect(apexCharts?.charts).not.toContain("latestBar");
   });
 
   it("falls back to the first natural chart type when a library does not support a shape", () => {
@@ -145,12 +145,23 @@ describe("chart gallery data", () => {
     expect(createGalleryState("echarts", "latestBar").adapterOutput.series[0].type).toBe("bar");
     expect(createGalleryState("uplot", "line").adapterOutput.data).toHaveLength(5);
     expect(createGalleryState("plotly", "donut").adapterOutput.data[0].type).toBe("pie");
+    expect(createGalleryState("plotly", "latestBar").adapterOutput.data[0].type).toBe("bar");
     expect(createGalleryState("apexcharts", "gauge").adapterOutput.chart.type).toBe("radialBar");
+    expect(createGalleryState("apexcharts", "latestBar").adapterOutput.chart.type).toBe("bar");
+    expect(createGalleryState("apexcharts", "histogram").adapterOutput.xaxis.type).toBe("category");
     expect(createGalleryState("nivo", "bar").adapterOutput).toMatchObject({
       indexBy: "time",
       keys: expect.arrayContaining([
         "__name__=http.server.duration,route=/cart,service=checkout,status_class=2xx",
       ]),
+    });
+    expect(createGalleryState("nivo", "latestBar").adapterOutput).toMatchObject({
+      indexBy: "label",
+      keys: ["value"],
+    });
+    expect(createGalleryState("nivo", "histogram").adapterOutput).toMatchObject({
+      indexBy: "label",
+      keys: ["count"],
     });
     expect(createGalleryState("observable", "sparkline").adapterOutput.marks[0].mark).toBe("lineY");
     expect(createGalleryState("victory", "bar").adapterOutput[0]).toMatchObject({
@@ -158,7 +169,12 @@ describe("chart gallery data", () => {
       y: expect.any(Number),
     });
     expect(createGalleryState("agcharts", "area").adapterOutput.series[0].type).toBe("area");
+    expect(createGalleryState("agcharts", "latestBar").adapterOutput.series[0].type).toBe("bar");
+    expect(createGalleryState("agcharts", "histogram").adapterOutput.series[0].type).toBe(
+      "histogram"
+    );
     expect(createGalleryState("highcharts", "scatter").adapterOutput.chart.type).toBe("scatter");
+    expect(createGalleryState("highcharts", "latestBar").adapterOutput.chart.type).toBe("bar");
     expect(createGalleryState("highcharts", "histogram").adapterOutput.chart.type).toBe("column");
     expect(createGalleryState("vegalite", "scatter").adapterOutput.mark).toBe("point");
   });

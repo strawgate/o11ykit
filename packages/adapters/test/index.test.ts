@@ -15,9 +15,11 @@ import {
 } from "../src/engine.js";
 import * as adapterBarrel from "../src/index.js";
 import {
+  toAgChartsHistogramOptions,
   toAgChartsLatestValuesOptions,
   toAgChartsTimeSeriesOptions,
   toAgChartsUpdateDelta,
+  toApexChartsHistogramOptions,
   toApexChartsLatestValuesOptions,
   toApexChartsSeriesUpdate,
   toApexChartsTimeSeriesOptions,
@@ -33,9 +35,12 @@ import {
   toEChartsViewHistogramOption,
   toEChartsViewLatestValuesOption,
   toEChartsViewTimeSeriesOption,
+  toHighchartsLatestValuesOptions,
   toHighchartsTimeSeriesOptions,
   toNivoBarData,
   toNivoBarProps,
+  toNivoHistogramBarData,
+  toNivoLatestBarData,
   toNivoLineProps,
   toNivoLineSeries,
   toNivoPieProps,
@@ -175,6 +180,8 @@ describe("@otlpkit/adapters", () => {
     expect(toEChartsHistogramOption(histogram).dataset[0]?.source).toHaveLength(3);
     expect(toUPlotTimeSeriesArgs(wide).data).toHaveLength(3);
     expect(toNivoBarData(wide).keys).toEqual(["__name__=cpu,host=a", "__name__=cpu,host=b"]);
+    expect(toNivoLatestBarData(latest).keys).toEqual(["value"]);
+    expect(toNivoHistogramBarData(histogram).indexBy).toBe("label");
     expect(toNivoLineProps(wide, { chartType: "sparkline" }).enablePoints).toBe(false);
     expect(toNivoPieProps(latest).value).toBe("value");
     expect(toObservablePlotOptions(wide).marks[0]?.mark).toBe("lineY");
@@ -183,19 +190,35 @@ describe("@otlpkit/adapters", () => {
     expect(toPlotlyTimeSeriesFigure(wide).data[0]?.uid).toMatch(/^engine-0-[a-z0-9]+$/);
     expect(toPlotlyTimeSeriesFigure(wide).data[0]?.name).toBe("a");
     expect(toPlotlyLatestValuesFigure(latest).config.responsive).toBe(true);
+    expect(toPlotlyLatestValuesFigure(latest, { chartType: "latestBar" }).data[0]?.type).toBe(
+      "bar"
+    );
     expect(toRechartsHistogramData(histogram).valueKey).toBe("count");
     expect(toRechartsScatterData(wide).series.map((series) => series.name)).toEqual(["a", "b"]);
     expect(toApexChartsLatestValuesOptions(latest, { chartType: "gauge" }).chart.type).toBe(
       "radialBar"
     );
+    expect(toApexChartsLatestValuesOptions(latest, { chartType: "latestBar" }).chart.type).toBe(
+      "bar"
+    );
+    expect(toApexChartsHistogramOptions(histogram).xaxis?.categories).toHaveLength(3);
     expect(toApexChartsSeriesUpdate(toApexChartsLatestValuesOptions(latest)).series).toEqual([
       3, 30,
     ]);
     expect(toVictorySeries(wide, { chartType: "area" })[0]?.component).toBe("VictoryArea");
     expect(toVictoryChartProps(wide).scale.x).toBe("time");
     expect(toAgChartsTimeSeriesOptions(wide, { chartType: "area" }).series?.[0]?.type).toBe("area");
+    expect(
+      toAgChartsLatestValuesOptions(latest, { chartType: "latestBar" }).series?.[0]?.type
+    ).toBe("bar");
+    expect(toAgChartsHistogramOptions(wide, { bucketCount: 3 }).series?.[0]?.type).toBe(
+      "histogram"
+    );
     expect(toAgChartsUpdateDelta(toAgChartsTimeSeriesOptions(wide)).data).toHaveLength(3);
     expect(toHighchartsTimeSeriesOptions(wide).chart.type).toBe("line");
+    expect(toHighchartsLatestValuesOptions(latest, { chartType: "latestBar" }).chart.type).toBe(
+      "bar"
+    );
     expect(toHighchartsTimeSeriesOptions(wide).xAxis?.type).toBe("datetime");
     expect(toVegaLiteSpec(wide, { mark: "scatter" }).mark).toBe("point");
     expect(toVegaLiteSpec(wide).$schema).toContain("vega-lite");
@@ -229,11 +252,18 @@ describe("@otlpkit/adapters", () => {
       "__name__=cpu,host=b",
     ]);
     expect(toNivoBarProps(engineResult, options).data[0]?.["__name__=cpu,host=a"]).toBe(1);
+    expect(toNivoLatestBarData(engineResult, options).data[1]?.value).toBe(30);
+    expect(toNivoHistogramBarData(engineResult, { ...options, bucketCount: 3 }).data).toHaveLength(
+      3
+    );
     expect(toObservablePlotOptions(engineResult, options).data[0]?.series).toBe("a");
     expect(toPlotlyTimeSeriesFigure(engineResult, options).data[0]?.name).toBe("a");
     expect(
       toPlotlyHistogramFigure(engineResult, { ...options, bucketCount: 3 }).data[0]?.type
     ).toBe("bar");
+    expect(
+      toPlotlyLatestValuesFigure(engineResult, { ...options, chartType: "latestBar" }).data[0]?.x
+    ).toEqual(["a", "b"]);
     expect(toRechartsTimeSeriesData(engineResult, options).series[0]?.name).toBe("a");
     expect(toRechartsLatestValuesData(engineResult, options).data[1]?.value).toBe(30);
     expect(toRechartsHistogramData(engineResult, { ...options, bucketCount: 3 }).data).toHaveLength(
@@ -241,6 +271,13 @@ describe("@otlpkit/adapters", () => {
     );
     expect(toApexChartsTimeSeriesOptions(engineResult, options).series[0]?.name).toBe("a");
     expect(toApexChartsLatestValuesOptions(engineResult, options).labels).toEqual(["a", "b"]);
+    expect(
+      toApexChartsLatestValuesOptions(engineResult, { ...options, chartType: "latestBar" }).xaxis
+        ?.categories
+    ).toEqual(["a", "b"]);
+    expect(
+      toApexChartsHistogramOptions(engineResult, { ...options, bucketCount: 3 }).series[0]
+    ).toMatchObject({ name: "samples" });
     expect(toVictorySeries(engineResult, options)[0]?.label).toBe("a");
     expect(toVictoryLatestData(engineResult, options)).toEqual([
       { x: "a", y: 3 },
@@ -251,7 +288,18 @@ describe("@otlpkit/adapters", () => {
       { label: "a", value: 3 },
       { label: "b", value: 30 },
     ]);
+    expect(
+      toAgChartsLatestValuesOptions(engineResult, { ...options, chartType: "latestBar" })
+        .series?.[0]?.type
+    ).toBe("bar");
+    expect(
+      toAgChartsHistogramOptions(engineResult, { ...options, bucketCount: 3 }).data
+    ).toHaveLength(4);
     expect(toHighchartsTimeSeriesOptions(engineResult, options).series?.[0]?.name).toBe("a");
+    expect(
+      toHighchartsLatestValuesOptions(engineResult, { ...options, chartType: "latestBar" })
+        .series[0]?.data
+    ).toEqual([3, 30]);
     expect(toVegaLiteSpec(engineResult, options).data.values[0]?.series).toBe("a");
   });
 
@@ -688,7 +736,10 @@ describe("@otlpkit/adapters", () => {
     };
 
     expect(typeof adapterBarrel.adapterModules.toChartJsViewLineConfig).toBe("function");
+    expect(typeof adapterBarrel.adapterModules.toApexChartsHistogramOptions).toBe("function");
+    expect(typeof adapterBarrel.adapterModules.toNivoLatestBarData).toBe("function");
     expect(typeof adapterBarrel.adapterModules.toAgChartsTimeSeriesOptions).toBe("function");
+    expect(typeof adapterBarrel.adapterModules.toAgChartsHistogramOptions).toBe("function");
     expect(typeof adapterBarrel.adapterModules.toVegaLiteSpec).toBe("function");
     expect(typeof adapterBarrel.adapterModules.toVisxXYChartModel).toBe("function");
     expect("toEngineWideTableModel" in adapterBarrel.adapterModules).toBe(false);

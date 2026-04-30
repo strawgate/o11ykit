@@ -1,9 +1,11 @@
 import {
+  toAgChartsHistogramOptions,
   toAgChartsLatestValuesOptions,
   toAgChartsTimeSeriesOptions,
   toAgChartsUpdateDelta,
 } from "./agcharts.js";
 import {
+  toApexChartsHistogramOptions,
   toApexChartsLatestValuesOptions,
   toApexChartsSeriesUpdate,
   toApexChartsTimeSeriesOptions,
@@ -32,6 +34,10 @@ import {
 import {
   toNivoBarData,
   toNivoBarProps,
+  toNivoHistogramBarData,
+  toNivoHistogramBarProps,
+  toNivoLatestBarData,
+  toNivoLatestBarProps,
   toNivoLineProps,
   toNivoLineSeries,
   toNivoPieData,
@@ -72,9 +78,11 @@ import { toVisxHistogramModel, toVisxLatestValuesModel, toVisxXYChartModel } fro
 import { traceWaterfallToLaneRows } from "./waterfall.js";
 
 export const adapterModules: {
+  readonly toAgChartsHistogramOptions: typeof toAgChartsHistogramOptions;
   readonly toAgChartsLatestValuesOptions: typeof toAgChartsLatestValuesOptions;
   readonly toAgChartsTimeSeriesOptions: typeof toAgChartsTimeSeriesOptions;
   readonly toAgChartsUpdateDelta: typeof toAgChartsUpdateDelta;
+  readonly toApexChartsHistogramOptions: typeof toApexChartsHistogramOptions;
   readonly toApexChartsLatestValuesOptions: typeof toApexChartsLatestValuesOptions;
   readonly toApexChartsSeriesUpdate: typeof toApexChartsSeriesUpdate;
   readonly toApexChartsTimeSeriesOptions: typeof toApexChartsTimeSeriesOptions;
@@ -95,6 +103,10 @@ export const adapterModules: {
   readonly toHighchartsTimeSeriesOptions: typeof toHighchartsTimeSeriesOptions;
   readonly toNivoBarData: typeof toNivoBarData;
   readonly toNivoBarProps: typeof toNivoBarProps;
+  readonly toNivoHistogramBarData: typeof toNivoHistogramBarData;
+  readonly toNivoHistogramBarProps: typeof toNivoHistogramBarProps;
+  readonly toNivoLatestBarData: typeof toNivoLatestBarData;
+  readonly toNivoLatestBarProps: typeof toNivoLatestBarProps;
   readonly toNivoLineSeries: typeof toNivoLineSeries;
   readonly toNivoLineProps: typeof toNivoLineProps;
   readonly toNivoPieData: typeof toNivoPieData;
@@ -131,9 +143,11 @@ export const adapterModules: {
   readonly toVisxXYChartModel: typeof toVisxXYChartModel;
   readonly traceWaterfallToLaneRows: typeof traceWaterfallToLaneRows;
 } = {
+  toAgChartsHistogramOptions,
   toAgChartsLatestValuesOptions,
   toAgChartsTimeSeriesOptions,
   toAgChartsUpdateDelta,
+  toApexChartsHistogramOptions,
   toApexChartsLatestValuesOptions,
   toApexChartsSeriesUpdate,
   toApexChartsTimeSeriesOptions,
@@ -154,6 +168,10 @@ export const adapterModules: {
   toHighchartsTimeSeriesOptions,
   toNivoBarData,
   toNivoBarProps,
+  toNivoHistogramBarData,
+  toNivoHistogramBarProps,
+  toNivoLatestBarData,
+  toNivoLatestBarProps,
   toNivoLineSeries,
   toNivoLineProps,
   toNivoPieData,
@@ -192,11 +210,13 @@ export const adapterModules: {
 };
 
 export {
+  toAgChartsHistogramOptions,
   toAgChartsLatestValuesOptions,
   toAgChartsTimeSeriesOptions,
   toAgChartsUpdateDelta,
 } from "./agcharts.js";
 export {
+  toApexChartsHistogramOptions,
   toApexChartsLatestValuesOptions,
   toApexChartsSeriesUpdate,
   toApexChartsTimeSeriesOptions,
@@ -237,6 +257,10 @@ export {
   toHighchartsTimeSeriesOptions,
   toNivoBarData,
   toNivoBarProps,
+  toNivoHistogramBarData,
+  toNivoHistogramBarProps,
+  toNivoLatestBarData,
+  toNivoLatestBarProps,
   toNivoLineProps,
   toNivoLineSeries,
   toNivoPieData,
