@@ -63,8 +63,6 @@ site/charts/
     index.html
   nivo/
     index.html
-  visx/
-    index.html
   observable-plot/
     index.html
   plotly/
@@ -81,7 +79,6 @@ site/charts/
 | ECharts | yes | yes | yes | pie | yes | `setOption` plan, append spike | second wave |
 | uPlot | yes | no native area focus | latest recipe | no | no | live controller + `setData` | second wave |
 | Nivo | yes | yes | yes | pie | recipe | React data updates | third wave |
-| Visx | yes | yes | yes | recipe | recipe | caller state updates | third wave |
 | Observable Plot | yes | area mark | bar mark | no | bin transform | rebuild plot | third wave |
 | Plotly | yes | filled scatter | bar | pie | histogram | `extendTraces` patch | third wave |
 
@@ -109,7 +106,7 @@ Each library page should include:
 
 - Added `/o11ykit/charts/` overview page.
 - Linked it from the home nav.
-- Included support matrix, canonical snippets, adapter-shaped output previews, and deterministic gallery data.
+- Included support matrix, canonical snippets, native package previews, and deterministic gallery data.
 
 ### Phase 2: Tremor + Recharts Live Examples
 
@@ -125,7 +122,7 @@ Each library page should include:
 
 ### Phase 4: Ecosystem Libraries
 
-- Nivo, Visx, Observable Plot, Plotly pages.
+- Nivo, Observable Plot, Plotly pages.
 - Keep modules lazily loaded so the gallery shell does not pay every chart library cost.
 
 ## Validation

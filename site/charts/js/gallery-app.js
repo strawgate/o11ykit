@@ -10,11 +10,7 @@ import {
   getLiveRefreshRate,
   LIVE_REFRESH_RATES,
 } from "./gallery-live.js";
-import {
-  destroyNativeCharts,
-  hasPackageRenderer,
-  renderNativeCharts,
-} from "./gallery-renderers.js";
+import { destroyNativeCharts, renderNativeCharts } from "./gallery-renderers.js";
 
 const COLOR_SCALE = ["#2563eb", "#059669", "#dc2626", "#7c3aed", "#d97706", "#0891b2"];
 const state = {
@@ -97,7 +93,7 @@ function renderLibrarySummary(gallery) {
       <strong>${gallery.library.name}</strong>
       <span>${gallery.charts.length} charts</span>
       <span>${gallery.library.primaryApi}</span>
-      <span>${hasPackageRenderer(gallery.library.id) ? "package renderer" : "adapter shape"}</span>
+      <span>native package renderer</span>
     </div>
   `;
 }

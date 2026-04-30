@@ -58,11 +58,6 @@ import {
   toVictoryEngineLatestData,
   toVictoryEngineSeries,
 } from "../../../packages/adapters/src/victory.ts";
-import {
-  toVisxEngineHistogramModel,
-  toVisxEngineLatestValuesModel,
-  toVisxEngineXYChartModel,
-} from "../../../packages/adapters/src/visx.ts";
 
 export const CHART_TYPES = [
   { id: "line", label: "Line" },
@@ -136,16 +131,6 @@ export const LIBRARIES = [
     package: "@otlpkit/adapters/nivo",
     charts: ["line", "area", "bar", "donut", "scatter"],
     note: "Map engine series into Nivo's nested data while keeping labels and colors predictable.",
-  },
-  {
-    id: "visx",
-    name: "Visx",
-    primaryApi: "accessors + arrays",
-    updateModel: "caller state updates",
-    status: "exported",
-    package: "@otlpkit/adapters/visx",
-    charts: ["line", "area", "bar", "histogram", "scatter", "sparkline"],
-    note: "Expose arrays and accessors, because Visx users compose marks rather than consume configs.",
   },
   {
     id: "observable",
@@ -371,8 +356,6 @@ export function toAdapterModel(library, chartType, wide, latest, histogram) {
       return toUPlotEngineTimeSeriesModel(wide, { chartType });
     case "nivo":
       return nivoModel(chartType, wide, latest);
-    case "visx":
-      return visxModel(chartType, wide, latest, histogram);
     case "observable":
       return chartType === "histogram"
         ? toObservablePlotEngineHistogramModel(histogram)
@@ -476,13 +459,6 @@ function nivoModel(chartType, wide, latest) {
   return toNivoEngineLineSeries(wide);
 }
 
-function visxModel(chartType, wide, latest, histogram) {
-  if (chartType === "histogram") return toVisxEngineHistogramModel(histogram);
-  if (chartType === "bar") return toVisxEngineLatestValuesModel(latest);
-  if (chartType === "scatter") return toVisxEngineXYChartModel(wide, { chartType: "scatter" });
-  return toVisxEngineXYChartModel(wide, { chartType });
-}
-
 function victoryModel(chartType, wide, latest) {
   if (chartType === "donut") {
     return toVictoryEngineLatestData(latest);
@@ -508,7 +484,6 @@ function snippetsFor(library, chartType) {
 }
 
 function adapterSnippet(libraryId, chartType) {
-  // Exported libraries show copy-ready imports; Visx is exported but still adapter-shape-only here.
   if (libraryId === "tremor") {
     const fn =
       chartType === "donut"
@@ -790,15 +765,6 @@ const plot = toObservablePlotEngineModel(wide, {
   chartType: "${chartType}",
 });`;
   }
-  if (libraryId === "visx") {
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toVisxEngineXYChartModel } from "@otlpkit/adapters/visx";
-
-const wide = toEngineWideTableModel(result);
-const model = toVisxEngineXYChartModel(wide, {
-  chartType: "${chartType}",
-});`;
-  }
   if (libraryId === "nivo" && chartType === "donut") {
     return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
 import { toNivoEnginePieData } from "@otlpkit/adapters/nivo";
@@ -889,10 +855,6 @@ chart.setOption(option);`;
     return `const plot = new uPlot(model.options, model.data, node);
 plot.setData(nextModel.data);`;
   if (libraryId === "nivo") return `<${componentName} data={data} animate={false} />`;
-  if (libraryId === "visx")
-    return `{model.series.map((series) => (
-  <LinePath key={series.key} data={series.points} x={x} y={y} />
-))}`;
   if (libraryId === "observable")
     return `Plot.plot({
   marks: plot.marks.map((mark) => Plot[mark.mark](plot.data, mark)),

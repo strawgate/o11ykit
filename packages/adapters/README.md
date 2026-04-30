@@ -43,15 +43,14 @@ The goal is to preserve each chart library's idioms:
 ## Chart Gallery
 
 The interactive gallery at `/o11ykit/charts/` shows the same engine result across Tremor,
-Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, Plotly, ApexCharts, Victory,
-AG Charts, Highcharts, and Vega-Lite shapes. Package-backed entries mount the actual chart package
-in the browser; entries without package renderers are explicitly labeled as adapter shapes only.
+Recharts, Chart.js, ECharts, uPlot, Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts,
+Highcharts, and Vega-Lite. Every gallery entry mounts the actual chart package in the browser.
 
 The gallery uses exported engine-backed adapters for every package-backed library. Tremor and
 Recharts are the most polished component-level APIs; Chart.js, ECharts, uPlot, Nivo, Observable
-Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite, and Visx expose first-pass
-native model adapters. The gallery renders every package-backed entry with the real package; Visx is
-exported as a low-level adapter shape while its package renderer waits for a dedicated React pass.
+Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, and Vega-Lite expose first-pass native
+model adapters. Visx remains exported as a low-level compositional adapter, but it is intentionally
+not in the gallery because it is not a native chart renderer with a React 19-clean package path.
 
 | Library | Engine-backed status | User-facing shape |
 | --- | --- | --- |
@@ -61,7 +60,7 @@ exported as a low-level adapter shape while its package renderer waits for a ded
 | ECharts | exported | dataset and encode option |
 | uPlot | exported | aligned arrays |
 | Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite | exported, package-rendered gallery | library-native models |
-| Visx | exported, adapter-shape gallery | accessors, series arrays, and scale hints |
+| Visx | exported, not gallery-mounted | low-level accessors, series arrays, and scale hints |
 
 ## Ergonomics Audit
 

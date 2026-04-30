@@ -22,7 +22,7 @@ describe("chart gallery data", () => {
 
     expect(result.series).toHaveLength(4);
     expect(wide.rows).toHaveLength(18);
-    expect(LIBRARIES).toHaveLength(14);
+    expect(LIBRARIES).toHaveLength(13);
     expect(CHART_TYPES).toHaveLength(9);
     expect(wide.series.map((series) => series.label)).toEqual([
       "checkout /cart 2xx",
@@ -65,19 +65,14 @@ describe("chart gallery data", () => {
     }
   });
 
-  it("marks exported adapter snippets separately from adapter-shape-only sketches", () => {
+  it("only declares gallery libraries with exported adapter snippets", () => {
     for (const library of LIBRARIES) {
       const gallery = createGalleryState(library.id, library.charts[0]);
 
       expect(library.package).toBeTruthy();
-      if (library.status === "implemented" || library.status === "exported") {
-        expect(library.package).toContain("@otlpkit/adapters/");
-        expect(gallery.snippets.adapter).toContain(library.package);
-        expect(gallery.snippets.adapter).not.toContain("not exported yet");
-      } else {
-        expect(library.package).not.toContain("@otlpkit/adapters/");
-        expect(gallery.snippets.adapter).toContain("not exported yet");
-      }
+      expect(library.package).toContain("@otlpkit/adapters/");
+      expect(gallery.snippets.adapter).toContain(library.package);
+      expect(gallery.snippets.adapter).not.toContain("not exported yet");
     }
   });
 
@@ -130,7 +125,7 @@ describe("chart gallery data", () => {
     expect(createGalleryState("vegalite", "scatter").adapterModel.mark).toBe("point");
   });
 
-  it("changes preview values during live updates without changing adapter shape", () => {
+  it("changes preview values during live updates without changing adapter model shape", () => {
     const first = createGalleryState("chartjs", "line", 0);
     const next = createGalleryState("chartjs", "line", 4);
 

@@ -987,7 +987,7 @@ function isCurrentRender(target, generation) {
   return generation === renderGeneration && target.isConnected;
 }
 
-function renderPlaceholder(target, chart, message, title = "adapter shape") {
+function renderPlaceholder(target, chart, message, title = "renderer") {
   target.innerHTML = `<div class="chart-render-placeholder">
     <strong>${escapeHtml(chart.library.name)} ${escapeHtml(title)}</strong>
     <span>${escapeHtml(message)}</span>
@@ -1013,6 +1013,9 @@ function timeValuesForChart(chart) {
   const model = chart.adapterModel;
   if (model?.data?.datasets?.[0]?.data) {
     return model.data.datasets[0].data.map((point) => point.x);
+  }
+  if (Array.isArray(model?.data?.[0]?.data)) {
+    return model.data[0].data.map((point) => point.x).filter((value) => value !== undefined);
   }
   if (model?.dataset?.[0]?.source) {
     return model.dataset[0].source.map((row) => row.time).filter((value) => value !== undefined);
