@@ -1,8 +1,10 @@
 import {
+  toAgChartsHistogramOptions,
   toAgChartsLatestValuesOptions,
   toAgChartsTimeSeriesOptions,
 } from "../../../packages/adapters/src/agcharts.ts";
 import {
+  toApexChartsHistogramOptions,
   toApexChartsLatestValuesOptions,
   toApexChartsTimeSeriesOptions,
 } from "../../../packages/adapters/src/apexcharts.ts";
@@ -24,6 +26,8 @@ import {
 } from "../../../packages/adapters/src/highcharts.ts";
 import {
   toNivoBarData,
+  toNivoHistogramBarData,
+  toNivoLatestBarData,
   toNivoLineSeries,
   toNivoPieData,
   toNivoScatterSeries,
@@ -160,7 +164,7 @@ export const LIBRARIES = [
     updateModel: "React data updates",
     status: "exported",
     package: "@otlpkit/adapters/nivo",
-    charts: ["line", "area", "bar", "donut", "scatter"],
+    charts: ["line", "area", "bar", "donut", "latestBar", "histogram", "scatter"],
     note: "Map engine series into Nivo's nested data while keeping labels and colors predictable.",
   },
   {
@@ -184,7 +188,17 @@ export const LIBRARIES = [
     updateModel: "extendTraces",
     status: "exported",
     package: "@otlpkit/adapters/plotly",
-    charts: ["line", "area", "bar", "donut", "histogram", "scatter", "sparkline", "gauge"],
+    charts: [
+      "line",
+      "area",
+      "bar",
+      "donut",
+      "latestBar",
+      "histogram",
+      "scatter",
+      "sparkline",
+      "gauge",
+    ],
     note: "Produce traces and layouts, with a path toward extendTraces for live dashboards.",
   },
   {
@@ -196,8 +210,18 @@ export const LIBRARIES = [
     updateModel: "updateSeries",
     status: "exported",
     package: "@otlpkit/adapters/apexcharts",
-    charts: ["line", "area", "bar", "donut", "scatter", "sparkline", "gauge"],
-    note: "Return compact options plus series arrays, including sparkline and radial gauge shapes.",
+    charts: [
+      "line",
+      "area",
+      "bar",
+      "donut",
+      "latestBar",
+      "histogram",
+      "scatter",
+      "sparkline",
+      "gauge",
+    ],
+    note: "Return compact options plus series arrays, including category bars and radial gauge shapes.",
   },
   {
     id: "victory",
@@ -220,7 +244,7 @@ export const LIBRARIES = [
     updateModel: "update options",
     status: "exported",
     package: "@otlpkit/adapters/agcharts",
-    charts: ["line", "area", "bar", "donut", "scatter"],
+    charts: ["line", "area", "bar", "donut", "latestBar", "histogram", "scatter"],
     note: "Project engine rows into AG Charts options with explicit keys and series definitions.",
   },
   {
@@ -232,7 +256,17 @@ export const LIBRARIES = [
     updateModel: "setData",
     status: "exported",
     package: "@otlpkit/adapters/highcharts",
-    charts: ["line", "area", "bar", "donut", "histogram", "scatter", "sparkline", "gauge"],
+    charts: [
+      "line",
+      "area",
+      "bar",
+      "donut",
+      "latestBar",
+      "histogram",
+      "scatter",
+      "sparkline",
+      "gauge",
+    ],
     note: "Return Highcharts-style options while preserving stable engine ids for updates.",
   },
   {
@@ -449,23 +483,27 @@ export function createAdapterOutput(library, chartType, result) {
     case "plotly":
       return chartType === "histogram"
         ? toPlotlyHistogramFigure(result)
-        : chartType === "donut" || chartType === "gauge"
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
           ? toPlotlyLatestValuesFigure(result, { chartType, seriesLabel })
           : toPlotlyTimeSeriesFigure(result, { chartType, seriesLabel });
     case "apexcharts":
-      return chartType === "donut" || chartType === "gauge"
-        ? toApexChartsLatestValuesOptions(result, { chartType, seriesLabel })
-        : toApexChartsTimeSeriesOptions(result, { chartType, seriesLabel });
+      return chartType === "histogram"
+        ? toApexChartsHistogramOptions(result, { seriesLabel })
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
+          ? toApexChartsLatestValuesOptions(result, { chartType, seriesLabel })
+          : toApexChartsTimeSeriesOptions(result, { chartType, seriesLabel });
     case "victory":
       return victoryModel(chartType, result);
     case "agcharts":
-      return chartType === "donut" || chartType === "gauge"
-        ? toAgChartsLatestValuesOptions(result, { chartType, seriesLabel })
-        : toAgChartsTimeSeriesOptions(result, { chartType, seriesLabel });
+      return chartType === "histogram"
+        ? toAgChartsHistogramOptions(result, { seriesLabel })
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
+          ? toAgChartsLatestValuesOptions(result, { chartType, seriesLabel })
+          : toAgChartsTimeSeriesOptions(result, { chartType, seriesLabel });
     case "highcharts":
       return chartType === "histogram"
         ? toHighchartsHistogramOptions(result)
-        : chartType === "donut" || chartType === "gauge"
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
           ? toHighchartsLatestValuesOptions(result, { chartType, seriesLabel })
           : toHighchartsTimeSeriesOptions(result, { chartType, seriesLabel });
     case "vegalite":
@@ -520,6 +558,12 @@ function nivoModel(chartType, result) {
       ...row,
       color: COLORS[index % COLORS.length],
     }));
+  }
+  if (chartType === "latestBar") {
+    return toNivoLatestBarData(result, { seriesLabel });
+  }
+  if (chartType === "histogram") {
+    return toNivoHistogramBarData(result, { seriesLabel });
   }
   if (chartType === "bar") {
     return toNivoBarData(result, { seriesLabel });
@@ -639,7 +683,7 @@ const config = ${fn}(result, {
     const fn =
       chartType === "histogram"
         ? "toPlotlyHistogramFigure"
-        : chartType === "donut" || chartType === "gauge"
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
           ? "toPlotlyLatestValuesFigure"
           : "toPlotlyTimeSeriesFigure";
     return `import { ${fn} } from "@otlpkit/adapters/plotly";
@@ -651,9 +695,11 @@ const figure = ${fn}(result, {
   }
   if (libraryId === "apexcharts") {
     const fn =
-      chartType === "donut" || chartType === "gauge"
-        ? "toApexChartsLatestValuesOptions"
-        : "toApexChartsTimeSeriesOptions";
+      chartType === "histogram"
+        ? "toApexChartsHistogramOptions"
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
+          ? "toApexChartsLatestValuesOptions"
+          : "toApexChartsTimeSeriesOptions";
     return `import { ${fn} } from "@otlpkit/adapters/apexcharts";
 
 const options = ${fn}(result, {
@@ -673,9 +719,11 @@ const data = ${fn}(result, {
   }
   if (libraryId === "agcharts") {
     const fn =
-      chartType === "donut" || chartType === "gauge"
-        ? "toAgChartsLatestValuesOptions"
-        : "toAgChartsTimeSeriesOptions";
+      chartType === "histogram"
+        ? "toAgChartsHistogramOptions"
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
+          ? "toAgChartsLatestValuesOptions"
+          : "toAgChartsTimeSeriesOptions";
     return `import { ${fn} } from "@otlpkit/adapters/agcharts";
 
 const options = ${fn}(result, {
@@ -687,7 +735,7 @@ const options = ${fn}(result, {
     const fn =
       chartType === "histogram"
         ? "toHighchartsHistogramOptions"
-        : chartType === "donut" || chartType === "gauge"
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
           ? "toHighchartsLatestValuesOptions"
           : "toHighchartsTimeSeriesOptions";
     return `import { ${fn} } from "@otlpkit/adapters/highcharts";
@@ -727,6 +775,20 @@ const data = toNivoPieData(result, {
     return `import { toNivoBarData } from "@otlpkit/adapters/nivo";
 
 const data = toNivoBarData(result, {
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
+});`;
+  }
+  if (libraryId === "nivo" && chartType === "latestBar") {
+    return `import { toNivoLatestBarData } from "@otlpkit/adapters/nivo";
+
+const data = toNivoLatestBarData(result, {
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
+});`;
+  }
+  if (libraryId === "nivo" && chartType === "histogram") {
+    return `import { toNivoHistogramBarData } from "@otlpkit/adapters/nivo";
+
+const data = toNivoHistogramBarData(result, {
   seriesLabel: (s) => s.labels.get("service") ?? "service",
 });`;
   }

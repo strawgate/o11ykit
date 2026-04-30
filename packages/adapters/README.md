@@ -33,7 +33,7 @@ The goal is to preserve each chart library's idioms:
 - uPlot: aligned columnar arrays + minimal option scaffolding
 - Plotly: traces plus layout
 - ApexCharts: options plus series arrays
-- Nivo: nested series, bar keys, and pie data
+- Nivo: nested series, bar keys, pie data, and bar-ready latest/histogram data
 - Observable Plot: tidy rows plus marks
 - Victory: component-oriented data series
 - AG Charts and Highcharts: option trees with explicit series keys
@@ -63,6 +63,11 @@ not in the gallery because it is not a native chart renderer with a React 19-cle
 | uPlot | exported | aligned arrays |
 | Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite | exported, package-rendered gallery | library-native inputs |
 | Visx | exported, not gallery-mounted | low-level accessors, series arrays, and scale hints |
+
+The gallery is also the support contract. If a chart shape appears there, the card is backed by a
+published adapter function and the real chart package renderer. If a library can only support a
+shape through custom drawing or a gallery-only translation, it should stay out of the gallery until
+the package adapter exposes a native path.
 
 ## Ergonomics Audit
 
@@ -156,6 +161,69 @@ New engine-backed adapters should keep the same user contract:
 - Keep sparse points as `null` when the chart library can represent gaps.
 - Filter `null` latest values for donut, pie, and bar-list charts.
 - Add gallery coverage and tests that compare the gallery example with the exported adapter.
+
+### Package-shaped recipes
+
+These examples show the intended ergonomics for package-backed adapters. The function names describe
+the native object returned, not an o11ykit intermediate DTO.
+
+```ts
+import {
+  toApexChartsHistogramOptions,
+  toApexChartsLatestValuesOptions,
+  toApexChartsTimeSeriesOptions,
+} from "@otlpkit/adapters/apexcharts";
+
+const line = toApexChartsTimeSeriesOptions(result, { chartType: "line", seriesLabel });
+const latestBars = toApexChartsLatestValuesOptions(result, {
+  chartType: "latestBar",
+  seriesLabel,
+});
+const histogram = toApexChartsHistogramOptions(result, { bucketCount: 12, seriesLabel });
+
+await new ApexCharts(node, line).render();
+```
+
+```ts
+import {
+  toNivoHistogramBarData,
+  toNivoLatestBarData,
+  toNivoLineSeries,
+} from "@otlpkit/adapters/nivo";
+
+const lineData = toNivoLineSeries(result, { seriesLabel });
+const latestBarData = toNivoLatestBarData(result, { seriesLabel });
+const histogramBarData = toNivoHistogramBarData(result, { bucketCount: 10, seriesLabel });
+```
+
+```ts
+import {
+  toAgChartsHistogramOptions,
+  toAgChartsLatestValuesOptions,
+  toAgChartsTimeSeriesOptions,
+} from "@otlpkit/adapters/agcharts";
+
+const options = toAgChartsTimeSeriesOptions(result, { chartType: "area", seriesLabel });
+const latest = toAgChartsLatestValuesOptions(result, { chartType: "latestBar", seriesLabel });
+const histogram = toAgChartsHistogramOptions(result, { bucketCount: 10, seriesLabel });
+
+AgCharts.create(options);
+```
+
+```ts
+import {
+  toHighchartsHistogramOptions,
+  toHighchartsLatestValuesOptions,
+  toPlotlyLatestValuesFigure,
+} from "@otlpkit/adapters";
+
+const highchartsBars = toHighchartsLatestValuesOptions(result, {
+  chartType: "latestBar",
+  seriesLabel,
+});
+const highchartsHistogram = toHighchartsHistogramOptions(result, { bucketCount: 10, seriesLabel });
+const plotlyBars = toPlotlyLatestValuesFigure(result, { chartType: "latestBar", seriesLabel });
+```
 
 ### Tremor
 

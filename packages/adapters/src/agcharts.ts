@@ -2,19 +2,30 @@ import {
   asEngineLatestValueModel,
   asEngineWideTableModel,
   type EngineAdapterOptions,
+  type EngineHistogramOptions,
   type EngineLatestValueInput,
   type EngineWideTableInput,
 } from "./engine.js";
 import { gaugeValue, rowToRecord } from "./engine-chart-shared.js";
 
-export type AgChartsChartType = "line" | "area" | "bar" | "donut" | "scatter" | "gauge";
+export type AgChartsChartType =
+  | "line"
+  | "area"
+  | "bar"
+  | "donut"
+  | "latestBar"
+  | "histogram"
+  | "scatter"
+  | "gauge";
 
 export interface AgChartsSeriesOptions {
-  readonly type: "line" | "area" | "bar" | "donut" | "scatter";
+  readonly type: "line" | "area" | "bar" | "donut" | "histogram" | "scatter";
   readonly id?: string;
   readonly xKey?: string;
   readonly yKey?: string;
   readonly yName?: string;
+  readonly xName?: string;
+  readonly binCount?: number;
   readonly angleKey?: string;
   readonly calloutLabelKey?: string;
 }
@@ -86,10 +97,38 @@ export function toAgChartsLatestValuesOptions(
       scale: { min: 0, max: 200 },
     };
   }
+  if (chartType === "bar" || chartType === "latestBar") {
+    return {
+      data: latest.rows.flatMap((row) =>
+        row.value === null ? [] : [{ label: row.label, value: row.value }]
+      ),
+      series: [{ type: "bar", xKey: "label", yKey: "value", yName: "latest" }],
+    };
+  }
   return {
     data: latest.rows.flatMap((row) =>
       row.value === null ? [] : [{ label: row.label, value: row.value }]
     ),
     series: [{ type: "donut", angleKey: "value", calloutLabelKey: "label" }],
+  };
+}
+
+export function toAgChartsHistogramOptions(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions & EngineHistogramOptions = {}
+): AgChartsOptions {
+  const wide = asEngineWideTableModel(model, options);
+  return {
+    data: wide.rows.flatMap((row) =>
+      row.values.flatMap((value) => (value === null || !Number.isFinite(value) ? [] : [{ value }]))
+    ),
+    series: [
+      {
+        type: "histogram",
+        xKey: "value",
+        xName: "value",
+        ...(options.bucketCount ? { binCount: options.bucketCount } : {}),
+      },
+    ],
   };
 }
