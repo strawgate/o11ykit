@@ -1040,28 +1040,37 @@ function timeRangeForChart(chart) {
 function timeValuesForChart(chart) {
   const model = chart.adapterOutput;
   if (model?.data?.datasets?.[0]?.data) {
-    return model.data.datasets[0].data.map((point) => point.x);
+    return model.data.datasets[0].data.map(pointXValue).filter((value) => value !== undefined);
   }
   if (Array.isArray(model?.data?.[0]?.data)) {
-    return model.data[0].data.map((point) => point.x).filter((value) => value !== undefined);
+    return model.data[0].data.map(pointXValue).filter((value) => value !== undefined);
   }
   if (model?.dataset?.[0]?.source) {
-    return model.dataset[0].source.map((row) => row.time).filter((value) => value !== undefined);
+    return model.dataset[0].source.map(rowTimeValue).filter((value) => value !== undefined);
   }
   if (Array.isArray(model?.data?.[0])) return model.data[0];
   if (Array.isArray(model?.data?.[0]?.x)) return model.data[0].x;
   if (Array.isArray(model?.series?.[0]?.data)) {
-    return model.series[0].data
-      .map((point) => (Array.isArray(point) ? point[0] : point?.x))
-      .filter((value) => value !== undefined);
+    return model.series[0].data.map(pointXValue).filter((value) => value !== undefined);
   }
   if (Array.isArray(model?.data)) {
-    return model.data.map((row) => row.time ?? row.x).filter((value) => value !== undefined);
+    return model.data.map(rowTimeValue).filter((value) => value !== undefined);
   }
   if (Array.isArray(model?.[0]?.data)) {
-    return model[0].data.map((point) => point.x).filter((value) => value !== undefined);
+    return model[0].data.map(pointXValue).filter((value) => value !== undefined);
   }
   return [];
+}
+
+function pointXValue(point) {
+  if (Array.isArray(point)) return point[0];
+  if (point && typeof point === "object") return point.x;
+  return undefined;
+}
+
+function rowTimeValue(row) {
+  if (!row || typeof row !== "object") return undefined;
+  return row.time ?? row.x;
 }
 
 function victoryDomainFor(chart) {

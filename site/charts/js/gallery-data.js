@@ -196,7 +196,7 @@ export const LIBRARIES = [
     updateModel: "updateSeries",
     status: "exported",
     package: "@otlpkit/adapters/apexcharts",
-    charts: ["line", "area", "bar", "donut", "histogram", "scatter", "sparkline", "gauge"],
+    charts: ["line", "area", "bar", "donut", "scatter", "sparkline", "gauge"],
     note: "Return compact options plus series arrays, including sparkline and radial gauge shapes.",
   },
   {
@@ -503,15 +503,15 @@ function tremorModel(chartType, result) {
 
 function rechartsModel(chartType, result) {
   if (chartType === "donut" || chartType === "latestBar") {
-    return toRechartsLatestValuesData(result, { seriesLabel });
+    return toRechartsLatestValuesData(result, { seriesLabel, unit: "ms" });
   }
   if (chartType === "histogram") {
-    return toRechartsHistogramData(result);
+    return toRechartsHistogramData(result, { seriesLabel, unit: "samples" });
   }
   if (chartType === "scatter") {
-    return toRechartsScatterData(result, { seriesLabel });
+    return toRechartsScatterData(result, { seriesLabel, unit: "ms" });
   }
-  return toRechartsTimeSeriesData(result, { seriesLabel });
+  return toRechartsTimeSeriesData(result, { seriesLabel, unit: "ms" });
 }
 
 function nivoModel(chartType, result) {

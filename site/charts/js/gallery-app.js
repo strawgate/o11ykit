@@ -35,11 +35,14 @@ const elements = {
   chartGallery: document.querySelector("#chartGallery"),
   libraryCards: document.querySelector("#libraryCards"),
   coverageTable: document.querySelector("#coverageTable"),
+  libraryCount: document.querySelector("#libraryCount"),
+  chartShapeCount: document.querySelector("#chartShapeCount"),
 };
 
 init();
 
 function init() {
+  renderGalleryStats();
   renderRefreshRates();
   renderLibraryButtons();
   renderLibraryCards();
@@ -52,6 +55,11 @@ function init() {
     if (state.live) restartLiveTimer();
   });
   void render();
+}
+
+function renderGalleryStats() {
+  elements.libraryCount.textContent = String(LIBRARIES.length);
+  elements.chartShapeCount.textContent = String(CHART_TYPES.length);
 }
 
 function observeGallerySize() {

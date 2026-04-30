@@ -57,13 +57,13 @@ describe("chart gallery integration with real adapters", () => {
     expect(model.tooltipKey).toBe(galleryLine.tooltipKey);
     expect(model.series).toEqual(galleryLine.series);
     expect(model.data).toEqual(galleryLine.data);
-    expect(toRechartsLatestValuesData(result, { seriesLabel: gallerySeriesLabel })).toEqual(
-      createGalleryState("recharts", "donut").adapterOutput
-    );
-    expect(toRechartsHistogramData(result, { seriesLabel: gallerySeriesLabel })).toEqual(
-      createGalleryState("recharts", "histogram").adapterOutput
-    );
-    expect(toRechartsScatterData(result, { seriesLabel: gallerySeriesLabel })).toEqual(
+    expect(
+      toRechartsLatestValuesData(result, { seriesLabel: gallerySeriesLabel, unit: "ms" })
+    ).toEqual(createGalleryState("recharts", "donut").adapterOutput);
+    expect(
+      toRechartsHistogramData(result, { seriesLabel: gallerySeriesLabel, unit: "samples" })
+    ).toEqual(createGalleryState("recharts", "histogram").adapterOutput);
+    expect(toRechartsScatterData(result, { seriesLabel: gallerySeriesLabel, unit: "ms" })).toEqual(
       createGalleryState("recharts", "scatter").adapterOutput
     );
   });

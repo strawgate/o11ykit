@@ -16,6 +16,8 @@ describe("chart gallery content", () => {
     expect(html).toContain("Show code button");
     expect(html).toContain("native render code");
     expect(html).toContain('id="refreshRate"');
+    expect(html).toContain('id="libraryCount"');
+    expect(html).toContain('id="chartShapeCount"');
     expect(html).toContain("Refresh rate");
     expect(html).not.toContain('id="librarySummary"');
     expect(html).toContain("What you still control");

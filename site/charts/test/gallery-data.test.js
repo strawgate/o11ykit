@@ -85,6 +85,22 @@ describe("chart gallery data", () => {
     }
   });
 
+  it("only advertises ApexCharts shapes backed by exported ApexCharts adapters", () => {
+    const apexCharts = LIBRARIES.find((library) => library.id === "apexcharts");
+
+    expect(apexCharts?.charts).toEqual([
+      "line",
+      "area",
+      "bar",
+      "donut",
+      "scatter",
+      "sparkline",
+      "gauge",
+    ]);
+    expect(apexCharts?.charts).not.toContain("histogram");
+    expect(apexCharts?.charts).not.toContain("latestBar");
+  });
+
   it("falls back to the first natural chart type when a library does not support a shape", () => {
     expect(getSupportedChart("uplot", "donut")).toBe("line");
     expect(getSupportedChart("tremor", "donut")).toBe("donut");
@@ -97,6 +113,7 @@ describe("chart gallery data", () => {
     });
     expect(createGalleryState("recharts", "line").adapterOutput).toMatchObject({
       xAxisKey: "time",
+      unit: "ms",
       series: expect.arrayContaining([
         expect.objectContaining({
           id: "__name__=http.server.duration,route=/cart,service=checkout,status_class=2xx",
@@ -106,10 +123,16 @@ describe("chart gallery data", () => {
     expect(createGalleryState("recharts", "donut").adapterOutput).toMatchObject({
       categoryKey: "label",
       valueKey: "value",
+      unit: "ms",
     });
     expect(createGalleryState("recharts", "latestBar").adapterOutput).toMatchObject({
       categoryKey: "label",
       valueKey: "value",
+      unit: "ms",
+    });
+    expect(createGalleryState("recharts", "histogram").adapterOutput).toMatchObject({
+      valueKey: "count",
+      unit: "samples",
     });
     expect(createGalleryState("chartjs", "latestBar").adapterOutput.type).toBe("bar");
     expect(createGalleryState("echarts", "line").adapterOutput.dataset[0].dimensions).toEqual([
