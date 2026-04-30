@@ -1,6 +1,6 @@
-import { toUPlotLatestValuesModel, toUPlotTimeSeriesModel } from "@otlpkit/adapters/uplot";
+import { toUPlotViewLatestValuesArgs, toUPlotViewTimeSeriesArgs } from "@otlpkit/adapters/uplot";
 import { buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
-import uPlot, { type AlignedData, type Options } from "uplot";
+import uPlot, { type AlignedData, type Options, type Series } from "uplot";
 import "uplot/dist/uPlot.min.css";
 
 import { sampleMetricsDocument } from "../../shared/sample.js";
@@ -25,8 +25,8 @@ const latestValuesFrame = buildLatestValuesFrame(sampleMetricsDocument, {
   title: "Latest inflight batches by output",
 });
 
-const timeSeriesModel = toUPlotTimeSeriesModel(timeSeriesFrame);
-const latestValuesModel = toUPlotLatestValuesModel(latestValuesFrame);
+const timeSeriesModel = toUPlotViewTimeSeriesArgs(timeSeriesFrame);
+const latestValuesModel = toUPlotViewLatestValuesArgs(latestValuesFrame);
 
 const timeSeriesOptions: Options = {
   width: 960,
@@ -41,7 +41,7 @@ const timeSeriesOptions: Options = {
     },
   },
   axes: timeSeriesModel.options.axes.map((axis) => ({ ...axis })),
-  series: timeSeriesModel.options.series.map((series) => ({ ...series })),
+  series: timeSeriesModel.options.series.map(toUPlotSeries),
 };
 
 const latestValuesOptions: Options = {
@@ -57,7 +57,7 @@ const latestValuesOptions: Options = {
     },
   },
   axes: latestValuesModel.options.axes.map((axis) => ({ ...axis })),
-  series: latestValuesModel.options.series.map((series) => ({ ...series })),
+  series: latestValuesModel.options.series.map(toUPlotSeries),
 };
 const latestValuesData: AlignedData = [
   [...latestValuesModel.data[0]],
@@ -66,3 +66,10 @@ const latestValuesData: AlignedData = [
 
 new uPlot(timeSeriesOptions, timeSeriesModel.data as AlignedData, requireContainer("#time-series"));
 new uPlot(latestValuesOptions, latestValuesData, requireContainer("#latest-values"));
+
+function toUPlotSeries(series: (typeof timeSeriesModel.options.series)[number]): Series {
+  return {
+    label: series.label,
+    ...(series.points ? { points: { ...series.points } } : {}),
+  };
+}

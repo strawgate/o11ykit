@@ -1,4 +1,11 @@
-import type { EngineLatestValueModel, EngineWideTableModel } from "./engine.js";
+import {
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
+  type EngineAdapterOptions,
+  type EngineLatestValueInput,
+  type EngineWideTableInput,
+  type EngineWideTableModel,
+} from "./engine.js";
 
 export interface TremorSeriesDescriptor {
   readonly id: string;
@@ -6,7 +13,7 @@ export interface TremorSeriesDescriptor {
   readonly label: string;
 }
 
-export interface TremorXYOptions {
+export interface TremorXYOptions extends EngineAdapterOptions {
   readonly index?: string;
   readonly categoryLabel?: (
     series: EngineWideTableModel["series"][number],
@@ -36,7 +43,7 @@ export interface TremorBarChartProps extends TremorLineLikeProps {
   readonly type?: "default" | "stacked" | "percent";
 }
 
-export interface TremorLatestOptions {
+export interface TremorLatestOptions extends EngineAdapterOptions {
   readonly index?: string;
   readonly category?: string;
   readonly valueFormatter?: (value: number) => string;
@@ -60,47 +67,48 @@ export interface TremorBarListProps {
 }
 
 export function toTremorLineChartProps(
-  model: EngineWideTableModel,
+  model: EngineWideTableInput,
   options: TremorXYOptions = {}
 ): TremorLineLikeProps {
-  return toTremorLineLikeProps(model, options);
+  return toTremorLineLikeProps(asEngineWideTableModel(model, options), options);
 }
 
 export function toTremorAreaChartProps(
-  model: EngineWideTableModel,
+  model: EngineWideTableInput,
   options: TremorXYOptions & { readonly type?: "default" | "stacked" | "percent" } = {}
 ): TremorAreaChartProps {
   return {
-    ...toTremorLineLikeProps(model, options),
+    ...toTremorLineLikeProps(asEngineWideTableModel(model, options), options),
     ...(options.type ? { type: options.type } : {}),
   };
 }
 
 export function toTremorBarChartProps(
-  model: EngineWideTableModel,
+  model: EngineWideTableInput,
   options: TremorXYOptions & {
     readonly layout?: "vertical" | "horizontal";
     readonly type?: "default" | "stacked" | "percent";
   } = {}
 ): TremorBarChartProps {
   return {
-    ...toTremorLineLikeProps(model, options),
+    ...toTremorLineLikeProps(asEngineWideTableModel(model, options), options),
     ...(options.layout ? { layout: options.layout } : {}),
     ...(options.type ? { type: options.type } : {}),
   };
 }
 
 export function toTremorDonutChartProps(
-  model: EngineLatestValueModel,
+  model: EngineLatestValueInput,
   options: TremorLatestOptions = {}
 ): TremorDonutChartProps {
+  const latest = asEngineLatestValueModel(model, options);
   const index = options.index ?? "label";
   const category = options.category ?? "value";
   if (index === category) {
     throw new RangeError(`Tremor donut index and category keys must be distinct: ${index}`);
   }
   return {
-    data: model.rows.flatMap((row) =>
+    data: latest.rows.flatMap((row) =>
       row.value === null
         ? []
         : [
@@ -117,11 +125,15 @@ export function toTremorDonutChartProps(
 }
 
 export function toTremorBarListProps(
-  model: EngineLatestValueModel,
-  options: Pick<TremorLatestOptions, "valueFormatter"> = {}
+  model: EngineLatestValueInput,
+  options: Pick<
+    TremorLatestOptions,
+    "seriesLabel" | "timestampUnit" | "maxPoints" | "valueFormatter"
+  > = {}
 ): TremorBarListProps {
+  const latest = asEngineLatestValueModel(model, options);
   return {
-    data: model.rows.flatMap((row) =>
+    data: latest.rows.flatMap((row) =>
       row.value === null
         ? []
         : [

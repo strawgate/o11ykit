@@ -81,6 +81,10 @@ export interface EngineHistogramOptions {
   readonly valueFormatter?: (start: number, end: number, index: number) => string;
 }
 
+export type EngineWideTableInput = EngineWideTableModel | EngineQueryResult;
+export type EngineLatestValueInput = EngineLatestValueModel | EngineQueryResult;
+export type EngineHistogramInput = EngineHistogramModel | EngineWideTableModel | EngineQueryResult;
+
 export function toEngineLineSeriesModel(
   result: EngineQueryResult,
   options: EngineAdapterOptions = {}
@@ -157,10 +161,11 @@ export function toEngineLatestValueModel(
 }
 
 export function toEngineHistogramModel(
-  model: EngineWideTableModel,
+  model: EngineWideTableInput,
   options: EngineHistogramOptions = {}
 ): EngineHistogramModel {
-  const values = model.rows.flatMap((row) =>
+  const wide = asEngineWideTableModel(model);
+  const values = wide.rows.flatMap((row) =>
     row.values.filter((value): value is number => value !== null && Number.isFinite(value))
   );
   const bucketCount = Math.max(1, Math.floor(options.bucketCount ?? 7));
@@ -200,6 +205,47 @@ export function toEngineHistogramModel(
   }
 
   return { kind: "engine-histogram", buckets };
+}
+
+export function asEngineWideTableModel(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions = {}
+): EngineWideTableModel {
+  return isEngineWideTableModel(model) ? model : toEngineWideTableModel(model, options);
+}
+
+export function asEngineLatestValueModel(
+  model: EngineLatestValueInput,
+  options: EngineAdapterOptions = {}
+): EngineLatestValueModel {
+  return isEngineLatestValueModel(model) ? model : toEngineLatestValueModel(model, options);
+}
+
+export function asEngineHistogramModel(
+  model: EngineHistogramInput,
+  options: EngineAdapterOptions & EngineHistogramOptions = {}
+): EngineHistogramModel {
+  return isEngineHistogramModel(model)
+    ? model
+    : toEngineHistogramModel(asEngineWideTableModel(model, options), options);
+}
+
+export function isEngineWideTableModel(model: EngineWideTableInput): model is EngineWideTableModel {
+  return isObjectWithKind(model) && model.kind === "engine-wide-table";
+}
+
+export function isEngineLatestValueModel(
+  model: EngineLatestValueInput
+): model is EngineLatestValueModel {
+  return isObjectWithKind(model) && model.kind === "engine-latest-values";
+}
+
+export function isEngineHistogramModel(model: EngineHistogramInput): model is EngineHistogramModel {
+  return isObjectWithKind(model) && model.kind === "engine-histogram";
+}
+
+function isObjectWithKind(model: unknown): model is { readonly kind: unknown } {
+  return typeof model === "object" && model !== null && "kind" in model;
 }
 
 function pointsForSeries(

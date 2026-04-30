@@ -1,6 +1,12 @@
 import type { LatestValuesFrame, TimeSeriesFrame } from "@otlpkit/views";
 
-import type { EngineLatestValueModel, EngineWideTableModel } from "./engine.js";
+import {
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
+  type EngineAdapterOptions,
+  type EngineLatestValueInput,
+  type EngineWideTableInput,
+} from "./engine.js";
 import { pivotTimeSeriesFrame } from "./shared.js";
 
 export interface UPlotSeriesOption {
@@ -11,7 +17,7 @@ export interface UPlotSeriesOption {
   };
 }
 
-export interface UPlotTimeSeriesModel {
+export interface UPlotTimeSeriesArgs {
   readonly options: {
     readonly title: string;
     readonly scales: {
@@ -37,7 +43,7 @@ export interface UPlotTimeSeriesModel {
   readonly data: readonly (readonly (number | null)[])[];
 }
 
-export interface UPlotLatestValuesModel {
+export interface UPlotLatestValuesArgs {
   readonly options: {
     readonly title: string;
     readonly scales: {
@@ -64,16 +70,17 @@ export interface UPlotLatestValuesModel {
   readonly labels: readonly string[];
 }
 
-export interface UPlotEngineOptions {
+export interface UPlotAdapterOptions extends EngineAdapterOptions {
   readonly title?: string;
   readonly unit?: string | null;
   readonly chartType?: "line" | "area" | "sparkline";
 }
 
-export function toUPlotEngineTimeSeriesModel(
-  model: EngineWideTableModel,
-  options: UPlotEngineOptions = {}
-): UPlotTimeSeriesModel {
+export function toUPlotTimeSeriesArgs(
+  model: EngineWideTableInput,
+  options: UPlotAdapterOptions = {}
+): UPlotTimeSeriesArgs {
+  const wide = asEngineWideTableModel(model, options);
   return {
     options: {
       title: options.title ?? "",
@@ -93,7 +100,7 @@ export function toUPlotEngineTimeSeriesModel(
       ],
       series: [
         { label: "time" },
-        ...model.series.map((series) => ({
+        ...wide.series.map((series) => ({
           label: series.label,
           points: { show: false },
           fill: options.chartType === "area" ? true : undefined,
@@ -101,17 +108,17 @@ export function toUPlotEngineTimeSeriesModel(
       ],
     },
     data: [
-      model.rows.map((row) => Math.round(row.t / 1000)),
-      ...model.series.map((_series, index) => model.rows.map((row) => row.values[index] ?? null)),
+      wide.rows.map((row) => Math.round(row.t / 1000)),
+      ...wide.series.map((_series, index) => wide.rows.map((row) => row.values[index] ?? null)),
     ],
   };
 }
 
-export function toUPlotEngineLatestValuesModel(
-  model: EngineLatestValueModel,
-  options: UPlotEngineOptions = {}
-): UPlotLatestValuesModel {
-  const rows = model.rows.filter((row) => row.value !== null);
+export function toUPlotLatestValuesArgs(
+  model: EngineLatestValueInput,
+  options: UPlotAdapterOptions = {}
+): UPlotLatestValuesArgs {
+  const rows = asEngineLatestValueModel(model, options).rows.filter((row) => row.value !== null);
   return {
     options: {
       title: options.title ?? "",
@@ -142,7 +149,7 @@ export function toUPlotEngineLatestValuesModel(
   };
 }
 
-export function toUPlotTimeSeriesModel(frame: TimeSeriesFrame): UPlotTimeSeriesModel {
+export function toUPlotViewTimeSeriesArgs(frame: TimeSeriesFrame): UPlotTimeSeriesArgs {
   const pivoted = pivotTimeSeriesFrame(frame);
   const rows = pivoted.rows.filter(
     (row): row is typeof row & { readonly timeMs: number } => row.timeMs !== null
@@ -189,7 +196,7 @@ export function toUPlotTimeSeriesModel(frame: TimeSeriesFrame): UPlotTimeSeriesM
   };
 }
 
-export function toUPlotLatestValuesModel(frame: LatestValuesFrame): UPlotLatestValuesModel {
+export function toUPlotViewLatestValuesArgs(frame: LatestValuesFrame): UPlotLatestValuesArgs {
   return {
     options: {
       title: frame.title,

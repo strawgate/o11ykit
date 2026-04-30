@@ -1,11 +1,18 @@
 import type {
-  EngineHistogramModel,
-  EngineLatestValueModel,
-  EngineWideTableModel,
+  EngineAdapterOptions,
+  EngineHistogramInput,
+  EngineHistogramOptions,
+  EngineLatestValueInput,
+  EngineWideTableInput,
+} from "./engine.js";
+import {
+  asEngineHistogramModel,
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
 } from "./engine.js";
 import { gaugeValue } from "./engine-chart-shared.js";
 
-export type HighchartsEngineChartType =
+export type HighchartsChartType =
   | "line"
   | "area"
   | "bar"
@@ -22,43 +29,45 @@ export interface HighchartsSeries {
   readonly data: readonly unknown[];
 }
 
-export interface HighchartsEngineOptions {
-  readonly chartType?: HighchartsEngineChartType;
+export interface HighchartsAdapterOptions extends EngineAdapterOptions, EngineHistogramOptions {
+  readonly chartType?: HighchartsChartType;
 }
 
-export interface HighchartsEngineOptionsModel {
+export interface HighchartsOptions {
   readonly chart: { readonly type: string };
   readonly xAxis?: Record<string, unknown>;
   readonly plotOptions?: Record<string, unknown>;
   readonly series: readonly HighchartsSeries[];
 }
 
-export function toHighchartsEngineTimeSeriesOptions(
-  model: EngineWideTableModel,
-  options: HighchartsEngineOptions = {}
-): HighchartsEngineOptionsModel {
+export function toHighchartsTimeSeriesOptions(
+  model: EngineWideTableInput,
+  options: HighchartsAdapterOptions = {}
+): HighchartsOptions {
+  const wide = asEngineWideTableModel(model, options);
   const chartType = options.chartType ?? "line";
   return {
     chart: { type: chartType === "bar" ? "bar" : chartType === "scatter" ? "scatter" : "line" },
     xAxis: { type: "datetime" },
-    series: model.series.map((series, index) => ({
+    series: wide.series.map((series, index) => ({
       id: series.id,
       name: series.label,
-      data: model.rows.map((row) => [row.t, row.values[index] ?? null]),
+      data: wide.rows.map((row) => [row.t, row.values[index] ?? null]),
       type: chartType === "area" ? "area" : chartType === "sparkline" ? "line" : undefined,
     })),
   };
 }
 
-export function toHighchartsEngineLatestValuesOptions(
-  model: EngineLatestValueModel,
-  options: HighchartsEngineOptions = {}
-): HighchartsEngineOptionsModel {
+export function toHighchartsLatestValuesOptions(
+  model: EngineLatestValueInput,
+  options: HighchartsAdapterOptions = {}
+): HighchartsOptions {
+  const latest = asEngineLatestValueModel(model, options);
   const chartType = options.chartType ?? "donut";
   if (chartType === "gauge") {
     return {
       chart: { type: "gauge" },
-      series: [{ name: "average", data: [gaugeValue(model)] }],
+      series: [{ name: "average", data: [gaugeValue(latest)] }],
     };
   }
   return {
@@ -66,18 +75,20 @@ export function toHighchartsEngineLatestValuesOptions(
     plotOptions: { pie: { innerSize: "55%" } },
     series: [
       {
-        data: model.rows.flatMap((row) => (row.value === null ? [] : [[row.label, row.value]])),
+        data: latest.rows.flatMap((row) => (row.value === null ? [] : [[row.label, row.value]])),
       },
     ],
   };
 }
 
-export function toHighchartsEngineHistogramOptions(
-  model: EngineHistogramModel
-): HighchartsEngineOptionsModel {
+export function toHighchartsHistogramOptions(
+  model: EngineHistogramInput,
+  options: HighchartsAdapterOptions = {}
+): HighchartsOptions {
+  const histogram = asEngineHistogramModel(model, options);
   return {
     chart: { type: "column" },
-    xAxis: { categories: model.buckets.map((bucket) => bucket.label) },
-    series: [{ name: "samples", data: model.buckets.map((bucket) => bucket.count) }],
+    xAxis: { categories: histogram.buckets.map((bucket) => bucket.label) },
+    series: [{ name: "samples", data: histogram.buckets.map((bucket) => bucket.count) }],
   };
 }

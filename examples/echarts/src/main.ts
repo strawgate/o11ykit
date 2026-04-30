@@ -1,7 +1,7 @@
 import {
-  toEChartsHistogramOption,
-  toEChartsLatestValuesOption,
-  toEChartsTimeSeriesOption,
+  toEChartsViewHistogramOption,
+  toEChartsViewLatestValuesOption,
+  toEChartsViewTimeSeriesOption,
 } from "@otlpkit/adapters/echarts";
 import { buildHistogramFrame, buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
 import { BarChart, LineChart } from "echarts/charts";
@@ -39,9 +39,9 @@ const histogramFrame = buildHistogramFrame(sampleMetricsDocument, {
 });
 
 for (const [selector, option] of [
-  ["#time-series", toEChartsTimeSeriesOption(timeSeriesFrame)],
-  ["#latest-values", toEChartsLatestValuesOption(latestValuesFrame)],
-  ["#histogram", toEChartsHistogramOption(histogramFrame)],
+  ["#time-series", toEChartsViewTimeSeriesOption(timeSeriesFrame)],
+  ["#latest-values", toEChartsViewLatestValuesOption(latestValuesFrame)],
+  ["#histogram", toEChartsViewHistogramOption(histogramFrame)],
 ] as const) {
   init(requireContainer(selector)).setOption(option);
 }

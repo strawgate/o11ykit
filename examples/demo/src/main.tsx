@@ -1,9 +1,9 @@
 import {
-  toRechartsHistogramModel,
-  toRechartsLatestValuesModel,
-  toRechartsTimeSeriesModel,
+  toRechartsViewHistogramData,
+  toRechartsViewLatestValuesData,
+  toRechartsViewTimeSeriesData,
 } from "@otlpkit/adapters/recharts";
-import { toUPlotTimeSeriesModel } from "@otlpkit/adapters/uplot";
+import { toUPlotViewTimeSeriesArgs } from "@otlpkit/adapters/uplot";
 import { buildHistogramFrame, buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
 import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -19,7 +19,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import uPlot, { type AlignedData, type Options } from "uplot";
+import uPlot, { type AlignedData, type Options, type Series } from "uplot";
 import "uplot/dist/uPlot.min.css";
 
 import { demoMetricsDocument } from "./demo-data.js";
@@ -54,11 +54,11 @@ const collectorPulseFrame = buildTimeSeriesFrame(demoMetricsDocument, {
   title: "Collector heartbeat",
 });
 
-const inflightModel = toRechartsTimeSeriesModel(inflightFrame);
-const retryModel = toRechartsTimeSeriesModel(retryFrame);
-const errorModel = toRechartsLatestValuesModel(errorFrame);
-const durationModel = toRechartsHistogramModel(durationFrame);
-const collectorPulseModel = toUPlotTimeSeriesModel(collectorPulseFrame);
+const inflightModel = toRechartsViewTimeSeriesData(inflightFrame);
+const retryModel = toRechartsViewTimeSeriesData(retryFrame);
+const errorModel = toRechartsViewLatestValuesData(errorFrame);
+const durationModel = toRechartsViewHistogramData(durationFrame);
+const collectorPulseModel = toUPlotViewTimeSeriesArgs(collectorPulseFrame);
 
 const routeKeys = inflightModel.series.map((series) => series.dataKey);
 const peakInflight = inflightModel.data.reduce((peak, row) => {
@@ -117,7 +117,7 @@ function UPlotPulseCard({ model }: { readonly model: typeof collectorPulseModel 
           },
         },
         axes: model.options.axes.map((axis) => ({ ...axis })),
-        series: model.options.series.map((series) => ({ ...series })),
+        series: model.options.series.map(toUPlotSeries),
       };
       plot = new uPlot(options, alignedData, element);
     };
@@ -140,6 +140,13 @@ function UPlotPulseCard({ model }: { readonly model: typeof collectorPulseModel 
       <div className="pulse-chart" ref={chartRef} />
     </div>
   );
+}
+
+function toUPlotSeries(series: (typeof collectorPulseModel.options.series)[number]): Series {
+  return {
+    label: series.label,
+    ...(series.points ? { points: { ...series.points } } : {}),
+  };
 }
 
 function MeasuredChart({

@@ -1,9 +1,17 @@
 import type { HistogramFrame, LatestValuesFrame, TimeSeriesFrame } from "@otlpkit/views";
 
 import type {
-  EngineHistogramModel,
-  EngineLatestValueModel,
+  EngineAdapterOptions,
+  EngineHistogramInput,
+  EngineHistogramOptions,
+  EngineLatestValueInput,
+  EngineWideTableInput,
   EngineWideTableModel,
+} from "./engine.js";
+import {
+  asEngineHistogramModel,
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
 } from "./engine.js";
 import { histogramRows, pivotTimeSeriesFrame } from "./shared.js";
 
@@ -13,7 +21,7 @@ export interface RechartsSeriesDescriptor {
   readonly id?: string;
 }
 
-export interface RechartsTimeSeriesModel {
+export interface RechartsViewTimeSeriesData {
   readonly data: readonly Record<string, number | string | null>[];
   readonly xAxisKey: "timeMs";
   readonly tooltipKey: "isoTime";
@@ -21,7 +29,7 @@ export interface RechartsTimeSeriesModel {
   readonly series: readonly RechartsSeriesDescriptor[];
 }
 
-export interface RechartsEngineTimeSeriesModel {
+export interface RechartsTimeSeriesData {
   readonly data: readonly Record<string, number | string | null>[];
   readonly xAxisKey: string;
   readonly tooltipKey: string;
@@ -29,14 +37,14 @@ export interface RechartsEngineTimeSeriesModel {
   readonly series: readonly RechartsSeriesDescriptor[];
 }
 
-export interface RechartsBarModel {
+export interface RechartsCategoryData {
   readonly data: readonly Record<string, number | string>[];
   readonly categoryKey: string;
   readonly valueKey: string;
   readonly unit: string | null;
 }
 
-export interface RechartsEngineScatterModel {
+export interface RechartsScatterData {
   readonly data: readonly Record<string, number | string | null>[];
   readonly xAxisKey: string;
   readonly yAxisKey: string;
@@ -48,7 +56,7 @@ export interface RechartsEngineScatterModel {
   }[];
 }
 
-export function toRechartsTimeSeriesModel(frame: TimeSeriesFrame): RechartsTimeSeriesModel {
+export function toRechartsViewTimeSeriesData(frame: TimeSeriesFrame): RechartsViewTimeSeriesData {
   const pivoted = pivotTimeSeriesFrame(frame);
   return {
     data: pivoted.rows,
@@ -62,7 +70,7 @@ export function toRechartsTimeSeriesModel(frame: TimeSeriesFrame): RechartsTimeS
   };
 }
 
-export function toRechartsLatestValuesModel(frame: LatestValuesFrame): RechartsBarModel {
+export function toRechartsViewLatestValuesData(frame: LatestValuesFrame): RechartsCategoryData {
   return {
     data: frame.rows.map((row) => ({
       label: row.label,
@@ -74,7 +82,7 @@ export function toRechartsLatestValuesModel(frame: LatestValuesFrame): RechartsB
   };
 }
 
-export function toRechartsHistogramModel(frame: HistogramFrame): RechartsBarModel {
+export function toRechartsViewHistogramData(frame: HistogramFrame): RechartsCategoryData {
   return {
     data: histogramRows(frame),
     categoryKey: "label",
@@ -83,35 +91,36 @@ export function toRechartsHistogramModel(frame: HistogramFrame): RechartsBarMode
   };
 }
 
-export interface RechartsEngineTimeSeriesOptions {
+export interface RechartsTimeSeriesOptions extends EngineAdapterOptions {
   readonly xAxisKey?: string;
   readonly tooltipKey?: string;
   readonly unit?: string | null;
   readonly seriesName?: (series: EngineWideTableModel["series"][number], index: number) => string;
 }
 
-export function toRechartsEngineTimeSeriesModel(
-  model: EngineWideTableModel,
-  options: RechartsEngineTimeSeriesOptions = {}
-): RechartsEngineTimeSeriesModel {
+export function toRechartsTimeSeriesData(
+  model: EngineWideTableInput,
+  options: RechartsTimeSeriesOptions = {}
+): RechartsTimeSeriesData {
+  const wide = asEngineWideTableModel(model, options);
   const xAxisKey = options.xAxisKey ?? "time";
   const tooltipKey = options.tooltipKey ?? xAxisKey;
   const reservedKeys = new Set([xAxisKey, tooltipKey]);
-  const series = model.series.map((series, index) => ({
+  const series = wide.series.map((series, index) => ({
     id: series.id,
     dataKey: uniqueDataKey(series.id, reservedKeys),
     name: options.seriesName?.(series, index) ?? series.label,
   }));
 
   return {
-    data: model.rows.map((row) => {
+    data: wide.rows.map((row) => {
       const output: Record<string, number | string | null> = {
         [xAxisKey]: row.t,
       };
       if (tooltipKey !== xAxisKey) {
         output[tooltipKey] = row.t;
       }
-      for (let i = 0; i < model.series.length; i++) {
+      for (let i = 0; i < wide.series.length; i++) {
         const seriesMeta = series[i];
         if (!seriesMeta) continue;
         output[seriesMeta.dataKey] = row.values[i] ?? null;
@@ -125,12 +134,13 @@ export function toRechartsEngineTimeSeriesModel(
   };
 }
 
-export function toRechartsEngineLatestValuesModel(
-  model: EngineLatestValueModel,
-  options: { readonly unit?: string | null } = {}
-): RechartsBarModel {
+export function toRechartsLatestValuesData(
+  model: EngineLatestValueInput,
+  options: EngineAdapterOptions & { readonly unit?: string | null } = {}
+): RechartsCategoryData {
+  const latest = asEngineLatestValueModel(model, options);
   return {
-    data: model.rows.flatMap((row) =>
+    data: latest.rows.flatMap((row) =>
       row.value === null
         ? []
         : [
@@ -146,12 +156,13 @@ export function toRechartsEngineLatestValuesModel(
   };
 }
 
-export function toRechartsEngineHistogramModel(
-  model: EngineHistogramModel,
-  options: { readonly unit?: string | null } = {}
-): RechartsBarModel {
+export function toRechartsHistogramData(
+  model: EngineHistogramInput,
+  options: EngineAdapterOptions & EngineHistogramOptions & { readonly unit?: string | null } = {}
+): RechartsCategoryData {
+  const histogram = asEngineHistogramModel(model, options);
   return {
-    data: model.buckets.map((bucket) => ({
+    data: histogram.buckets.map((bucket) => ({
       label: bucket.label,
       count: bucket.count,
       start: bucket.start,
@@ -163,29 +174,30 @@ export function toRechartsEngineHistogramModel(
   };
 }
 
-export function toRechartsEngineScatterModel(
-  model: EngineWideTableModel,
-  options: {
+export function toRechartsScatterData(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions & {
     readonly xAxisKey?: string;
     readonly yAxisKey?: string;
     readonly seriesKey?: string;
     readonly unit?: string | null;
     readonly seriesName?: (series: EngineWideTableModel["series"][number], index: number) => string;
   } = {}
-): RechartsEngineScatterModel {
+): RechartsScatterData {
+  const wide = asEngineWideTableModel(model, options);
   const xAxisKey = options.xAxisKey ?? "time";
   const yAxisKey = options.yAxisKey ?? "value";
   const seriesKey = options.seriesKey ?? "series";
   if (xAxisKey === yAxisKey || xAxisKey === seriesKey || yAxisKey === seriesKey) {
     throw new RangeError("Recharts scatter xAxisKey, yAxisKey, and seriesKey must be distinct");
   }
-  const series = model.series.map((series, index) => ({
+  const series = wide.series.map((series, index) => ({
     id: series.id,
     name: options.seriesName?.(series, index) ?? series.label,
   }));
 
   return {
-    data: model.rows.flatMap((row) =>
+    data: wide.rows.flatMap((row) =>
       series.map((series, index) => ({
         [xAxisKey]: row.t,
         [yAxisKey]: row.values[index] ?? null,

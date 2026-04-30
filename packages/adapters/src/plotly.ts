@@ -1,11 +1,18 @@
 import type {
-  EngineHistogramModel,
-  EngineLatestValueModel,
-  EngineWideTableModel,
+  EngineAdapterOptions,
+  EngineHistogramInput,
+  EngineHistogramOptions,
+  EngineLatestValueInput,
+  EngineWideTableInput,
+} from "./engine.js";
+import {
+  asEngineHistogramModel,
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
 } from "./engine.js";
 import { gaugeValue } from "./engine-chart-shared.js";
 
-export type PlotlyEngineChartType =
+export type PlotlyChartType =
   | "line"
   | "area"
   | "bar"
@@ -29,7 +36,7 @@ export interface PlotlyTrace {
   readonly gauge?: Record<string, unknown>;
 }
 
-export interface PlotlyEngineModel {
+export interface PlotlyFigure {
   readonly data: readonly PlotlyTrace[];
   readonly layout: Record<string, unknown>;
   readonly config: {
@@ -38,19 +45,20 @@ export interface PlotlyEngineModel {
   };
 }
 
-export function toPlotlyEngineTimeSeriesModel(
-  model: EngineWideTableModel,
-  options: { readonly chartType?: PlotlyEngineChartType } = {}
-): PlotlyEngineModel {
+export function toPlotlyTimeSeriesFigure(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions & { readonly chartType?: PlotlyChartType } = {}
+): PlotlyFigure {
+  const wide = asEngineWideTableModel(model, options);
   const chartType = options.chartType ?? "line";
   return {
-    data: model.series.map((series, index) => ({
-      uid: series.id,
+    data: wide.series.map((series, index) => ({
+      uid: plotlyTraceUid(series.id, index),
       type: chartType === "bar" ? "bar" : "scatter",
       mode: chartType === "bar" ? undefined : chartType === "scatter" ? "markers" : "lines",
       name: series.label,
-      x: model.rows.map((row) => row.t),
-      y: model.rows.map((row) => row.values[index] ?? null),
+      x: wide.rows.map((row) => row.t),
+      y: wide.rows.map((row) => row.values[index] ?? null),
       fill: chartType === "area" ? "tozeroy" : undefined,
     })),
     layout: { xaxis: { type: "date" }, uirevision: "engine-series" },
@@ -58,19 +66,22 @@ export function toPlotlyEngineTimeSeriesModel(
   };
 }
 
-export function toPlotlyEngineLatestValuesModel(
-  model: EngineLatestValueModel,
-  options: { readonly chartType?: PlotlyEngineChartType } = {}
-): PlotlyEngineModel {
+export function toPlotlyLatestValuesFigure(
+  model: EngineLatestValueInput,
+  options: EngineAdapterOptions & { readonly chartType?: PlotlyChartType } = {}
+): PlotlyFigure {
+  const latest = asEngineLatestValueModel(model, options);
   const chartType = options.chartType ?? "donut";
   if (chartType === "gauge") {
     return {
-      data: [{ uid: "latest-gauge", type: "indicator", mode: undefined, value: gaugeValue(model) }],
+      data: [
+        { uid: "latest-gauge", type: "indicator", mode: undefined, value: gaugeValue(latest) },
+      ],
       layout: { margin: { t: 16, b: 16 }, uirevision: "engine-latest" },
       config: { responsive: true, displaylogo: false },
     };
   }
-  const rows = model.rows.filter((row) => row.value !== null);
+  const rows = latest.rows.filter((row) => row.value !== null);
   return {
     data: [
       {
@@ -85,14 +96,18 @@ export function toPlotlyEngineLatestValuesModel(
   };
 }
 
-export function toPlotlyEngineHistogramModel(model: EngineHistogramModel): PlotlyEngineModel {
+export function toPlotlyHistogramFigure(
+  model: EngineHistogramInput,
+  options: EngineAdapterOptions & EngineHistogramOptions = {}
+): PlotlyFigure {
+  const histogram = asEngineHistogramModel(model, options);
   return {
     data: [
       {
         uid: "histogram",
         type: "bar",
-        x: model.buckets.map((bucket) => bucket.label),
-        y: model.buckets.map((bucket) => bucket.count),
+        x: histogram.buckets.map((bucket) => bucket.label),
+        y: histogram.buckets.map((bucket) => bucket.count),
       },
     ],
     layout: { uirevision: "engine-histogram" },
@@ -100,9 +115,15 @@ export function toPlotlyEngineHistogramModel(model: EngineHistogramModel): Plotl
   };
 }
 
-export const toPlotlyEngineTimeSeriesFigure: typeof toPlotlyEngineTimeSeriesModel =
-  toPlotlyEngineTimeSeriesModel;
-export const toPlotlyEngineLatestValuesFigure: typeof toPlotlyEngineLatestValuesModel =
-  toPlotlyEngineLatestValuesModel;
-export const toPlotlyEngineHistogramFigure: typeof toPlotlyEngineHistogramModel =
-  toPlotlyEngineHistogramModel;
+function plotlyTraceUid(id: string, index: number): string {
+  return `engine-${index}-${stableHash(id)}`;
+}
+
+function stableHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index++) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}

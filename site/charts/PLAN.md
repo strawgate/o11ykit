@@ -18,8 +18,9 @@ The gallery should make the adapter story obvious:
 
 ```ts
 const result = engine.query(store, query);
-const wide = toEngineWideTableModel(result);
-const props = toTremorLineChartProps(wide);
+const props = toTremorLineChartProps(result, {
+  seriesLabel: (series) => series.labels.get("service") ?? series.label,
+});
 ```
 
 Then:
@@ -40,7 +41,9 @@ Use one generated TSDB dataset across every page:
   - latest by route
   - histogram-ish bucket output for non-TS charts where useful
 
-Keep the data fixed enough that every library page is visually comparable.
+Keep the data fixed enough that every library page is visually comparable. The generated samples
+must still be appended into an `o11ytsdb` `RowGroupStore` and queried with `ScanEngine`; the gallery
+should never pass hand-built query-result lookalikes directly to adapters.
 
 ## Site Structure
 
@@ -63,8 +66,6 @@ site/charts/
     index.html
   nivo/
     index.html
-  visx/
-    index.html
   observable-plot/
     index.html
   plotly/
@@ -76,12 +77,11 @@ site/charts/
 | Library | Time series | Area | Bar/latest | Donut/pie | Histogram | Live/update | Demo stance |
 |---|---:|---:|---:|---:|---:|---|---|
 | Tremor | yes | yes | yes | yes | recipe | React data updates | first wave |
-| Recharts | yes | yes | yes | pie via recipe | yes | React data updates | first wave |
+| Recharts | yes | yes | yes | donut | yes | React data updates | first wave |
 | Chart.js | yes | yes | yes | doughnut | yes | controller + `update('none')` | second wave |
 | ECharts | yes | yes | yes | pie | yes | `setOption` plan, append spike | second wave |
 | uPlot | yes | no native area focus | latest recipe | no | no | live controller + `setData` | second wave |
 | Nivo | yes | yes | yes | pie | recipe | React data updates | third wave |
-| Visx | yes | yes | yes | recipe | recipe | caller state updates | third wave |
 | Observable Plot | yes | area mark | bar mark | no | bin transform | rebuild plot | third wave |
 | Plotly | yes | filled scatter | bar | pie | histogram | `extendTraces` patch | third wave |
 
@@ -109,13 +109,13 @@ Each library page should include:
 
 - Added `/o11ykit/charts/` overview page.
 - Linked it from the home nav.
-- Included support matrix, canonical snippets, adapter-shaped output previews, and deterministic gallery data.
+- Included support matrix, canonical snippets, native package previews, and deterministic gallery data.
 
 ### Phase 2: Tremor + Recharts Live Examples
 
 - Add React/Vite example pages or iframe from workspace examples.
 - Show line, area, bar, donut/barlist for Tremor.
-- Show line, area, bar, composed chart for Recharts.
+- Show line, area, bar, donut, histogram, and scatter chart for Recharts.
 
 ### Phase 3: Existing Adapter Libraries
 
@@ -125,7 +125,7 @@ Each library page should include:
 
 ### Phase 4: Ecosystem Libraries
 
-- Nivo, Visx, Observable Plot, Plotly pages.
+- Nivo, Observable Plot, Plotly pages.
 - Keep modules lazily loaded so the gallery shell does not pay every chart library cost.
 
 ## Validation

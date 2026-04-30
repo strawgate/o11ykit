@@ -1,26 +1,34 @@
-import type { EngineHistogramModel, EngineWideTableModel } from "./engine.js";
+import {
+  asEngineHistogramModel,
+  asEngineWideTableModel,
+  type EngineAdapterOptions,
+  type EngineHistogramInput,
+  type EngineHistogramOptions,
+  type EngineWideTableInput,
+} from "./engine.js";
 import { tidyRows } from "./engine-chart-shared.js";
 
-export type VegaLiteEngineMark = "line" | "area" | "bar" | "point";
+export type VegaLiteMark = "line" | "area" | "bar" | "point";
 
-export interface VegaLiteEngineSpec {
+export interface VegaLiteSpec {
   readonly $schema: "https://vega.github.io/schema/vega-lite/v6.json";
   readonly data: { readonly values: readonly Record<string, unknown>[] };
-  readonly mark: VegaLiteEngineMark;
+  readonly mark: VegaLiteMark;
   readonly encoding: Record<string, unknown>;
   readonly config: {
     readonly invalidValues: "filter";
   };
 }
 
-export function toVegaLiteEngineSpec(
-  model: EngineWideTableModel,
-  options: { readonly mark?: "line" | "area" | "bar" | "scatter" } = {}
-): VegaLiteEngineSpec {
+export function toVegaLiteSpec(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions & { readonly mark?: "line" | "area" | "bar" | "scatter" } = {}
+): VegaLiteSpec {
+  const wide = asEngineWideTableModel(model, options);
   const mark = options.mark === "scatter" ? "point" : (options.mark ?? "line");
   return {
     $schema: "https://vega.github.io/schema/vega-lite/v6.json",
-    data: { values: tidyRows(model).filter((row) => row.value !== null) },
+    data: { values: tidyRows(wide).filter((row) => row.value !== null) },
     mark,
     encoding: {
       x: { field: "time", type: "temporal" },
@@ -36,11 +44,15 @@ export function toVegaLiteEngineSpec(
   };
 }
 
-export function toVegaLiteEngineHistogramSpec(model: EngineHistogramModel): VegaLiteEngineSpec {
+export function toVegaLiteHistogramSpec(
+  model: EngineHistogramInput,
+  options: EngineAdapterOptions & EngineHistogramOptions = {}
+): VegaLiteSpec {
+  const histogram = asEngineHistogramModel(model, options);
   return {
     $schema: "https://vega.github.io/schema/vega-lite/v6.json",
     data: {
-      values: model.buckets.map((bucket) => ({
+      values: histogram.buckets.map((bucket) => ({
         label: bucket.label,
         count: bucket.count,
         start: bucket.start,
