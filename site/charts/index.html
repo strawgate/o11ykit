@@ -54,14 +54,14 @@
           </div>
           <div class="hero-terminal" aria-label="Adapter flow code sample">
             <pre><span class="code-comment">// Query once. Render anywhere.</span>
+const engine = new ScanEngine();
 const result = engine.query(store, query);
-const wide = toEngineWideTableModel(result);
 
-const tremor = toTremorLineChartProps(wide);
+const tremor = toTremorLineChartProps(result);
 const recharts =
-  toRechartsEngineTimeSeriesModel(wide);
-// Planned adapters keep
-// the same engine input.</pre>
+  toRechartsTimeSeriesData(result);
+// Every gallery chart starts from
+// this TSDB engine result.</pre>
           </div>
         </div>
       </section>
@@ -72,7 +72,7 @@ const recharts =
           <span class="stat-label">chart libraries</span>
         </div>
         <div class="stat">
-          <span class="stat-value">9</span>
+          <span class="stat-value">10</span>
           <span class="stat-label">chart shapes</span>
         </div>
         <div class="stat">
@@ -87,12 +87,14 @@ const recharts =
 
       <section id="gallery" class="gallery-shell">
         <div class="gallery-toolbar" aria-label="Gallery controls">
-          <div>
+          <div class="library-picker">
             <p class="t-eyebrow">library</p>
             <div id="libraryButtons" class="segmented-control"></div>
           </div>
-          <div id="librarySummary" class="library-summary"></div>
-          <div class="live-controls" aria-label="Live update controls">
+        </div>
+
+        <div class="gallery-controls-row" aria-label="Live update controls">
+          <div class="live-controls">
             <label class="refresh-rate-label" for="refreshRate">Refresh rate</label>
             <select id="refreshRate" class="refresh-rate-select" aria-label="Refresh rate"></select>
             <button id="liveToggle" class="live-toggle" type="button" aria-pressed="false">
@@ -110,30 +112,30 @@ const recharts =
       <section id="adapter-docs" class="adapter-docs">
         <div class="section-inner">
           <p class="t-eyebrow">user docs</p>
-          <h2 class="t-h2" style="margin:8px 0 8px">Start with the chart shape.</h2>
+          <h2 class="t-h2" style="margin:8px 0 8px">What the adapter gives you.</h2>
           <p class="t-body" style="max-width:72ch;margin:0 0 28px">
-            The engine model is the stable part. Pick the model that matches the chart you are
-            rendering, then use the library adapter to get the object that chart library expects.
-            The most polished adapters today are Tremor and Recharts. Chart.js, ECharts, uPlot,
-            Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, and Vega-Lite
-            also expose real engine-backed adapter exports. Use the Show code button on any chart
-            card to inspect that adapter output beside the package-rendered chart.
+            Query the TSDB engine once, then pass the result directly to the adapter for the chart
+            library you already use. The adapter returns native package input: Tremor props,
+            Recharts rows and keys, Chart.js configs, ECharts options, Plotly figures, uPlot aligned
+            arrays, Vega-Lite specs, and the equivalent shape for each supported library. Use the
+            Show code button on any card to compare the query, adapter call, returned input, and
+            native render code.
           </p>
           <div class="adapter-doc-grid">
             <article class="adapter-doc">
-              <h3>Time series</h3>
-              <p>Use `toEngineWideTableModel` for line, area, and grouped bar charts.</p>
-              <code>rows: [{ t, values[] }]</code>
+              <h3>Direct result in</h3>
+              <p>Pass the engine query result into the adapter. No wide table or gallery DTO step.</p>
+              <code>result -> published adapter -> native input</code>
             </article>
             <article class="adapter-doc">
-              <h3>Latest values</h3>
-              <p>Use `toEngineLatestValueModel` for donut charts, pie charts, and bar lists.</p>
-              <code>rows: [{ label, value }]</code>
+              <h3>Native input out</h3>
+              <p>Feed the returned object to the chart package exactly where that package expects it.</p>
+              <code>new Chart(canvas, config)</code>
             </article>
             <article class="adapter-doc">
-              <h3>Custom marks</h3>
-              <p>Use `toEngineLineSeriesModel` when the library wants one point array per series.</p>
-              <code>series: [{ id, points[] }]</code>
+              <h3>Live updates stay yours</h3>
+              <p>Reuse the chart instance and call the library's normal update path with new adapter output.</p>
+              <code>chart.update("none")</code>
             </article>
           </div>
         </div>
@@ -142,37 +144,37 @@ const recharts =
       <section id="ergonomics-audit" class="adapter-docs">
         <div class="section-inner">
           <p class="t-eyebrow">ergonomics audit</p>
-          <h2 class="t-h2" style="margin:8px 0 8px">Compared with raw data sources.</h2>
+          <h2 class="t-h2" style="margin:8px 0 8px">What you still control.</h2>
           <p class="t-body" style="max-width:76ch;margin:0 0 28px">
-            Raw APIs make chart users solve transport, time alignment, grouping, sparse values, and
-            chart-library shape differences at the same time. The engine splits that work: queries
-            produce typed series once, engine models normalize dashboard data once, and adapters
-            return the package-native object a chart user already recognizes.
+            The adapters handle the repetitive conversion work: aligned timestamps, latest values,
+            histogram buckets, labels, sparse values, and package-specific field names. You keep
+            control over presentation, colors, tooltips, axes, and the update strategy each chart
+            library recommends.
           </p>
           <div class="ergonomics-grid">
             <article class="ergonomics-card">
-              <h3>Raw source data</h3>
+              <h3>Labels and nulls</h3>
               <p>
-                Users hand-roll timestamp conversion, joins, latest-value extraction, null
-                handling, and label naming before they can even start writing chart code.
+                Supply a `seriesLabel` callback and let the adapter preserve sparse samples as the
+                null or missing-value shape that library expects.
               </p>
-              <code>fetch() -> reshape -> chart config</code>
+              <code>seriesLabel: (series) => ...</code>
             </article>
             <article class="ergonomics-card">
-              <h3>Chart-native data</h3>
+              <h3>Styling remains native</h3>
               <p>
-                The chart package feels good once the data is shaped, but every package wants a
-                different shape: props, rows, traces, specs, options, marks, or aligned arrays.
+                The adapter gives you the data-bearing object. You can still merge in normal chart
+                package options for themes, legends, grids, cursors, and interaction.
               </p>
-              <code>rows | props | traces | spec | marks</code>
+              <code>{ ...option, grid, tooltip }</code>
             </article>
             <article class="ergonomics-card">
-              <h3>Engine adapters</h3>
+              <h3>Updates are package updates</h3>
               <p>
-                Users keep one query and one set of engine transforms, then pick the adapter that
-                speaks their chart library's dialect without learning an o11ykit-only chart DTO.
+                For live data, append into the same store, query the sliding window, convert again,
+                then call the chart library's own update API.
               </p>
-              <code>engine model -> library-native output</code>
+              <code>result -> adapter -> chart.update()</code>
             </article>
           </div>
         </div>
@@ -183,10 +185,9 @@ const recharts =
           <p class="t-eyebrow">why it feels good</p>
           <h2 class="t-h2" style="margin:8px 0 8px">Each adapter speaks the library's dialect.</h2>
           <p class="t-body" style="max-width:72ch;margin:0 0 28px">
-            The shared engine model handles timestamps, sparse rows, nulls, labels, and latest
-            values. Library adapters stay thin and lovable: a Tremor user gets props, a Recharts
-            user gets rows and data keys, uPlot gets aligned arrays, and ECharts gets
-            dataset/encode.
+            The public exports are named for the thing the library wants, not for an o11ykit
+            intermediate model. A Tremor user gets props, a Recharts user gets rows and data keys,
+            uPlot gets aligned arrays, ECharts gets options, and Plotly gets a figure.
           </p>
           <div id="libraryCards" class="library-card-grid"></div>
         </div>
@@ -197,8 +198,9 @@ const recharts =
           <p class="t-eyebrow">coverage</p>
           <h2 class="t-h2" style="margin:8px 0 8px">Chart shape by chart shape.</h2>
           <p class="t-body" style="max-width:72ch;margin:0 0 28px">
-            First-class does not mean every adapter exposes the same API. It means every chart type
-            has the smallest useful bridge from engine output to that library's natural runtime.
+            A checked cell means this gallery has a published adapter call and a native package
+            render path for that chart shape. Recipe cells are intentional examples that can be built
+            from the exported primitives without adding gallery-only drawing.
           </p>
           <div class="coverage-table-wrap">
             <table id="coverageTable" class="coverage-table"></table>

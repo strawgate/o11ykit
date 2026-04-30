@@ -1,9 +1,17 @@
 import type { HistogramFrame, LatestValuesFrame, TimeSeriesFrame } from "@otlpkit/views";
 
 import type {
-  EngineHistogramModel,
+  EngineAdapterOptions,
+  EngineHistogramInput,
+  EngineHistogramOptions,
+  EngineLatestValueInput,
   EngineLatestValueModel,
-  EngineWideTableModel,
+  EngineWideTableInput,
+} from "./engine.js";
+import {
+  asEngineHistogramModel,
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
 } from "./engine.js";
 import { histogramRows, pivotTimeSeriesFrame } from "./shared.js";
 
@@ -46,7 +54,7 @@ export interface EChartsOption {
   }[];
 }
 
-export type EChartsEngineChartType =
+export type EChartsChartType =
   | "line"
   | "area"
   | "bar"
@@ -56,15 +64,16 @@ export type EChartsEngineChartType =
   | "sparkline"
   | "gauge";
 
-export interface EChartsEngineOptions {
-  readonly chartType?: EChartsEngineChartType;
+export interface EChartsOptions extends EngineAdapterOptions, EngineHistogramOptions {
+  readonly chartType?: EChartsChartType;
   readonly unit?: string | null;
 }
 
-export function toEChartsEngineTimeSeriesOption(
-  model: EngineWideTableModel,
-  options: EChartsEngineOptions = {}
+export function toEChartsTimeSeriesOption(
+  model: EngineWideTableInput,
+  options: EChartsOptions = {}
 ): EChartsOption {
+  const wide = asEngineWideTableModel(model, options);
   const chartType = options.chartType ?? "line";
   return {
     aria: { enabled: true },
@@ -73,10 +82,10 @@ export function toEChartsEngineTimeSeriesOption(
     dataset: [
       {
         id: "telemetry",
-        dimensions: ["time", ...model.series.map((series) => series.label)],
-        source: model.rows.map((row) => {
+        dimensions: ["time", ...wide.series.map((series) => series.label)],
+        source: wide.rows.map((row) => {
           const output: Record<string, number | string | null> = { time: row.t };
-          model.series.forEach((series, index) => {
+          wide.series.forEach((series, index) => {
             output[series.label] = row.values[index] ?? null;
           });
           return output;
@@ -85,7 +94,7 @@ export function toEChartsEngineTimeSeriesOption(
     ],
     xAxis: { type: "time" },
     yAxis: { type: "value", name: options.unit ?? "" },
-    series: model.series.map((series) => ({
+    series: wide.series.map((series) => ({
       type: chartType === "bar" ? "bar" : chartType === "scatter" ? "scatter" : "line",
       name: series.label,
       datasetId: "telemetry",
@@ -97,10 +106,11 @@ export function toEChartsEngineTimeSeriesOption(
   };
 }
 
-export function toEChartsEngineLatestValuesOption(
-  model: EngineLatestValueModel,
-  options: EChartsEngineOptions = {}
+export function toEChartsLatestValuesOption(
+  model: EngineLatestValueInput,
+  options: EChartsOptions = {}
 ): EChartsOption {
+  const latest = asEngineLatestValueModel(model, options);
   const chartType = options.chartType ?? "bar";
   if (chartType === "donut") {
     return {
@@ -116,7 +126,7 @@ export function toEChartsEngineLatestValuesOption(
           name: "latest",
           datasetId: "",
           encode: {},
-          data: model.rows.flatMap((row) =>
+          data: latest.rows.flatMap((row) =>
             row.value === null ? [] : [{ name: row.label, value: row.value }]
           ),
         },
@@ -137,7 +147,7 @@ export function toEChartsEngineLatestValuesOption(
           name: "latest",
           datasetId: "",
           encode: {},
-          data: [{ name: "average", value: gaugeValue(model) }],
+          data: [{ name: "average", value: gaugeValue(latest) }],
         },
       ],
     };
@@ -150,7 +160,7 @@ export function toEChartsEngineLatestValuesOption(
       {
         id: "latest-values",
         dimensions: ["label", "value"],
-        source: model.rows.flatMap((row) =>
+        source: latest.rows.flatMap((row) =>
           row.value === null ? [] : [{ label: row.label, value: row.value }]
         ),
       },
@@ -168,7 +178,11 @@ export function toEChartsEngineLatestValuesOption(
   };
 }
 
-export function toEChartsEngineHistogramOption(model: EngineHistogramModel): EChartsOption {
+export function toEChartsHistogramOption(
+  model: EngineHistogramInput,
+  options: EChartsOptions = {}
+): EChartsOption {
+  const histogram = asEngineHistogramModel(model, options);
   return {
     aria: { enabled: true },
     legend: { type: "scroll" },
@@ -177,7 +191,7 @@ export function toEChartsEngineHistogramOption(model: EngineHistogramModel): ECh
       {
         id: "histogram",
         dimensions: ["label", "count", "start", "end"],
-        source: model.buckets.map((bucket) => ({
+        source: histogram.buckets.map((bucket) => ({
           label: bucket.label,
           count: bucket.count,
           start: bucket.start,
@@ -198,7 +212,7 @@ export function toEChartsEngineHistogramOption(model: EngineHistogramModel): ECh
   };
 }
 
-export function toEChartsTimeSeriesOption(frame: TimeSeriesFrame): EChartsOption {
+export function toEChartsViewTimeSeriesOption(frame: TimeSeriesFrame): EChartsOption {
   const pivoted = pivotTimeSeriesFrame(frame);
 
   return {
@@ -251,7 +265,7 @@ function gaugeValue(model: EngineLatestValueModel): number {
   return Math.round(Math.max(0, Math.min(200, average)));
 }
 
-export function toEChartsLatestValuesOption(frame: LatestValuesFrame): EChartsOption {
+export function toEChartsViewLatestValuesOption(frame: LatestValuesFrame): EChartsOption {
   return {
     aria: {
       enabled: true,
@@ -294,7 +308,7 @@ export function toEChartsLatestValuesOption(frame: LatestValuesFrame): EChartsOp
   };
 }
 
-export function toEChartsHistogramOption(frame: HistogramFrame): EChartsOption {
+export function toEChartsViewHistogramOption(frame: HistogramFrame): EChartsOption {
   return {
     aria: {
       enabled: true,

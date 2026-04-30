@@ -1,4 +1,10 @@
-import type { EngineLatestValueModel, EngineWideTableModel } from "./engine.js";
+import {
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
+  type EngineAdapterOptions,
+  type EngineLatestValueInput,
+  type EngineWideTableInput,
+} from "./engine.js";
 import { rowToRecord } from "./engine-chart-shared.js";
 
 export interface NivoPoint {
@@ -11,7 +17,7 @@ export interface NivoSeries {
   readonly data: readonly NivoPoint[];
 }
 
-export interface NivoBarModel {
+export interface NivoBarData {
   readonly data: readonly Record<string, number | null>[];
   readonly keys: readonly string[];
   readonly indexBy: string;
@@ -25,7 +31,7 @@ export interface NivoLineProps {
   readonly enablePoints: boolean;
 }
 
-export interface NivoBarProps extends NivoBarModel {
+export interface NivoBarProps extends NivoBarData {
   readonly groupMode: "grouped" | "stacked";
 }
 
@@ -42,19 +48,26 @@ export interface NivoPieDatum {
   readonly color?: string;
 }
 
-export function toNivoEngineLineSeries(model: EngineWideTableModel): readonly NivoSeries[] {
-  return model.series.map((series, index) => ({
+export function toNivoLineSeries(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions = {}
+): readonly NivoSeries[] {
+  const wide = asEngineWideTableModel(model, options);
+  return wide.series.map((series, index) => ({
     id: series.label,
-    data: model.rows.map((row) => ({ x: row.t, y: row.values[index] ?? null })),
+    data: wide.rows.map((row) => ({ x: row.t, y: row.values[index] ?? null })),
   }));
 }
 
-export function toNivoEngineLineProps(
-  model: EngineWideTableModel,
-  options: { readonly chartType?: "line" | "area" | "sparkline"; readonly stacked?: boolean } = {}
+export function toNivoLineProps(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions & {
+    readonly chartType?: "line" | "area" | "sparkline";
+    readonly stacked?: boolean;
+  } = {}
 ): NivoLineProps {
   return {
-    data: toNivoEngineLineSeries(model),
+    data: toNivoLineSeries(model, options),
     xScale: { type: "linear" },
     yScale: { type: "linear", stacked: options.stacked ?? options.chartType === "area" },
     curve: "monotoneX",
@@ -62,26 +75,33 @@ export function toNivoEngineLineProps(
   };
 }
 
-export function toNivoEngineBarModel(model: EngineWideTableModel): NivoBarModel {
+export function toNivoBarData(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions = {}
+): NivoBarData {
+  const wide = asEngineWideTableModel(model, options);
   return {
-    data: model.rows.map((row) => rowToRecord(row, model.series, "time")),
-    keys: model.series.map((series) => series.id),
+    data: wide.rows.map((row) => rowToRecord(row, wide.series, "time")),
+    keys: wide.series.map((series) => series.id),
     indexBy: "time",
   };
 }
 
-export function toNivoEngineBarProps(
-  model: EngineWideTableModel,
-  options: { readonly groupMode?: "grouped" | "stacked" } = {}
+export function toNivoBarProps(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions & { readonly groupMode?: "grouped" | "stacked" } = {}
 ): NivoBarProps {
   return {
-    ...toNivoEngineBarModel(model),
+    ...toNivoBarData(model, options),
     groupMode: options.groupMode ?? "grouped",
   };
 }
 
-export function toNivoEnginePieData(model: EngineLatestValueModel): readonly NivoPieDatum[] {
-  return model.rows.flatMap((row) =>
+export function toNivoPieData(
+  model: EngineLatestValueInput,
+  options: EngineAdapterOptions = {}
+): readonly NivoPieDatum[] {
+  return asEngineLatestValueModel(model, options).rows.flatMap((row) =>
     row.value === null
       ? []
       : [
@@ -94,14 +114,20 @@ export function toNivoEnginePieData(model: EngineLatestValueModel): readonly Niv
   );
 }
 
-export function toNivoEnginePieProps(model: EngineLatestValueModel): NivoPieProps {
+export function toNivoPieProps(
+  model: EngineLatestValueInput,
+  options: EngineAdapterOptions = {}
+): NivoPieProps {
   return {
-    data: toNivoEnginePieData(model),
+    data: toNivoPieData(model, options),
     id: "id",
     value: "value",
   };
 }
 
-export function toNivoEngineScatterSeries(model: EngineWideTableModel): readonly NivoSeries[] {
-  return toNivoEngineLineSeries(model);
+export function toNivoScatterSeries(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions = {}
+): readonly NivoSeries[] {
+  return toNivoLineSeries(model, options);
 }

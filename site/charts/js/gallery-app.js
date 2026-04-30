@@ -3,7 +3,7 @@ import {
   createLibraryGalleryState,
   getSupportedChart,
   LIBRARIES,
-  serializableAdapterModel,
+  serializableAdapterOutput,
 } from "./gallery-data.js";
 import {
   DEFAULT_LIVE_REFRESH_RATE_ID,
@@ -12,7 +12,6 @@ import {
 } from "./gallery-live.js";
 import { destroyNativeCharts, renderNativeCharts } from "./gallery-renderers.js";
 
-const COLOR_SCALE = ["#2563eb", "#059669", "#dc2626", "#7c3aed", "#d97706", "#0891b2"];
 const state = {
   library: "tremor",
   expandedChart: null,
@@ -24,12 +23,12 @@ const state = {
   raf: null,
   renderBusy: false,
   renderQueued: false,
+  lastLayoutWidth: "",
   lastLayoutKey: "",
 };
 
 const elements = {
   libraryButtons: document.querySelector("#libraryButtons"),
-  librarySummary: document.querySelector("#librarySummary"),
   liveToggle: document.querySelector("#liveToggle"),
   liveToggleLabel: document.querySelector("#liveToggleLabel"),
   refreshRate: document.querySelector("#refreshRate"),
@@ -45,6 +44,7 @@ function init() {
   renderLibraryButtons();
   renderLibraryCards();
   renderCoverageTable();
+  observeGallerySize();
   elements.liveToggle.addEventListener("click", toggleLive);
   elements.refreshRate.addEventListener("change", () => {
     state.liveRateId = elements.refreshRate.value;
@@ -54,13 +54,26 @@ function init() {
   void render();
 }
 
+function observeGallerySize() {
+  if (!("ResizeObserver" in window)) return;
+  const observer = new ResizeObserver((entries) => {
+    const entry = entries[0];
+    if (!entry) return;
+    const { width } = entry.contentRect;
+    const nextKey = `${Math.round(width)}`;
+    if (nextKey === state.lastLayoutWidth) return;
+    state.lastLayoutWidth = nextKey;
+    scheduleRender();
+  });
+  observer.observe(elements.chartGallery);
+}
+
 async function render() {
   const gallery = createLibraryGalleryState(state.library, state.liveStep);
   if (state.expandedChart && !gallery.library.charts.includes(state.expandedChart)) {
     state.expandedChart = null;
   }
   const layoutKey = `${gallery.library.id}:${gallery.charts.join(",")}:${state.expandedChart ?? ""}:${state.tab}`;
-  renderLibrarySummary(gallery);
   if (layoutKey !== state.lastLayoutKey) {
     state.lastLayoutKey = layoutKey;
     renderLibraryButtons();
@@ -73,7 +86,10 @@ async function render() {
 function renderLibraryButtons() {
   elements.libraryButtons.innerHTML = LIBRARIES.map(
     (library) =>
-      `<button type="button" class="${library.id === state.library ? "is-active" : ""}" data-library="${library.id}">${library.name}</button>`
+      `<button type="button" class="${library.id === state.library ? "is-active" : ""}" data-library="${library.id}">
+        ${renderLibraryLogo(library)}
+        <span>${library.name}</span>
+      </button>`
   ).join("");
   elements.libraryButtons.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {
@@ -84,18 +100,6 @@ function renderLibraryButtons() {
       void render();
     });
   });
-}
-
-function renderLibrarySummary(gallery) {
-  elements.librarySummary.innerHTML = `
-    <p class="t-eyebrow">rendering</p>
-    <div class="library-summary-line" aria-label="${gallery.library.name} rendering details">
-      <strong>${gallery.library.name}</strong>
-      <span>${gallery.charts.length} charts</span>
-      <span>${gallery.library.primaryApi}</span>
-      <span>native package renderer</span>
-    </div>
-  `;
 }
 
 async function renderChartGallery(gallery) {
@@ -112,7 +116,12 @@ async function renderChartGallery(gallery) {
               <span class="chart-card-kicker">${chart.library.primaryApi}</span>
               <strong>${chartLabel(chart.chartType)}</strong>
             </span>
-            <span class="chart-card-meta">${adapterSummary(chart.adapterModel)}</span>
+            <span class="chart-card-tools">
+              <span class="chart-card-meta">${adapterOutputSummary(chart.adapterOutput)}</span>
+              <button type="button" class="chart-code-button" data-chart="${chart.chartType}" aria-expanded="${selected}">
+                ${selected ? "Hide code" : "Show code"}
+              </button>
+            </span>
           </span>
           <span class="chart-card-frame">
             <span
@@ -123,12 +132,6 @@ async function renderChartGallery(gallery) {
               role="img"
               aria-label="${chart.library.name} ${chartLabel(chart.chartType)} chart"
             ></span>
-          </span>
-          <span class="mini-legend">${renderLegend(chart)}</span>
-          <span class="chart-card-actions">
-            <button type="button" class="chart-code-button" data-chart="${chart.chartType}" aria-expanded="${selected}">
-              ${selected ? "Hide code" : "Show code"}
-            </button>
           </span>
           ${selected ? renderInlineCode(chart) : ""}
         </article>
@@ -160,9 +163,7 @@ async function updateChartGallery(gallery) {
       ?.closest(".chart-card");
     if (!card) continue;
     const meta = card.querySelector(".chart-card-meta");
-    if (meta) setTextIfChanged(meta, adapterSummary(chart.adapterModel));
-    const legend = card.querySelector(".mini-legend");
-    if (legend) setHtmlIfChanged(legend, renderLegend(chart));
+    if (meta) setTextIfChanged(meta, adapterOutputSummary(chart.adapterOutput));
     if (chart.chartType === state.expandedChart) {
       const code = card.querySelector(".card-code-block");
       if (code) setTextIfChanged(code, codeFor(chart));
@@ -171,19 +172,8 @@ async function updateChartGallery(gallery) {
   await renderNativeCharts(gallery.charts, elements.chartGallery);
 }
 
-function renderLegend(gallery) {
-  const rows =
-    gallery.chartType === "histogram" ? gallery.histogram.buckets.slice(0, 4) : gallery.wide.series;
-  return rows
-    .map((row, index) => {
-      const label = row.label ?? row.id;
-      return `<span class="legend-item"><span class="legend-swatch" style="background:${COLOR_SCALE[index % COLOR_SCALE.length]}"></span>${escapeHtml(label)}</span>`;
-    })
-    .join("");
-}
-
 function renderInlineCode(gallery) {
-  const tabs = ["query", "adapter", "library", "output"]
+  const tabs = ["query", "adapter", "input", "render"]
     .map(
       (tab) => `
         <button
@@ -191,7 +181,7 @@ function renderInlineCode(gallery) {
           class="card-code-tab ${state.tab === tab ? "is-active" : ""}"
           data-chart="${gallery.chartType}"
           data-tab="${tab}"
-        >${tab}</button>
+        >${codeTabLabel(tab)}</button>
       `
     )
     .join("");
@@ -199,7 +189,7 @@ function renderInlineCode(gallery) {
     <div class="chart-card-code">
       <div class="chart-card-code-heading">
         <span>
-          <span class="chart-card-kicker">${gallery.library.primaryApi} adapter</span>
+          <span class="chart-card-kicker">published adapter -> native input</span>
           <strong>${gallery.library.name} ${chartLabel(gallery.chartType)}</strong>
         </span>
       </div>
@@ -213,10 +203,16 @@ function renderInlineCode(gallery) {
 
 function codeFor(gallery) {
   const code =
-    state.tab === "output"
-      ? JSON.stringify(serializableAdapterModel(gallery.adapterModel), null, 2)
-      : gallery.snippets[state.tab];
+    state.tab === "input"
+      ? JSON.stringify(serializableAdapterOutput(gallery.adapterOutput), null, 2)
+      : gallery.snippets[state.tab === "render" ? "library" : state.tab];
   return code;
+}
+
+function codeTabLabel(tab) {
+  if (tab === "adapter") return "adapter call";
+  if (tab === "input") return "native input";
+  return tab;
 }
 
 function renderLibraryCards() {
@@ -237,6 +233,12 @@ function renderLibraryCards() {
       </article>
     `
   ).join("");
+}
+
+function renderLibraryLogo(library) {
+  const fallback = `<span class="library-mark" aria-hidden="true">${escapeHtml(library.mark)}</span>`;
+  if (!library.logoUrl) return fallback;
+  return `<img class="library-logo" src="${escapeHtml(library.logoUrl)}" alt="" aria-hidden="true" loading="lazy" referrerpolicy="no-referrer" onerror="this.hidden=true;this.nextElementSibling.hidden=false" />${fallback}`;
 }
 
 function renderCoverageTable() {
@@ -325,8 +327,8 @@ function chartLabel(chartType) {
   return CHART_TYPES.find((chart) => chart.id === chartType)?.label ?? chartType;
 }
 
-function adapterSummary(model) {
-  const output = serializableAdapterModel(model);
+function adapterOutputSummary(input) {
+  const output = serializableAdapterOutput(input);
   if (output.chart?.type) return `chart.type=${output.chart.type}`;
   if (output.type) return `type=${output.type}`;
   if (output.mark) return `mark=${output.mark}`;
@@ -339,12 +341,6 @@ function adapterSummary(model) {
 function setTextIfChanged(element, next) {
   if (element.textContent !== next) {
     element.textContent = next;
-  }
-}
-
-function setHtmlIfChanged(element, next) {
-  if (element.innerHTML !== next) {
-    element.innerHTML = next;
   }
 }
 

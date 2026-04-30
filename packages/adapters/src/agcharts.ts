@@ -1,10 +1,17 @@
-import type { EngineLatestValueModel, EngineWideTableModel } from "./engine.js";
+import {
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
+  type EngineAdapterOptions,
+  type EngineLatestValueInput,
+  type EngineWideTableInput,
+} from "./engine.js";
 import { gaugeValue, rowToRecord } from "./engine-chart-shared.js";
 
-export type AgChartsEngineChartType = "line" | "area" | "bar" | "donut" | "scatter" | "gauge";
+export type AgChartsChartType = "line" | "area" | "bar" | "donut" | "scatter" | "gauge";
 
 export interface AgChartsSeriesOptions {
   readonly type: "line" | "area" | "bar" | "donut" | "scatter";
+  readonly id?: string;
   readonly xKey?: string;
   readonly yKey?: string;
   readonly yName?: string;
@@ -12,7 +19,7 @@ export interface AgChartsSeriesOptions {
   readonly calloutLabelKey?: string;
 }
 
-export interface AgChartsEngineOptionsModel {
+export interface AgChartsOptions {
   readonly data?: readonly Record<string, number | string | null>[];
   readonly series?: readonly AgChartsSeriesOptions[];
   readonly type?: "radial-gauge";
@@ -20,20 +27,29 @@ export interface AgChartsEngineOptionsModel {
   readonly scale?: { readonly min: number; readonly max: number };
 }
 
-export interface AgChartsEngineUpdateDelta {
-  readonly data?: AgChartsEngineOptionsModel["data"];
-  readonly series?: AgChartsEngineOptionsModel["series"];
-  readonly value?: AgChartsEngineOptionsModel["value"];
+export interface AgChartsUpdateDelta {
+  readonly data?: AgChartsOptions["data"];
+  readonly series?: AgChartsOptions["series"];
+  readonly value?: AgChartsOptions["value"];
 }
 
-export function toAgChartsEngineTimeSeriesOptions(
-  model: EngineWideTableModel,
-  options: { readonly chartType?: AgChartsEngineChartType } = {}
-): AgChartsEngineOptionsModel {
+export function toAgChartsTimeSeriesOptions(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions & { readonly chartType?: AgChartsChartType } = {}
+): AgChartsOptions {
+  const wide = asEngineWideTableModel(model, options);
   const chartType = options.chartType ?? "line";
+  const seriesKeys = wide.series.map((_series, index) => `series_${index}`);
   return {
-    data: model.rows.map((row) => rowToRecord(row, model.series, "time")),
-    series: model.series.map((series) => ({
+    data: wide.rows.map((row) => {
+      const output = rowToRecord(row, [], "time");
+      for (let index = 0; index < seriesKeys.length; index++) {
+        output[seriesKeys[index] ?? `series_${index}`] = row.values[index] ?? null;
+      }
+      return output;
+    }),
+    series: wide.series.map((series, index) => ({
+      id: series.id,
       type:
         chartType === "bar"
           ? "bar"
@@ -43,15 +59,13 @@ export function toAgChartsEngineTimeSeriesOptions(
               ? "area"
               : "line",
       xKey: "time",
-      yKey: series.id,
+      yKey: seriesKeys[index] ?? `series_${index}`,
       yName: series.label,
     })),
   };
 }
 
-export function toAgChartsEngineUpdateDelta(
-  model: AgChartsEngineOptionsModel
-): AgChartsEngineUpdateDelta {
+export function toAgChartsUpdateDelta(model: AgChartsOptions): AgChartsUpdateDelta {
   return {
     ...(model.data ? { data: model.data } : {}),
     ...(model.series ? { series: model.series } : {}),
@@ -59,20 +73,21 @@ export function toAgChartsEngineUpdateDelta(
   };
 }
 
-export function toAgChartsEngineLatestValuesOptions(
-  model: EngineLatestValueModel,
-  options: { readonly chartType?: AgChartsEngineChartType } = {}
-): AgChartsEngineOptionsModel {
+export function toAgChartsLatestValuesOptions(
+  model: EngineLatestValueInput,
+  options: EngineAdapterOptions & { readonly chartType?: AgChartsChartType } = {}
+): AgChartsOptions {
+  const latest = asEngineLatestValueModel(model, options);
   const chartType = options.chartType ?? "donut";
   if (chartType === "gauge") {
     return {
       type: "radial-gauge",
-      value: gaugeValue(model),
+      value: gaugeValue(latest),
       scale: { min: 0, max: 200 },
     };
   }
   return {
-    data: model.rows.flatMap((row) =>
+    data: latest.rows.flatMap((row) =>
       row.value === null ? [] : [{ label: row.label, value: row.value }]
     ),
     series: [{ type: "donut", angleKey: "value", calloutLabelKey: "label" }],

@@ -3,48 +3,57 @@ import { describe, expect, it } from "vitest";
 import {
   CHART_TYPES,
   createEngineResult,
+  createGalleryMetricStore,
   createGalleryState,
   createLibraryGalleryState,
   getSupportedChart,
   LIBRARIES,
-  serializableAdapterModel,
-  toEngineLatestValueModel,
-  toEngineWideTableModel,
-  toHistogramModel,
+  serializableAdapterOutput,
 } from "../js/gallery-data.js";
 
 describe("chart gallery data", () => {
-  it("builds one deterministic engine-shaped result for every gallery adapter", () => {
+  it("builds one deterministic TSDB engine result for every native chart preview", () => {
     const result = createEngineResult();
-    const wide = toEngineWideTableModel(result);
-    const latest = toEngineLatestValueModel(result);
-    const histogram = toHistogramModel(wide);
+    const { store, query } = createGalleryMetricStore();
+    const gallery = createLibraryGalleryState("tremor");
 
+    expect(store.seriesCount).toBe(4);
+    expect(store.sampleCount).toBeGreaterThanOrEqual(72);
+    expect(store.name).toBe("chart-gallery-rowgroup");
+    expect(query).toMatchObject({
+      metric: "http.server.duration",
+      maxPoints: 18,
+    });
+    expect(result.scannedSeries).toBe(4);
+    expect(result.scannedSamples).toBe(72);
     expect(result.series).toHaveLength(4);
-    expect(wide.rows).toHaveLength(18);
     expect(LIBRARIES).toHaveLength(13);
-    expect(CHART_TYPES).toHaveLength(9);
-    expect(wide.series.map((series) => series.label)).toEqual([
+    expect(CHART_TYPES).toHaveLength(10);
+    expect(gallery.seriesLegend.map((series) => series.label)).toEqual([
       "checkout /cart 2xx",
       "checkout /pay 5xx",
       "api /search 2xx",
       "worker /jobs 2xx",
     ]);
-    expect(latest.rows).toHaveLength(4);
-    expect(histogram.buckets.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(72);
+    expect(gallery.histogram.buckets.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(72);
   });
 
-  it("creates library-native adapter previews for each supported chart type", () => {
+  it("creates library-native preview data through exported adapter calls", () => {
     for (const library of LIBRARIES) {
       for (const chart of library.charts) {
         const gallery = createGalleryState(library.id, chart);
-        const output = serializableAdapterModel(gallery.adapterModel);
+        const output = serializableAdapterOutput(gallery.adapterOutput);
 
         expect(gallery.library.id).toBe(library.id);
         expect(gallery.chartType).toBe(chart);
         expect(output).toBeTruthy();
         expect(gallery.snippets.query).toContain("engine.query");
-        expect(gallery.snippets.adapter).toContain("toEngine");
+        expect(gallery.snippets.query).toContain("new ScanEngine");
+        expect(gallery.snippets.query).toContain("new RowGroupStore");
+        expect(gallery.snippets.query).toContain("store.append");
+        expect(gallery.snippets.adapter).toContain(library.package);
+        expect(gallery.snippets.adapter).not.toContain("toEngineWideTableModel");
+        expect(gallery.snippets.adapter).not.toContain("toEngineLatestValueModel");
       }
     }
   });
@@ -57,10 +66,9 @@ describe("chart gallery data", () => {
       expect(gallery.charts.map((chart) => chart.chartType)).toEqual(library.charts);
       for (const chart of gallery.charts) {
         expect(chart.result).toBe(gallery.result);
-        expect(chart.wide).toBe(gallery.wide);
-        expect(chart.latest).toBe(gallery.latest);
+        expect(chart.seriesLegend).toBe(gallery.seriesLegend);
         expect(chart.histogram).toBe(gallery.histogram);
-        expect(serializableAdapterModel(chart.adapterModel)).toBeTruthy();
+        expect(serializableAdapterOutput(chart.adapterOutput)).toBeTruthy();
       }
     }
   });
@@ -71,6 +79,7 @@ describe("chart gallery data", () => {
 
       expect(library.package).toBeTruthy();
       expect(library.package).toContain("@otlpkit/adapters/");
+      expect(library.mark).toBeTruthy();
       expect(gallery.snippets.adapter).toContain(library.package);
       expect(gallery.snippets.adapter).not.toContain("not exported yet");
     }
@@ -82,62 +91,73 @@ describe("chart gallery data", () => {
   });
 
   it("emits recognizable native shapes for key libraries", () => {
-    expect(createGalleryState("tremor", "line").adapterModel).toMatchObject({
+    expect(createGalleryState("tremor", "line").adapterOutput).toMatchObject({
       index: "time",
       categories: expect.arrayContaining(["checkout /cart 2xx"]),
     });
-    expect(createGalleryState("recharts", "line").adapterModel).toMatchObject({
+    expect(createGalleryState("recharts", "line").adapterOutput).toMatchObject({
       xAxisKey: "time",
       series: expect.arrayContaining([
         expect.objectContaining({
-          dataKey: "__name__=http.server.duration,route=/cart,service=checkout,status_class=2xx",
+          id: "__name__=http.server.duration,route=/cart,service=checkout,status_class=2xx",
         }),
       ]),
     });
-    expect(createGalleryState("recharts", "donut").adapterModel).toMatchObject({
+    expect(createGalleryState("recharts", "donut").adapterOutput).toMatchObject({
       categoryKey: "label",
       valueKey: "value",
     });
-    expect(createGalleryState("echarts", "line").adapterModel.dataset[0].dimensions).toEqual([
+    expect(createGalleryState("recharts", "latestBar").adapterOutput).toMatchObject({
+      categoryKey: "label",
+      valueKey: "value",
+    });
+    expect(createGalleryState("chartjs", "latestBar").adapterOutput.type).toBe("bar");
+    expect(createGalleryState("echarts", "line").adapterOutput.dataset[0].dimensions).toEqual([
       "time",
       "checkout /cart 2xx",
       "checkout /pay 5xx",
       "api /search 2xx",
       "worker /jobs 2xx",
     ]);
-    expect(createGalleryState("uplot", "line").adapterModel.data).toHaveLength(5);
-    expect(createGalleryState("plotly", "donut").adapterModel.data[0].type).toBe("pie");
-    expect(createGalleryState("apexcharts", "gauge").adapterModel.chart.type).toBe("radialBar");
-    expect(createGalleryState("nivo", "bar").adapterModel).toMatchObject({
+    expect(createGalleryState("echarts", "latestBar").adapterOutput.series[0].type).toBe("bar");
+    expect(createGalleryState("uplot", "line").adapterOutput.data).toHaveLength(5);
+    expect(createGalleryState("plotly", "donut").adapterOutput.data[0].type).toBe("pie");
+    expect(createGalleryState("apexcharts", "gauge").adapterOutput.chart.type).toBe("radialBar");
+    expect(createGalleryState("nivo", "bar").adapterOutput).toMatchObject({
       indexBy: "time",
       keys: expect.arrayContaining([
         "__name__=http.server.duration,route=/cart,service=checkout,status_class=2xx",
       ]),
     });
-    expect(createGalleryState("observable", "sparkline").adapterModel.marks[0].mark).toBe("lineY");
-    expect(createGalleryState("victory", "bar").adapterModel[0]).toMatchObject({
+    expect(createGalleryState("observable", "sparkline").adapterOutput.marks[0].mark).toBe("lineY");
+    expect(createGalleryState("victory", "bar").adapterOutput[0]).toMatchObject({
       x: "checkout /cart 2xx",
       y: expect.any(Number),
     });
-    expect(createGalleryState("agcharts", "area").adapterModel.series[0].type).toBe("area");
-    expect(createGalleryState("highcharts", "scatter").adapterModel.chart.type).toBe("scatter");
-    expect(createGalleryState("highcharts", "histogram").adapterModel.chart.type).toBe("column");
-    expect(createGalleryState("vegalite", "scatter").adapterModel.mark).toBe("point");
+    expect(createGalleryState("agcharts", "area").adapterOutput.series[0].type).toBe("area");
+    expect(createGalleryState("highcharts", "scatter").adapterOutput.chart.type).toBe("scatter");
+    expect(createGalleryState("highcharts", "histogram").adapterOutput.chart.type).toBe("column");
+    expect(createGalleryState("vegalite", "scatter").adapterOutput.mark).toBe("point");
   });
 
-  it("changes preview values during live updates without changing adapter model shape", () => {
+  it("changes preview values during live updates without changing adapter output shape", () => {
     const first = createGalleryState("chartjs", "line", 0);
     const next = createGalleryState("chartjs", "line", 4);
 
-    expect(first.adapterModel.type).toBe(next.adapterModel.type);
-    expect(first.adapterModel.data.datasets[0].data[0].y).not.toBe(
-      next.adapterModel.data.datasets[0].data[0].y
+    expect(first.adapterOutput.type).toBe(next.adapterOutput.type);
+    expect(first.adapterOutput.data.datasets[0].data[0].y).not.toBe(
+      next.adapterOutput.data.datasets[0].data[0].y
     );
   });
 
   it("advances live data as a stable sliding append window", () => {
+    const initialStore = createGalleryMetricStore(0).store;
     const first = createEngineResult(0);
     const next = createEngineResult(1);
+    const nextStore = createGalleryMetricStore(1).store;
+
+    expect(nextStore).toBe(initialStore);
+    expect(nextStore.sampleCount).toBeGreaterThanOrEqual(76);
 
     for (let seriesIndex = 0; seriesIndex < first.series.length; seriesIndex++) {
       const firstSeries = first.series[seriesIndex];

@@ -1,46 +1,47 @@
 import {
-  toAgChartsEngineLatestValuesOptions,
-  toAgChartsEngineTimeSeriesOptions,
+  toAgChartsLatestValuesOptions,
+  toAgChartsTimeSeriesOptions,
 } from "../../../packages/adapters/src/agcharts.ts";
 import {
-  toApexChartsEngineLatestValuesOptions,
-  toApexChartsEngineTimeSeriesOptions,
+  toApexChartsLatestValuesOptions,
+  toApexChartsTimeSeriesOptions,
 } from "../../../packages/adapters/src/apexcharts.ts";
 import {
-  toChartJsEngineHistogramConfig,
-  toChartJsEngineLatestValuesConfig,
-  toChartJsEngineTimeSeriesConfig,
+  toChartJsHistogramConfig,
+  toChartJsLatestValuesConfig,
+  toChartJsTimeSeriesConfig,
 } from "../../../packages/adapters/src/chartjs.ts";
 import {
-  toEChartsEngineHistogramOption,
-  toEChartsEngineLatestValuesOption,
-  toEChartsEngineTimeSeriesOption,
+  toEChartsHistogramOption,
+  toEChartsLatestValuesOption,
+  toEChartsTimeSeriesOption,
 } from "../../../packages/adapters/src/echarts.ts";
 import { toEngineHistogramModel as toAdapterEngineHistogramModel } from "../../../packages/adapters/src/engine.ts";
 import {
-  toHighchartsEngineHistogramOptions,
-  toHighchartsEngineLatestValuesOptions,
-  toHighchartsEngineTimeSeriesOptions,
+  toHighchartsHistogramOptions,
+  toHighchartsLatestValuesOptions,
+  toHighchartsTimeSeriesOptions,
 } from "../../../packages/adapters/src/highcharts.ts";
 import {
-  toNivoEngineBarModel,
-  toNivoEngineLineSeries,
-  toNivoEnginePieData,
-  toNivoEngineScatterSeries,
+  toNivoBarData,
+  toNivoLineSeries,
+  toNivoPieData,
+  toNivoScatterSeries,
 } from "../../../packages/adapters/src/nivo.ts";
 import {
-  toObservablePlotEngineHistogramModel,
-  toObservablePlotEngineModel,
+  toObservablePlotHistogramOptions,
+  toObservablePlotOptions,
 } from "../../../packages/adapters/src/observable.ts";
 import {
-  toPlotlyEngineHistogramModel,
-  toPlotlyEngineLatestValuesModel,
-  toPlotlyEngineTimeSeriesModel,
+  toPlotlyHistogramFigure,
+  toPlotlyLatestValuesFigure,
+  toPlotlyTimeSeriesFigure,
 } from "../../../packages/adapters/src/plotly.ts";
 import {
-  toRechartsEngineHistogramModel,
-  toRechartsEngineLatestValuesModel,
-  toRechartsEngineScatterModel,
+  toRechartsHistogramData,
+  toRechartsLatestValuesData,
+  toRechartsScatterData,
+  toRechartsTimeSeriesData,
 } from "../../../packages/adapters/src/recharts.ts";
 import {
   toTremorAreaChartProps,
@@ -49,21 +50,21 @@ import {
   toTremorDonutChartProps,
   toTremorLineChartProps,
 } from "../../../packages/adapters/src/tremor.ts";
-import { toUPlotEngineTimeSeriesModel } from "../../../packages/adapters/src/uplot.ts";
+import { toUPlotTimeSeriesArgs } from "../../../packages/adapters/src/uplot.ts";
 import {
-  toVegaLiteEngineHistogramSpec,
-  toVegaLiteEngineSpec,
+  toVegaLiteHistogramSpec,
+  toVegaLiteSpec,
 } from "../../../packages/adapters/src/vegalite.ts";
-import {
-  toVictoryEngineLatestData,
-  toVictoryEngineSeries,
-} from "../../../packages/adapters/src/victory.ts";
+import { toVictoryLatestData, toVictorySeries } from "../../../packages/adapters/src/victory.ts";
+import { ScanEngine } from "../../../packages/o11ytsdb/src/query.ts";
+import { RowGroupStore } from "../../../packages/o11ytsdb/src/row-group-store.ts";
 
 export const CHART_TYPES = [
   { id: "line", label: "Line" },
   { id: "area", label: "Area" },
   { id: "bar", label: "Bar" },
   { id: "donut", label: "Donut" },
+  { id: "latestBar", label: "Latest bars" },
   { id: "histogram", label: "Histogram" },
   { id: "barList", label: "Bar list" },
   { id: "scatter", label: "Scatter" },
@@ -75,6 +76,8 @@ export const LIBRARIES = [
   {
     id: "tremor",
     name: "Tremor",
+    mark: "T",
+    logoUrl: "https://www.tremor.so/favicon.ico",
     primaryApi: "props",
     updateModel: "React data updates",
     status: "implemented",
@@ -85,36 +88,63 @@ export const LIBRARIES = [
   {
     id: "recharts",
     name: "Recharts",
+    mark: "R",
+    logoUrl: "https://github.com/recharts.png?size=64",
     primaryApi: "rows + dataKey",
     updateModel: "React data updates",
     status: "implemented",
     package: "@otlpkit/adapters/recharts",
-    charts: ["line", "area", "bar", "donut", "histogram", "scatter"],
+    charts: ["line", "area", "bar", "donut", "latestBar", "histogram", "scatter"],
     note: "Keep Recharts ergonomic: rows for data, descriptors for Line/Area/Bar dataKey wiring.",
   },
   {
     id: "chartjs",
     name: "Chart.js",
+    mark: "C",
+    logoUrl: "https://cdn.simpleicons.org/chartdotjs/11110F",
     primaryApi: "configuration",
     updateModel: "controller.update('none')",
     status: "exported",
     package: "@otlpkit/adapters/chartjs",
-    charts: ["line", "area", "bar", "donut", "histogram", "scatter", "sparkline", "gauge"],
+    charts: [
+      "line",
+      "area",
+      "bar",
+      "donut",
+      "latestBar",
+      "histogram",
+      "scatter",
+      "sparkline",
+      "gauge",
+    ],
     note: "Produce chart configs with parsing disabled so large time-series stay cheap to update.",
   },
   {
     id: "echarts",
     name: "ECharts",
+    mark: "E",
+    logoUrl: "https://cdn.simpleicons.org/apacheecharts/11110F",
     primaryApi: "dataset + encode",
     updateModel: "setOption",
     status: "exported",
     package: "@otlpkit/adapters/echarts",
-    charts: ["line", "area", "bar", "donut", "histogram", "scatter", "sparkline", "gauge"],
+    charts: [
+      "line",
+      "area",
+      "bar",
+      "donut",
+      "latestBar",
+      "histogram",
+      "scatter",
+      "sparkline",
+      "gauge",
+    ],
     note: "Use dataset source and encode fields so ECharts keeps transforms and tooltips native.",
   },
   {
     id: "uplot",
     name: "uPlot",
+    mark: "u",
     primaryApi: "aligned arrays",
     updateModel: "setData",
     status: "exported",
@@ -125,6 +155,7 @@ export const LIBRARIES = [
   {
     id: "nivo",
     name: "Nivo",
+    mark: "N",
     primaryApi: "series objects",
     updateModel: "React data updates",
     status: "exported",
@@ -135,16 +166,20 @@ export const LIBRARIES = [
   {
     id: "observable",
     name: "Observable Plot",
+    mark: "OP",
+    logoUrl: "https://cdn.simpleicons.org/observable/11110F",
     primaryApi: "marks",
     updateModel: "plot rebuild",
     status: "exported",
     package: "@otlpkit/adapters/observable",
     charts: ["line", "area", "bar", "histogram", "scatter", "sparkline"],
-    note: "Flatten wide rows into tidy records and return Plot marks users can drop into Plot.plot.",
+    note: "Turn engine results into tidy records and return Plot marks users can drop into Plot.plot.",
   },
   {
     id: "plotly",
     name: "Plotly",
+    mark: "P",
+    logoUrl: "https://cdn.simpleicons.org/plotly/11110F",
     primaryApi: "traces",
     updateModel: "extendTraces",
     status: "exported",
@@ -155,6 +190,8 @@ export const LIBRARIES = [
   {
     id: "apexcharts",
     name: "ApexCharts",
+    mark: "A",
+    logoUrl: "https://apexcharts.com/favicon.ico",
     primaryApi: "options + series",
     updateModel: "updateSeries",
     status: "exported",
@@ -165,6 +202,8 @@ export const LIBRARIES = [
   {
     id: "victory",
     name: "Victory",
+    mark: "V",
+    logoUrl: "https://formidable.com/open-source/victory/favicon.ico",
     primaryApi: "components + data",
     updateModel: "React data updates",
     status: "exported",
@@ -175,16 +214,20 @@ export const LIBRARIES = [
   {
     id: "agcharts",
     name: "AG Charts",
+    mark: "AG",
+    logoUrl: "https://github.com/ag-grid.png?size=64",
     primaryApi: "options",
     updateModel: "update options",
     status: "exported",
     package: "@otlpkit/adapters/agcharts",
-    charts: ["line", "area", "bar", "donut", "scatter", "gauge"],
+    charts: ["line", "area", "bar", "donut", "scatter"],
     note: "Project engine rows into AG Charts options with explicit keys and series definitions.",
   },
   {
     id: "highcharts",
     name: "Highcharts",
+    mark: "H",
+    logoUrl: "https://github.com/highcharts.png?size=64",
     primaryApi: "options + series",
     updateModel: "setData",
     status: "exported",
@@ -195,6 +238,8 @@ export const LIBRARIES = [
   {
     id: "vegalite",
     name: "Vega-Lite",
+    mark: "VL",
+    logoUrl: "https://cdn.simpleicons.org/vega/11110F",
     primaryApi: "spec",
     updateModel: "view changeset",
     status: "exported",
@@ -206,6 +251,56 @@ export const LIBRARIES = [
 
 const NS_PER_MS = 1_000_000n;
 const COLORS = ["#2563eb", "#059669", "#dc2626", "#7c3aed", "#d97706", "#0891b2"];
+const GALLERY_METRIC = "http.server.duration";
+const GALLERY_STEP_MS = 30_000;
+const GALLERY_POINTS = 18;
+const GALLERY_START_MS = 1_714_200_000_000;
+const GALLERY_SERIES = [
+  { service: "checkout", route: "/cart", status: "2xx", base: 74, phase: 0.2 },
+  { service: "checkout", route: "/pay", status: "5xx", base: 108, phase: 1.8 },
+  { service: "api", route: "/search", status: "2xx", base: 62, phase: 2.4 },
+  { service: "worker", route: "/jobs", status: "2xx", base: 88, phase: 3.1 },
+];
+const galleryEngine = new ScanEngine();
+let galleryMetricState;
+
+const galleryValuesCodec = {
+  name: "f64-plain",
+  encodeValues(values) {
+    const out = new Uint8Array(4 + values.byteLength);
+    new DataView(out.buffer).setUint32(0, values.length, true);
+    out.set(new Uint8Array(values.buffer, values.byteOffset, values.byteLength), 4);
+    return out;
+  },
+  decodeValues(buf) {
+    if (buf.byteLength < 4) return new Float64Array(0);
+    const n = new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint32(0, true);
+    const raw = buf.subarray(4);
+    const bytes = raw.byteLength - (raw.byteLength % 8);
+    const copy = raw.slice(0, bytes);
+    return new Float64Array(
+      copy.buffer,
+      copy.byteOffset,
+      Math.min(n, Math.floor(bytes / 8))
+    ).slice();
+  },
+  decodeValuesRange(buf, startIndex, endIndex) {
+    if (buf.byteLength < 4 || endIndex <= startIndex) return new Float64Array(0);
+    const n = new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint32(0, true);
+    const raw = buf.subarray(4);
+    const clampedStart = Math.max(0, Math.min(startIndex, n));
+    const clampedEnd = Math.max(clampedStart, Math.min(endIndex, n));
+    const byteStart = clampedStart * 8;
+    const byteEnd = clampedEnd * 8;
+    const bytes = Math.max(
+      0,
+      Math.min(raw.byteLength, byteEnd) - Math.min(raw.byteLength, byteStart)
+    );
+    if (bytes === 0) return new Float64Array(0);
+    const copy = raw.slice(byteStart, byteStart + bytes);
+    return new Float64Array(copy.buffer, copy.byteOffset, Math.floor(bytes / 8)).slice();
+  },
+};
 
 export function getLibrary(id) {
   return LIBRARIES.find((library) => library.id === id) ?? LIBRARIES[0];
@@ -217,89 +312,74 @@ export function getSupportedChart(libraryId, chartType) {
 }
 
 export function createEngineResult(liveStep = 0) {
-  const services = [
-    { service: "checkout", route: "/cart", status: "2xx", base: 74, phase: 0.2 },
-    { service: "checkout", route: "/pay", status: "5xx", base: 108, phase: 1.8 },
-    { service: "api", route: "/search", status: "2xx", base: 62, phase: 2.4 },
-    { service: "worker", route: "/jobs", status: "2xx", base: 88, phase: 3.1 },
-  ];
-  const startMs = 1_714_200_000_000 + liveStep * 30_000;
-  const points = 18;
+  const { store, query } = createGalleryMetricStore(liveStep);
+  return galleryEngine.query(store, query);
+}
 
+export function createGalleryMetricStore(liveStep = 0) {
+  const state = getGalleryMetricState();
+  const startSample = Math.max(0, Math.floor(liveStep));
+  const endSample = startSample + GALLERY_POINTS - 1;
+  appendGallerySamplesThrough(state, endSample);
+
+  const startNs = BigInt(GALLERY_START_MS + startSample * GALLERY_STEP_MS) * NS_PER_MS;
+  const endNs = BigInt(GALLERY_START_MS + endSample * GALLERY_STEP_MS) * NS_PER_MS;
   return {
-    series: services.map((series, seriesIndex) => {
-      const timestamps = new BigInt64Array(points);
-      const values = new Float64Array(points);
-      for (let i = 0; i < points; i++) {
-        const sampleIndex = liveStep + i;
-        timestamps[i] = BigInt(startMs + i * 30_000) * NS_PER_MS;
-        const wave = Math.sin(sampleIndex * 0.68 + series.phase) * 13;
-        const secondary = Math.cos((sampleIndex + seriesIndex) * 0.37) * 6;
-        const incidentWave = Math.max(0, 44 - Math.abs((sampleIndex % 44) - 24) * 6);
-        const incident = series.status === "5xx" ? incidentWave : 0;
-        values[i] = Math.max(4, Math.round((series.base + wave + secondary + incident) * 10) / 10);
-      }
-      return {
-        labels: new Map([
-          ["__name__", "http.server.duration"],
+    store: state.store,
+    startNs,
+    endNs,
+    query: {
+      metric: GALLERY_METRIC,
+      start: startNs,
+      end: endNs,
+      maxPoints: GALLERY_POINTS,
+    },
+  };
+}
+
+function getGalleryMetricState() {
+  if (galleryMetricState) return galleryMetricState;
+
+  const store = new RowGroupStore(galleryValuesCodec, 64, () => 0, 32, "chart-gallery-rowgroup");
+  galleryMetricState = {
+    store,
+    appendedThroughSample: -1,
+    seriesIds: GALLERY_SERIES.map((series) =>
+      store.getOrCreateSeries(
+        new Map([
+          ["__name__", GALLERY_METRIC],
           ["service", series.service],
           ["route", series.route],
           ["status_class", series.status],
+        ])
+      )
+    ),
+  };
+  return galleryMetricState;
+}
+
+function appendGallerySamplesThrough(state, endSample) {
+  for (let sampleIndex = state.appendedThroughSample + 1; sampleIndex <= endSample; sampleIndex++) {
+    const timestamp = BigInt(GALLERY_START_MS + sampleIndex * GALLERY_STEP_MS) * NS_PER_MS;
+    state.store.append(
+      new BigInt64Array([timestamp]),
+      state.seriesIds.map((id, seriesIndex) => ({
+        id,
+        values: new Float64Array([
+          sampleValue(GALLERY_SERIES[seriesIndex], seriesIndex, sampleIndex),
         ]),
-        timestamps,
-        values,
-      };
-    }),
-  };
+      }))
+    );
+    state.appendedThroughSample = sampleIndex;
+  }
 }
 
-export function toEngineWideTableModel(result) {
-  const rowsByTime = new Map();
-  const series = result.series.map((seriesResult, index) => ({
-    id: seriesId(seriesResult, index),
-    label: seriesLabel(seriesResult, index),
-    labels: seriesResult.labels,
-  }));
-
-  result.series.forEach((seriesResult, seriesIndex) => {
-    for (let i = 0; i < seriesResult.timestamps.length; i++) {
-      const t = Number(seriesResult.timestamps[i] / NS_PER_MS);
-      const row = rowsByTime.get(t) ?? new Array(result.series.length).fill(null);
-      row[seriesIndex] = Number.isFinite(seriesResult.values[i]) ? seriesResult.values[i] : null;
-      rowsByTime.set(t, row);
-    }
-  });
-
-  return {
-    kind: "engine-wide-table",
-    columns: ["t", ...series.map((entry) => entry.label)],
-    series,
-    rows: [...rowsByTime.entries()]
-      .sort(([left], [right]) => left - right)
-      .map(([t, values]) => ({
-        t,
-        values,
-      })),
-  };
-}
-
-export function toEngineLatestValueModel(result) {
-  return {
-    kind: "engine-latest-values",
-    rows: result.series.map((seriesResult, index) => {
-      const last = seriesResult.values.length - 1;
-      return {
-        id: seriesId(seriesResult, index),
-        label: seriesLabel(seriesResult, index),
-        labels: seriesResult.labels,
-        t: last >= 0 ? Number(seriesResult.timestamps[last] / NS_PER_MS) : null,
-        value:
-          last >= 0 && Number.isFinite(seriesResult.values[last])
-            ? seriesResult.values[last]
-            : null,
-      };
-    }),
-  };
+function sampleValue(series, seriesIndex, sampleIndex) {
+  const wave = Math.sin(sampleIndex * 0.68 + series.phase) * 13;
+  const secondary = Math.cos((sampleIndex + seriesIndex) * 0.37) * 6;
+  const incidentWave = Math.max(0, 44 - Math.abs((sampleIndex % 44) - 24) * 6);
+  const incident = series.status === "5xx" ? incidentWave : 0;
+  return Math.max(4, Math.round((series.base + wave + secondary + incident) * 10) / 10);
 }
 
 export function createGalleryState(libraryId = "tremor", chartType = "line", liveStep = 0) {
@@ -311,91 +391,93 @@ export function createGalleryState(libraryId = "tremor", chartType = "line", liv
 export function createLibraryGalleryState(libraryId = "tremor", liveStep = 0) {
   const library = getLibrary(libraryId);
   const result = createEngineResult(liveStep);
-  const wide = toEngineWideTableModel(result);
-  const latest = toEngineLatestValueModel(result);
-  const histogram = toAdapterEngineHistogramModel(wide);
+  const seriesLegend = result.series.map((series, index) => ({
+    id: seriesLabel(series, index),
+    label: seriesLabel(series, index),
+  }));
+  const histogram = toAdapterEngineHistogramModel(result, { seriesLabel });
 
   return {
     library,
     result,
-    wide,
-    latest,
+    seriesLegend,
     histogram,
     charts: library.charts.map((chartType) => ({
       library,
       chartType,
       result,
-      wide,
-      latest,
+      seriesLegend,
       histogram,
-      adapterModel: toAdapterModel(library, chartType, wide, latest, histogram),
+      adapterOutput: createAdapterOutput(library, chartType, result),
       snippets: snippetsFor(library, chartType),
     })),
   };
 }
 
-export function toAdapterModel(library, chartType, wide, latest, histogram) {
+export function createAdapterOutput(library, chartType, result) {
   switch (library.id) {
     case "tremor":
-      return tremorModel(chartType, wide, latest);
+      return tremorModel(chartType, result);
     case "recharts":
-      return rechartsModel(chartType, wide, latest, histogram);
+      return rechartsModel(chartType, result);
     case "chartjs":
       return chartType === "histogram"
-        ? toChartJsEngineHistogramConfig(histogram)
-        : chartType === "donut" || chartType === "gauge"
-          ? toChartJsEngineLatestValuesConfig(latest, { chartType })
-          : toChartJsEngineTimeSeriesConfig(wide, { chartType });
+        ? toChartJsHistogramConfig(result)
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
+          ? toChartJsLatestValuesConfig(result, {
+              chartType: chartType === "latestBar" ? "bar" : chartType,
+              seriesLabel,
+            })
+          : toChartJsTimeSeriesConfig(result, { chartType, seriesLabel });
     case "echarts":
       return chartType === "histogram"
-        ? toEChartsEngineHistogramOption(histogram)
-        : chartType === "donut" || chartType === "gauge"
-          ? toEChartsEngineLatestValuesOption(latest, { chartType })
-          : toEChartsEngineTimeSeriesOption(wide, { chartType });
+        ? toEChartsHistogramOption(result)
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
+          ? toEChartsLatestValuesOption(result, {
+              chartType: chartType === "latestBar" ? "bar" : chartType,
+              seriesLabel,
+            })
+          : toEChartsTimeSeriesOption(result, { chartType, seriesLabel });
     case "uplot":
-      return toUPlotEngineTimeSeriesModel(wide, { chartType });
+      return toUPlotTimeSeriesArgs(result, { chartType, seriesLabel });
     case "nivo":
-      return nivoModel(chartType, wide, latest);
+      return nivoModel(chartType, result);
     case "observable":
       return chartType === "histogram"
-        ? toObservablePlotEngineHistogramModel(histogram)
-        : toObservablePlotEngineModel(wide, { chartType });
+        ? toObservablePlotHistogramOptions(result)
+        : toObservablePlotOptions(result, { chartType, seriesLabel });
     case "plotly":
       return chartType === "histogram"
-        ? toPlotlyEngineHistogramModel(histogram)
+        ? toPlotlyHistogramFigure(result)
         : chartType === "donut" || chartType === "gauge"
-          ? toPlotlyEngineLatestValuesModel(latest, { chartType })
-          : toPlotlyEngineTimeSeriesModel(wide, { chartType });
+          ? toPlotlyLatestValuesFigure(result, { chartType, seriesLabel })
+          : toPlotlyTimeSeriesFigure(result, { chartType, seriesLabel });
     case "apexcharts":
       return chartType === "donut" || chartType === "gauge"
-        ? toApexChartsEngineLatestValuesOptions(latest, { chartType })
-        : toApexChartsEngineTimeSeriesOptions(wide, { chartType });
+        ? toApexChartsLatestValuesOptions(result, { chartType, seriesLabel })
+        : toApexChartsTimeSeriesOptions(result, { chartType, seriesLabel });
     case "victory":
-      return victoryModel(chartType, wide, latest);
+      return victoryModel(chartType, result);
     case "agcharts":
       return chartType === "donut" || chartType === "gauge"
-        ? toAgChartsEngineLatestValuesOptions(latest, { chartType })
-        : toAgChartsEngineTimeSeriesOptions(wide, { chartType });
+        ? toAgChartsLatestValuesOptions(result, { chartType, seriesLabel })
+        : toAgChartsTimeSeriesOptions(result, { chartType, seriesLabel });
     case "highcharts":
       return chartType === "histogram"
-        ? toHighchartsEngineHistogramOptions(histogram)
+        ? toHighchartsHistogramOptions(result)
         : chartType === "donut" || chartType === "gauge"
-          ? toHighchartsEngineLatestValuesOptions(latest, { chartType })
-          : toHighchartsEngineTimeSeriesOptions(wide, { chartType });
+          ? toHighchartsLatestValuesOptions(result, { chartType, seriesLabel })
+          : toHighchartsTimeSeriesOptions(result, { chartType, seriesLabel });
     case "vegalite":
       return chartType === "histogram"
-        ? toVegaLiteEngineHistogramSpec(histogram)
-        : toVegaLiteEngineSpec(wide, { mark: chartType });
+        ? toVegaLiteHistogramSpec(result)
+        : toVegaLiteSpec(result, { mark: chartType, seriesLabel });
     default:
-      return { data: wide.rows };
+      return { data: result.series };
   }
 }
 
-export function toHistogramModel(wide) {
-  return toAdapterEngineHistogramModel(wide);
-}
-
-export function serializableAdapterModel(model) {
+export function serializableAdapterOutput(model) {
   return JSON.parse(
     JSON.stringify(model, (_key, value) => {
       if (value instanceof Map) return Object.fromEntries(value.entries());
@@ -406,77 +488,79 @@ export function serializableAdapterModel(model) {
   );
 }
 
-function tremorModel(chartType, wide, latest) {
+function tremorModel(chartType, result) {
   if (chartType === "donut") {
-    return toTremorDonutChartProps(latest);
+    return toTremorDonutChartProps(result, { seriesLabel });
   }
   if (chartType === "barList") {
-    return toTremorBarListProps(latest);
+    return toTremorBarListProps(result, { seriesLabel });
   }
-  if (chartType === "area") return toTremorAreaChartProps(wide, { type: "default" });
-  if (chartType === "bar") return toTremorBarChartProps(wide, { layout: "vertical" });
-  return toTremorLineChartProps(wide);
+  if (chartType === "area") return toTremorAreaChartProps(result, { seriesLabel, type: "default" });
+  if (chartType === "bar")
+    return toTremorBarChartProps(result, { layout: "vertical", seriesLabel });
+  return toTremorLineChartProps(result, { seriesLabel });
 }
 
-function rechartsModel(chartType, wide, latest, histogram) {
-  if (chartType === "donut") {
-    return toRechartsEngineLatestValuesModel(latest);
+function rechartsModel(chartType, result) {
+  if (chartType === "donut" || chartType === "latestBar") {
+    return toRechartsLatestValuesData(result, { seriesLabel });
   }
   if (chartType === "histogram") {
-    return toRechartsEngineHistogramModel(histogram);
+    return toRechartsHistogramData(result);
   }
   if (chartType === "scatter") {
-    return toRechartsEngineScatterModel(wide);
+    return toRechartsScatterData(result, { seriesLabel });
   }
-  return {
-    data: wide.rows.map((row) => rowToRecord(row, wide.series, "time")),
-    xAxisKey: "time",
-    tooltipKey: "time",
-    series: wide.series.map((series) => ({
-      id: series.id,
-      dataKey: series.id,
-      name: series.label,
-    })),
-    ...(chartType === "bar"
-      ? { latest: latest.rows.map((row) => ({ label: row.label, value: row.value })) }
-      : {}),
-  };
+  return toRechartsTimeSeriesData(result, { seriesLabel });
 }
 
-function nivoModel(chartType, wide, latest) {
+function nivoModel(chartType, result) {
   if (chartType === "donut") {
-    return toNivoEnginePieData(latest).map((row, index) => ({
+    return toNivoPieData(result, { seriesLabel }).map((row, index) => ({
       ...row,
       color: COLORS[index % COLORS.length],
     }));
   }
   if (chartType === "bar") {
-    return toNivoEngineBarModel(wide);
+    return toNivoBarData(result, { seriesLabel });
   }
   if (chartType === "scatter") {
-    return toNivoEngineScatterSeries(wide);
+    return toNivoScatterSeries(result, { seriesLabel });
   }
-  return toNivoEngineLineSeries(wide);
+  return toNivoLineSeries(result, { seriesLabel });
 }
 
-function victoryModel(chartType, wide, latest) {
+function victoryModel(chartType, result) {
   if (chartType === "donut") {
-    return toVictoryEngineLatestData(latest);
+    return toVictoryLatestData(result, { seriesLabel });
   }
   if (chartType === "bar") {
-    return toVictoryEngineLatestData(latest);
+    return toVictoryLatestData(result, { seriesLabel });
   }
-  return toVictoryEngineSeries(wide, { chartType });
+  return toVictorySeries(result, { chartType, seriesLabel });
 }
 
 function snippetsFor(library, chartType) {
   const componentName = componentFor(library.id, chartType);
   return {
-    query: `const result = engine.query(store, {
+    query: `import { RowGroupStore, ScanEngine } from "o11ytsdb";
+
+const store = new RowGroupStore(valuesCodec, 640, () => 0, 32, "dashboard");
+const id = store.getOrCreateSeries(new Map([
+  ["__name__", "http.server.duration"],
+  ["service", "checkout"],
+  ["route", "/cart"],
+  ["status_class", "2xx"],
+]));
+
+store.append(timestamps, [{ id, values }]);
+
+const engine = new ScanEngine();
+const result = engine.query(store, {
   metric: "http.server.duration",
   start,
   end,
-  groupBy: ["service", "route", "status_class"],
+  maxPoints: 300,
 });`,
     adapter: adapterSnippet(library.id, chartType),
     library: librarySnippet(library.id, chartType, componentName),
@@ -492,305 +576,172 @@ function adapterSnippet(libraryId, chartType) {
           ? "toTremorBarListProps"
           : `toTremor${capitalize(chartType)}ChartProps`;
     return `import {
-  toEngineLatestValueModel,
-  toEngineWideTableModel,
-} from "@otlpkit/adapters/engine";
-import {
   ${fn},
 } from "@otlpkit/adapters/tremor";
 
-const wide = toEngineWideTableModel(result, {
+const props = ${fn}(result, {
   seriesLabel: (s) => s.labels.get("service") ?? "service",
-});
-const latest = toEngineLatestValueModel(result);
-const props = ${fn}(${chartType === "donut" || chartType === "barList" ? "latest" : "wide"});`;
+});`;
   }
   if (libraryId === "recharts") {
-    if (chartType === "donut") {
-      return `import {
-  toEngineLatestValueModel,
-} from "@otlpkit/adapters/engine";
-import {
-  toRechartsEngineLatestValuesModel,
-} from "@otlpkit/adapters/recharts";
+    const fn =
+      chartType === "donut" || chartType === "latestBar"
+        ? "toRechartsLatestValuesData"
+        : chartType === "histogram"
+          ? "toRechartsHistogramData"
+          : chartType === "scatter"
+            ? "toRechartsScatterData"
+            : "toRechartsTimeSeriesData";
+    return `import { ${fn} } from "@otlpkit/adapters/recharts";
 
-const latest = toEngineLatestValueModel(result);
-const model = toRechartsEngineLatestValuesModel(latest, {
-  unit: "ms",
-});`;
-    }
-    if (chartType === "histogram") {
-      return `import {
-  toEngineHistogramModel,
-  toEngineWideTableModel,
-} from "@otlpkit/adapters/engine";
-import {
-  toRechartsEngineHistogramModel,
-} from "@otlpkit/adapters/recharts";
-
-const wide = toEngineWideTableModel(result);
-const histogram = toEngineHistogramModel(wide);
-const model = toRechartsEngineHistogramModel(histogram, {
-  unit: "samples",
-});`;
-    }
-    if (chartType === "scatter") {
-      return `import {
-  toEngineWideTableModel,
-} from "@otlpkit/adapters/engine";
-import {
-  toRechartsEngineScatterModel,
-} from "@otlpkit/adapters/recharts";
-
-const wide = toEngineWideTableModel(result);
-const model = toRechartsEngineScatterModel(wide, {
-  unit: "ms",
-});`;
-    }
-    return `import {
-  toEngineWideTableModel,
-} from "@otlpkit/adapters/engine";
-import {
-  toRechartsEngineTimeSeriesModel,
-} from "@otlpkit/adapters/recharts";
-
-const wide = toEngineWideTableModel(result);
-const model = toRechartsEngineTimeSeriesModel(wide, {
-  unit: "ms",
+const data = ${fn}(result, {
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
+  unit: "${chartType === "histogram" ? "samples" : "ms"}",
 });`;
   }
   if (libraryId === "uplot") {
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toUPlotEngineTimeSeriesModel } from "@otlpkit/adapters/uplot";
+    return `import { toUPlotTimeSeriesArgs } from "@otlpkit/adapters/uplot";
 
-const wide = toEngineWideTableModel(result);
-const model = toUPlotEngineTimeSeriesModel(wide, {
+const args = toUPlotTimeSeriesArgs(result, {
   chartType: "${chartType}",
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
 });`;
   }
   if (libraryId === "echarts") {
-    if (chartType === "histogram") {
-      return `import {
-  toEngineHistogramModel,
-  toEngineWideTableModel,
-} from "@otlpkit/adapters/engine";
-import { toEChartsEngineHistogramOption } from "@otlpkit/adapters/echarts";
+    const fn =
+      chartType === "histogram"
+        ? "toEChartsHistogramOption"
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
+          ? "toEChartsLatestValuesOption"
+          : "toEChartsTimeSeriesOption";
+    return `import { ${fn} } from "@otlpkit/adapters/echarts";
 
-const wide = toEngineWideTableModel(result);
-const histogram = toEngineHistogramModel(wide);
-const option = toEChartsEngineHistogramOption(histogram);`;
-    }
-    if (chartType === "donut" || chartType === "gauge") {
-      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
-import { toEChartsEngineLatestValuesOption } from "@otlpkit/adapters/echarts";
-
-const latest = toEngineLatestValueModel(result);
-const option = toEChartsEngineLatestValuesOption(latest, {
-  chartType: "${chartType}",
-});`;
-    }
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toEChartsEngineTimeSeriesOption } from "@otlpkit/adapters/echarts";
-
-const wide = toEngineWideTableModel(result);
-const option = toEChartsEngineTimeSeriesOption(wide, {
-  chartType: "${chartType}",
+const option = ${fn}(result, {
+  chartType: "${chartType === "latestBar" ? "bar" : chartType}",
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
 });`;
   }
   if (libraryId === "chartjs") {
-    if (chartType === "histogram") {
-      return `import {
-  toEngineHistogramModel,
-  toEngineWideTableModel,
-} from "@otlpkit/adapters/engine";
-import { toChartJsEngineHistogramConfig } from "@otlpkit/adapters/chartjs";
+    const fn =
+      chartType === "histogram"
+        ? "toChartJsHistogramConfig"
+        : chartType === "donut" || chartType === "gauge" || chartType === "latestBar"
+          ? "toChartJsLatestValuesConfig"
+          : "toChartJsTimeSeriesConfig";
+    return `import { ${fn} } from "@otlpkit/adapters/chartjs";
 
-const wide = toEngineWideTableModel(result);
-const histogram = toEngineHistogramModel(wide);
-const config = toChartJsEngineHistogramConfig(histogram);`;
-    }
-    if (chartType === "donut" || chartType === "gauge") {
-      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
-import { toChartJsEngineLatestValuesConfig } from "@otlpkit/adapters/chartjs";
-
-const latest = toEngineLatestValueModel(result);
-const config = toChartJsEngineLatestValuesConfig(latest, {
-  chartType: "${chartType}",
-});`;
-    }
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toChartJsEngineTimeSeriesConfig } from "@otlpkit/adapters/chartjs";
-
-const wide = toEngineWideTableModel(result);
-const config = toChartJsEngineTimeSeriesConfig(wide, {
-  chartType: "${chartType}",
+const config = ${fn}(result, {
+  chartType: "${chartType === "latestBar" ? "bar" : chartType}",
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
 });`;
   }
   if (libraryId === "plotly") {
-    if (chartType === "histogram") {
-      return `import {
-  toEngineHistogramModel,
-  toEngineWideTableModel,
-} from "@otlpkit/adapters/engine";
-import { toPlotlyEngineHistogramModel } from "@otlpkit/adapters/plotly";
+    const fn =
+      chartType === "histogram"
+        ? "toPlotlyHistogramFigure"
+        : chartType === "donut" || chartType === "gauge"
+          ? "toPlotlyLatestValuesFigure"
+          : "toPlotlyTimeSeriesFigure";
+    return `import { ${fn} } from "@otlpkit/adapters/plotly";
 
-const wide = toEngineWideTableModel(result);
-const histogram = toEngineHistogramModel(wide);
-const traces = toPlotlyEngineHistogramModel(histogram);`;
-    }
-    if (chartType === "donut" || chartType === "gauge") {
-      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
-import { toPlotlyEngineLatestValuesModel } from "@otlpkit/adapters/plotly";
-
-const latest = toEngineLatestValueModel(result);
-const traces = toPlotlyEngineLatestValuesModel(latest, {
+const figure = ${fn}(result, {
   chartType: "${chartType}",
-});`;
-    }
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toPlotlyEngineTimeSeriesModel } from "@otlpkit/adapters/plotly";
-
-const wide = toEngineWideTableModel(result);
-const traces = toPlotlyEngineTimeSeriesModel(wide, {
-  chartType: "${chartType}",
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
 });`;
   }
   if (libraryId === "apexcharts") {
-    if (chartType === "donut" || chartType === "gauge") {
-      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
-import { toApexChartsEngineLatestValuesOptions } from "@otlpkit/adapters/apexcharts";
+    const fn =
+      chartType === "donut" || chartType === "gauge"
+        ? "toApexChartsLatestValuesOptions"
+        : "toApexChartsTimeSeriesOptions";
+    return `import { ${fn} } from "@otlpkit/adapters/apexcharts";
 
-const latest = toEngineLatestValueModel(result);
-const options = toApexChartsEngineLatestValuesOptions(latest, {
+const options = ${fn}(result, {
   chartType: "${chartType}",
-});`;
-    }
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toApexChartsEngineTimeSeriesOptions } from "@otlpkit/adapters/apexcharts";
-
-const wide = toEngineWideTableModel(result);
-const options = toApexChartsEngineTimeSeriesOptions(wide, {
-  chartType: "${chartType}",
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
 });`;
   }
   if (libraryId === "victory") {
-    if (chartType === "donut" || chartType === "bar") {
-      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
-import { toVictoryEngineLatestData } from "@otlpkit/adapters/victory";
+    const fn =
+      chartType === "donut" || chartType === "bar" ? "toVictoryLatestData" : "toVictorySeries";
+    return `import { ${fn} } from "@otlpkit/adapters/victory";
 
-const latest = toEngineLatestValueModel(result);
-const data = toVictoryEngineLatestData(latest);`;
-    }
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toVictoryEngineSeries } from "@otlpkit/adapters/victory";
-
-const wide = toEngineWideTableModel(result);
-const series = toVictoryEngineSeries(wide, {
+const data = ${fn}(result, {
   chartType: "${chartType}",
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
 });`;
   }
   if (libraryId === "agcharts") {
-    if (chartType === "donut" || chartType === "gauge") {
-      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
-import { toAgChartsEngineLatestValuesOptions } from "@otlpkit/adapters/agcharts";
+    const fn =
+      chartType === "donut" || chartType === "gauge"
+        ? "toAgChartsLatestValuesOptions"
+        : "toAgChartsTimeSeriesOptions";
+    return `import { ${fn} } from "@otlpkit/adapters/agcharts";
 
-const latest = toEngineLatestValueModel(result);
-const options = toAgChartsEngineLatestValuesOptions(latest, {
+const options = ${fn}(result, {
   chartType: "${chartType}",
-});`;
-    }
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toAgChartsEngineTimeSeriesOptions } from "@otlpkit/adapters/agcharts";
-
-const wide = toEngineWideTableModel(result);
-const options = toAgChartsEngineTimeSeriesOptions(wide, {
-  chartType: "${chartType}",
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
 });`;
   }
   if (libraryId === "highcharts") {
-    if (chartType === "histogram") {
-      return `import {
-  toEngineHistogramModel,
-  toEngineWideTableModel,
-} from "@otlpkit/adapters/engine";
-import { toHighchartsEngineHistogramOptions } from "@otlpkit/adapters/highcharts";
+    const fn =
+      chartType === "histogram"
+        ? "toHighchartsHistogramOptions"
+        : chartType === "donut" || chartType === "gauge"
+          ? "toHighchartsLatestValuesOptions"
+          : "toHighchartsTimeSeriesOptions";
+    return `import { ${fn} } from "@otlpkit/adapters/highcharts";
 
-const wide = toEngineWideTableModel(result);
-const histogram = toEngineHistogramModel(wide);
-const options = toHighchartsEngineHistogramOptions(histogram);`;
-    }
-    if (chartType === "donut" || chartType === "gauge") {
-      return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
-import { toHighchartsEngineLatestValuesOptions } from "@otlpkit/adapters/highcharts";
-
-const latest = toEngineLatestValueModel(result);
-const options = toHighchartsEngineLatestValuesOptions(latest, {
+const options = ${fn}(result, {
   chartType: "${chartType}",
-});`;
-    }
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toHighchartsEngineTimeSeriesOptions } from "@otlpkit/adapters/highcharts";
-
-const wide = toEngineWideTableModel(result);
-const options = toHighchartsEngineTimeSeriesOptions(wide, {
-  chartType: "${chartType}",
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
 });`;
   }
   if (libraryId === "vegalite") {
-    if (chartType === "histogram") {
-      return `import {
-  toEngineHistogramModel,
-  toEngineWideTableModel,
-} from "@otlpkit/adapters/engine";
-import { toVegaLiteEngineHistogramSpec } from "@otlpkit/adapters/vegalite";
+    const fn = chartType === "histogram" ? "toVegaLiteHistogramSpec" : "toVegaLiteSpec";
+    return `import { ${fn} } from "@otlpkit/adapters/vegalite";
 
-const wide = toEngineWideTableModel(result);
-const histogram = toEngineHistogramModel(wide);
-const spec = toVegaLiteEngineHistogramSpec(histogram);`;
-    }
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toVegaLiteEngineSpec } from "@otlpkit/adapters/vegalite";
-
-const wide = toEngineWideTableModel(result);
-const spec = toVegaLiteEngineSpec(wide, {
+const spec = ${fn}(result, {
   mark: "${chartType}",
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
 });`;
   }
   if (libraryId === "observable") {
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toObservablePlotEngineModel } from "@otlpkit/adapters/observable";
+    const fn =
+      chartType === "histogram" ? "toObservablePlotHistogramOptions" : "toObservablePlotOptions";
+    return `import { ${fn} } from "@otlpkit/adapters/observable";
 
-const wide = toEngineWideTableModel(result);
-const plot = toObservablePlotEngineModel(wide, {
+const options = ${fn}(result, {
   chartType: "${chartType}",
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
 });`;
   }
   if (libraryId === "nivo" && chartType === "donut") {
-    return `import { toEngineLatestValueModel } from "@otlpkit/adapters/engine";
-import { toNivoEnginePieData } from "@otlpkit/adapters/nivo";
+    return `import { toNivoPieData } from "@otlpkit/adapters/nivo";
 
-const latest = toEngineLatestValueModel(result);
-const data = toNivoEnginePieData(latest);`;
+const data = toNivoPieData(result, {
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
+});`;
   }
   if (libraryId === "nivo" && chartType === "bar") {
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toNivoEngineBarModel } from "@otlpkit/adapters/nivo";
+    return `import { toNivoBarData } from "@otlpkit/adapters/nivo";
 
-const wide = toEngineWideTableModel(result);
-const data = toNivoEngineBarModel(wide);`;
+const data = toNivoBarData(result, {
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
+});`;
   }
   if (libraryId === "nivo" && chartType === "scatter") {
-    return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toNivoEngineScatterSeries } from "@otlpkit/adapters/nivo";
+    return `import { toNivoScatterSeries } from "@otlpkit/adapters/nivo";
 
-const wide = toEngineWideTableModel(result);
-const data = toNivoEngineScatterSeries(wide);`;
+const data = toNivoScatterSeries(result, {
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
+});`;
   }
-  return `import { toEngineWideTableModel } from "@otlpkit/adapters/engine";
-import { toNivoEngineLineSeries } from "@otlpkit/adapters/nivo";
+  return `import { toNivoLineSeries } from "@otlpkit/adapters/nivo";
 
-const wide = toEngineWideTableModel(result);
-const data = toNivoEngineLineSeries(wide);`;
+const data = toNivoLineSeries(result, {
+  seriesLabel: (s) => s.labels.get("service") ?? "service",
+});`;
 }
 
 function librarySnippet(libraryId, chartType, componentName) {
@@ -799,35 +750,35 @@ function librarySnippet(libraryId, chartType, componentName) {
     if (chartType === "donut") {
       return `<PieChart>
   <Pie
-    data={model.data}
-    dataKey={model.valueKey}
-    nameKey={model.categoryKey}
+    data={data.data}
+    dataKey={data.valueKey}
+    nameKey={data.categoryKey}
     innerRadius={48}
   />
 </PieChart>`;
     }
     if (chartType === "histogram") {
-      return `<BarChart data={model.data}>
-  <XAxis dataKey={model.categoryKey} />
-  <Bar dataKey={model.valueKey} />
+      return `<BarChart data={data.data}>
+  <XAxis dataKey={data.categoryKey} />
+  <Bar dataKey={data.valueKey} />
 </BarChart>`;
     }
     if (chartType === "scatter") {
       return `<ScatterChart>
-  <XAxis dataKey={model.xAxisKey} type="number" />
-  <YAxis dataKey={model.yAxisKey} />
-  {model.series.map((s) => (
+  <XAxis dataKey={data.xAxisKey} type="number" />
+  <YAxis dataKey={data.yAxisKey} />
+  {data.series.map((s) => (
     <Scatter
       key={s.id}
       name={s.name}
-      data={model.data.filter((row) => row[model.seriesKey] === s.name)}
+      data={data.data.filter((row) => row[data.seriesKey] === s.name)}
     />
   ))}
 </ScatterChart>`;
     }
-    return `<${componentName} data={model.data}>
-  <XAxis dataKey={model.xAxisKey} />
-  {model.series.map((s) => <Line key={s.id} dataKey={s.dataKey} name={s.name} />)}
+    return `<${componentName} data={data.data}>
+  <XAxis dataKey={data.xAxisKey} />
+  {data.series.map((s) => <Line key={s.id} dataKey={s.dataKey} name={s.name} />)}
 </${componentName}>`;
   }
   if (libraryId === "chartjs")
@@ -852,14 +803,14 @@ view.view.change("telemetry", changeset).run();`;
     return `const chart = echarts.init(node);
 chart.setOption(option);`;
   if (libraryId === "uplot")
-    return `const plot = new uPlot(model.options, model.data, node);
-plot.setData(nextModel.data);`;
+    return `const plot = new uPlot(args.options, args.data, node);
+plot.setData(nextArgs.data);`;
   if (libraryId === "nivo") return `<${componentName} data={data} animate={false} />`;
   if (libraryId === "observable")
     return `Plot.plot({
-  marks: plot.marks.map((mark) => Plot[mark.mark](plot.data, mark)),
+  marks: options.marks.map((mark) => Plot[mark.mark](options.data, mark)),
 });`;
-  return `Plotly.react(node, traces.data, traces.layout);
+  return `Plotly.react(node, figure.data, figure.layout);
 Plotly.extendTraces(node, nextPatch, [0, 1, 2]);`;
 }
 
@@ -889,19 +840,6 @@ function componentFor(libraryId, chartType) {
   return names[libraryId]?.[chartType] ?? "Chart";
 }
 
-function rowToRecord(row, series, timeKey) {
-  const output = { [timeKey]: row.t };
-  row.values.forEach((value, index) => {
-    output[series[index].id] = value;
-  });
-  return output;
-}
-
-function seriesId(series, index) {
-  const parts = sortedLabelEntries(series.labels).map(([key, value]) => `${key}=${value}`);
-  return parts.length > 0 ? parts.join(",") : `series-${index}`;
-}
-
 function seriesLabel(series, index) {
   const service = series.labels.get("service") ?? `series-${index}`;
   const route = series.labels.get("route");
@@ -911,8 +849,4 @@ function seriesLabel(series, index) {
 
 function capitalize(value) {
   return `${value.slice(0, 1).toUpperCase()}${value.slice(1)}`;
-}
-
-function sortedLabelEntries(labels) {
-  return [...labels.entries()].sort(([left], [right]) => left.localeCompare(right));
 }

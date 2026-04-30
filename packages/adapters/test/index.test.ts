@@ -7,54 +7,62 @@ import {
   buildTimeSeriesFrame,
   buildTraceWaterfallFrame,
 } from "../../views/src/index.js";
-import * as adapterBarrel from "../src/index.js";
 import {
-  toAgChartsEngineTimeSeriesOptions,
-  toAgChartsEngineUpdateDelta,
-  toApexChartsEngineLatestValuesOptions,
-  toApexChartsEngineSeriesUpdate,
-  toChartJsEngineHistogramConfig,
-  toChartJsEngineLatestValuesConfig,
-  toChartJsEngineTimeSeriesConfig,
-  toChartJsHistogramConfig,
-  toChartJsLatestValuesConfig,
-  toChartJsLineConfig,
-  toEChartsEngineHistogramOption,
-  toEChartsEngineLatestValuesOption,
-  toEChartsEngineTimeSeriesOption,
-  toEChartsHistogramOption,
-  toEChartsLatestValuesOption,
-  toEChartsTimeSeriesOption,
   toEngineHistogramModel,
   toEngineLatestValueModel,
   toEngineLineSeriesModel,
   toEngineWideTableModel,
-  toHighchartsEngineTimeSeriesOptions,
-  toNivoEngineBarModel,
-  toNivoEngineLineProps,
-  toNivoEnginePieProps,
-  toObservablePlotEngineModel,
-  toPlotlyEngineLatestValuesFigure,
-  toPlotlyEngineTimeSeriesModel,
-  toRechartsEngineHistogramModel,
-  toRechartsEngineLatestValuesModel,
-  toRechartsEngineScatterModel,
-  toRechartsEngineTimeSeriesModel,
-  toRechartsHistogramModel,
-  toRechartsLatestValuesModel,
-  toRechartsTimeSeriesModel,
+} from "../src/engine.js";
+import * as adapterBarrel from "../src/index.js";
+import {
+  toAgChartsLatestValuesOptions,
+  toAgChartsTimeSeriesOptions,
+  toAgChartsUpdateDelta,
+  toApexChartsLatestValuesOptions,
+  toApexChartsSeriesUpdate,
+  toApexChartsTimeSeriesOptions,
+  toChartJsHistogramConfig,
+  toChartJsLatestValuesConfig,
+  toChartJsTimeSeriesConfig,
+  toChartJsViewHistogramConfig,
+  toChartJsViewLatestValuesConfig,
+  toChartJsViewLineConfig,
+  toEChartsHistogramOption,
+  toEChartsLatestValuesOption,
+  toEChartsTimeSeriesOption,
+  toEChartsViewHistogramOption,
+  toEChartsViewLatestValuesOption,
+  toEChartsViewTimeSeriesOption,
+  toHighchartsTimeSeriesOptions,
+  toNivoBarData,
+  toNivoBarProps,
+  toNivoLineProps,
+  toNivoLineSeries,
+  toNivoPieProps,
+  toObservablePlotOptions,
+  toPlotlyHistogramFigure,
+  toPlotlyLatestValuesFigure,
+  toPlotlyTimeSeriesFigure,
+  toRechartsHistogramData,
+  toRechartsLatestValuesData,
+  toRechartsScatterData,
+  toRechartsTimeSeriesData,
+  toRechartsViewHistogramData,
+  toRechartsViewLatestValuesData,
+  toRechartsViewTimeSeriesData,
   toTremorBarChartProps,
   toTremorBarListProps,
   toTremorDonutChartProps,
   toTremorLineChartProps,
-  toUPlotEngineTimeSeriesModel,
-  toUPlotLatestValuesModel,
-  toUPlotTimeSeriesModel,
-  toVegaLiteEngineSpec,
-  toVictoryEngineChartProps,
-  toVictoryEngineSeries,
-  toVisxEngineHistogramModel,
-  toVisxEngineXYChartModel,
+  toUPlotTimeSeriesArgs,
+  toUPlotViewLatestValuesArgs,
+  toUPlotViewTimeSeriesArgs,
+  toVegaLiteSpec,
+  toVictoryChartProps,
+  toVictoryLatestData,
+  toVictorySeries,
+  toVisxHistogramModel,
+  toVisxXYChartModel,
   traceWaterfallToLaneRows,
 } from "../src/index.js";
 import { histogramRows, pivotTimeSeriesFrame } from "../src/shared.js";
@@ -97,9 +105,9 @@ describe("@otlpkit/adapters", () => {
   });
 
   it("builds native-feeling Chart.js configs", () => {
-    const line = toChartJsLineConfig(timeSeriesFrame);
-    const latest = toChartJsLatestValuesConfig(latestValuesFrame);
-    const histogram = toChartJsHistogramConfig(histogramFrame);
+    const line = toChartJsViewLineConfig(timeSeriesFrame);
+    const latest = toChartJsViewLatestValuesConfig(latestValuesFrame);
+    const histogram = toChartJsViewHistogramConfig(histogramFrame);
 
     expect(line.type).toBe("line");
     expect(line.data.datasets).toHaveLength(2);
@@ -110,9 +118,9 @@ describe("@otlpkit/adapters", () => {
   });
 
   it("builds native-feeling Recharts models", () => {
-    const timeSeries = toRechartsTimeSeriesModel(timeSeriesFrame);
-    const latest = toRechartsLatestValuesModel(latestValuesFrame);
-    const histogram = toRechartsHistogramModel(histogramFrame);
+    const timeSeries = toRechartsViewTimeSeriesData(timeSeriesFrame);
+    const latest = toRechartsViewLatestValuesData(latestValuesFrame);
+    const histogram = toRechartsViewHistogramData(histogramFrame);
 
     expect(timeSeries.xAxisKey).toBe("timeMs");
     expect(timeSeries.series).toHaveLength(2);
@@ -157,48 +165,94 @@ describe("@otlpkit/adapters", () => {
     });
     const histogram = toEngineHistogramModel(wide, { bucketCount: 3 });
 
-    expect(toChartJsEngineTimeSeriesConfig(wide).data.datasets[0]?.parsing).toBe(false);
-    expect(toChartJsEngineLatestValuesConfig(latest, { chartType: "donut" }).type).toBe("doughnut");
-    expect(toChartJsEngineHistogramConfig(histogram).data.labels).toHaveLength(3);
-    expect(toEChartsEngineTimeSeriesOption(wide).series[0]?.encode.x).toBe("time");
-    expect(toEChartsEngineLatestValuesOption(latest, { chartType: "gauge" }).series[0]?.type).toBe(
+    expect(toChartJsTimeSeriesConfig(wide).data.datasets[0]?.parsing).toBe(false);
+    expect(toChartJsLatestValuesConfig(latest, { chartType: "donut" }).type).toBe("doughnut");
+    expect(toChartJsHistogramConfig(histogram).data.labels).toHaveLength(3);
+    expect(toEChartsTimeSeriesOption(wide).series[0]?.encode.x).toBe("time");
+    expect(toEChartsLatestValuesOption(latest, { chartType: "gauge" }).series[0]?.type).toBe(
       "gauge"
     );
-    expect(toEChartsEngineHistogramOption(histogram).dataset[0]?.source).toHaveLength(3);
-    expect(toUPlotEngineTimeSeriesModel(wide).data).toHaveLength(3);
-    expect(toNivoEngineBarModel(wide).keys).toEqual(["__name__=cpu,host=a", "__name__=cpu,host=b"]);
-    expect(toNivoEngineLineProps(wide, { chartType: "sparkline" }).enablePoints).toBe(false);
-    expect(toNivoEnginePieProps(latest).value).toBe("value");
-    expect(toObservablePlotEngineModel(wide).marks[0]?.mark).toBe("lineY");
-    expect(toObservablePlotEngineModel(wide).options.color?.legend).toBe(true);
-    expect(toPlotlyEngineTimeSeriesModel(wide).data[0]?.type).toBe("scatter");
-    expect(toPlotlyEngineTimeSeriesModel(wide).data[0]?.uid).toBe("__name__=cpu,host=a");
-    expect(toPlotlyEngineLatestValuesFigure(latest).config.responsive).toBe(true);
-    expect(toRechartsEngineHistogramModel(histogram).valueKey).toBe("count");
-    expect(toRechartsEngineScatterModel(wide).series.map((series) => series.name)).toEqual([
-      "a",
-      "b",
-    ]);
-    expect(toApexChartsEngineLatestValuesOptions(latest, { chartType: "gauge" }).chart.type).toBe(
+    expect(toEChartsHistogramOption(histogram).dataset[0]?.source).toHaveLength(3);
+    expect(toUPlotTimeSeriesArgs(wide).data).toHaveLength(3);
+    expect(toNivoBarData(wide).keys).toEqual(["__name__=cpu,host=a", "__name__=cpu,host=b"]);
+    expect(toNivoLineProps(wide, { chartType: "sparkline" }).enablePoints).toBe(false);
+    expect(toNivoPieProps(latest).value).toBe("value");
+    expect(toObservablePlotOptions(wide).marks[0]?.mark).toBe("lineY");
+    expect(toObservablePlotOptions(wide).options.color?.legend).toBe(true);
+    expect(toPlotlyTimeSeriesFigure(wide).data[0]?.type).toBe("scatter");
+    expect(toPlotlyTimeSeriesFigure(wide).data[0]?.uid).toMatch(/^engine-0-[a-z0-9]+$/);
+    expect(toPlotlyTimeSeriesFigure(wide).data[0]?.name).toBe("a");
+    expect(toPlotlyLatestValuesFigure(latest).config.responsive).toBe(true);
+    expect(toRechartsHistogramData(histogram).valueKey).toBe("count");
+    expect(toRechartsScatterData(wide).series.map((series) => series.name)).toEqual(["a", "b"]);
+    expect(toApexChartsLatestValuesOptions(latest, { chartType: "gauge" }).chart.type).toBe(
       "radialBar"
     );
+    expect(toApexChartsSeriesUpdate(toApexChartsLatestValuesOptions(latest)).series).toEqual([
+      3, 30,
+    ]);
+    expect(toVictorySeries(wide, { chartType: "area" })[0]?.component).toBe("VictoryArea");
+    expect(toVictoryChartProps(wide).scale.x).toBe("time");
+    expect(toAgChartsTimeSeriesOptions(wide, { chartType: "area" }).series?.[0]?.type).toBe("area");
+    expect(toAgChartsUpdateDelta(toAgChartsTimeSeriesOptions(wide)).data).toHaveLength(3);
+    expect(toHighchartsTimeSeriesOptions(wide).chart.type).toBe("line");
+    expect(toHighchartsTimeSeriesOptions(wide).xAxis?.type).toBe("datetime");
+    expect(toVegaLiteSpec(wide, { mark: "scatter" }).mark).toBe("point");
+    expect(toVegaLiteSpec(wide).$schema).toContain("vega-lite");
+    expect(toVisxXYChartModel(wide).data[0]?.data[0]).toEqual({ x: 1, y: 1 });
+    expect(toVisxHistogramModel(histogram).xScale.type).toBe("band");
+  });
+
+  it("lets package-rendered chart adapters accept engine query results directly", () => {
+    const options = {
+      seriesLabel: (series: (typeof engineResult.series)[number]) =>
+        series.labels.get("host") ?? "unknown",
+    };
+
+    expect(toChartJsTimeSeriesConfig(engineResult, options).data.datasets[0]?.label).toBe("a");
+    expect(toChartJsLatestValuesConfig(engineResult, options).data.labels).toEqual(["a", "b"]);
     expect(
-      toApexChartsEngineSeriesUpdate(toApexChartsEngineLatestValuesOptions(latest)).series
-    ).toEqual([3, 30]);
-    expect(toVictoryEngineSeries(wide, { chartType: "area" })[0]?.component).toBe("VictoryArea");
-    expect(toVictoryEngineChartProps(wide).scale.x).toBe("time");
-    expect(toAgChartsEngineTimeSeriesOptions(wide, { chartType: "area" }).series?.[0]?.type).toBe(
-      "area"
-    );
-    expect(toAgChartsEngineUpdateDelta(toAgChartsEngineTimeSeriesOptions(wide)).data).toHaveLength(
+      toChartJsHistogramConfig(engineResult, { ...options, bucketCount: 3 }).data.labels
+    ).toHaveLength(3);
+    expect(toEChartsTimeSeriesOption(engineResult, options).dataset[0]?.source[0]?.a).toBe(1);
+    expect(toEChartsLatestValuesOption(engineResult, options).dataset[0]?.source).toEqual([
+      { label: "a", value: 3 },
+      { label: "b", value: 30 },
+    ]);
+    expect(
+      toEChartsHistogramOption(engineResult, { ...options, bucketCount: 3 }).series[0]?.type
+    ).toBe("bar");
+    expect(toUPlotTimeSeriesArgs(engineResult, options).options.series[1]?.label).toBe("a");
+    expect(toNivoLineSeries(engineResult, options)[0]?.id).toBe("a");
+    expect(toNivoBarData(engineResult, options).keys).toEqual([
+      "__name__=cpu,host=a",
+      "__name__=cpu,host=b",
+    ]);
+    expect(toNivoBarProps(engineResult, options).data[0]?.["__name__=cpu,host=a"]).toBe(1);
+    expect(toObservablePlotOptions(engineResult, options).data[0]?.series).toBe("a");
+    expect(toPlotlyTimeSeriesFigure(engineResult, options).data[0]?.name).toBe("a");
+    expect(
+      toPlotlyHistogramFigure(engineResult, { ...options, bucketCount: 3 }).data[0]?.type
+    ).toBe("bar");
+    expect(toRechartsTimeSeriesData(engineResult, options).series[0]?.name).toBe("a");
+    expect(toRechartsLatestValuesData(engineResult, options).data[1]?.value).toBe(30);
+    expect(toRechartsHistogramData(engineResult, { ...options, bucketCount: 3 }).data).toHaveLength(
       3
     );
-    expect(toHighchartsEngineTimeSeriesOptions(wide).chart.type).toBe("line");
-    expect(toHighchartsEngineTimeSeriesOptions(wide).xAxis?.type).toBe("datetime");
-    expect(toVegaLiteEngineSpec(wide, { mark: "scatter" }).mark).toBe("point");
-    expect(toVegaLiteEngineSpec(wide).$schema).toContain("vega-lite");
-    expect(toVisxEngineXYChartModel(wide).data[0]?.data[0]).toEqual({ x: 1, y: 1 });
-    expect(toVisxEngineHistogramModel(histogram).xScale.type).toBe("band");
+    expect(toApexChartsTimeSeriesOptions(engineResult, options).series[0]?.name).toBe("a");
+    expect(toApexChartsLatestValuesOptions(engineResult, options).labels).toEqual(["a", "b"]);
+    expect(toVictorySeries(engineResult, options)[0]?.label).toBe("a");
+    expect(toVictoryLatestData(engineResult, options)).toEqual([
+      { x: "a", y: 3 },
+      { x: "b", y: 30 },
+    ]);
+    expect(toAgChartsTimeSeriesOptions(engineResult, options).series?.[0]?.yName).toBe("a");
+    expect(toAgChartsLatestValuesOptions(engineResult, options).data).toEqual([
+      { label: "a", value: 3 },
+      { label: "b", value: 30 },
+    ]);
+    expect(toHighchartsTimeSeriesOptions(engineResult, options).series?.[0]?.name).toBe("a");
+    expect(toVegaLiteSpec(engineResult, options).data.values[0]?.series).toBe("a");
   });
 
   it("handles engine timestamp units, point budgets, and invalid query results", () => {
@@ -351,10 +405,10 @@ describe("@otlpkit/adapters", () => {
       seriesLabel: (series) => series.labels.get("host") ?? "unknown",
     });
     const histogram = toEngineHistogramModel(wide, { bucketCount: 3 });
-    const timeSeries = toRechartsEngineTimeSeriesModel(wide, { unit: "%" });
-    const latestValues = toRechartsEngineLatestValuesModel(latest, { unit: "%" });
-    const histogramModel = toRechartsEngineHistogramModel(histogram, { unit: "count" });
-    const scatter = toRechartsEngineScatterModel(wide, { unit: "%" });
+    const timeSeries = toRechartsTimeSeriesData(wide, { unit: "%" });
+    const latestValues = toRechartsLatestValuesData(latest, { unit: "%" });
+    const histogramModel = toRechartsHistogramData(histogram, { unit: "count" });
+    const scatter = toRechartsScatterData(wide, { unit: "%" });
 
     expect(timeSeries.xAxisKey).toBe("time");
     expect(timeSeries.series).toEqual([
@@ -408,7 +462,7 @@ describe("@otlpkit/adapters", () => {
         },
       ],
     });
-    const timeSeries = toRechartsEngineTimeSeriesModel(wide, {
+    const timeSeries = toRechartsTimeSeriesData(wide, {
       xAxisKey: "__name__=time",
       tooltipKey: "__name__=tooltip",
     });
@@ -429,13 +483,13 @@ describe("@otlpkit/adapters", () => {
     const wide = toEngineWideTableModel(engineResult);
 
     expect(() =>
-      toRechartsEngineScatterModel(wide, {
+      toRechartsScatterData(wide, {
         xAxisKey: "value",
         yAxisKey: "value",
       })
     ).toThrow(/must be distinct/);
     expect(() =>
-      toRechartsEngineScatterModel(wide, {
+      toRechartsScatterData(wide, {
         xAxisKey: "time",
         seriesKey: "time",
       })
@@ -450,11 +504,27 @@ describe("@otlpkit/adapters", () => {
       seriesLabel: (series) => series.labels.get("host") ?? "unknown",
     });
     const line = toTremorLineChartProps(wide, { connectNulls: false });
+    const directLine = toTremorLineChartProps(engineResult, {
+      connectNulls: false,
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
     const bar = toTremorBarChartProps(wide, { layout: "horizontal", type: "stacked" });
+    const directBar = toTremorBarChartProps(engineResult, {
+      layout: "horizontal",
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+      type: "stacked",
+    });
     const donut = toTremorDonutChartProps(latest);
+    const directDonut = toTremorDonutChartProps(engineResult, {
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
     const barList = toTremorBarListProps(latest);
+    const directBarList = toTremorBarListProps(engineResult, {
+      seriesLabel: (series) => series.labels.get("host") ?? "unknown",
+    });
 
     expect(line.index).toBe("time");
+    expect(directLine).toEqual(line);
     expect(line.categories).toEqual(["a", "b"]);
     expect(line.meta.series.map((series) => [series.id, series.key, series.label])).toEqual([
       ["__name__=cpu,host=a", "a", "a"],
@@ -463,12 +533,15 @@ describe("@otlpkit/adapters", () => {
     expect(line.data[1]?.a).toBeNull();
     expect(bar.layout).toBe("horizontal");
     expect(bar.type).toBe("stacked");
+    expect(directBar).toEqual(bar);
     expect(donut.index).toBe("label");
     expect(donut.category).toBe("value");
+    expect(directDonut).toEqual(donut);
     expect(barList.data).toEqual([
       { name: "a", value: 3 },
       { name: "b", value: 30 },
     ]);
+    expect(directBarList).toEqual(barList);
   });
 
   it("keeps Tremor legends readable and filters null latest values", () => {
@@ -532,8 +605,8 @@ describe("@otlpkit/adapters", () => {
   });
 
   it("builds aligned uPlot models", () => {
-    const timeSeries = toUPlotTimeSeriesModel(timeSeriesFrame);
-    const latest = toUPlotLatestValuesModel(latestValuesFrame);
+    const timeSeries = toUPlotViewTimeSeriesArgs(timeSeriesFrame);
+    const latest = toUPlotViewLatestValuesArgs(latestValuesFrame);
 
     expect(timeSeries.options.scales.x.time).toBe(true);
     expect(timeSeries.data).toHaveLength(timeSeriesFrame.series.length + 1);
@@ -544,9 +617,9 @@ describe("@otlpkit/adapters", () => {
   });
 
   it("builds dataset-first ECharts options", () => {
-    const timeSeries = toEChartsTimeSeriesOption(timeSeriesFrame);
-    const latest = toEChartsLatestValuesOption(latestValuesFrame);
-    const histogram = toEChartsHistogramOption(histogramFrame);
+    const timeSeries = toEChartsViewTimeSeriesOption(timeSeriesFrame);
+    const latest = toEChartsViewLatestValuesOption(latestValuesFrame);
+    const histogram = toEChartsViewHistogramOption(histogramFrame);
 
     expect(timeSeries.dataset[0]?.id).toBe("telemetry");
     expect(timeSeries.series[0]?.encode.x).toBe("timeMs");
@@ -614,18 +687,20 @@ describe("@otlpkit/adapters", () => {
       ],
     };
 
-    expect(typeof adapterBarrel.adapterModules.toChartJsLineConfig).toBe("function");
-    expect(typeof adapterBarrel.adapterModules.toAgChartsEngineTimeSeriesOptions).toBe("function");
-    expect(typeof adapterBarrel.adapterModules.toVegaLiteEngineSpec).toBe("function");
-    expect(typeof adapterBarrel.adapterModules.toVisxEngineXYChartModel).toBe("function");
-    expect(toChartJsLineConfig(sparseFrame).data.datasets[0]?.data[0]).toEqual({ x: 0, y: 1 });
-    expect(toChartJsLineConfig(sparseFrame).options.scales.y.title.text).toBe("");
-    expect(toEChartsTimeSeriesOption(sparseFrame).yAxis.name).toBe("");
-    expect(toChartJsLatestValuesConfig(sparseLatest).options.scales.y.title.text).toBe("");
-    expect(toEChartsLatestValuesOption(sparseLatest).yAxis.name).toBe("");
-    expect(toRechartsTimeSeriesModel(sparseFrame).data[0]?.timeMs).toBeNull();
-    expect(toUPlotTimeSeriesModel(sparseFrame).data[0]).toHaveLength(1);
-    expect(toUPlotLatestValuesModel(sparseLatest).options.axes[1].label).toBe("");
+    expect(typeof adapterBarrel.adapterModules.toChartJsViewLineConfig).toBe("function");
+    expect(typeof adapterBarrel.adapterModules.toAgChartsTimeSeriesOptions).toBe("function");
+    expect(typeof adapterBarrel.adapterModules.toVegaLiteSpec).toBe("function");
+    expect(typeof adapterBarrel.adapterModules.toVisxXYChartModel).toBe("function");
+    expect("toEngineWideTableModel" in adapterBarrel.adapterModules).toBe(false);
+    expect("toEngineWideTableModel" in adapterBarrel).toBe(false);
+    expect(toChartJsViewLineConfig(sparseFrame).data.datasets[0]?.data[0]).toEqual({ x: 0, y: 1 });
+    expect(toChartJsViewLineConfig(sparseFrame).options.scales.y.title.text).toBe("");
+    expect(toEChartsViewTimeSeriesOption(sparseFrame).yAxis.name).toBe("");
+    expect(toChartJsViewLatestValuesConfig(sparseLatest).options.scales.y.title.text).toBe("");
+    expect(toEChartsViewLatestValuesOption(sparseLatest).yAxis.name).toBe("");
+    expect(toRechartsViewTimeSeriesData(sparseFrame).data[0]?.timeMs).toBeNull();
+    expect(toUPlotViewTimeSeriesArgs(sparseFrame).data[0]).toHaveLength(1);
+    expect(toUPlotViewLatestValuesArgs(sparseLatest).options.axes[1].label).toBe("");
     expect(pivotTimeSeriesFrame(sparseFrame).rows).toHaveLength(2);
     expect(histogramRows(histogramFrame)[0]?.count).toBeGreaterThanOrEqual(0);
   });

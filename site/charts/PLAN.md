@@ -18,8 +18,9 @@ The gallery should make the adapter story obvious:
 
 ```ts
 const result = engine.query(store, query);
-const wide = toEngineWideTableModel(result);
-const props = toTremorLineChartProps(wide);
+const props = toTremorLineChartProps(result, {
+  seriesLabel: (series) => series.labels.get("service") ?? series.label,
+});
 ```
 
 Then:
@@ -40,7 +41,9 @@ Use one generated TSDB dataset across every page:
   - latest by route
   - histogram-ish bucket output for non-TS charts where useful
 
-Keep the data fixed enough that every library page is visually comparable.
+Keep the data fixed enough that every library page is visually comparable. The generated samples
+must still be appended into an `o11ytsdb` `RowGroupStore` and queried with `ScanEngine`; the gallery
+should never pass hand-built query-result lookalikes directly to adapters.
 
 ## Site Structure
 
