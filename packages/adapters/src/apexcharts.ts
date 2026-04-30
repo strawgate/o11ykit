@@ -1,7 +1,13 @@
-import type { EngineLatestValueModel, EngineWideTableModel } from "./engine.js";
+import {
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
+  type EngineAdapterOptions,
+  type EngineLatestValueInput,
+  type EngineWideTableInput,
+} from "./engine.js";
 import { gaugeValue } from "./engine-chart-shared.js";
 
-export type ApexChartsEngineChartType =
+export type ApexChartsChartType =
   | "line"
   | "area"
   | "bar"
@@ -10,12 +16,12 @@ export type ApexChartsEngineChartType =
   | "sparkline"
   | "gauge";
 
-export interface ApexChartsEngineOptions {
-  readonly chartType?: ApexChartsEngineChartType;
+export interface ApexChartsAdapterOptions extends EngineAdapterOptions {
+  readonly chartType?: ApexChartsChartType;
   readonly chartId?: string;
 }
 
-export interface ApexChartsEngineModel {
+export interface ApexChartsOptions {
   readonly chart: {
     readonly type: "line" | "bar" | "scatter" | "donut" | "radialBar";
     readonly id?: string;
@@ -28,10 +34,11 @@ export interface ApexChartsEngineModel {
   readonly fill?: { readonly opacity: number };
 }
 
-export function toApexChartsEngineTimeSeriesOptions(
-  model: EngineWideTableModel,
-  options: ApexChartsEngineOptions = {}
-): ApexChartsEngineModel {
+export function toApexChartsTimeSeriesOptions(
+  model: EngineWideTableInput,
+  options: ApexChartsAdapterOptions = {}
+): ApexChartsOptions {
+  const wide = asEngineWideTableModel(model, options);
   const chartType = options.chartType ?? "line";
   return {
     chart: {
@@ -39,9 +46,9 @@ export function toApexChartsEngineTimeSeriesOptions(
       type: chartType === "bar" ? "bar" : chartType === "scatter" ? "scatter" : "line",
       sparkline: { enabled: chartType === "sparkline" },
     },
-    series: model.series.map((series, index) => ({
+    series: wide.series.map((series, index) => ({
       name: series.label,
-      data: model.rows.map((row) => [row.t, row.values[index] ?? null]),
+      data: wide.rows.map((row) => [row.t, row.values[index] ?? null]),
     })),
     xaxis: { type: "datetime" },
     stroke: { curve: "smooth" },
@@ -49,10 +56,11 @@ export function toApexChartsEngineTimeSeriesOptions(
   };
 }
 
-export function toApexChartsEngineLatestValuesOptions(
-  model: EngineLatestValueModel,
-  options: ApexChartsEngineOptions = {}
-): ApexChartsEngineModel {
+export function toApexChartsLatestValuesOptions(
+  model: EngineLatestValueInput,
+  options: ApexChartsAdapterOptions = {}
+): ApexChartsOptions {
+  const latest = asEngineLatestValueModel(model, options);
   const chartType = options.chartType ?? "donut";
   if (chartType === "gauge") {
     return {
@@ -61,11 +69,11 @@ export function toApexChartsEngineLatestValuesOptions(
         type: "radialBar",
         sparkline: { enabled: true },
       },
-      series: [gaugeValue(model)],
+      series: [gaugeValue(latest)],
       labels: ["average"],
     };
   }
-  const rows = model.rows.filter((row) => row.value !== null);
+  const rows = latest.rows.filter((row) => row.value !== null);
   return {
     chart: { ...(options.chartId ? { id: options.chartId } : {}), type: "donut" },
     labels: rows.map((row) => row.label),
@@ -73,9 +81,9 @@ export function toApexChartsEngineLatestValuesOptions(
   };
 }
 
-export function toApexChartsEngineSeriesUpdate(model: ApexChartsEngineModel): {
-  readonly series: ApexChartsEngineModel["series"];
-  readonly labels?: ApexChartsEngineModel["labels"];
+export function toApexChartsSeriesUpdate(model: ApexChartsOptions): {
+  readonly series: ApexChartsOptions["series"];
+  readonly labels?: ApexChartsOptions["labels"];
 } {
   return {
     series: model.series,

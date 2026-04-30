@@ -1,9 +1,17 @@
 import type { HistogramFrame, LatestValuesFrame, TimeSeriesFrame } from "@otlpkit/views";
 
 import type {
-  EngineHistogramModel,
+  EngineAdapterOptions,
+  EngineHistogramInput,
+  EngineHistogramOptions,
+  EngineLatestValueInput,
   EngineLatestValueModel,
-  EngineWideTableModel,
+  EngineWideTableInput,
+} from "./engine.js";
+import {
+  asEngineHistogramModel,
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
 } from "./engine.js";
 
 export interface ChartJsPoint {
@@ -78,7 +86,7 @@ export interface ChartJsConfig {
   };
 }
 
-export type ChartJsEngineChartType =
+export type ChartJsChartType =
   | "line"
   | "area"
   | "bar"
@@ -88,24 +96,25 @@ export type ChartJsEngineChartType =
   | "sparkline"
   | "gauge";
 
-export interface ChartJsEngineOptions {
-  readonly chartType?: ChartJsEngineChartType;
+export interface ChartJsOptions extends EngineAdapterOptions, EngineHistogramOptions {
+  readonly chartType?: ChartJsChartType;
   readonly unit?: string | null;
   readonly title?: string;
   readonly spanGaps?: boolean;
 }
 
-export function toChartJsEngineTimeSeriesConfig(
-  model: EngineWideTableModel,
-  options: ChartJsEngineOptions = {}
+export function toChartJsTimeSeriesConfig(
+  model: EngineWideTableInput,
+  options: ChartJsOptions = {}
 ): ChartJsConfig {
+  const wide = asEngineWideTableModel(model, options);
   const chartType = options.chartType ?? "line";
   return {
     type: chartType === "bar" ? "bar" : chartType === "scatter" ? "line" : "line",
     data: {
-      datasets: model.series.map((series, index) => ({
+      datasets: wide.series.map((series, index) => ({
         label: series.label,
-        data: model.rows.map((row) => ({ x: row.t, y: row.values[index] ?? null })),
+        data: wide.rows.map((row) => ({ x: row.t, y: row.values[index] ?? null })),
         parsing: false,
         normalized: true,
         spanGaps: options.spanGaps ?? false,
@@ -118,7 +127,7 @@ export function toChartJsEngineTimeSeriesConfig(
     },
     options: chartJsEngineOptions({
       xType: "linear",
-      legend: chartType !== "sparkline" && model.series.length > 1,
+      legend: chartType !== "sparkline" && wide.series.length > 1,
       title: options.title ?? "",
       unit: options.unit ?? null,
       sparkline: chartType === "sparkline",
@@ -126,24 +135,26 @@ export function toChartJsEngineTimeSeriesConfig(
   };
 }
 
-export function toChartJsEngineLatestValuesConfig(
-  model: EngineLatestValueModel,
-  options: ChartJsEngineOptions = {}
+export function toChartJsLatestValuesConfig(
+  model: EngineLatestValueInput,
+  options: ChartJsOptions = {}
 ): ChartJsConfig {
+  const latest = asEngineLatestValueModel(model, options);
   const chartType = options.chartType ?? "bar";
   if (chartType === "donut" || chartType === "gauge") {
-    const value = chartType === "gauge" ? gaugeValue(model) : undefined;
+    const value = chartType === "gauge" ? gaugeValue(latest) : undefined;
     return {
       type: "doughnut",
       data: {
-        labels: chartType === "gauge" ? ["value", "remaining"] : model.rows.map((row) => row.label),
+        labels:
+          chartType === "gauge" ? ["value", "remaining"] : latest.rows.map((row) => row.label),
         datasets: [
           {
             label: options.title ?? "latest",
             data:
               chartType === "gauge"
                 ? [value, Math.max(0, 200 - (value ?? 0))]
-                : model.rows.flatMap((row) => (row.value === null ? [] : [row.value])),
+                : latest.rows.flatMap((row) => (row.value === null ? [] : [row.value])),
             backgroundColor: chartType === "gauge" ? "#4c8bf5" : "#4c8bf5",
           },
         ],
@@ -163,11 +174,11 @@ export function toChartJsEngineLatestValuesConfig(
   return {
     type: "bar",
     data: {
-      labels: model.rows.flatMap((row) => (row.value === null ? [] : [row.label])),
+      labels: latest.rows.flatMap((row) => (row.value === null ? [] : [row.label])),
       datasets: [
         {
           label: options.title ?? "latest",
-          data: model.rows.flatMap((row) => (row.value === null ? [] : [row.value])),
+          data: latest.rows.flatMap((row) => (row.value === null ? [] : [row.value])),
           backgroundColor: "#4c8bf5",
         },
       ],
@@ -181,18 +192,19 @@ export function toChartJsEngineLatestValuesConfig(
   };
 }
 
-export function toChartJsEngineHistogramConfig(
-  model: EngineHistogramModel,
-  options: ChartJsEngineOptions = {}
+export function toChartJsHistogramConfig(
+  model: EngineHistogramInput,
+  options: ChartJsOptions = {}
 ): ChartJsConfig {
+  const histogram = asEngineHistogramModel(model, options);
   return {
     type: "bar",
     data: {
-      labels: model.buckets.map((bucket) => bucket.label),
+      labels: histogram.buckets.map((bucket) => bucket.label),
       datasets: [
         {
           label: options.title ?? "samples",
-          data: model.buckets.map((bucket) => bucket.count),
+          data: histogram.buckets.map((bucket) => bucket.count),
           backgroundColor: "#0f9d58",
         },
       ],
@@ -206,7 +218,7 @@ export function toChartJsEngineHistogramConfig(
   };
 }
 
-export function toChartJsLineConfig(
+export function toChartJsViewLineConfig(
   frame: TimeSeriesFrame,
   options: {
     readonly xLabel?: string;
@@ -323,7 +335,7 @@ function gaugeValue(model: EngineLatestValueModel): number {
   return Math.round(Math.max(0, Math.min(200, average)));
 }
 
-export function toChartJsLatestValuesConfig(frame: LatestValuesFrame): ChartJsConfig {
+export function toChartJsViewLatestValuesConfig(frame: LatestValuesFrame): ChartJsConfig {
   return {
     type: "bar",
     data: {
@@ -368,7 +380,7 @@ export function toChartJsLatestValuesConfig(frame: LatestValuesFrame): ChartJsCo
   };
 }
 
-export function toChartJsHistogramConfig(frame: HistogramFrame): ChartJsConfig {
+export function toChartJsViewHistogramConfig(frame: HistogramFrame): ChartJsConfig {
   return {
     type: "bar",
     data: {

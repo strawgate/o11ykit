@@ -1,7 +1,14 @@
 import type {
-  EngineHistogramModel,
-  EngineLatestValueModel,
-  EngineWideTableModel,
+  EngineAdapterOptions,
+  EngineHistogramInput,
+  EngineHistogramOptions,
+  EngineLatestValueInput,
+  EngineWideTableInput,
+} from "./engine.js";
+import {
+  asEngineHistogramModel,
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
 } from "./engine.js";
 
 export interface VisxDatum {
@@ -25,15 +32,18 @@ export interface VisxXYChartModel {
   readonly yScale: { readonly type: "linear"; readonly nice: boolean };
 }
 
-export function toVisxEngineXYChartModel(
-  model: EngineWideTableModel,
-  options: { readonly chartType?: "line" | "area" | "bar" | "scatter" | "sparkline" } = {}
+export function toVisxXYChartModel(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions & {
+    readonly chartType?: "line" | "area" | "bar" | "scatter" | "sparkline";
+  } = {}
 ): VisxXYChartModel {
+  const wide = asEngineWideTableModel(model, options);
   return {
-    data: model.series.map((series, index) => ({
+    data: wide.series.map((series, index) => ({
       key: series.id,
       label: series.label,
-      data: model.rows.map((row) => ({ x: row.t, y: row.values[index] ?? null })),
+      data: wide.rows.map((row) => ({ x: row.t, y: row.values[index] ?? null })),
     })),
     accessors: {
       xAccessor: (datum) => datum.x,
@@ -44,13 +54,17 @@ export function toVisxEngineXYChartModel(
   };
 }
 
-export function toVisxEngineLatestValuesModel(model: EngineLatestValueModel): VisxXYChartModel {
+export function toVisxLatestValuesModel(
+  model: EngineLatestValueInput,
+  options: EngineAdapterOptions = {}
+): VisxXYChartModel {
+  const latest = asEngineLatestValueModel(model, options);
   return {
     data: [
       {
         key: "latest",
         label: "latest",
-        data: model.rows.flatMap((row) =>
+        data: latest.rows.flatMap((row) =>
           row.value === null ? [] : [{ x: row.label, y: row.value }]
         ),
       },
@@ -64,13 +78,17 @@ export function toVisxEngineLatestValuesModel(model: EngineLatestValueModel): Vi
   };
 }
 
-export function toVisxEngineHistogramModel(model: EngineHistogramModel): VisxXYChartModel {
+export function toVisxHistogramModel(
+  model: EngineHistogramInput,
+  options: EngineAdapterOptions & EngineHistogramOptions = {}
+): VisxXYChartModel {
+  const histogram = asEngineHistogramModel(model, options);
   return {
     data: [
       {
         key: "histogram",
         label: "samples",
-        data: model.buckets.map((bucket) => ({ x: bucket.label, y: bucket.count })),
+        data: histogram.buckets.map((bucket) => ({ x: bucket.label, y: bucket.count })),
       },
     ],
     accessors: {

@@ -236,14 +236,14 @@ async function renderTremor(target, chart, generation) {
   } = await loadTremorRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
   const common = {
     className: "native-react-chart",
     showAnimation: false,
   };
   const xyProps = {
     ...common,
-    showLegend: false,
+    showLegend: true,
     showXAxis: false,
     showYAxis: false,
     minValue: VALUE_DOMAIN.min,
@@ -271,7 +271,7 @@ async function renderRecharts(target, chart, generation) {
   if (!isCurrentRender(target, generation)) return undefined;
 
   const { React } = runtime;
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
   const timeRange = timeRangeForChart(chart);
   if (chart.chartType === "donut") {
     return renderReact(
@@ -296,13 +296,14 @@ async function renderRecharts(target, chart, generation) {
               fill: COLORS[index % COLORS.length],
             })
           ),
-          React.createElement(runtime.Tooltip, null)
+          React.createElement(runtime.Tooltip, null),
+          React.createElement(runtime.Legend, { iconSize: 8, wrapperStyle: legendStyle() })
         )
       ),
       runtime.createRoot
     );
   }
-  if (chart.chartType === "histogram") {
+  if (chart.chartType === "histogram" || chart.chartType === "latestBar") {
     return renderReact(
       target,
       React.createElement(
@@ -318,6 +319,7 @@ async function renderRecharts(target, chart, generation) {
             domain: [VALUE_DOMAIN.min, VALUE_DOMAIN.max],
           }),
           React.createElement(runtime.Tooltip, null),
+          React.createElement(runtime.Legend, { wrapperStyle: legendStyle() }),
           React.createElement(runtime.Bar, {
             dataKey: model.valueKey,
             fill: COLORS[0],
@@ -364,6 +366,7 @@ async function renderRecharts(target, chart, generation) {
           domain: [VALUE_DOMAIN.min, VALUE_DOMAIN.max],
         }),
         React.createElement(runtime.Tooltip, null),
+        React.createElement(runtime.Legend, { wrapperStyle: legendStyle() }),
         model.series.map((series, index) =>
           React.createElement(SeriesComponent, {
             key: series.id,
@@ -384,7 +387,7 @@ async function renderRecharts(target, chart, generation) {
 
 function renderRechartsScatter(target, chart, runtime) {
   const { React } = runtime;
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
   const timeRange = timeRangeForChart(chart);
   const seriesNames = [...new Set(model.data.map((row) => row.series))];
   return renderReact(
@@ -408,6 +411,7 @@ function renderRechartsScatter(target, chart, runtime) {
           domain: [VALUE_DOMAIN.min, VALUE_DOMAIN.max],
         }),
         React.createElement(runtime.Tooltip, null),
+        React.createElement(runtime.Legend, { wrapperStyle: legendStyle() }),
         seriesNames.map((series, index) =>
           React.createElement(runtime.Scatter, {
             key: series,
@@ -428,9 +432,9 @@ async function renderChartJs(target, chart, generation) {
 
   const timeRange = timeRangeForChart(chart);
   const config = {
-    ...chart.adapterModel,
+    ...chart.adapterOutput,
     options: {
-      ...chart.adapterModel.options,
+      ...chart.adapterOutput.options,
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -438,13 +442,14 @@ async function renderChartJs(target, chart, generation) {
         tooltip: { enabled: true },
       },
       scales: {
-        ...(chart.adapterModel.options?.scales ?? {}),
+        ...(chart.adapterOutput.options?.scales ?? {}),
         x: {
-          ...(chart.adapterModel.options?.scales?.x ?? {}),
+          ...(chart.adapterOutput.options?.scales?.x ?? {}),
           ...(timeRange ?? {}),
+          ticks: { display: false },
         },
         y: {
-          ...(chart.adapterModel.options?.scales?.y ?? {}),
+          ...(chart.adapterOutput.options?.scales?.y ?? {}),
           min: VALUE_DOMAIN.min,
           max: VALUE_DOMAIN.max,
         },
@@ -456,6 +461,7 @@ async function renderChartJs(target, chart, generation) {
     state.chartJs.config.type = config.type;
     state.chartJs.data = config.data;
     state.chartJs.options = config.options;
+    state.chartJs.resize();
     state.chartJs.update("none");
     return state.dispose;
   }
@@ -474,6 +480,7 @@ async function renderECharts(target, chart, generation) {
   const option = echartsOptionFor(chart);
   const state = stateFor(target);
   if (state.echarts) {
+    state.echarts.resize();
     state.echarts.setOption(option, { notMerge: false, lazyUpdate: true });
     return state.dispose;
   }
@@ -489,15 +496,16 @@ async function renderUPlot(target, chart, generation) {
   const uPlot = await loadUPlotRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
+  const width = Math.max(260, target.clientWidth || 320);
+  const height = Math.max(180, target.clientHeight || 220);
   const state = stateFor(target);
   if (state.uplot) {
+    state.uplot.setSize({ width, height });
     state.uplot.setData(model.data);
     return state.dispose;
   }
   target.replaceChildren();
-  const width = Math.max(260, target.clientWidth || 320);
-  const height = Math.max(180, target.clientHeight || 220);
   const options = {
     ...model.options,
     width,
@@ -537,11 +545,12 @@ async function renderPlotly(target, chart, generation) {
   const Plotly = await loadPlotlyRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
   const timeRange = timeRangeForChart(chart);
   const layout = {
     ...model.layout,
     autosize: true,
+    width: Math.max(260, target.clientWidth || 320),
     height: target.clientHeight || 220,
     margin: { l: 36, r: 12, t: 12, b: 28, ...(model.layout?.margin ?? {}) },
     paper_bgcolor: "rgba(0,0,0,0)",
@@ -578,7 +587,7 @@ async function renderApexCharts(target, chart, generation) {
   const ApexCharts = await loadApexChartsRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
   const timeRange = timeRangeForChart(chart);
   const options = {
     ...model,
@@ -587,6 +596,9 @@ async function renderApexCharts(target, chart, generation) {
       type: chart.chartType === "area" ? "area" : model.chart?.type,
       animations: { enabled: false },
       height: target.clientHeight || 220,
+      parentHeightOffset: 0,
+      redrawOnParentResize: false,
+      redrawOnWindowResize: false,
       toolbar: { show: false },
       sparkline: {
         enabled: chart.chartType === "sparkline" || model.chart?.sparkline?.enabled === true,
@@ -608,7 +620,7 @@ async function renderApexCharts(target, chart, generation) {
   };
   const state = stateFor(target);
   if (state.apex) {
-    await state.apex.updateOptions(options, false, false);
+    await state.apex.updateOptions(options, false, false, false);
     return state.dispose;
   }
   target.replaceChildren();
@@ -623,7 +635,7 @@ async function renderHighcharts(target, chart, generation) {
   const Highcharts = await loadHighchartsRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
   const timeRange = timeRangeForChart(chart);
   const options = {
     ...model,
@@ -658,6 +670,7 @@ async function renderHighcharts(target, chart, generation) {
   };
   const state = stateFor(target);
   if (state.highcharts) {
+    state.highcharts.setSize(target.clientWidth || null, target.clientHeight || null, false);
     state.highcharts.update(options, true, false);
     return state.dispose;
   }
@@ -672,11 +685,12 @@ async function renderVegaLite(target, chart, generation) {
   const vegaEmbed = await loadVegaLiteRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
   const spec = {
     ...model,
-    width: "container",
+    width: Math.max(260, target.clientWidth || 320),
     height: Math.max(180, target.clientHeight || 220),
+    autosize: { type: "fit", contains: "padding" },
     background: "transparent",
     config: {
       ...(model.config ?? {}),
@@ -712,6 +726,8 @@ async function renderNivo(target, chart, generation) {
     colors: COLORS,
     margin:
       chart.chartType === "donut" ? { top: 16, right: 16, bottom: 16, left: 16 } : chartMargin(),
+    enableGridX: chart.chartType !== "donut",
+    enableGridY: chart.chartType !== "donut",
     theme: nivoTheme(),
   };
   if (chart.chartType === "donut") {
@@ -719,7 +735,7 @@ async function renderNivo(target, chart, generation) {
       target,
       React.createElement(runtime.ResponsivePie, {
         ...common,
-        data: chart.adapterModel,
+        data: chart.adapterOutput,
         innerRadius: 0.58,
         enableArcLabels: false,
         enableArcLinkLabels: false,
@@ -732,13 +748,14 @@ async function renderNivo(target, chart, generation) {
       target,
       React.createElement(runtime.ResponsiveBar, {
         ...common,
-        data: chart.adapterModel.data,
-        keys: chart.adapterModel.keys,
-        indexBy: chart.adapterModel.indexBy,
+        data: chart.adapterOutput.data,
+        keys: chart.adapterOutput.keys,
+        indexBy: chart.adapterOutput.indexBy,
         groupMode: "grouped",
         enableLabel: false,
-        axisBottom: null,
+        axisBottom: { tickSize: 0, tickPadding: 6, format: () => "" },
         axisLeft: { tickSize: 0, tickPadding: 6 },
+        isInteractive: false,
       }),
       runtime.createRoot
     );
@@ -748,14 +765,15 @@ async function renderNivo(target, chart, generation) {
       target,
       React.createElement(runtime.ResponsiveScatterPlot, {
         ...common,
-        data: chart.adapterModel,
+        data: chart.adapterOutput,
         xScale: {
           type: "linear",
           ...(timeRange ? { min: timeRange.min, max: timeRange.max } : {}),
         },
         yScale: { type: "linear", min: VALUE_DOMAIN.min, max: VALUE_DOMAIN.max },
-        axisBottom: null,
+        axisBottom: { tickSize: 0, tickPadding: 6, format: () => "" },
         axisLeft: { tickSize: 0, tickPadding: 6 },
+        isInteractive: false,
         nodeSize: 8,
       }),
       runtime.createRoot
@@ -765,16 +783,17 @@ async function renderNivo(target, chart, generation) {
     target,
     React.createElement(runtime.ResponsiveLine, {
       ...common,
-      data: chart.adapterModel,
+      data: chart.adapterOutput,
       enableArea: chart.chartType === "area",
       enablePoints: false,
-      useMesh: true,
+      useMesh: false,
+      isInteractive: false,
       xScale: {
         type: "linear",
         ...(timeRange ? { min: timeRange.min, max: timeRange.max } : {}),
       },
       yScale: { type: "linear", stacked: false, min: VALUE_DOMAIN.min, max: VALUE_DOMAIN.max },
-      axisBottom: null,
+      axisBottom: { tickSize: 0, tickPadding: 6, format: () => "" },
       axisLeft: { tickSize: 0, tickPadding: 6 },
     }),
     runtime.createRoot
@@ -785,7 +804,7 @@ async function renderObservablePlot(target, chart, generation) {
   const Plot = await loadObservablePlotRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
   const timeRange = timeRangeForChart(chart);
   const marks = model.marks.map((mark) => observableMark(Plot, model.data, mark));
   const state = stateFor(target);
@@ -808,7 +827,6 @@ async function renderObservablePlot(target, chart, generation) {
     color: model.options.color,
     marks,
   });
-  state.observablePlot?.remove();
   target.replaceChildren(plot);
   state.observablePlot = plot;
   state.dispose = () => plot.remove();
@@ -831,7 +849,7 @@ async function renderVictory(target, chart, generation) {
       target,
       React.createElement(runtime.VictoryPie, {
         ...dimensions,
-        data: chart.adapterModel,
+        data: chart.adapterOutput,
         colorScale: COLORS,
         innerRadius: 54,
         labels: () => null,
@@ -853,7 +871,7 @@ async function renderVictory(target, chart, generation) {
         React.createElement(runtime.VictoryAxis, { tickFormat: () => "" }),
         React.createElement(runtime.VictoryAxis, { dependentAxis: true }),
         React.createElement(runtime.VictoryBar, {
-          data: chart.adapterModel,
+          data: chart.adapterOutput,
           style: { data: { fill: COLORS[0] } },
         })
       ),
@@ -871,7 +889,7 @@ async function renderVictory(target, chart, generation) {
       },
       React.createElement(runtime.VictoryAxis, { tickFormat: () => "" }),
       React.createElement(runtime.VictoryAxis, { dependentAxis: true }),
-      chart.adapterModel.map((series, index) => {
+      chart.adapterOutput.map((series, index) => {
         const style = {
           data: {
             stroke: COLORS[index % COLORS.length],
@@ -910,7 +928,7 @@ async function renderAgCharts(target, chart, generation) {
   const AgCharts = await loadAgChartsRuntime();
   if (!isCurrentRender(target, generation)) return undefined;
 
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
   const baseOptions = {
     ...model,
     container: target,
@@ -921,10 +939,19 @@ async function renderAgCharts(target, chart, generation) {
     axes:
       chart.chartType === "gauge" || chart.chartType === "donut"
         ? undefined
-        : [
-            { type: chart.chartType === "bar" ? "category" : "number", position: "bottom" },
-            { type: "number", position: "left", min: VALUE_DOMAIN.min, max: VALUE_DOMAIN.max },
-          ],
+        : {
+            x: {
+              type: chart.chartType === "bar" ? "category" : "number",
+              position: "bottom",
+              label: { enabled: false },
+            },
+            y: {
+              type: "number",
+              position: "left",
+              min: VALUE_DOMAIN.min,
+              max: VALUE_DOMAIN.max,
+            },
+          },
     theme: {
       palette: { fills: COLORS, strokes: COLORS },
       overrides: { common: { axes: { number: { gridLine: { enabled: true } } } } },
@@ -933,9 +960,9 @@ async function renderAgCharts(target, chart, generation) {
   const state = stateFor(target);
   if (state.ag) {
     if (typeof state.ag.update === "function") {
-      state.ag.update(baseOptions);
+      await state.ag.update(baseOptions);
     } else if (typeof state.ag.updateDelta === "function") {
-      state.ag.updateDelta(baseOptions);
+      await state.ag.updateDelta(baseOptions);
     }
     return state.dispose;
   }
@@ -958,7 +985,7 @@ function renderReact(target, element, createRoot) {
 }
 
 function echartsOptionFor(chart) {
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
   if (chart.chartType === "donut" || chart.chartType === "gauge") {
     return { ...model, animation: false, tooltip: { trigger: "item" } };
   }
@@ -970,7 +997,8 @@ function echartsOptionFor(chart) {
     legend: { show: chart.chartType !== "sparkline", type: "scroll", bottom: 0 },
     tooltip: { trigger: "axis" },
     xAxis: {
-      type: chart.chartType === "histogram" ? "category" : "time",
+      type:
+        chart.chartType === "histogram" || chart.chartType === "latestBar" ? "category" : "time",
       show: chart.chartType !== "sparkline",
       ...(timeRange ?? {}),
     },
@@ -987,7 +1015,7 @@ function isCurrentRender(target, generation) {
   return generation === renderGeneration && target.isConnected;
 }
 
-function renderPlaceholder(target, chart, message, title = "adapter shape") {
+function renderPlaceholder(target, chart, message, title = "renderer") {
   target.innerHTML = `<div class="chart-render-placeholder">
     <strong>${escapeHtml(chart.library.name)} ${escapeHtml(title)}</strong>
     <span>${escapeHtml(message)}</span>
@@ -1010,27 +1038,39 @@ function timeRangeForChart(chart) {
 }
 
 function timeValuesForChart(chart) {
-  const model = chart.adapterModel;
+  const model = chart.adapterOutput;
   if (model?.data?.datasets?.[0]?.data) {
-    return model.data.datasets[0].data.map((point) => point.x);
+    return model.data.datasets[0].data.map(pointXValue).filter((value) => value !== undefined);
+  }
+  if (Array.isArray(model?.data?.[0]?.data)) {
+    return model.data[0].data.map(pointXValue).filter((value) => value !== undefined);
   }
   if (model?.dataset?.[0]?.source) {
-    return model.dataset[0].source.map((row) => row.time).filter((value) => value !== undefined);
+    return model.dataset[0].source.map(rowTimeValue).filter((value) => value !== undefined);
   }
   if (Array.isArray(model?.data?.[0])) return model.data[0];
   if (Array.isArray(model?.data?.[0]?.x)) return model.data[0].x;
   if (Array.isArray(model?.series?.[0]?.data)) {
-    return model.series[0].data
-      .map((point) => (Array.isArray(point) ? point[0] : point?.x))
-      .filter((value) => value !== undefined);
+    return model.series[0].data.map(pointXValue).filter((value) => value !== undefined);
   }
   if (Array.isArray(model?.data)) {
-    return model.data.map((row) => row.time ?? row.x).filter((value) => value !== undefined);
+    return model.data.map(rowTimeValue).filter((value) => value !== undefined);
   }
   if (Array.isArray(model?.[0]?.data)) {
-    return model[0].data.map((point) => point.x).filter((value) => value !== undefined);
+    return model[0].data.map(pointXValue).filter((value) => value !== undefined);
   }
   return [];
+}
+
+function pointXValue(point) {
+  if (Array.isArray(point)) return point[0];
+  if (point && typeof point === "object") return point.x;
+  return undefined;
+}
+
+function rowTimeValue(row) {
+  if (!row || typeof row !== "object") return undefined;
+  return row.time ?? row.x;
 }
 
 function victoryDomainFor(chart) {
@@ -1047,6 +1087,14 @@ function chartMargin() {
 
 function responsiveContainerProps() {
   return { width: "100%", height: "100%", minWidth: 1, minHeight: 1 };
+}
+
+function legendStyle() {
+  return {
+    fontFamily: "var(--mono)",
+    fontSize: 11,
+    lineHeight: "16px",
+  };
 }
 
 function nivoTheme() {

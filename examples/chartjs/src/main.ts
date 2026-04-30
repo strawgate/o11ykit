@@ -1,7 +1,7 @@
 import {
-  toChartJsHistogramConfig,
-  toChartJsLatestValuesConfig,
-  toChartJsLineConfig,
+  toChartJsViewHistogramConfig,
+  toChartJsViewLatestValuesConfig,
+  toChartJsViewLineConfig,
 } from "@otlpkit/adapters/chartjs";
 import { buildHistogramFrame, buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
 import Chart from "chart.js/auto";
@@ -34,9 +34,9 @@ const histogramFrame = buildHistogramFrame(sampleMetricsDocument, {
 });
 
 for (const [selector, config] of [
-  ["#time-series", toChartJsLineConfig(timeSeriesFrame)],
-  ["#latest-values", toChartJsLatestValuesConfig(latestValuesFrame)],
-  ["#histogram", toChartJsHistogramConfig(histogramFrame)],
+  ["#time-series", toChartJsViewLineConfig(timeSeriesFrame)],
+  ["#latest-values", toChartJsViewLatestValuesConfig(latestValuesFrame)],
+  ["#histogram", toChartJsViewHistogramConfig(histogramFrame)],
 ] as const) {
   const context = requireCanvas(selector).getContext("2d");
   if (!context) {

@@ -1,64 +1,57 @@
 import {
-  toAgChartsEngineLatestValuesOptions,
-  toAgChartsEngineTimeSeriesOptions,
-  toAgChartsEngineUpdateDelta,
+  toAgChartsLatestValuesOptions,
+  toAgChartsTimeSeriesOptions,
+  toAgChartsUpdateDelta,
 } from "./agcharts.js";
 import {
-  toApexChartsEngineLatestValuesOptions,
-  toApexChartsEngineSeriesUpdate,
-  toApexChartsEngineTimeSeriesOptions,
+  toApexChartsLatestValuesOptions,
+  toApexChartsSeriesUpdate,
+  toApexChartsTimeSeriesOptions,
 } from "./apexcharts.js";
 import {
-  toChartJsEngineHistogramConfig,
-  toChartJsEngineLatestValuesConfig,
-  toChartJsEngineTimeSeriesConfig,
   toChartJsHistogramConfig,
   toChartJsLatestValuesConfig,
-  toChartJsLineConfig,
+  toChartJsTimeSeriesConfig,
+  toChartJsViewHistogramConfig,
+  toChartJsViewLatestValuesConfig,
+  toChartJsViewLineConfig,
 } from "./chartjs.js";
 import {
-  toEChartsEngineHistogramOption,
-  toEChartsEngineLatestValuesOption,
-  toEChartsEngineTimeSeriesOption,
   toEChartsHistogramOption,
   toEChartsLatestValuesOption,
   toEChartsTimeSeriesOption,
+  toEChartsViewHistogramOption,
+  toEChartsViewLatestValuesOption,
+  toEChartsViewTimeSeriesOption,
 } from "./echarts.js";
 import {
-  toHighchartsEngineHistogramOptions,
-  toHighchartsEngineLatestValuesOptions,
-  toHighchartsEngineTimeSeriesOptions,
+  toHighchartsHistogramOptions,
+  toHighchartsLatestValuesOptions,
+  toHighchartsTimeSeriesOptions,
 } from "./highcharts.js";
 import {
-  toNivoEngineBarModel,
-  toNivoEngineBarProps,
-  toNivoEngineLineProps,
-  toNivoEngineLineSeries,
-  toNivoEnginePieData,
-  toNivoEnginePieProps,
-  toNivoEngineScatterSeries,
+  toNivoBarData,
+  toNivoBarProps,
+  toNivoLineProps,
+  toNivoLineSeries,
+  toNivoPieData,
+  toNivoPieProps,
+  toNivoScatterSeries,
 } from "./nivo.js";
+import { toObservablePlotHistogramOptions, toObservablePlotOptions } from "./observable.js";
 import {
-  toObservablePlotEngineHistogramModel,
-  toObservablePlotEngineModel,
-  toObservablePlotEnginePlotOptions,
-} from "./observable.js";
-import {
-  toPlotlyEngineHistogramFigure,
-  toPlotlyEngineHistogramModel,
-  toPlotlyEngineLatestValuesFigure,
-  toPlotlyEngineLatestValuesModel,
-  toPlotlyEngineTimeSeriesFigure,
-  toPlotlyEngineTimeSeriesModel,
+  toPlotlyHistogramFigure,
+  toPlotlyLatestValuesFigure,
+  toPlotlyTimeSeriesFigure,
 } from "./plotly.js";
 import {
-  toRechartsEngineHistogramModel,
-  toRechartsEngineLatestValuesModel,
-  toRechartsEngineScatterModel,
-  toRechartsEngineTimeSeriesModel,
-  toRechartsHistogramModel,
-  toRechartsLatestValuesModel,
-  toRechartsTimeSeriesModel,
+  toRechartsHistogramData,
+  toRechartsLatestValuesData,
+  toRechartsScatterData,
+  toRechartsTimeSeriesData,
+  toRechartsViewHistogramData,
+  toRechartsViewLatestValuesData,
+  toRechartsViewTimeSeriesData,
 } from "./recharts.js";
 import {
   toTremorAreaChartProps,
@@ -68,192 +61,153 @@ import {
   toTremorLineChartProps,
 } from "./tremor.js";
 import {
-  toUPlotEngineLatestValuesModel,
-  toUPlotEngineTimeSeriesModel,
-  toUPlotLatestValuesModel,
-  toUPlotTimeSeriesModel,
+  toUPlotLatestValuesArgs,
+  toUPlotTimeSeriesArgs,
+  toUPlotViewLatestValuesArgs,
+  toUPlotViewTimeSeriesArgs,
 } from "./uplot.js";
-import { toVegaLiteEngineHistogramSpec, toVegaLiteEngineSpec } from "./vegalite.js";
-import {
-  toVictoryEngineChartProps,
-  toVictoryEngineLatestData,
-  toVictoryEngineSeries,
-} from "./victory.js";
-import {
-  toVisxEngineHistogramModel,
-  toVisxEngineLatestValuesModel,
-  toVisxEngineXYChartModel,
-} from "./visx.js";
+import { toVegaLiteHistogramSpec, toVegaLiteSpec } from "./vegalite.js";
+import { toVictoryChartProps, toVictoryLatestData, toVictorySeries } from "./victory.js";
+import { toVisxHistogramModel, toVisxLatestValuesModel, toVisxXYChartModel } from "./visx.js";
 import { traceWaterfallToLaneRows } from "./waterfall.js";
 
 export const adapterModules: {
-  readonly toAgChartsEngineLatestValuesOptions: typeof toAgChartsEngineLatestValuesOptions;
-  readonly toAgChartsEngineTimeSeriesOptions: typeof toAgChartsEngineTimeSeriesOptions;
-  readonly toAgChartsEngineUpdateDelta: typeof toAgChartsEngineUpdateDelta;
-  readonly toApexChartsEngineLatestValuesOptions: typeof toApexChartsEngineLatestValuesOptions;
-  readonly toApexChartsEngineSeriesUpdate: typeof toApexChartsEngineSeriesUpdate;
-  readonly toApexChartsEngineTimeSeriesOptions: typeof toApexChartsEngineTimeSeriesOptions;
+  readonly toAgChartsLatestValuesOptions: typeof toAgChartsLatestValuesOptions;
+  readonly toAgChartsTimeSeriesOptions: typeof toAgChartsTimeSeriesOptions;
+  readonly toAgChartsUpdateDelta: typeof toAgChartsUpdateDelta;
+  readonly toApexChartsLatestValuesOptions: typeof toApexChartsLatestValuesOptions;
+  readonly toApexChartsSeriesUpdate: typeof toApexChartsSeriesUpdate;
+  readonly toApexChartsTimeSeriesOptions: typeof toApexChartsTimeSeriesOptions;
+  readonly toChartJsViewHistogramConfig: typeof toChartJsViewHistogramConfig;
   readonly toChartJsHistogramConfig: typeof toChartJsHistogramConfig;
-  readonly toChartJsEngineHistogramConfig: typeof toChartJsEngineHistogramConfig;
-  readonly toChartJsEngineLatestValuesConfig: typeof toChartJsEngineLatestValuesConfig;
-  readonly toChartJsEngineTimeSeriesConfig: typeof toChartJsEngineTimeSeriesConfig;
   readonly toChartJsLatestValuesConfig: typeof toChartJsLatestValuesConfig;
-  readonly toChartJsLineConfig: typeof toChartJsLineConfig;
-  readonly toEChartsEngineHistogramOption: typeof toEChartsEngineHistogramOption;
-  readonly toEChartsEngineLatestValuesOption: typeof toEChartsEngineLatestValuesOption;
-  readonly toEChartsEngineTimeSeriesOption: typeof toEChartsEngineTimeSeriesOption;
+  readonly toChartJsTimeSeriesConfig: typeof toChartJsTimeSeriesConfig;
+  readonly toChartJsViewLatestValuesConfig: typeof toChartJsViewLatestValuesConfig;
+  readonly toChartJsViewLineConfig: typeof toChartJsViewLineConfig;
   readonly toEChartsHistogramOption: typeof toEChartsHistogramOption;
   readonly toEChartsLatestValuesOption: typeof toEChartsLatestValuesOption;
   readonly toEChartsTimeSeriesOption: typeof toEChartsTimeSeriesOption;
-  readonly toHighchartsEngineHistogramOptions: typeof toHighchartsEngineHistogramOptions;
-  readonly toHighchartsEngineLatestValuesOptions: typeof toHighchartsEngineLatestValuesOptions;
-  readonly toHighchartsEngineTimeSeriesOptions: typeof toHighchartsEngineTimeSeriesOptions;
-  readonly toNivoEngineBarModel: typeof toNivoEngineBarModel;
-  readonly toNivoEngineBarProps: typeof toNivoEngineBarProps;
-  readonly toNivoEngineLineSeries: typeof toNivoEngineLineSeries;
-  readonly toNivoEngineLineProps: typeof toNivoEngineLineProps;
-  readonly toNivoEnginePieData: typeof toNivoEnginePieData;
-  readonly toNivoEnginePieProps: typeof toNivoEnginePieProps;
-  readonly toNivoEngineScatterSeries: typeof toNivoEngineScatterSeries;
-  readonly toObservablePlotEngineHistogramModel: typeof toObservablePlotEngineHistogramModel;
-  readonly toObservablePlotEngineModel: typeof toObservablePlotEngineModel;
-  readonly toObservablePlotEnginePlotOptions: typeof toObservablePlotEnginePlotOptions;
-  readonly toPlotlyEngineHistogramFigure: typeof toPlotlyEngineHistogramFigure;
-  readonly toPlotlyEngineHistogramModel: typeof toPlotlyEngineHistogramModel;
-  readonly toPlotlyEngineLatestValuesFigure: typeof toPlotlyEngineLatestValuesFigure;
-  readonly toPlotlyEngineLatestValuesModel: typeof toPlotlyEngineLatestValuesModel;
-  readonly toPlotlyEngineTimeSeriesFigure: typeof toPlotlyEngineTimeSeriesFigure;
-  readonly toPlotlyEngineTimeSeriesModel: typeof toPlotlyEngineTimeSeriesModel;
-  readonly toRechartsEngineLatestValuesModel: typeof toRechartsEngineLatestValuesModel;
-  readonly toRechartsEngineHistogramModel: typeof toRechartsEngineHistogramModel;
-  readonly toRechartsEngineScatterModel: typeof toRechartsEngineScatterModel;
-  readonly toRechartsEngineTimeSeriesModel: typeof toRechartsEngineTimeSeriesModel;
-  readonly toRechartsHistogramModel: typeof toRechartsHistogramModel;
-  readonly toRechartsLatestValuesModel: typeof toRechartsLatestValuesModel;
-  readonly toRechartsTimeSeriesModel: typeof toRechartsTimeSeriesModel;
+  readonly toEChartsViewHistogramOption: typeof toEChartsViewHistogramOption;
+  readonly toEChartsViewLatestValuesOption: typeof toEChartsViewLatestValuesOption;
+  readonly toEChartsViewTimeSeriesOption: typeof toEChartsViewTimeSeriesOption;
+  readonly toHighchartsHistogramOptions: typeof toHighchartsHistogramOptions;
+  readonly toHighchartsLatestValuesOptions: typeof toHighchartsLatestValuesOptions;
+  readonly toHighchartsTimeSeriesOptions: typeof toHighchartsTimeSeriesOptions;
+  readonly toNivoBarData: typeof toNivoBarData;
+  readonly toNivoBarProps: typeof toNivoBarProps;
+  readonly toNivoLineSeries: typeof toNivoLineSeries;
+  readonly toNivoLineProps: typeof toNivoLineProps;
+  readonly toNivoPieData: typeof toNivoPieData;
+  readonly toNivoPieProps: typeof toNivoPieProps;
+  readonly toNivoScatterSeries: typeof toNivoScatterSeries;
+  readonly toObservablePlotHistogramOptions: typeof toObservablePlotHistogramOptions;
+  readonly toObservablePlotOptions: typeof toObservablePlotOptions;
+  readonly toPlotlyHistogramFigure: typeof toPlotlyHistogramFigure;
+  readonly toPlotlyLatestValuesFigure: typeof toPlotlyLatestValuesFigure;
+  readonly toPlotlyTimeSeriesFigure: typeof toPlotlyTimeSeriesFigure;
+  readonly toRechartsLatestValuesData: typeof toRechartsLatestValuesData;
+  readonly toRechartsHistogramData: typeof toRechartsHistogramData;
+  readonly toRechartsScatterData: typeof toRechartsScatterData;
+  readonly toRechartsTimeSeriesData: typeof toRechartsTimeSeriesData;
+  readonly toRechartsViewHistogramData: typeof toRechartsViewHistogramData;
+  readonly toRechartsViewLatestValuesData: typeof toRechartsViewLatestValuesData;
+  readonly toRechartsViewTimeSeriesData: typeof toRechartsViewTimeSeriesData;
   readonly toTremorAreaChartProps: typeof toTremorAreaChartProps;
   readonly toTremorBarChartProps: typeof toTremorBarChartProps;
   readonly toTremorBarListProps: typeof toTremorBarListProps;
   readonly toTremorDonutChartProps: typeof toTremorDonutChartProps;
   readonly toTremorLineChartProps: typeof toTremorLineChartProps;
-  readonly toUPlotEngineLatestValuesModel: typeof toUPlotEngineLatestValuesModel;
-  readonly toUPlotEngineTimeSeriesModel: typeof toUPlotEngineTimeSeriesModel;
-  readonly toUPlotLatestValuesModel: typeof toUPlotLatestValuesModel;
-  readonly toUPlotTimeSeriesModel: typeof toUPlotTimeSeriesModel;
-  readonly toVegaLiteEngineHistogramSpec: typeof toVegaLiteEngineHistogramSpec;
-  readonly toVegaLiteEngineSpec: typeof toVegaLiteEngineSpec;
-  readonly toVictoryEngineChartProps: typeof toVictoryEngineChartProps;
-  readonly toVictoryEngineLatestData: typeof toVictoryEngineLatestData;
-  readonly toVictoryEngineSeries: typeof toVictoryEngineSeries;
-  readonly toVisxEngineHistogramModel: typeof toVisxEngineHistogramModel;
-  readonly toVisxEngineLatestValuesModel: typeof toVisxEngineLatestValuesModel;
-  readonly toVisxEngineXYChartModel: typeof toVisxEngineXYChartModel;
+  readonly toUPlotLatestValuesArgs: typeof toUPlotLatestValuesArgs;
+  readonly toUPlotTimeSeriesArgs: typeof toUPlotTimeSeriesArgs;
+  readonly toUPlotViewLatestValuesArgs: typeof toUPlotViewLatestValuesArgs;
+  readonly toUPlotViewTimeSeriesArgs: typeof toUPlotViewTimeSeriesArgs;
+  readonly toVegaLiteHistogramSpec: typeof toVegaLiteHistogramSpec;
+  readonly toVegaLiteSpec: typeof toVegaLiteSpec;
+  readonly toVictoryChartProps: typeof toVictoryChartProps;
+  readonly toVictoryLatestData: typeof toVictoryLatestData;
+  readonly toVictorySeries: typeof toVictorySeries;
+  readonly toVisxHistogramModel: typeof toVisxHistogramModel;
+  readonly toVisxLatestValuesModel: typeof toVisxLatestValuesModel;
+  readonly toVisxXYChartModel: typeof toVisxXYChartModel;
   readonly traceWaterfallToLaneRows: typeof traceWaterfallToLaneRows;
 } = {
-  toAgChartsEngineLatestValuesOptions,
-  toAgChartsEngineTimeSeriesOptions,
-  toAgChartsEngineUpdateDelta,
-  toApexChartsEngineLatestValuesOptions,
-  toApexChartsEngineSeriesUpdate,
-  toApexChartsEngineTimeSeriesOptions,
+  toAgChartsLatestValuesOptions,
+  toAgChartsTimeSeriesOptions,
+  toAgChartsUpdateDelta,
+  toApexChartsLatestValuesOptions,
+  toApexChartsSeriesUpdate,
+  toApexChartsTimeSeriesOptions,
+  toChartJsViewHistogramConfig,
   toChartJsHistogramConfig,
-  toChartJsEngineHistogramConfig,
-  toChartJsEngineLatestValuesConfig,
-  toChartJsEngineTimeSeriesConfig,
   toChartJsLatestValuesConfig,
-  toChartJsLineConfig,
-  toEChartsEngineHistogramOption,
-  toEChartsEngineLatestValuesOption,
-  toEChartsEngineTimeSeriesOption,
+  toChartJsTimeSeriesConfig,
+  toChartJsViewLatestValuesConfig,
+  toChartJsViewLineConfig,
   toEChartsHistogramOption,
   toEChartsLatestValuesOption,
   toEChartsTimeSeriesOption,
-  toHighchartsEngineHistogramOptions,
-  toHighchartsEngineLatestValuesOptions,
-  toHighchartsEngineTimeSeriesOptions,
-  toNivoEngineBarModel,
-  toNivoEngineBarProps,
-  toNivoEngineLineSeries,
-  toNivoEngineLineProps,
-  toNivoEnginePieData,
-  toNivoEnginePieProps,
-  toNivoEngineScatterSeries,
-  toObservablePlotEngineHistogramModel,
-  toObservablePlotEngineModel,
-  toObservablePlotEnginePlotOptions,
-  toPlotlyEngineHistogramFigure,
-  toPlotlyEngineHistogramModel,
-  toPlotlyEngineLatestValuesFigure,
-  toPlotlyEngineLatestValuesModel,
-  toPlotlyEngineTimeSeriesFigure,
-  toPlotlyEngineTimeSeriesModel,
-  toRechartsEngineLatestValuesModel,
-  toRechartsEngineHistogramModel,
-  toRechartsEngineScatterModel,
-  toRechartsEngineTimeSeriesModel,
-  toRechartsHistogramModel,
-  toRechartsLatestValuesModel,
-  toRechartsTimeSeriesModel,
+  toEChartsViewHistogramOption,
+  toEChartsViewLatestValuesOption,
+  toEChartsViewTimeSeriesOption,
+  toHighchartsHistogramOptions,
+  toHighchartsLatestValuesOptions,
+  toHighchartsTimeSeriesOptions,
+  toNivoBarData,
+  toNivoBarProps,
+  toNivoLineSeries,
+  toNivoLineProps,
+  toNivoPieData,
+  toNivoPieProps,
+  toNivoScatterSeries,
+  toObservablePlotHistogramOptions,
+  toObservablePlotOptions,
+  toPlotlyHistogramFigure,
+  toPlotlyLatestValuesFigure,
+  toPlotlyTimeSeriesFigure,
+  toRechartsLatestValuesData,
+  toRechartsHistogramData,
+  toRechartsScatterData,
+  toRechartsTimeSeriesData,
+  toRechartsViewHistogramData,
+  toRechartsViewLatestValuesData,
+  toRechartsViewTimeSeriesData,
   toTremorAreaChartProps,
   toTremorBarChartProps,
   toTremorBarListProps,
   toTremorDonutChartProps,
   toTremorLineChartProps,
-  toUPlotEngineLatestValuesModel,
-  toUPlotEngineTimeSeriesModel,
-  toUPlotLatestValuesModel,
-  toUPlotTimeSeriesModel,
-  toVegaLiteEngineHistogramSpec,
-  toVegaLiteEngineSpec,
-  toVictoryEngineChartProps,
-  toVictoryEngineLatestData,
-  toVictoryEngineSeries,
-  toVisxEngineHistogramModel,
-  toVisxEngineLatestValuesModel,
-  toVisxEngineXYChartModel,
+  toUPlotLatestValuesArgs,
+  toUPlotTimeSeriesArgs,
+  toUPlotViewLatestValuesArgs,
+  toUPlotViewTimeSeriesArgs,
+  toVegaLiteHistogramSpec,
+  toVegaLiteSpec,
+  toVictoryChartProps,
+  toVictoryLatestData,
+  toVictorySeries,
+  toVisxHistogramModel,
+  toVisxLatestValuesModel,
+  toVisxXYChartModel,
   traceWaterfallToLaneRows,
 };
 
 export {
-  toAgChartsEngineLatestValuesOptions,
-  toAgChartsEngineTimeSeriesOptions,
-  toAgChartsEngineUpdateDelta,
+  toAgChartsLatestValuesOptions,
+  toAgChartsTimeSeriesOptions,
+  toAgChartsUpdateDelta,
 } from "./agcharts.js";
 export {
-  toApexChartsEngineLatestValuesOptions,
-  toApexChartsEngineSeriesUpdate,
-  toApexChartsEngineTimeSeriesOptions,
+  toApexChartsLatestValuesOptions,
+  toApexChartsSeriesUpdate,
+  toApexChartsTimeSeriesOptions,
 } from "./apexcharts.js";
 export type {
-  EngineAdapterOptions,
-  EngineHistogramBucket,
-  EngineHistogramModel,
-  EngineHistogramOptions,
-  EngineLabels,
-  EngineLatestValueModel,
-  EngineLatestValueRow,
-  EngineLineSeries,
-  EngineLineSeriesModel,
-  EnginePoint,
-  EngineQueryResult,
-  EngineSeriesResult,
-  EngineTimestampUnit,
-  EngineWideRow,
-  EngineWideTableModel,
-} from "./engine.js";
-export {
-  toEngineHistogramModel,
-  toEngineLatestValueModel,
-  toEngineLineSeriesModel,
-  toEngineWideTableModel,
-} from "./engine.js";
-export type {
-  RechartsBarModel,
-  RechartsEngineScatterModel,
-  RechartsEngineTimeSeriesModel,
-  RechartsEngineTimeSeriesOptions,
+  RechartsCategoryData,
+  RechartsScatterData,
   RechartsSeriesDescriptor,
-  RechartsTimeSeriesModel,
+  RechartsTimeSeriesData,
+  RechartsTimeSeriesOptions,
+  RechartsViewTimeSeriesData,
 } from "./recharts.js";
 export type {
   TremorAreaChartProps,
@@ -266,60 +220,56 @@ export type {
   TremorXYOptions,
 } from "./tremor.js";
 export {
-  toChartJsEngineHistogramConfig,
-  toChartJsEngineLatestValuesConfig,
-  toChartJsEngineTimeSeriesConfig,
   toChartJsHistogramConfig,
   toChartJsLatestValuesConfig,
-  toChartJsLineConfig,
-  toEChartsEngineHistogramOption,
-  toEChartsEngineLatestValuesOption,
-  toEChartsEngineTimeSeriesOption,
+  toChartJsTimeSeriesConfig,
+  toChartJsViewHistogramConfig,
+  toChartJsViewLatestValuesConfig,
+  toChartJsViewLineConfig,
   toEChartsHistogramOption,
   toEChartsLatestValuesOption,
   toEChartsTimeSeriesOption,
-  toHighchartsEngineHistogramOptions,
-  toHighchartsEngineLatestValuesOptions,
-  toHighchartsEngineTimeSeriesOptions,
-  toNivoEngineBarModel,
-  toNivoEngineBarProps,
-  toNivoEngineLineProps,
-  toNivoEngineLineSeries,
-  toNivoEnginePieData,
-  toNivoEnginePieProps,
-  toNivoEngineScatterSeries,
-  toObservablePlotEngineHistogramModel,
-  toObservablePlotEngineModel,
-  toObservablePlotEnginePlotOptions,
-  toPlotlyEngineHistogramFigure,
-  toPlotlyEngineHistogramModel,
-  toPlotlyEngineLatestValuesFigure,
-  toPlotlyEngineLatestValuesModel,
-  toPlotlyEngineTimeSeriesFigure,
-  toPlotlyEngineTimeSeriesModel,
-  toRechartsEngineHistogramModel,
-  toRechartsEngineLatestValuesModel,
-  toRechartsEngineScatterModel,
-  toRechartsEngineTimeSeriesModel,
-  toRechartsHistogramModel,
-  toRechartsLatestValuesModel,
-  toRechartsTimeSeriesModel,
+  toEChartsViewHistogramOption,
+  toEChartsViewLatestValuesOption,
+  toEChartsViewTimeSeriesOption,
+  toHighchartsHistogramOptions,
+  toHighchartsLatestValuesOptions,
+  toHighchartsTimeSeriesOptions,
+  toNivoBarData,
+  toNivoBarProps,
+  toNivoLineProps,
+  toNivoLineSeries,
+  toNivoPieData,
+  toNivoPieProps,
+  toNivoScatterSeries,
+  toObservablePlotHistogramOptions,
+  toObservablePlotOptions,
+  toPlotlyHistogramFigure,
+  toPlotlyLatestValuesFigure,
+  toPlotlyTimeSeriesFigure,
+  toRechartsHistogramData,
+  toRechartsLatestValuesData,
+  toRechartsScatterData,
+  toRechartsTimeSeriesData,
+  toRechartsViewHistogramData,
+  toRechartsViewLatestValuesData,
+  toRechartsViewTimeSeriesData,
   toTremorAreaChartProps,
   toTremorBarChartProps,
   toTremorBarListProps,
   toTremorDonutChartProps,
   toTremorLineChartProps,
-  toUPlotEngineLatestValuesModel,
-  toUPlotEngineTimeSeriesModel,
-  toUPlotLatestValuesModel,
-  toUPlotTimeSeriesModel,
-  toVegaLiteEngineHistogramSpec,
-  toVegaLiteEngineSpec,
-  toVictoryEngineChartProps,
-  toVictoryEngineLatestData,
-  toVictoryEngineSeries,
-  toVisxEngineHistogramModel,
-  toVisxEngineLatestValuesModel,
-  toVisxEngineXYChartModel,
+  toUPlotLatestValuesArgs,
+  toUPlotTimeSeriesArgs,
+  toUPlotViewLatestValuesArgs,
+  toUPlotViewTimeSeriesArgs,
+  toVegaLiteHistogramSpec,
+  toVegaLiteSpec,
+  toVictoryChartProps,
+  toVictoryLatestData,
+  toVictorySeries,
+  toVisxHistogramModel,
+  toVisxLatestValuesModel,
+  toVisxXYChartModel,
   traceWaterfallToLaneRows,
 };

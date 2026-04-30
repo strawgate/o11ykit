@@ -1,138 +1,115 @@
 import { describe, expect, it } from "vitest";
-import { toAgChartsEngineTimeSeriesOptions } from "../../../packages/adapters/src/agcharts.js";
-import { toApexChartsEngineLatestValuesOptions } from "../../../packages/adapters/src/apexcharts.js";
-import { toChartJsEngineTimeSeriesConfig } from "../../../packages/adapters/src/chartjs.js";
-import { toEChartsEngineHistogramOption } from "../../../packages/adapters/src/echarts.js";
+import { toAgChartsTimeSeriesOptions } from "../../../packages/adapters/src/agcharts.js";
+import { toApexChartsLatestValuesOptions } from "../../../packages/adapters/src/apexcharts.js";
+import { toChartJsTimeSeriesConfig } from "../../../packages/adapters/src/chartjs.js";
+import { toEChartsHistogramOption } from "../../../packages/adapters/src/echarts.js";
 import {
-  toEngineHistogramModel,
-  toEngineLatestValueModel,
-  toEngineWideTableModel,
-} from "../../../packages/adapters/src/engine.js";
-import { toHighchartsEngineTimeSeriesOptions } from "../../../packages/adapters/src/highcharts.js";
-import { toNivoEngineBarModel } from "../../../packages/adapters/src/nivo.js";
-import { toObservablePlotEngineModel } from "../../../packages/adapters/src/observable.js";
-import { toPlotlyEngineLatestValuesModel } from "../../../packages/adapters/src/plotly.js";
+  toHighchartsHistogramOptions,
+  toHighchartsTimeSeriesOptions,
+} from "../../../packages/adapters/src/highcharts.js";
+import { toNivoBarData } from "../../../packages/adapters/src/nivo.js";
+import { toObservablePlotOptions } from "../../../packages/adapters/src/observable.js";
+import { toPlotlyLatestValuesFigure } from "../../../packages/adapters/src/plotly.js";
 import {
-  toRechartsEngineHistogramModel,
-  toRechartsEngineScatterModel,
-  toRechartsEngineTimeSeriesModel,
+  toRechartsHistogramData,
+  toRechartsLatestValuesData,
+  toRechartsScatterData,
+  toRechartsTimeSeriesData,
 } from "../../../packages/adapters/src/recharts.js";
 import {
   toTremorBarListProps,
   toTremorDonutChartProps,
   toTremorLineChartProps,
 } from "../../../packages/adapters/src/tremor.js";
-import { toUPlotEngineTimeSeriesModel } from "../../../packages/adapters/src/uplot.js";
-import { toVegaLiteEngineSpec } from "../../../packages/adapters/src/vegalite.js";
-import { toVictoryEngineSeries } from "../../../packages/adapters/src/victory.js";
-import { toVisxEngineXYChartModel } from "../../../packages/adapters/src/visx.js";
-import {
-  createEngineResult,
-  createGalleryState,
-  toEngineLatestValueModel as toGalleryLatestValueModel,
-  toEngineWideTableModel as toGalleryWideTableModel,
-} from "../js/gallery-data.js";
+import { toUPlotTimeSeriesArgs } from "../../../packages/adapters/src/uplot.js";
+import { toVegaLiteSpec } from "../../../packages/adapters/src/vegalite.js";
+import { toVictorySeries } from "../../../packages/adapters/src/victory.js";
+import { createEngineResult, createGalleryState } from "../js/gallery-data.js";
 
 describe("chart gallery integration with real adapters", () => {
-  it("keeps the gallery engine fixture aligned with package engine models", () => {
-    const result = createEngineResult();
-    const galleryWide = toGalleryWideTableModel(result);
-    const packageWide = toEngineWideTableModel(result, {
-      seriesLabel: gallerySeriesLabel,
-    });
-    const galleryLatest = toGalleryLatestValueModel(result);
-    const packageLatest = toEngineLatestValueModel(result, {
-      seriesLabel: gallerySeriesLabel,
-    });
-
-    expect(galleryWide.series.map(({ id, label }) => ({ id, label }))).toEqual(
-      packageWide.series.map(({ id, label }) => ({ id, label }))
-    );
-    expect(galleryWide.rows).toEqual(packageWide.rows);
-    expect(galleryLatest.rows.map(({ id, label, t, value }) => ({ id, label, t, value }))).toEqual(
-      packageLatest.rows.map(({ id, label, t, value }) => ({ id, label, t, value }))
-    );
-  });
-
   it("backs the Tremor gallery examples with implemented prop adapters", () => {
     const result = createEngineResult();
-    const wide = toEngineWideTableModel(result, { seriesLabel: gallerySeriesLabel });
-    const latest = toEngineLatestValueModel(result, { seriesLabel: gallerySeriesLabel });
-    const line = toTremorLineChartProps(wide);
-    const donut = toTremorDonutChartProps(latest);
-    const barList = toTremorBarListProps(latest);
-    const galleryLine = createGalleryState("tremor", "line").adapterModel;
+    const line = toTremorLineChartProps(result, { seriesLabel: gallerySeriesLabel });
+    const donut = toTremorDonutChartProps(result, { seriesLabel: gallerySeriesLabel });
+    const barList = toTremorBarListProps(result, { seriesLabel: gallerySeriesLabel });
+    const galleryLine = createGalleryState("tremor", "line").adapterOutput;
 
     expect(line.index).toBe("time");
     expect(line.categories).toEqual(galleryLine.categories);
-    expect(line.data[0]?.time).toBe(wide.rows[0]?.t);
+    expect(line.data[0]?.time).toBe(Number((result.series[0]?.timestamps[0] ?? 0n) / 1_000_000n));
     for (const category of line.categories) {
       expect(line.data[0]?.[category]).toBe(galleryLine.data[0]?.[category]);
     }
-    expect(line.meta.series.map((series) => series.id)).toEqual(
-      wide.series.map((series) => series.id)
-    );
-    expect(donut.data).toEqual(createGalleryState("tremor", "donut").adapterModel.data);
-    expect(barList.data).toEqual(createGalleryState("tremor", "barList").adapterModel.data);
+    expect(line.meta.series).toHaveLength(result.series.length);
+    expect(donut.data).toEqual(createGalleryState("tremor", "donut").adapterOutput.data);
+    expect(barList.data).toEqual(createGalleryState("tremor", "barList").adapterOutput.data);
   });
 
   it("backs the Recharts gallery examples with implemented row and dataKey adapters", () => {
     const result = createEngineResult();
-    const wide = toEngineWideTableModel(result, { seriesLabel: gallerySeriesLabel });
-    const model = toRechartsEngineTimeSeriesModel(wide, { unit: "ms" });
-    const galleryLine = createGalleryState("recharts", "line").adapterModel;
+    const model = toRechartsTimeSeriesData(result, {
+      seriesLabel: gallerySeriesLabel,
+      unit: "ms",
+    });
+    const galleryLine = createGalleryState("recharts", "line").adapterOutput;
 
     expect(model.xAxisKey).toBe(galleryLine.xAxisKey);
     expect(model.tooltipKey).toBe(galleryLine.tooltipKey);
     expect(model.series).toEqual(galleryLine.series);
     expect(model.data).toEqual(galleryLine.data);
-    expect(toRechartsEngineHistogramModel(toEngineHistogramModel(wide))).toEqual(
-      createGalleryState("recharts", "histogram").adapterModel
-    );
-    expect(toRechartsEngineScatterModel(wide)).toEqual(
-      createGalleryState("recharts", "scatter").adapterModel
+    expect(
+      toRechartsLatestValuesData(result, { seriesLabel: gallerySeriesLabel, unit: "ms" })
+    ).toEqual(createGalleryState("recharts", "donut").adapterOutput);
+    expect(
+      toRechartsHistogramData(result, { seriesLabel: gallerySeriesLabel, unit: "samples" })
+    ).toEqual(createGalleryState("recharts", "histogram").adapterOutput);
+    expect(toRechartsScatterData(result, { seriesLabel: gallerySeriesLabel, unit: "ms" })).toEqual(
+      createGalleryState("recharts", "scatter").adapterOutput
     );
   });
 
   it("backs package-rendered gallery examples with exported engine adapters", () => {
     const result = createEngineResult();
-    const wide = toEngineWideTableModel(result, { seriesLabel: gallerySeriesLabel });
-    const latest = toEngineLatestValueModel(result, { seriesLabel: gallerySeriesLabel });
-    const histogram = toEngineHistogramModel(wide);
-
-    expect(toChartJsEngineTimeSeriesConfig(wide).data.datasets).toEqual(
-      createGalleryState("chartjs", "line").adapterModel.data.datasets
+    expect(
+      toChartJsTimeSeriesConfig(result, { seriesLabel: gallerySeriesLabel }).data.datasets
+    ).toEqual(createGalleryState("chartjs", "line").adapterOutput.data.datasets);
+    expect(toEChartsHistogramOption(result, { seriesLabel: gallerySeriesLabel }).dataset).toEqual(
+      createGalleryState("echarts", "histogram").adapterOutput.dataset
     );
-    expect(toEChartsEngineHistogramOption(histogram).dataset).toEqual(
-      createGalleryState("echarts", "histogram").adapterModel.dataset
+    expect(toUPlotTimeSeriesArgs(result, { seriesLabel: gallerySeriesLabel }).data).toEqual(
+      createGalleryState("uplot", "line").adapterOutput.data
     );
-    expect(toUPlotEngineTimeSeriesModel(wide).data).toEqual(
-      createGalleryState("uplot", "line").adapterModel.data
+    expect(toNivoBarData(result, { seriesLabel: gallerySeriesLabel })).toEqual(
+      createGalleryState("nivo", "bar").adapterOutput
     );
-    expect(toNivoEngineBarModel(wide)).toEqual(createGalleryState("nivo", "bar").adapterModel);
-    expect(toObservablePlotEngineModel(wide).marks).toEqual(
-      createGalleryState("observable", "line").adapterModel.marks
+    expect(toObservablePlotOptions(result, { seriesLabel: gallerySeriesLabel }).marks).toEqual(
+      createGalleryState("observable", "line").adapterOutput.marks
     );
-    expect(toPlotlyEngineLatestValuesModel(latest).data).toEqual(
-      createGalleryState("plotly", "donut").adapterModel.data
+    expect(toPlotlyLatestValuesFigure(result, { seriesLabel: gallerySeriesLabel }).data).toEqual(
+      createGalleryState("plotly", "donut").adapterOutput.data
     );
-    expect(toApexChartsEngineLatestValuesOptions(latest, { chartType: "gauge" }).series).toEqual(
-      createGalleryState("apexcharts", "gauge").adapterModel.series
+    expect(
+      toApexChartsLatestValuesOptions(result, {
+        chartType: "gauge",
+        seriesLabel: gallerySeriesLabel,
+      }).series
+    ).toEqual(createGalleryState("apexcharts", "gauge").adapterOutput.series);
+    expect(
+      toVictorySeries(result, { seriesLabel: gallerySeriesLabel }).map((series) => series.component)
+    ).toEqual(
+      createGalleryState("victory", "line").adapterOutput.map((series) => series.component)
     );
-    expect(toVictoryEngineSeries(wide).map((series) => series.component)).toEqual(
-      createGalleryState("victory", "line").adapterModel.map((series) => series.component)
+    expect(toAgChartsTimeSeriesOptions(result, { seriesLabel: gallerySeriesLabel }).series).toEqual(
+      createGalleryState("agcharts", "line").adapterOutput.series
     );
-    expect(toAgChartsEngineTimeSeriesOptions(wide).series).toEqual(
-      createGalleryState("agcharts", "line").adapterModel.series
-    );
-    expect(toHighchartsEngineTimeSeriesOptions(wide).series).toEqual(
-      createGalleryState("highcharts", "line").adapterModel.series
-    );
-    expect(toVegaLiteEngineSpec(wide).mark).toBe(
-      createGalleryState("vegalite", "line").adapterModel.mark
-    );
-    expect(toVisxEngineXYChartModel(wide).data[0]?.key).toBe(
-      createGalleryState("visx", "line").adapterModel.data[0]?.key
+    expect(
+      toHighchartsTimeSeriesOptions(result, { seriesLabel: gallerySeriesLabel }).series
+    ).toEqual(createGalleryState("highcharts", "line").adapterOutput.series);
+    expect(
+      toHighchartsHistogramOptions(result, { seriesLabel: gallerySeriesLabel }).series
+    ).toEqual(createGalleryState("highcharts", "histogram").adapterOutput.series);
+    expect(toVegaLiteSpec(result, { seriesLabel: gallerySeriesLabel }).mark).toBe(
+      createGalleryState("vegalite", "line").adapterOutput.mark
     );
   });
 });

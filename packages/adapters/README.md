@@ -1,6 +1,6 @@
 # @otlpkit/adapters
 
-Library-native adapters that project `@otlpkit/views` frames into chart-ready models.
+Library-native adapters that turn engine query results into chart-library-native inputs.
 
 The adapter rule is simple: keep the data engine shared, but make the final object feel native to
 the chart library. Tremor users should spread props. Recharts users should map `dataKey`s. uPlot
@@ -28,7 +28,7 @@ users should get aligned arrays. ECharts users should get dataset/encode options
 The goal is to preserve each chart library's idioms:
 
 - Chart.js: configuration-first datasets
-- Recharts: row-model + `dataKey` composition
+- Recharts: rows plus `dataKey` composition
 - ECharts: dataset/encode-first option trees
 - uPlot: aligned columnar arrays + minimal option scaffolding
 - Plotly: traces plus layout
@@ -43,15 +43,16 @@ The goal is to preserve each chart library's idioms:
 ## Chart Gallery
 
 The interactive gallery at `/o11ykit/charts/` shows the same engine result across Tremor,
-Recharts, Chart.js, ECharts, uPlot, Nivo, Visx, Observable Plot, Plotly, ApexCharts, Victory,
-AG Charts, Highcharts, and Vega-Lite shapes. Package-backed entries mount the actual chart package
-in the browser; entries without package renderers are explicitly labeled as adapter shapes only.
+Recharts, Chart.js, ECharts, uPlot, Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts,
+Highcharts, and Vega-Lite. Every gallery entry starts by appending deterministic metric samples into
+an `o11ytsdb` `RowGroupStore`, querying them with `ScanEngine`, and then mounting the actual chart
+package in the browser.
 
 The gallery uses exported engine-backed adapters for every package-backed library. Tremor and
 Recharts are the most polished component-level APIs; Chart.js, ECharts, uPlot, Nivo, Observable
-Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite, and Visx expose first-pass
-native model adapters. The gallery renders every package-backed entry with the real package; Visx is
-exported as a low-level adapter shape while its package renderer waits for a dedicated React pass.
+Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, and Vega-Lite expose first-pass native
+input adapters. Visx remains exported as a low-level compositional adapter, but it is intentionally
+not in the gallery because it is not a native chart renderer with a React 19-clean package path.
 
 | Library | Engine-backed status | User-facing shape |
 | --- | --- | --- |
@@ -60,8 +61,8 @@ exported as a low-level adapter shape while its package renderer waits for a ded
 | Chart.js | exported | config with parsing disabled |
 | ECharts | exported | dataset and encode option |
 | uPlot | exported | aligned arrays |
-| Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite | exported, package-rendered gallery | library-native models |
-| Visx | exported, adapter-shape gallery | accessors, series arrays, and scale hints |
+| Nivo, Observable Plot, Plotly, ApexCharts, Victory, AG Charts, Highcharts, Vega-Lite | exported, package-rendered gallery | library-native inputs |
+| Visx | exported, not gallery-mounted | low-level accessors, series arrays, and scale hints |
 
 ## Ergonomics Audit
 
@@ -72,79 +73,84 @@ repeated data-shaping chores without hiding the chart package's own API.
 | --- | --- | --- | --- |
 | Raw REST, SQL, Prometheus, or OTLP data | Source-specific rows, samples, or frames | timestamp conversion, pivoting, sparse joins, latest-value extraction, label naming, and one-off null policy | nothing until the user writes glue |
 | Chart-package native data | The exact props/config/spec/traces the chart package expects | source normalization and every library-specific reshaping step | chart package ergonomics only after data is already shaped |
-| o11ykit engine adapters | `QueryResult` -> engine model -> library adapter | chart selection, styling, and optional package-specific overrides | stable series ids, sorted labels, null-safe sparse points, latest-value rows, histogram buckets, and max-point trimming |
+| o11ykit engine adapters | `QueryResult` -> library adapter | chart selection, styling, and optional package-specific overrides | stable series ids, sorted labels, null-safe sparse points, latest-value rows, histogram buckets, and max-point trimming |
 
 The important design choice is that adapters do not return an o11ykit chart DTO. They return the
 library's own dialect: Tremor props, Recharts rows plus `dataKey`s, uPlot aligned arrays, Plotly
 traces, Vega-Lite specs, Observable Plot marks, AG Charts options, and so on. That keeps the happy
 path short while preserving escape hatches for each package.
 
-Most libraries are snapshot-first from the user's point of view. A single `toXxxModel(...)` API is
-the default ergonomic surface. Libraries with efficient mutation APIs can add an optional update
+Most libraries are snapshot-first from the user's point of view. A single adapter call is the
+default ergonomic surface. Libraries with efficient mutation APIs can add an optional update
 helper later: uPlot `setData`, ECharts `setOption`, Plotly `extendTraces`, ApexCharts
 `updateSeries`, AG Charts `update` / `updateDelta`, Highcharts `setData`, or Vega view changesets.
 Those should be incremental helpers, not a second required API for everyone.
 
 ## Quick Example
 
-```ts
-import { toChartJsLineConfig } from "@otlpkit/adapters/chartjs";
+For metrics queried through the TSDB engine, pass the query result directly to the chart-library
+adapter:
 
-const config = toChartJsLineConfig(timeSeriesFrame);
+```ts
+import { toChartJsTimeSeriesConfig } from "@otlpkit/adapters/chartjs";
+import { toRechartsTimeSeriesData } from "@otlpkit/adapters/recharts";
+import { toTremorLineChartProps } from "@otlpkit/adapters/tremor";
+
+const seriesLabel = (series) => series.labels.get("host") ?? "unknown";
+
+const tremor = toTremorLineChartProps(result, { seriesLabel });
+const recharts = toRechartsTimeSeriesData(result, { seriesLabel, unit: "ms" });
+const chartjs = toChartJsTimeSeriesConfig(result, { seriesLabel });
 ```
 
+View-frame adapters are still available for applications already using `@otlpkit/views` frames:
+
 ```ts
-import { toUPlotTimeSeriesModel } from "@otlpkit/adapters/uplot";
+import { toUPlotViewTimeSeriesArgs } from "@otlpkit/adapters/uplot";
 import uPlot from "uplot";
 
-const model = toUPlotTimeSeriesModel(timeSeriesFrame);
+const args = toUPlotViewTimeSeriesArgs(timeSeriesFrame);
 
 new uPlot(
   {
     width: 960,
     height: 480,
-    title: model.options.title,
+    title: args.options.title,
     scales: {
-      x: { time: model.options.scales.x.time },
-      y: { auto: model.options.scales.y.auto },
+      x: { time: args.options.scales.x.time },
+      y: { auto: args.options.scales.y.auto },
     },
-    axes: model.options.axes.map((axis) => ({ ...axis })),
-    series: model.options.series.map((series) => ({ ...series })),
+    axes: args.options.axes.map((axis) => ({ ...axis })),
+    series: args.options.series.map((series) => ({ ...series })),
   },
-  model.data,
+  args.data,
   element
 );
 ```
 
 ## Engine-backed adapters
 
-The engine layer converts `QueryResult`-shaped data into reusable chart models:
+Chart-library adapters accept `QueryResult`-shaped data directly and return the native shape for
+that package. The quick example above is the preferred engine-backed path.
 
-```ts
-import { toEngineWideTableModel, toEngineLatestValueModel } from "@otlpkit/adapters/engine";
+The reusable engine normalization helpers still exist in `@otlpkit/adapters/engine` for advanced
+cases where an application wants to normalize once and feed many adapters:
 
-const wide = toEngineWideTableModel(result, {
-  seriesLabel: (series) => series.labels.get("host") ?? "unknown",
-});
-const latest = toEngineLatestValueModel(result);
-```
-
-### Choosing a model
-
-- `toEngineWideTableModel(result)`: line, area, stacked area, grouped bar, and any library that
+- `toEngineWideTableModel(...)`: line, area, stacked area, grouped bar, and any library that
   wants one row per timestamp.
-- `toEngineLatestValueModel(result)`: donut, pie, bar list, KPI rows, and "current value" charts.
-- `toEngineLineSeriesModel(result)`: custom marks, canvases, or libraries that prefer one array per
+- `toEngineLatestValueModel(...)`: donut, pie, bar list, KPI rows, and "current value" charts.
+- `toEngineLineSeriesModel(...)`: custom marks, canvases, or libraries that prefer one array per
   series.
 
-All engine models canonicalize series ids from sorted labels, turn non-finite values into `null`,
-validate timestamp/value length alignment, and support `maxPoints` for dashboard previews.
+The public happy path should stay direct: `result -> published adapter -> native input`.
+The internal engine models canonicalize series ids from sorted labels, turn non-finite values into
+`null`, validate timestamp/value length alignment, and support `maxPoints` for dashboard previews.
 
 ### Adapter author checklist
 
 New engine-backed adapters should keep the same user contract:
 
-- Accept one of the engine models, not raw query results.
+- Accept raw engine query results directly; optionally also accept reusable engine models.
 - Return the library's native shape: props, rows, config, dataset, traces, or aligned arrays.
 - Preserve stable engine series ids in metadata even when the display label is shortened.
 - Keep sparse points as `null` when the chart library can represent gaps.
@@ -158,11 +164,11 @@ Tremor adapters then return native props:
 ```ts
 import { toTremorLineChartProps, toTremorDonutChartProps } from "@otlpkit/adapters/tremor";
 
-const line = toTremorLineChartProps(wide, {
-  categoryLabel: (series) => series.labels.get("service") ?? series.label,
+const line = toTremorLineChartProps(result, {
+  seriesLabel: (series) => series.labels.get("service") ?? series.label,
   connectNulls: false,
 });
-const donut = toTremorDonutChartProps(latest);
+const donut = toTremorDonutChartProps(result);
 ```
 
 ```tsx
@@ -178,23 +184,23 @@ series ids stay available in `line.meta.series`.
 Recharts adapters expose the same engine substrate as row data plus `dataKey` metadata:
 
 ```ts
-import { toEngineHistogramModel } from "@otlpkit/adapters/engine";
 import {
-  toRechartsEngineHistogramModel,
-  toRechartsEngineScatterModel,
-  toRechartsEngineTimeSeriesModel,
+  toRechartsHistogramData,
+  toRechartsLatestValuesData,
+  toRechartsScatterData,
+  toRechartsTimeSeriesData,
 } from "@otlpkit/adapters/recharts";
 
-const model = toRechartsEngineTimeSeriesModel(wide, { unit: "ms" });
-const scatter = toRechartsEngineScatterModel(wide, { unit: "ms" });
-const buckets = toEngineHistogramModel(wide);
-const histogram = toRechartsEngineHistogramModel(buckets, { unit: "samples" });
+const data = toRechartsTimeSeriesData(result, { seriesLabel, unit: "ms" });
+const scatter = toRechartsScatterData(result, { seriesLabel, unit: "ms" });
+const histogram = toRechartsHistogramData(result, { seriesLabel, unit: "samples" });
+const donut = toRechartsLatestValuesData(result, { seriesLabel, unit: "ms" });
 ```
 
 ```tsx
-<LineChart data={model.data}>
-  <XAxis dataKey={model.xAxisKey} />
-  {model.series.map((series) => (
+<LineChart data={data.data}>
+  <XAxis dataKey={data.xAxisKey} />
+  {data.series.map((series) => (
     <Line key={series.id} dataKey={series.dataKey} name={series.name} />
   ))}
 </LineChart>
@@ -208,8 +214,8 @@ engine series id on each descriptor. The scatter adapter returns one flat row pe
 ### Existing view-frame adapters
 
 ```ts
-import { toUPlotLatestValuesModel } from "@otlpkit/adapters/uplot";
+import { toUPlotViewLatestValuesArgs } from "@otlpkit/adapters/uplot";
 
-const latest = toUPlotLatestValuesModel(latestValuesFrame);
+const latest = toUPlotViewLatestValuesArgs(latestValuesFrame);
 // latest.labels carries x-index -> row label mapping for tick formatting
 ```

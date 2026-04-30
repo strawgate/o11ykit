@@ -1,4 +1,10 @@
-import type { EngineLatestValueModel, EngineWideTableModel } from "./engine.js";
+import {
+  asEngineLatestValueModel,
+  asEngineWideTableModel,
+  type EngineAdapterOptions,
+  type EngineLatestValueInput,
+  type EngineWideTableInput,
+} from "./engine.js";
 
 export interface VictoryDatum {
   readonly x: number | string;
@@ -12,21 +18,22 @@ export interface VictorySeries {
   readonly component: "VictoryLine" | "VictoryArea" | "VictoryScatter";
 }
 
-export interface VictoryChartPropsModel {
+export interface VictoryChartProps {
   readonly scale: { readonly x: "time" };
   readonly domainPadding: { readonly x: number; readonly y: number };
   readonly series: readonly VictorySeries[];
 }
 
-export function toVictoryEngineSeries(
-  model: EngineWideTableModel,
-  options: { readonly chartType?: "line" | "area" | "scatter" } = {}
+export function toVictorySeries(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions & { readonly chartType?: "line" | "area" | "scatter" } = {}
 ): readonly VictorySeries[] {
+  const wide = asEngineWideTableModel(model, options);
   const chartType = options.chartType ?? "line";
-  return model.series.map((series, index) => ({
+  return wide.series.map((series, index) => ({
     key: series.id,
     label: series.label,
-    data: model.rows.map((row) => ({ x: row.t, y: row.values[index] ?? null })),
+    data: wide.rows.map((row) => ({ x: row.t, y: row.values[index] ?? null })),
     component:
       chartType === "scatter"
         ? "VictoryScatter"
@@ -36,17 +43,22 @@ export function toVictoryEngineSeries(
   }));
 }
 
-export function toVictoryEngineChartProps(
-  model: EngineWideTableModel,
-  options: { readonly chartType?: "line" | "area" | "scatter" } = {}
-): VictoryChartPropsModel {
+export function toVictoryChartProps(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions & { readonly chartType?: "line" | "area" | "scatter" } = {}
+): VictoryChartProps {
   return {
     scale: { x: "time" },
     domainPadding: { x: 8, y: 12 },
-    series: toVictoryEngineSeries(model, options),
+    series: toVictorySeries(model, options),
   };
 }
 
-export function toVictoryEngineLatestData(model: EngineLatestValueModel): readonly VictoryDatum[] {
-  return model.rows.flatMap((row) => (row.value === null ? [] : [{ x: row.label, y: row.value }]));
+export function toVictoryLatestData(
+  model: EngineLatestValueInput,
+  options: EngineAdapterOptions = {}
+): readonly VictoryDatum[] {
+  return asEngineLatestValueModel(model, options).rows.flatMap((row) =>
+    row.value === null ? [] : [{ x: row.label, y: row.value }]
+  );
 }

@@ -1,4 +1,11 @@
-import type { EngineHistogramModel, EngineWideTableModel } from "./engine.js";
+import {
+  asEngineHistogramModel,
+  asEngineWideTableModel,
+  type EngineAdapterOptions,
+  type EngineHistogramInput,
+  type EngineHistogramOptions,
+  type EngineWideTableInput,
+} from "./engine.js";
 import { tidyRows } from "./engine-chart-shared.js";
 
 export type ObservablePlotMarkName = "lineY" | "areaY" | "barY" | "dot";
@@ -10,7 +17,7 @@ export interface ObservablePlotMark {
   readonly stroke?: string;
 }
 
-export interface ObservablePlotEngineModel {
+export interface ObservablePlotOptions {
   readonly data: readonly Record<string, unknown>[];
   readonly marks: readonly ObservablePlotMark[];
   readonly options: {
@@ -20,13 +27,16 @@ export interface ObservablePlotEngineModel {
   };
 }
 
-export function toObservablePlotEngineModel(
-  model: EngineWideTableModel,
-  options: { readonly chartType?: "line" | "area" | "bar" | "scatter" | "sparkline" } = {}
-): ObservablePlotEngineModel {
+export function toObservablePlotOptions(
+  model: EngineWideTableInput,
+  options: EngineAdapterOptions & {
+    readonly chartType?: "line" | "area" | "bar" | "scatter" | "sparkline";
+  } = {}
+): ObservablePlotOptions {
+  const wide = asEngineWideTableModel(model, options);
   const chartType = options.chartType ?? "line";
   return {
-    data: tidyRows(model),
+    data: tidyRows(wide),
     marks: [
       {
         mark:
@@ -50,11 +60,13 @@ export function toObservablePlotEngineModel(
   };
 }
 
-export function toObservablePlotEngineHistogramModel(
-  model: EngineHistogramModel
-): ObservablePlotEngineModel {
+export function toObservablePlotHistogramOptions(
+  model: EngineHistogramInput,
+  options: EngineAdapterOptions & EngineHistogramOptions = {}
+): ObservablePlotOptions {
+  const histogram = asEngineHistogramModel(model, options);
   return {
-    data: model.buckets.map((bucket) => ({
+    data: histogram.buckets.map((bucket) => ({
       label: bucket.label,
       count: bucket.count,
       start: bucket.start,
@@ -64,6 +76,3 @@ export function toObservablePlotEngineHistogramModel(
     options: { x: { grid: false }, y: { grid: true } },
   };
 }
-
-export const toObservablePlotEnginePlotOptions: typeof toObservablePlotEngineModel =
-  toObservablePlotEngineModel;
