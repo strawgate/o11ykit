@@ -83,7 +83,7 @@
     "publint": "^0.3.18",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "react-is": "^18.3.1",
+    "react-is": "^19.2.5",
     "recharts": "^3.8.1",
     "typescript": "^6.0.3",
     "uplot": "^1.6.32",
