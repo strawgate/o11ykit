@@ -78,7 +78,7 @@
     "highcharts": "^12.6.0",
     "husky": "^9.1.7",
     "knip": "^6.7.0",
-    "lint-staged": "^16.4.0",
+    "lint-staged": "^17.0.3",
     "plotly.js-dist-min": "^3.5.0",
     "publint": "^0.3.18",
     "react": "^19.2.5",
