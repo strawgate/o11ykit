@@ -15,7 +15,7 @@ import {
 } from "./storage-explorer-presenter.js";
 import { renderSparkline } from "./storage-sparkline.js";
 import { $, escapeHtml, formatBytes } from "./utils.js";
-import { wasmDecodeTimestamps, wasmDecodeValuesALP } from "./wasm.js";
+import { wasmDecodeTimestamps, wasmDecodeValuesALP } from "./stores.js";
 
 function _showChunkEmptyState(seriesInfos, store) {
   const panel = $("#chunkDetailPanel");

@@ -99,3 +99,17 @@ export function createColumnStore(chunkSize = DEFAULT_CHUNK_SIZE) {
     rangeCodec
   );
 }
+
+// ── Decode helpers (share the same _wasmCodecs loaded by stores.loadWasm) ──
+
+const _plainCodec = createF64PlainCodec();
+
+export function wasmDecodeValuesALP(buf) {
+  const codec = _wasmCodecs?.valuesCodec ?? _plainCodec;
+  return codec.decodeValues(buf);
+}
+
+export function wasmDecodeTimestamps(buf) {
+  if (!_wasmCodecs?.tsCodec) throw new Error("WASM tsCodec not available");
+  return _wasmCodecs.tsCodec.decodeTimestamps(buf);
+}
