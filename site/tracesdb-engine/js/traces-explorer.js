@@ -25,6 +25,8 @@ let currentSpans = [];
 let currentServiceNames = [];
 let serviceMetrics = null;
 let onTraceSelect = null;
+/** @type {Map<string, Array>} Pre-built traceId → spans lookup (avoids O(n²) re-scanning) */
+let traceIdMap = new Map();
 
 /**
  * Build traces explorer UI.
@@ -36,6 +38,7 @@ export function buildTracesExplorer(spans, serviceNames, callbacks = {}) {
   currentSpans = spans;
   currentServiceNames = serviceNames;
   onTraceSelect = callbacks.onTraceSelect || null;
+  traceIdMap = groupByTrace(spans);
 
   serviceMetrics = computeServiceMetrics(spans, serviceNames);
 
@@ -47,6 +50,7 @@ export function buildTracesExplorer(spans, serviceNames, callbacks = {}) {
 export function refreshTracesExplorer(spans, serviceNames) {
   currentSpans = spans;
   currentServiceNames = serviceNames;
+  traceIdMap = groupByTrace(spans);
   serviceMetrics = computeServiceMetrics(spans, serviceNames);
   renderServiceHealthGrid();
   renderInsightsPanel();
@@ -241,9 +245,7 @@ function renderProblematicTraces() {
 
     row.addEventListener("click", () => {
       if (onTraceSelect) {
-        const traceSpans = currentSpans.filter((s) => {
-          return normalizeTraceId(s.traceId) === problem.traceId;
-        });
+        const traceSpans = traceIdMap.get(problem.traceId) || [];
         onTraceSelect({ traceId: problem.traceId, spans: traceSpans });
       }
     });
@@ -261,18 +263,20 @@ function showServiceTraces(service) {
   if (!container) return;
   container.innerHTML = "";
 
-  const svcSpans = currentSpans.filter((s) => {
-    const attr = s.attributes?.find((a) => a.key === "service.name");
-    return attr && attr.value === service;
-  });
+  // Collect trace IDs that involve this service using the pre-built map,
+  // then look up full trace spans from traceIdMap — O(n) total instead of O(t×n).
+  const seen = new Set();
+  for (const span of currentSpans) {
+    const attr = span.attributes?.find((a) => a.key === "service.name");
+    if (attr && attr.value === service) {
+      seen.add(normalizeTraceId(span.traceId));
+    }
+  }
 
-  const traceMap = groupByTrace(svcSpans);
   const traceSummaries = [];
 
-  for (const [traceId, _traceSpans] of traceMap) {
-    const allTraceSpans = currentSpans.filter((s) => {
-      return normalizeTraceId(s.traceId) === traceId;
-    });
+  for (const traceId of seen) {
+    const allTraceSpans = traceIdMap.get(traceId) || [];
     const root = allTraceSpans.find((s) => !s.parentSpanId) || allTraceSpans[0];
     const hasError = allTraceSpans.some((s) => s.statusCode === 2);
     const dur = root ? Number(root.endTimeUnixNano - root.startTimeUnixNano) : 0;

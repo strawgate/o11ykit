@@ -175,6 +175,7 @@ function initTabs() {
       currentTab = btn.dataset.tab;
       tabBtns.forEach((b) => {
         b.classList.toggle("active", b === btn);
+        b.setAttribute("aria-selected", b === btn ? "true" : "false");
       });
       renderCurrentTab();
     });
@@ -202,46 +203,62 @@ function renderCurrentTab() {
 
 // ── Storage Explorer ─────────────────────────────────────────────────
 
+let _cachedChunks = null;
+
 function renderStorageExplorer() {
   if (!store) return;
 
   const chunks = getChunkDetails(store);
+  _cachedChunks = chunks;
   const services = getServiceBreakdown(store);
 
-  // Service breakdown table
+  // Service breakdown table with visual compression bars
   setHtml(
     "service-breakdown",
-    `<table class="data-table">
+    `<table class="data-table" role="table">
       <thead><tr>
-        <th>Service</th><th>Logs</th><th>Chunks</th><th>Bytes</th><th>B/log</th><th>Ratio</th>
+        <th>Service</th><th>Logs</th><th>Chunks</th><th>Bytes</th><th>B/log</th><th>Ratio</th><th>Efficiency</th>
       </tr></thead>
       <tbody>
         ${services
           .map(
-            (s) => `<tr>
+            (s) => {
+              const ratio = Number(s.compressionRatio);
+              const barWidth = Math.min(100, ratio * 2);
+              return `<tr>
           <td><code>${escapeHtml(s.name)}</code></td>
           <td>${formatNum(s.logs)}</td>
           <td>${s.chunks}</td>
           <td>${formatBytes(s.bytes)}</td>
           <td>${s.bytesPerLog}</td>
           <td>${s.compressionRatio}×</td>
-        </tr>`
+          <td class="compression-bar-cell">
+            <div class="compression-bar" style="--bar-width: ${barWidth}%">
+              <div class="compression-bar-fill"></div>
+            </div>
+          </td>
+        </tr>`;
+            }
           )
           .join("")}
       </tbody>
     </table>`
   );
 
-  // Chunk list
-  const maxChunksShown = 50;
+  // Chunk list with clickable cards
+  const maxChunksShown = 60;
   const shownChunks = chunks.slice(0, maxChunksShown);
   setHtml(
     "chunk-list",
     `<div class="chunk-grid">
       ${shownChunks
         .map(
-          (c, i) => `
-        <div class="chunk-card" data-index="${i}">
+          (c, i) => {
+            const sevRange = c.severityRange;
+            const sevMin = sevRange ? sevRange.min : 0;
+            const sevMax = sevRange ? sevRange.max : 0;
+            return `
+        <button type="button" class="chunk-card" data-index="${i}" aria-label="Inspect chunk ${c.chunkIndex} from ${c.service}">
           <div class="chunk-header">
             <span class="chunk-service">${escapeHtml(c.service)}</span>
             <span class="chunk-meta">#${c.chunkIndex}</span>
@@ -252,15 +269,134 @@ function renderStorageExplorer() {
             <span>${c.bytesPerLog} B/log</span>
             <span>${c.compressionRatio}× ratio</span>
           </div>
+          ${sevMin > 0 ? `<div class="chunk-severity-range">
+            <span class="sev-pill mini" style="background: ${_sevColor(sevMin)}">${_sevLabel(sevMin)}</span>
+            ${sevMin !== sevMax ? `<span class="sev-range-arrow">→</span><span class="sev-pill mini" style="background: ${_sevColor(sevMax)}">${_sevLabel(sevMax)}</span>` : ''}
+          </div>` : ''}
           <div class="chunk-bar" style="--ratio: ${Math.min(1, Number(c.bytesPerLog) / 30)}">
             <div class="chunk-bar-fill"></div>
           </div>
-        </div>`
+        </button>`;
+          }
         )
         .join("")}
     </div>
     ${chunks.length > maxChunksShown ? `<p class="muted">Showing ${maxChunksShown} of ${chunks.length} chunks</p>` : ""}`
   );
+
+  // Wire up chunk click handlers
+  const container = $("chunk-list");
+  if (container) {
+    container.addEventListener("click", (e) => {
+      const card = e.target.closest(".chunk-card");
+      if (!card) return;
+      const idx = Number(card.dataset.index);
+      if (idx >= 0 && idx < shownChunks.length) {
+        showChunkDetail(shownChunks[idx]);
+      }
+    });
+  }
+}
+
+function showChunkDetail(chunk) {
+  const panel = $("chunk-detail");
+  if (!panel) return;
+
+  panel.hidden = false;
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  const sevRange = chunk.severityRange;
+  const timeMin = chunk.timeRange?.min;
+  const timeMax = chunk.timeRange?.max;
+  const timeStr = timeMin && timeMax
+    ? `${new Date(Number(BigInt(timeMin) / 1_000_000n)).toISOString().slice(11, 23)} → ${new Date(Number(BigInt(timeMax) / 1_000_000n)).toISOString().slice(11, 23)}`
+    : "unknown";
+
+  // Build a visual byte breakdown
+  const payloadPct = chunk.totalBytes > 0 ? ((chunk.payloadBytes / chunk.totalBytes) * 100) : 0;
+  const headerPct = 100 - payloadPct;
+
+  panel.innerHTML = `
+    <div class="chunk-detail-header">
+      <h4>Chunk #${chunk.chunkIndex} — <code>${escapeHtml(chunk.service)}</code></h4>
+      <button type="button" class="chunk-detail-close" aria-label="Close detail">&times;</button>
+    </div>
+
+    <div class="chunk-detail-grid">
+      <div class="chunk-detail-stat">
+        <span class="chunk-detail-value">${formatNum(chunk.nLogs)}</span>
+        <span class="chunk-detail-label">Records</span>
+      </div>
+      <div class="chunk-detail-stat">
+        <span class="chunk-detail-value">${formatBytes(chunk.totalBytes)}</span>
+        <span class="chunk-detail-label">Total Size</span>
+      </div>
+      <div class="chunk-detail-stat">
+        <span class="chunk-detail-value">${chunk.bytesPerLog} B</span>
+        <span class="chunk-detail-label">Per Log</span>
+      </div>
+      <div class="chunk-detail-stat">
+        <span class="chunk-detail-value">${chunk.compressionRatio}×</span>
+        <span class="chunk-detail-label">Compression</span>
+      </div>
+    </div>
+
+    <div class="chunk-detail-section">
+      <strong>Time Range</strong>
+      <code>${timeStr}</code>
+    </div>
+
+    ${sevRange ? `<div class="chunk-detail-section">
+      <strong>Severity Range</strong>
+      <span class="sev-pill mini" style="background: ${_sevColor(sevRange.min)}">${_sevLabel(sevRange.min)}</span>
+      ${sevRange.min !== sevRange.max ? `→ <span class="sev-pill mini" style="background: ${_sevColor(sevRange.max)}">${_sevLabel(sevRange.max)}</span>` : ''}
+      <span class="muted-inline">(zone map enables severity-based chunk pruning)</span>
+    </div>` : ''}
+
+    <div class="chunk-detail-section">
+      <strong>Byte Layout</strong>
+      <div class="byte-layout-bar">
+        <div class="byte-segment header-seg" style="width:${Math.max(2, headerPct)}%" title="Header: ~${formatBytes(chunk.headerBytes)}">
+          ${headerPct > 15 ? `Header` : ''}
+        </div>
+        <div class="byte-segment payload-seg" style="width:${Math.max(2, payloadPct)}%" title="Payload: ${formatBytes(chunk.payloadBytes)}">
+          ${payloadPct > 15 ? `Payload` : ''}
+        </div>
+      </div>
+      <div class="byte-layout-legend">
+        <span><span class="legend-dot header-dot"></span> Header ~${formatBytes(chunk.headerBytes)}</span>
+        <span><span class="legend-dot payload-dot"></span> Payload ${formatBytes(chunk.payloadBytes)}</span>
+      </div>
+    </div>
+
+    <div class="learn-callout learn-callout-sm">
+      💡 <strong>Why so small?</strong> The TypedColumnarDrainPolicy extracts Drain templates
+      from log bodies, then stores variable slots in typed columns (integers, UUIDs, timestamps).
+      Repeated structure = massive compression.
+    </div>
+  `;
+
+  panel.querySelector(".chunk-detail-close")?.addEventListener("click", () => {
+    panel.hidden = true;
+  });
+}
+
+function _sevColor(num) {
+  if (num <= 4) return "#6b7280";
+  if (num <= 8) return "#3b82f6";
+  if (num <= 12) return "#10b981";
+  if (num <= 16) return "#f59e0b";
+  if (num <= 20) return "#ef4444";
+  return "#dc2626";
+}
+
+function _sevLabel(num) {
+  if (num <= 4) return "TRACE";
+  if (num <= 8) return "DEBUG";
+  if (num <= 12) return "INFO";
+  if (num <= 16) return "WARN";
+  if (num <= 20) return "ERROR";
+  return "FATAL";
 }
 
 // ── Logs Explorer ────────────────────────────────────────────────────
@@ -276,61 +412,92 @@ function renderLogsExplorer() {
     const analysis = analyzeStore(store);
     hide("logs-loading");
 
-    // Service health cards
+    // Severity timeline
+    renderSeverityTimeline(analysis.timeline);
+
+    // Service health cards with sparkline-style indicators
     setHtml(
       "service-health",
       analysis.services
         .map(
-          (s) => `
-        <div class="service-card ${Number(s.errorRate) > 5 ? "service-unhealthy" : ""}">
+          (s) => {
+            const errPct = Number(s.errorRate);
+            const healthClass = errPct > 10 ? "service-critical" : errPct > 5 ? "service-unhealthy" : "";
+            return `
+        <div class="service-card ${healthClass}">
           <div class="service-name">${escapeHtml(s.name)}</div>
           <div class="service-stats">
             <span>${formatNum(s.logs)} logs</span>
             <span class="service-errors">${s.errors} errors (${s.errorRate}%)</span>
             <span>${formatBytes(s.bytes)}</span>
           </div>
-        </div>`
+          <div class="service-error-bar" style="--err-pct: ${Math.min(100, errPct)}%">
+            <div class="service-error-bar-fill"></div>
+          </div>
+        </div>`;
+          }
         )
         .join("")
     );
 
-    // Error clusters
+    // Error clusters with click-to-query
     if (analysis.errors.length > 0) {
       setHtml(
         "error-clusters",
-        `<h4>Error Clusters (${analysis.errors.length} patterns)</h4>
-        <div class="error-list">
+        `<div class="error-list">
           ${analysis.errors
             .slice(0, 10)
             .map(
               (e) => `
-            <div class="error-item">
-              <div class="error-body"><code>${escapeHtml(e.body.slice(0, 100))}</code></div>
+            <button type="button" class="error-item error-item-btn" data-body="${escapeHtml(e.body.slice(0, 40))}" aria-label="Search for this error pattern">
+              <div class="error-body"><code>${escapeHtml(e.body.slice(0, 120))}</code></div>
               <div class="error-meta">
                 <span class="error-count">${e.count}× occurrences</span>
                 <span class="error-services">${e.services.join(", ")}</span>
               </div>
-            </div>`
+            </button>`
             )
             .join("")}
         </div>`
       );
+
+      // Wire click-to-query on error items
+      const errContainer = $("error-clusters");
+      if (errContainer) {
+        errContainer.addEventListener("click", (e) => {
+          const btn = e.target.closest(".error-item-btn");
+          if (!btn) return;
+          const body = btn.dataset.body;
+          if (body) {
+            queryState.bodyContains.enabled = true;
+            queryState.bodyContains.value = body;
+            queryState.severity.enabled = true;
+            queryState.severity.min = "ERROR";
+            currentTab = "query";
+            document.querySelectorAll(".tab-btn").forEach((b) => {
+              b.classList.toggle("active", b.dataset.tab === "query");
+              b.setAttribute("aria-selected", b.dataset.tab === "query" ? "true" : "false");
+            });
+            renderCurrentTab();
+            handleRunQuery();
+          }
+        });
+      }
     } else {
-      setHtml("error-clusters", "<p class='muted'>No errors found.</p>");
+      setHtml("error-clusters", "<p class='muted'>✅ No errors found.</p>");
     }
 
     // Template analysis
     if (analysis.templates.length > 0) {
       setHtml(
         "template-analysis",
-        `<h4>Top Log Templates</h4>
-        <div class="template-list">
+        `<div class="template-list">
           ${analysis.templates
             .slice(0, 10)
             .map(
               (t) => `
             <div class="template-item">
-              <code class="template-pattern">${escapeHtml(t.pattern.slice(0, 100))}</code>
+              <code class="template-pattern">${escapeHtml(t.pattern.slice(0, 120))}</code>
               <span class="template-count">${t.count}×</span>
             </div>`
             )
@@ -339,6 +506,44 @@ function renderLogsExplorer() {
       );
     }
   });
+}
+
+function renderSeverityTimeline(timeline) {
+  const container = $("severity-timeline");
+  if (!container || !timeline || timeline.length === 0) {
+    if (container) container.innerHTML = "<p class='muted'>Not enough data for timeline.</p>";
+    return;
+  }
+
+  const maxTotal = Math.max(...timeline.map((b) => b.total));
+  const barCount = timeline.length;
+
+  container.innerHTML = `
+    <div class="timeline-chart" role="img" aria-label="Severity distribution over time">
+      ${timeline
+        .map((bucket) => {
+          const totalH = maxTotal > 0 ? (bucket.total / maxTotal) * 100 : 0;
+          const errorH = maxTotal > 0 ? (bucket.errors / maxTotal) * 100 : 0;
+          const warnH = maxTotal > 0 ? (bucket.warnings / maxTotal) * 100 : 0;
+          const normalH = totalH - errorH - warnH;
+          const time = new Date(bucket.timestamp).toISOString().slice(11, 19);
+          return `
+          <div class="timeline-bar-group" title="${time}: ${bucket.total} total, ${bucket.errors} errors, ${bucket.warnings} warnings" style="width: ${100 / barCount}%">
+            <div class="timeline-bar" style="height: ${totalH}%">
+              <div class="timeline-seg normal" style="height: ${normalH > 0 ? (normalH / totalH) * 100 : 0}%"></div>
+              <div class="timeline-seg warn" style="height: ${warnH > 0 ? (warnH / totalH) * 100 : 0}%"></div>
+              <div class="timeline-seg error" style="height: ${errorH > 0 ? (errorH / totalH) * 100 : 0}%"></div>
+            </div>
+          </div>`;
+        })
+        .join("")}
+    </div>
+    <div class="timeline-legend">
+      <span><span class="legend-dot" style="background: var(--severity-info)"></span> Normal</span>
+      <span><span class="legend-dot" style="background: var(--severity-warn)"></span> Warnings</span>
+      <span><span class="legend-dot" style="background: var(--severity-error)"></span> Errors</span>
+    </div>
+  `;
 }
 
 // ── Query Builder ────────────────────────────────────────────────────

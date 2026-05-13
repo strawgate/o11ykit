@@ -557,3 +557,307 @@ h4 {
   font-weight: 600;
   border-bottom: 2px solid var(--accent);
 }
+
+/* ─── Learn Callouts ──────────────────────────────────────────────── */
+
+.learn-callout {
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--accent);
+  border-left: 4px solid var(--accent);
+  background: rgba(0, 0, 0, 0.02);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.learn-callout strong {
+  font-weight: 700;
+}
+.learn-callout em {
+  font-style: italic;
+  color: var(--accent);
+}
+.learn-callout-sm {
+  font-size: 0.78rem;
+  padding: 0.75rem 1rem;
+  margin-top: 1rem;
+}
+
+/* ─── Compression Bar (Service Table) ─────────────────────────────── */
+
+.compression-bar-cell {
+  min-width: 100px;
+}
+.compression-bar {
+  height: 6px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.compression-bar-fill {
+  height: 100%;
+  width: var(--bar-width);
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+/* ─── Chunk Card (clickable) ──────────────────────────────────────── */
+
+.chunk-card {
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.1s;
+  text-align: left;
+  width: 100%;
+  background: var(--panel-bg);
+}
+.chunk-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+.chunk-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.chunk-severity-range {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+}
+.sev-range-arrow {
+  font-size: 0.65rem;
+  opacity: 0.4;
+}
+.sev-pill.mini {
+  font-size: 0.55rem;
+  padding: 0.05rem 0.25rem;
+}
+
+/* ─── Chunk Detail Panel ──────────────────────────────────────────── */
+
+.chunk-detail-panel {
+  border: 2px solid var(--accent);
+  padding: 1.5rem;
+  margin-top: 1rem;
+}
+.chunk-detail-panel[hidden] {
+  display: none;
+}
+.chunk-detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.chunk-detail-header h4 {
+  margin: 0;
+  font-family: var(--sans);
+}
+.chunk-detail-close {
+  border: none;
+  background: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  opacity: 0.5;
+  padding: 0.25rem;
+}
+.chunk-detail-close:hover {
+  opacity: 1;
+}
+
+.chunk-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.chunk-detail-stat {
+  text-align: center;
+  padding: 0.5rem;
+  border: 1px solid var(--panel-border);
+}
+.chunk-detail-value {
+  font-family: var(--mono);
+  font-size: 1.1rem;
+  font-weight: 700;
+  display: block;
+}
+.chunk-detail-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.5;
+  margin-top: 0.2rem;
+  display: block;
+}
+
+.chunk-detail-section {
+  margin-bottom: 0.75rem;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.chunk-detail-section strong {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.muted-inline {
+  font-family: var(--sans);
+  font-size: 0.7rem;
+  opacity: 0.5;
+  margin-left: 0.5rem;
+}
+
+/* ─── Byte Layout Bar ─────────────────────────────────────────────── */
+
+.byte-layout-bar {
+  display: flex;
+  height: 20px;
+  border: 1px solid var(--panel-border);
+  overflow: hidden;
+  margin: 0.5rem 0;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+}
+.byte-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.header-seg {
+  background: var(--ink-3);
+}
+.payload-seg {
+  background: var(--accent);
+}
+
+.byte-layout-legend {
+  display: flex;
+  gap: 1rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+.legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.3rem;
+  vertical-align: middle;
+}
+.header-dot {
+  background: var(--ink-3);
+}
+.payload-dot {
+  background: var(--accent);
+}
+
+/* ─── Severity Timeline ───────────────────────────────────────────── */
+
+.timeline-chart {
+  display: flex;
+  align-items: flex-end;
+  height: 80px;
+  gap: 1px;
+  padding: 0;
+  border-bottom: 1px solid var(--panel-border);
+  margin-bottom: 0.5rem;
+}
+.timeline-bar-group {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+}
+.timeline-bar {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-radius: 1px 1px 0 0;
+  overflow: hidden;
+}
+.timeline-seg {
+  width: 100%;
+}
+.timeline-seg.normal {
+  background: var(--severity-info);
+}
+.timeline-seg.warn {
+  background: var(--severity-warn);
+}
+.timeline-seg.error {
+  background: var(--severity-error);
+}
+
+.timeline-legend {
+  display: flex;
+  gap: 1rem;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  opacity: 0.7;
+  margin-bottom: 1.5rem;
+}
+
+/* ─── Service Error Bar ───────────────────────────────────────────── */
+
+.service-error-bar {
+  margin-top: 0.5rem;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 1.5px;
+  overflow: hidden;
+}
+.service-error-bar-fill {
+  height: 100%;
+  width: var(--err-pct);
+  background: var(--severity-error);
+  border-radius: 1.5px;
+}
+.service-critical {
+  border-color: var(--severity-fatal);
+  border-width: 2px;
+}
+
+/* ─── Error Item Button ───────────────────────────────────────────── */
+
+.error-item-btn {
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  background: var(--panel-bg);
+  transition: border-color 0.15s;
+}
+.error-item-btn:hover {
+  border-color: var(--accent);
+}
+.error-item-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ─── Skip Link ───────────────────────────────────────────────────── */
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.5rem 1rem;
+  background: var(--panel-border);
+  color: var(--panel-bg);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+.skip-link:focus {
+  left: 0;
+}

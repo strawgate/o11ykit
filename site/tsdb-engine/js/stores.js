@@ -1,6 +1,11 @@
 // ── Storage Backends ────────────────────────────────────────────────
 
-import { FlatStore as _FlatStore, RowGroupStore as _RowGroupStore, initWasmCodecs } from "o11ytsdb";
+import {
+  ColumnStore as _ColumnStore,
+  FlatStore as _FlatStore,
+  RowGroupStore as _RowGroupStore,
+  initWasmCodecs,
+} from "o11ytsdb";
 
 let _wasmCodecs = null;
 let _wasmLoadPromise = null;
@@ -77,7 +82,7 @@ export function createColumnStore(chunkSize = DEFAULT_CHUNK_SIZE) {
   const rangeCodec = _wasmCodecs?.rangeCodec;
   const nameToGroup = new Map();
   let nextGroupId = 0;
-  return new _RowGroupStore(
+  return new _ColumnStore(
     valuesCodec,
     chunkSize,
     (labels) => {
@@ -89,7 +94,6 @@ export function createColumnStore(chunkSize = DEFAULT_CHUNK_SIZE) {
       }
       return id;
     },
-    DEFAULT_LRU_CAPACITY,
     COLUMN_BACKEND_NAME,
     tsCodec,
     rangeCodec

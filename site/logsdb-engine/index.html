@@ -101,32 +101,65 @@
       <!-- ─── Tabbed Panels ───────────────────────────────────── -->
       <div id="tabs-panel" class="tabs-panel" hidden>
         <div class="tab-bar">
-          <button type="button" class="tab-btn active" data-tab="storage">Storage Explorer</button>
-          <button type="button" class="tab-btn" data-tab="logs">Logs Explorer</button>
-          <button type="button" class="tab-btn" data-tab="query">Query Builder</button>
+          <button type="button" class="tab-btn active" data-tab="storage" role="tab" aria-selected="true" aria-controls="panel-storage">💾 Storage Explorer</button>
+          <button type="button" class="tab-btn" data-tab="logs" role="tab" aria-selected="false" aria-controls="panel-logs">📊 Logs Explorer</button>
+          <button type="button" class="tab-btn" data-tab="query" role="tab" aria-selected="false" aria-controls="panel-query">🔍 Query Builder</button>
         </div>
 
         <!-- Storage Explorer -->
-        <div id="panel-storage" class="tab-content">
+        <div id="panel-storage" class="tab-content" role="tabpanel" aria-labelledby="tab-storage">
+          <div class="learn-callout">
+            <strong>How log storage works:</strong> Each service gets its own <em>stream</em>.
+            Within a stream, logs are batched into <em>chunks</em> of ~1024 records.
+            Drain template extraction finds repeating patterns and stores variable slots
+            in typed columnar encodings — achieving 3–17 bytes/log vs ~350 bytes raw.
+          </div>
+
           <h3>Per-Service Storage Breakdown</h3>
           <div id="service-breakdown"></div>
-          <h3 style="margin-top:1.5rem">Chunks</h3>
+
+          <h3 style="margin-top:1.5rem">Chunk Inspector</h3>
+          <p class="muted">Click a chunk card to inspect its details — severity distribution, time range, and byte breakdown.</p>
           <div id="chunk-list"></div>
+          <div id="chunk-detail" class="chunk-detail-panel" hidden></div>
         </div>
 
         <!-- Logs Explorer -->
-        <div id="panel-logs" class="tab-content" hidden>
+        <div id="panel-logs" class="tab-content" hidden role="tabpanel" aria-labelledby="tab-logs">
+          <div class="learn-callout">
+            <strong>How log analysis works:</strong> The engine queries chunks using zone-map
+            pruning — each chunk header stores severity and time ranges. Chunks that can't
+            match are skipped without decoding, making queries over millions of logs sub-second.
+          </div>
+
           <div id="logs-loading" class="muted" hidden>Analyzing...</div>
+
+          <h3>Severity Timeline</h3>
+          <p class="muted">Error and warning density over time — each bar is a time bucket.</p>
+          <div id="severity-timeline"></div>
+
           <h3>Service Health</h3>
           <div id="service-health"></div>
+
+          <h3>Error Clusters</h3>
+          <p class="muted">Similar errors grouped by body prefix. Click to query for more.</p>
           <div id="error-clusters"></div>
+
+          <h3>Log Templates</h3>
+          <p class="muted">The Drain algorithm extracts repeating patterns. These are the most common templates found.</p>
           <div id="template-analysis"></div>
         </div>
 
         <!-- Query Builder -->
-        <div id="panel-query" class="tab-content" hidden>
+        <div id="panel-query" class="tab-content" hidden role="tabpanel" aria-labelledby="tab-query">
+          <div class="learn-callout">
+            <strong>How query pruning works:</strong> The engine checks each chunk's zone maps
+            (time range, severity range) before decoding. If a chunk can't contain matching
+            records, it's skipped entirely. Watch the <em>chunks pruned</em> stat to see this in action.
+          </div>
+
           <h3>Query Builder</h3>
-          <p class="muted">Build a query against the log store. The engine uses zone-map pruning on time range and severity to skip chunks without decoding.</p>
+          <p class="muted">Build a query against the log store. Toggle filters to combine conditions.</p>
           <div id="query-form"></div>
           <div id="query-results"></div>
         </div>
