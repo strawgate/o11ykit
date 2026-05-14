@@ -17,6 +17,7 @@ export type HighchartsChartType =
   | "area"
   | "bar"
   | "donut"
+  | "latestBar"
   | "histogram"
   | "scatter"
   | "sparkline"
@@ -70,12 +71,20 @@ export function toHighchartsLatestValuesOptions(
       series: [{ name: "average", data: [gaugeValue(latest)] }],
     };
   }
+  const rows = latest.rows.filter((row) => row.value !== null);
+  if (chartType === "bar" || chartType === "latestBar") {
+    return {
+      chart: { type: "bar" },
+      xAxis: { categories: rows.map((row) => row.label) },
+      series: [{ name: "latest", type: "bar", data: rows.map((row) => row.value ?? 0) }],
+    };
+  }
   return {
     chart: { type: "pie" },
     plotOptions: { pie: { innerSize: "55%" } },
     series: [
       {
-        data: latest.rows.flatMap((row) => (row.value === null ? [] : [[row.label, row.value]])),
+        data: rows.map((row) => [row.label, row.value]),
       },
     ],
   };

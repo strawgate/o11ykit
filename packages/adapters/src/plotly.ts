@@ -17,6 +17,7 @@ export type PlotlyChartType =
   | "area"
   | "bar"
   | "donut"
+  | "latestBar"
   | "histogram"
   | "scatter"
   | "sparkline"
@@ -82,6 +83,21 @@ export function toPlotlyLatestValuesFigure(
     };
   }
   const rows = latest.rows.filter((row) => row.value !== null);
+  if (chartType === "bar" || chartType === "latestBar") {
+    return {
+      data: [
+        {
+          uid: "latest-values-bar",
+          type: "bar",
+          name: "latest",
+          x: rows.map((row) => row.label),
+          y: rows.map((row) => row.value ?? 0),
+        },
+      ],
+      layout: { xaxis: { type: "category" }, uirevision: "engine-latest" },
+      config: { responsive: true, displaylogo: false },
+    };
+  }
   return {
     data: [
       {
