@@ -19,7 +19,8 @@
       "!examples/demo/src/browser-scraper.ts",
       "!octo11y",
       "!packages/o11ytsdb/bench",
-      "!research"
+      "!research",
+      "!**/*.html"
     ]
   },
   "formatter": {
