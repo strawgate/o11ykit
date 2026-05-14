@@ -416,7 +416,11 @@ function showSpanDetail(span) {
 
   let html = `<h4>${escapeHtml(span.name)}</h4><table>`;
   html += `<tr><td>Service</td><td>${escapeHtml(svc)}</td></tr>`;
-  html += `<tr><td>Span ID</td><td style="font-family:var(--mono);font-size:12px">${escapeHtml(String(span.spanId))}</td></tr>`;
+  const hexId =
+    span.spanId instanceof Uint8Array
+      ? Array.from(span.spanId, (b) => b.toString(16).padStart(2, "0")).join("")
+      : String(span.spanId);
+  html += `<tr><td>Span ID</td><td style="font-family:var(--mono);font-size:12px">${escapeHtml(hexId)}</td></tr>`;
 
   const dur = span.durationNanos || span.endTimeUnixNano - span.startTimeUnixNano;
   html += `<tr><td>Duration</td><td>${formatDurationNs(dur)}</td></tr>`;
