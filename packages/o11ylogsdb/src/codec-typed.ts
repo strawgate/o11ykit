@@ -39,7 +39,7 @@ import {
   type SidecarEntry,
 } from "./codec-utils.js";
 import { Drain, PARAM_STR, tokenize } from "./drain.js";
-import type { AnyValue, LogRecord, SeverityText } from "./types.js";
+import type { AnyValue, LogRecord } from "./types.js";
 
 // Body kinds (same enum as ColumnarDrainPolicy).
 const KIND_RAW_STRING = 0;

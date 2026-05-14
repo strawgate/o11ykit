@@ -22,7 +22,7 @@ describe("NDJSON round-trip: falsy field preservation", () => {
     });
     const chunk = builder.freeze();
     const records = readRecords(chunk, registry, policy);
-    expect(records[0]!.eventName).toBe("");
+    expect(records[0]?.eventName).toBe("");
   });
 
   it("droppedAttributesCount=0 round-trips correctly", () => {
@@ -38,7 +38,7 @@ describe("NDJSON round-trip: falsy field preservation", () => {
     });
     const chunk = builder.freeze();
     const records = readRecords(chunk, registry, policy);
-    expect(records[0]!.droppedAttributesCount).toBe(0);
+    expect(records[0]?.droppedAttributesCount).toBe(0);
   });
 
   it("flags=0 round-trips correctly", () => {
@@ -54,7 +54,7 @@ describe("NDJSON round-trip: falsy field preservation", () => {
     });
     const chunk = builder.freeze();
     const records = readRecords(chunk, registry, policy);
-    expect(records[0]!.flags).toBe(0);
+    expect(records[0]?.flags).toBe(0);
   });
 
   it("all optional fields undefined stay undefined on round-trip", () => {
@@ -69,12 +69,12 @@ describe("NDJSON round-trip: falsy field preservation", () => {
     });
     const chunk = builder.freeze();
     const records = readRecords(chunk, registry, policy);
-    expect(records[0]!.eventName).toBeUndefined();
-    expect(records[0]!.droppedAttributesCount).toBeUndefined();
-    expect(records[0]!.flags).toBeUndefined();
-    expect(records[0]!.traceId).toBeUndefined();
-    expect(records[0]!.spanId).toBeUndefined();
-    expect(records[0]!.observedTimeUnixNano).toBeUndefined();
+    expect(records[0]?.eventName).toBeUndefined();
+    expect(records[0]?.droppedAttributesCount).toBeUndefined();
+    expect(records[0]?.flags).toBeUndefined();
+    expect(records[0]?.traceId).toBeUndefined();
+    expect(records[0]?.spanId).toBeUndefined();
+    expect(records[0]?.observedTimeUnixNano).toBeUndefined();
   });
 
   it("observedTimeUnixNano=0n round-trips correctly", () => {
@@ -90,7 +90,7 @@ describe("NDJSON round-trip: falsy field preservation", () => {
     });
     const chunk = builder.freeze();
     const records = readRecords(chunk, registry, policy);
-    expect(records[0]!.observedTimeUnixNano).toBe(0n);
+    expect(records[0]?.observedTimeUnixNano).toBe(0n);
   });
 
   it("traceId and spanId with all zeros round-trip", () => {
@@ -107,8 +107,8 @@ describe("NDJSON round-trip: falsy field preservation", () => {
     });
     const chunk = builder.freeze();
     const records = readRecords(chunk, registry, policy);
-    expect(records[0]!.traceId).toEqual(new Uint8Array(16));
-    expect(records[0]!.spanId).toEqual(new Uint8Array(8));
+    expect(records[0]?.traceId).toEqual(new Uint8Array(16));
+    expect(records[0]?.spanId).toEqual(new Uint8Array(8));
   });
 });
 
@@ -125,7 +125,7 @@ describe("NDJSON round-trip: complex bodies", () => {
     });
     const chunk = builder.freeze();
     const records = readRecords(chunk, registry, policy);
-    expect(records[0]!.body).toBeNull();
+    expect(records[0]?.body).toBeNull();
   });
 
   it("nested object body round-trips", () => {
@@ -141,7 +141,7 @@ describe("NDJSON round-trip: complex bodies", () => {
     });
     const chunk = builder.freeze();
     const records = readRecords(chunk, registry, policy);
-    expect(records[0]!.body).toEqual(body);
+    expect(records[0]?.body).toEqual(body);
   });
 
   it("numeric body round-trips", () => {
@@ -156,7 +156,7 @@ describe("NDJSON round-trip: complex bodies", () => {
     });
     const chunk = builder.freeze();
     const records = readRecords(chunk, registry, policy);
-    expect(records[0]!.body).toBe(42);
+    expect(records[0]?.body).toBe(42);
   });
 
   it("boolean body round-trips", () => {
@@ -171,7 +171,7 @@ describe("NDJSON round-trip: complex bodies", () => {
     });
     const chunk = builder.freeze();
     const records = readRecords(chunk, registry, policy);
-    expect(records[0]!.body).toBe(false);
+    expect(records[0]?.body).toBe(false);
   });
 
   it("array body round-trips", () => {
@@ -186,7 +186,7 @@ describe("NDJSON round-trip: complex bodies", () => {
     });
     const chunk = builder.freeze();
     const records = readRecords(chunk, registry, policy);
-    expect(records[0]!.body).toEqual([1, "two", { three: 3 }]);
+    expect(records[0]?.body).toEqual([1, "two", { three: 3 }]);
   });
 });
 
@@ -213,13 +213,13 @@ describe("LogStore: full pipeline round-trip with all fields", () => {
     store.flush();
 
     const results = [...store.iterRecords()];
-    const decoded = results[0]!.records[0]!;
-    expect(decoded.timeUnixNano).toBe(1234567890n);
-    expect(decoded.observedTimeUnixNano).toBe(1234567891n);
-    expect(decoded.severityNumber).toBe(17);
-    expect(decoded.severityText).toBe("ERROR");
-    expect(decoded.body).toBe("request failed with status 500");
-    expect(decoded.attributes).toEqual([
+    const decoded = results[0]?.records[0];
+    expect(decoded?.timeUnixNano).toBe(1234567890n);
+    expect(decoded?.observedTimeUnixNano).toBe(1234567891n);
+    expect(decoded?.severityNumber).toBe(17);
+    expect(decoded?.severityText).toBe("ERROR");
+    expect(decoded?.body).toBe("request failed with status 500");
+    expect(decoded?.attributes).toEqual([
       { key: "url", value: "/api/users" },
       { key: "method", value: "POST" },
     ]);

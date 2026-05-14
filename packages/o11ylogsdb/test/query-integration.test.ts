@@ -69,8 +69,8 @@ describe("query engine: body fast path uses readRecordsFromRaw", () => {
 
     const { records: hits } = query(store, { bodyContains: "login" });
     expect(hits).toHaveLength(2);
-    expect(hits[0]!.body).toContain("login");
-    expect(hits[1]!.body).toContain("login");
+    expect(hits[0]?.body).toContain("login");
+    expect(hits[1]?.body).toContain("login");
   });
 
   it("bodyContains + limit on NDJSON store", () => {
@@ -132,7 +132,7 @@ describe("query engine: resourceEquals stream pruning", () => {
 
     const { records: hits, stats } = query(store, { resourceEquals: { service: "api" } });
     expect(hits).toHaveLength(2);
-    expect(hits[0]!.body).toBe("api log 1");
+    expect(hits[0]?.body).toBe("api log 1");
     expect(stats.streamsPruned).toBe(1);
   });
 
@@ -156,7 +156,7 @@ describe("query engine: resourceEquals stream pruning", () => {
 
     const { records: hits } = query(store, { resourceEquals: { service: "api", env: "prod" } });
     expect(hits).toHaveLength(1);
-    expect(hits[0]!.body).toBe("prod api");
+    expect(hits[0]?.body).toBe("prod api");
   });
 
   it("resourceEquals with non-matching key prunes all streams", () => {
@@ -208,7 +208,7 @@ describe("query engine: queryStream generator behavior", () => {
     const results = [...queryStream(store, {})];
     expect(results).toHaveLength(12);
     for (let i = 0; i < 12; i++) {
-      expect(results[i]!.body).toBe(`line ${i}`);
+      expect(results[i]?.body).toBe(`line ${i}`);
     }
   });
 });
