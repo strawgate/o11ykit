@@ -121,11 +121,15 @@ export function toAgChartsHistogramOptions(
 ): AgChartsOptions {
   // AG Charts performs its own binning so it needs raw values.
   // If given a pre-binned EngineHistogramModel, synthesise individual data
-  // points from bucket midpoints so the library can re-bin them.
+  // points from bucket midpoints. Cap at MAX_SYNTHETIC per bucket to avoid
+  // unbounded memory allocation for large counts.
+  const MAX_SYNTHETIC = 1_000;
   const rawData: Array<{ value: number }> = isEngineHistogramModel(model)
-    ? model.buckets.flatMap((bucket) =>
-        Array.from({ length: bucket.count }, () => ({ value: (bucket.start + bucket.end) / 2 }))
-      )
+    ? model.buckets.flatMap((bucket) => {
+        const count = Math.min(bucket.count, MAX_SYNTHETIC);
+        const mid = (bucket.start + bucket.end) / 2;
+        return Array.from({ length: count }, () => ({ value: mid }));
+      })
     : asEngineWideTableModel(model, options).rows.flatMap((row) =>
         row.values.flatMap((value) =>
           value === null || !Number.isFinite(value) ? [] : [{ value }]

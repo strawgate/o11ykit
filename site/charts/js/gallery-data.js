@@ -867,7 +867,11 @@ chart.setOption(option);`;
   if (libraryId === "uplot")
     return `const plot = new uPlot(args.options, args.data, node);
 plot.setData(nextArgs.data);`;
-  if (libraryId === "nivo") return `<${componentName} data={data} animate={false} />`;
+  if (libraryId === "nivo") {
+    // bar-like adapters return { data, keys, indexBy } — use spread
+    if (componentName === "ResponsiveBar") return `<${componentName} {...data} animate={false} />`;
+    return `<${componentName} data={data} animate={false} />`;
+  }
   if (libraryId === "observable")
     return `Plot.plot({
   marks: options.marks.map((mark) => Plot[mark.mark](options.data, mark)),

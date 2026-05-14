@@ -214,14 +214,18 @@ AgCharts.create(options);
 import {
   toHighchartsHistogramOptions,
   toHighchartsLatestValuesOptions,
-  toPlotlyLatestValuesFigure,
-} from "@otlpkit/adapters";
+} from "@otlpkit/adapters/highcharts";
 
 const highchartsBars = toHighchartsLatestValuesOptions(result, {
   chartType: "latestBar",
   seriesLabel,
 });
 const highchartsHistogram = toHighchartsHistogramOptions(result, { bucketCount: 10, seriesLabel });
+```
+
+```ts
+import { toPlotlyLatestValuesFigure } from "@otlpkit/adapters/plotly";
+
 const plotlyBars = toPlotlyLatestValuesFigure(result, { chartType: "latestBar", seriesLabel });
 ```
 
