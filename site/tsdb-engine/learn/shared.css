@@ -85,16 +85,11 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--xp-border);
-  margin-bottom: 16px;
-}
-
-.topbar.panel {
   background: var(--xp-surface);
   border: 1px solid var(--xp-border);
   border-radius: 0;
   padding: 12px 16px;
+  margin-bottom: 16px;
 }
 
 .brand {
