@@ -21,7 +21,7 @@
 
 import { ByteBuf, ByteReader, buildDictWithIndex, decodeAnyValue, encodeAnyValue } from "stardb";
 import type { ChunkPolicy } from "./chunk.js";
-import type { AnyValue, KeyValue, SpanEvent, SpanLink, SpanRecord, StatusCode } from "./types.js";
+import type { KeyValue, SpanEvent, SpanLink, SpanRecord, StatusCode } from "./types.js";
 
 // ─── Dictionary builder ──────────────────────────────────────────────
 
