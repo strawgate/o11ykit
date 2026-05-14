@@ -574,30 +574,30 @@ async function main() {
     {
       name: `chunked-wasm-${CHUNK_SIZE}`,
       make: async () => {
-        const { ChunkedStore } = await import(join(pkgDir, "dist/chunked-store.js"));
-        return () => new ChunkedStore(fullCodec, CHUNK_SIZE);
+        const { ReferenceChunkedStore } = await import(join(pkgDir, "dist/reference-chunked-store.js"));
+        return () => new ReferenceChunkedStore(fullCodec, CHUNK_SIZE);
       },
     },
     {
       name: `column-xor-full-${CHUNK_SIZE}`,
       make: async () => {
-        const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
-        return () => new ColumnStore(valuesCodec, CHUNK_SIZE, makeGrouper(), undefined, tsCodec);
+        const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
+        return () => new ReferenceColumnStore(valuesCodec, CHUNK_SIZE, makeGrouper(), undefined, tsCodec);
       },
     },
     {
       name: `column-alp-full-${CHUNK_SIZE}`,
       make: async () => {
-        const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
-        return () => new ColumnStore(alpValuesCodec, CHUNK_SIZE, makeGrouper(), undefined, tsCodec);
+        const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
+        return () => new ReferenceColumnStore(alpValuesCodec, CHUNK_SIZE, makeGrouper(), undefined, tsCodec);
       },
     },
     {
       name: `column-alp-fused-${CHUNK_SIZE}`,
       make: async () => {
-        const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+        const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
         return () =>
-          new ColumnStore(
+          new ReferenceColumnStore(
             alpValuesCodec,
             CHUNK_SIZE,
             makeGrouper(),

@@ -266,18 +266,18 @@ async function main() {
   const wasmBytes = loadWasmSync();
   const { alpValuesCodec, tsCodec, alpRangeCodec } = await makeWasmCodecs(wasmBytes);
 
-  const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+  const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
   const { ScanEngine } = await import(join(pkgDir, "dist/query.js"));
 
   const backends = [
     {
       name: "column-alp (no range)",
-      make: () => new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec),
+      make: () => new ReferenceColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec),
     },
     {
       name: "column-alp-fused",
       make: () =>
-        new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec),
+        new ReferenceColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec),
     },
   ];
 

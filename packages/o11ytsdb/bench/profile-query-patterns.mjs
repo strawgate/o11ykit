@@ -167,7 +167,7 @@ async function main() {
 
   const wasmBytes = loadWasmSync();
   const { alpValuesCodec, tsCodec } = await makeWasmCodecs(wasmBytes);
-  const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+  const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
   const { ScanEngine } = await import(join(pkgDir, "dist/query.js"));
 
   const engine = new ScanEngine();
@@ -179,7 +179,7 @@ async function main() {
 
   console.log(`Ingesting ${SERIES} series × ${PTS} pts = ${(SERIES * PTS / 1e6).toFixed(1)}M samples...`);
 
-  const store = new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec);
+  const store = new ReferenceColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec);
 
   for (let s = 0; s < SERIES; s++) {
     const labels = new Map([

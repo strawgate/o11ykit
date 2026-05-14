@@ -13,7 +13,7 @@ const alpVals = makeALPValuesCodec(wasm);
 const wasmTs = makeTimestampCodec(wasm);
 const rangeCodec = makeALPRangeCodec(wasm);
 
-const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+const { ReferenceColumnStore } = await import(pkgPath("dist/reference-column-store.js"));
 const { RowGroupStore } = await import(pkgPath("dist/row-group-store.js"));
 const { FlatStore } = await import(pkgPath("dist/flat-store.js"));
 
@@ -144,7 +144,7 @@ const tsCodec = {
 };
 
 const flat = new FlatStore();
-const col = new ColumnStore(codec, CHUNK_SIZE, () => 0, undefined, tsCodec, rangeCodec);
+const col = new ReferenceColumnStore(codec, CHUNK_SIZE, () => 0, undefined, tsCodec, rangeCodec);
 const rg = new RowGroupStore(codec, CHUNK_SIZE, () => 0, undefined, tsCodec, rangeCodec);
 
 const flatIds = [],

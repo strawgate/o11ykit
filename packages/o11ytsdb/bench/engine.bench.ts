@@ -87,9 +87,9 @@ async function loadBackends(): Promise<StorageBackend[]> {
     console.log("  ⚠ FlatStore not built — skipping");
   }
 
-  // ChunkedStore with XOR-delta (Gorilla) codec.
+  // ReferenceChunkedStore with XOR-delta (Gorilla) codec.
   try {
-    const { ChunkedStore } = await import(pkgPath("dist/chunked-store.js"));
+    const { ReferenceChunkedStore } = await import(pkgPath("dist/reference-chunked-store.js"));
     const { loadWasm, makeCodecImpl } = await import("./wasm-loader.js");
     const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
@@ -99,20 +99,20 @@ async function loadBackends(): Promise<StorageBackend[]> {
       encode: rustImpl.encode,
       decode: rustImpl.decode,
     };
-    backends.push(new ChunkedStore(rustCodec, CHUNK_SIZE));
+    backends.push(new ReferenceChunkedStore(rustCodec, CHUNK_SIZE));
   } catch (e) {
     console.log(`  ⚠ Rust WASM codec not available — skipping (${(e as Error).message})`);
   }
 
-  // ColumnStore with XOR-delta values (shared timestamps, uncompressed ts).
+  // ReferenceColumnStore with XOR-delta values (shared timestamps, uncompressed ts).
   try {
-    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { ReferenceColumnStore } = await import(pkgPath("dist/reference-column-store.js"));
     const { loadWasm, makeValuesCodec } = await import("./wasm-loader.js");
     const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
     const wasmVals = makeValuesCodec(wasm);
     backends.push(
-      new ColumnStore(
+      new ReferenceColumnStore(
         {
           name: "rust-wasm-values",
           encodeValues: wasmVals.encodeValues,
@@ -124,19 +124,19 @@ async function loadBackends(): Promise<StorageBackend[]> {
       )
     );
   } catch (e) {
-    console.log(`  ⚠ ColumnStore/XOR not available — skipping (${(e as Error).message})`);
+    console.log(`  ⚠ ReferenceColumnStore/XOR not available — skipping (${(e as Error).message})`);
   }
 
-  // ColumnStore with XOR values + delta-of-delta timestamp compression.
+  // ReferenceColumnStore with XOR values + delta-of-delta timestamp compression.
   try {
-    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { ReferenceColumnStore } = await import(pkgPath("dist/reference-column-store.js"));
     const { loadWasm, makeValuesCodec, makeTimestampCodec } = await import("./wasm-loader.js");
     const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
     const wasmVals = makeValuesCodec(wasm);
     const wasmTs = makeTimestampCodec(wasm);
     backends.push(
-      new ColumnStore(
+      new ReferenceColumnStore(
         {
           name: "rust-wasm-full",
           encodeValues: wasmVals.encodeValues,
@@ -154,19 +154,19 @@ async function loadBackends(): Promise<StorageBackend[]> {
       )
     );
   } catch (e) {
-    console.log(`  ⚠ ColumnStore/XOR+TS not available — skipping (${(e as Error).message})`);
+    console.log(`  ⚠ ReferenceColumnStore/XOR+TS not available — skipping (${(e as Error).message})`);
   }
 
-  // ColumnStore with ALP values + delta-of-delta timestamps (no range-decode).
+  // ReferenceColumnStore with ALP values + delta-of-delta timestamps (no range-decode).
   try {
-    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { ReferenceColumnStore } = await import(pkgPath("dist/reference-column-store.js"));
     const { loadWasm, makeALPValuesCodec, makeTimestampCodec } = await import("./wasm-loader.js");
     const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
     const alpVals = makeALPValuesCodec(wasm);
     const wasmTs = makeTimestampCodec(wasm);
     backends.push(
-      new ColumnStore(
+      new ReferenceColumnStore(
         {
           name: "alp-full",
           encodeValues: alpVals.encodeValues,
@@ -186,12 +186,12 @@ async function loadBackends(): Promise<StorageBackend[]> {
       )
     );
   } catch (e) {
-    console.log(`  ⚠ ColumnStore/ALP not available — skipping (${(e as Error).message})`);
+    console.log(`  ⚠ ReferenceColumnStore/ALP not available — skipping (${(e as Error).message})`);
   }
 
-  // ColumnStore with ALP values + timestamps + fused range-decode (best config).
+  // ReferenceColumnStore with ALP values + timestamps + fused range-decode (best config).
   try {
-    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { ReferenceColumnStore } = await import(pkgPath("dist/reference-column-store.js"));
     const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(
       "./wasm-loader.js"
     );
@@ -201,7 +201,7 @@ async function loadBackends(): Promise<StorageBackend[]> {
     const wasmTs = makeTimestampCodec(wasm);
     const rangeCodec = makeALPRangeCodec(wasm);
     backends.push(
-      new ColumnStore(
+      new ReferenceColumnStore(
         {
           name: "alp-range",
           encodeValues: alpVals.encodeValues,
@@ -222,7 +222,7 @@ async function loadBackends(): Promise<StorageBackend[]> {
       )
     );
   } catch (e) {
-    console.log(`  ⚠ ColumnStore/ALP+range not available — skipping (${(e as Error).message})`);
+    console.log(`  ⚠ ReferenceColumnStore/ALP+range not available — skipping (${(e as Error).message})`);
   }
 
   // RowGroupStore with ALP values + timestamps (row-group packing, no range-decode).
@@ -293,9 +293,9 @@ async function loadBackends(): Promise<StorageBackend[]> {
     console.log(`  ⚠ RowGroupStore/ALP+range not available — skipping (${(e as Error).message})`);
   }
 
-  // ColumnStore with ALP + precision=3 (decimal quantization on ingest, eliminates exceptions).
+  // ReferenceColumnStore with ALP + precision=3 (decimal quantization on ingest, eliminates exceptions).
   try {
-    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { ReferenceColumnStore } = await import(pkgPath("dist/reference-column-store.js"));
     const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(
       "./wasm-loader.js"
     );
@@ -305,7 +305,7 @@ async function loadBackends(): Promise<StorageBackend[]> {
     const wasmTs = makeTimestampCodec(wasm);
     const rangeCodec = makeALPRangeCodec(wasm);
     backends.push(
-      new ColumnStore(
+      new ReferenceColumnStore(
         {
           name: "alp-p3",
           encodeValues: alpVals.encodeValues,
@@ -328,12 +328,12 @@ async function loadBackends(): Promise<StorageBackend[]> {
       )
     );
   } catch (e) {
-    console.log(`  ⚠ ColumnStore/ALP+p3 not available — skipping (${(e as Error).message})`);
+    console.log(`  ⚠ ReferenceColumnStore/ALP+p3 not available — skipping (${(e as Error).message})`);
   }
 
-  // ColumnStore with ALP + delta-FoR exception encoding.
+  // ReferenceColumnStore with ALP + delta-FoR exception encoding.
   try {
-    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { ReferenceColumnStore } = await import(pkgPath("dist/reference-column-store.js"));
     const { loadWasm, makeALPValuesCodec, makeTimestampCodec, makeALPRangeCodec } = await import(
       "./wasm-loader.js"
     );
@@ -347,7 +347,7 @@ async function loadBackends(): Promise<StorageBackend[]> {
     const rangeCodec = makeALPRangeCodec(wasm);
 
     backends.push(
-      new ColumnStore(
+      new ReferenceColumnStore(
         wrapWithDeltaFor(alpVals, setMode),
         CHUNK_SIZE,
         () => 0,
@@ -361,7 +361,7 @@ async function loadBackends(): Promise<StorageBackend[]> {
       )
     );
   } catch (e) {
-    console.log(`  ⚠ ColumnStore/ALP+deltaFoR not available — skipping (${(e as Error).message})`);
+    console.log(`  ⚠ ReferenceColumnStore/ALP+deltaFoR not available — skipping (${(e as Error).message})`);
   }
 
   return backends;
@@ -705,11 +705,11 @@ async function freshBackend(name: string): Promise<StorageBackend> {
   if (chunkedMatch) {
     const [, codecName, sizeStr] = chunkedMatch;
     const size = parseInt(sizeStr!, 10);
-    const { ChunkedStore } = await import(pkgPath("dist/chunked-store.js"));
+    const { ReferenceChunkedStore } = await import(pkgPath("dist/reference-chunked-store.js"));
 
     if (codecName === "ts") {
       const codec = await import(pkgPath("dist/codec.js"));
-      return new ChunkedStore(
+      return new ReferenceChunkedStore(
         { name: "ts", encode: codec.encodeChunk, decode: codec.decodeChunk },
         size
       );
@@ -720,7 +720,7 @@ async function freshBackend(name: string): Promise<StorageBackend> {
       const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
       const wasm = await loadWasm(wasmPath);
       const impl = makeCodecImpl(wasm, "rust", "Rust→WASM");
-      return new ChunkedStore(
+      return new ReferenceChunkedStore(
         { name: "rust-wasm", encode: impl.encode, decode: impl.decode },
         size
       );
@@ -732,7 +732,7 @@ async function freshBackend(name: string): Promise<StorageBackend> {
   if (columnMatch) {
     const [, codecName, sizeStr] = columnMatch;
     const size = parseInt(sizeStr!, 10);
-    const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+    const { ReferenceColumnStore } = await import(pkgPath("dist/reference-column-store.js"));
     const { loadWasm, makeValuesCodec, makeTimestampCodec, makeALPValuesCodec, makeALPRangeCodec } =
       await import("./wasm-loader.js");
     const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
@@ -740,7 +740,7 @@ async function freshBackend(name: string): Promise<StorageBackend> {
 
     if (codecName === "rust-wasm-values") {
       const wasmVals = makeValuesCodec(wasm);
-      return new ColumnStore(
+      return new ReferenceColumnStore(
         {
           name: "rust-wasm-values",
           encodeValues: wasmVals.encodeValues,
@@ -755,7 +755,7 @@ async function freshBackend(name: string): Promise<StorageBackend> {
     if (codecName === "rust-wasm-full") {
       const wasmVals = makeValuesCodec(wasm);
       const wasmTs = makeTimestampCodec(wasm);
-      return new ColumnStore(
+      return new ReferenceColumnStore(
         {
           name: "rust-wasm-full",
           encodeValues: wasmVals.encodeValues,
@@ -776,7 +776,7 @@ async function freshBackend(name: string): Promise<StorageBackend> {
     if (codecName === "alp-full") {
       const alpVals = makeALPValuesCodec(wasm);
       const wasmTs = makeTimestampCodec(wasm);
-      return new ColumnStore(
+      return new ReferenceColumnStore(
         {
           name: "alp-full",
           encodeValues: alpVals.encodeValues,
@@ -800,7 +800,7 @@ async function freshBackend(name: string): Promise<StorageBackend> {
       const alpVals = makeALPValuesCodec(wasm);
       const wasmTs = makeTimestampCodec(wasm);
       const rangeCodec = makeALPRangeCodec(wasm);
-      return new ColumnStore(
+      return new ReferenceColumnStore(
         {
           name: "alp-range",
           encodeValues: alpVals.encodeValues,
@@ -828,7 +828,7 @@ async function freshBackend(name: string): Promise<StorageBackend> {
       const alpVals = makeALPValuesCodec(wasm);
       const wasmTs = makeTimestampCodec(wasm);
       const rangeCodec = makeALPRangeCodec(wasm);
-      return new ColumnStore(
+      return new ReferenceColumnStore(
         {
           name: `alp-p${precision}`,
           encodeValues: alpVals.encodeValues,
@@ -857,7 +857,7 @@ async function freshBackend(name: string): Promise<StorageBackend> {
       const rangeCodec = makeALPRangeCodec(wasm);
       const setMode = wasm.setAlpExcMode;
       if (!setMode) throw new Error("setAlpExcMode not available in WASM");
-      return new ColumnStore(
+      return new ReferenceColumnStore(
         wrapWithDeltaFor(alpVals, setMode),
         size,
         () => 0,

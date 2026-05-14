@@ -14,7 +14,7 @@ import { ScanEngine } from "./query.js";
 import { createQueryBuilderController } from "./query-builder-controller.js";
 import { formatEffectiveStepStat, summarizeStepResolution } from "./query-builder-model.js";
 import { buildStorageExplorer, refreshActiveChunkDetail } from "./storage-explorer.js";
-import { createColumnStore, createRowGroupStore, FlatStore, loadWasm } from "./stores.js";
+import { createReferenceColumnStore, createRowGroupStore, FlatStore, loadWasm } from "./stores.js";
 import { autoSelectQueryStep, escapeHtml, formatNum } from "./utils.js";
 
 const CHUNK_SIZE = 640;
@@ -327,7 +327,7 @@ document.querySelectorAll(".explore-nav-btn").forEach((btn) => {
 function _createStore(backendType, chunkSize) {
   let store;
   if (backendType === "column") {
-    store = createColumnStore(chunkSize);
+    store = createReferenceColumnStore(chunkSize);
   } else if (backendType === "chunked") {
     store = createRowGroupStore(chunkSize);
   } else {
@@ -538,7 +538,7 @@ const datasetController = createDatasetController({
 
 loadWasm().then((ok) => {
   if (!ok) {
-    console.warn("WASM unavailable — ColumnStore features disabled");
+    console.warn("WASM unavailable — ReferenceColumnStore features disabled");
   }
 
   // Render scenario cards (user clicks to load — no auto-load)

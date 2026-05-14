@@ -385,9 +385,9 @@ async function main() {
     allOk = testBackend("flat", new FlatStore(), data) && allOk;
   }
 
-  // ChunkedStore + WASM.
+  // ReferenceChunkedStore + WASM.
   {
-    const { ChunkedStore } = await import(join(pkgDir, "dist/chunked-store.js"));
+    const { ReferenceChunkedStore } = await import(join(pkgDir, "dist/reference-chunked-store.js"));
     const { encodeChunk, decodeChunk } = await import(join(pkgDir, "dist/codec.js"));
     // Use WASM codec via the wasm-loader.
     const wasmPath = join(pkgDir, "wasm/o11ytsdb-rust.wasm");
@@ -429,38 +429,38 @@ async function main() {
       },
     };
     allOk =
-      testBackend("chunked-rust-wasm-128", new ChunkedStore(codec, CHUNK_SIZE), data) && allOk;
+      testBackend("chunked-rust-wasm-128", new ReferenceChunkedStore(codec, CHUNK_SIZE), data) && allOk;
   }
 
-  // ColumnStore + XOR values + WASM timestamps.
+  // ReferenceColumnStore + XOR values + WASM timestamps.
   {
-    const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+    const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
     allOk =
       testBackend(
         "column-xor-full-128",
-        new ColumnStore(valuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec),
+        new ReferenceColumnStore(valuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec),
         data
       ) && allOk;
   }
 
-  // ColumnStore + ALP values + WASM timestamps.
+  // ReferenceColumnStore + ALP values + WASM timestamps.
   {
-    const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+    const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
     allOk =
       testBackend(
         "column-alp-full-128",
-        new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec),
+        new ReferenceColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec),
         data
       ) && allOk;
   }
 
-  // ColumnStore + ALP fused range-decode.
+  // ReferenceColumnStore + ALP fused range-decode.
   {
-    const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+    const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
     allOk =
       testBackend(
         "column-alp-fused-128",
-        new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec),
+        new ReferenceColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec),
         data
       ) && allOk;
   }

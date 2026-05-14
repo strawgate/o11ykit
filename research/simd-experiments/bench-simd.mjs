@@ -476,7 +476,7 @@ function runQuantize() {
   const vals = new Float64Array(N);
   for (let i = 0; i < N; i++) vals[i] = 50 + Math.random() * 50;
 
-  // JS baseline (exact ColumnStore quantize path)
+  // JS baseline (exact ReferenceColumnStore quantize path)
   const jsResult = bench(
     'JS Math.round',
     () => {

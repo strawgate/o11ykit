@@ -2,7 +2,7 @@ import { Worker } from 'node:worker_threads';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ColumnStore } from '../../packages/o11ytsdb/dist/column-store.js';
+import { ReferenceColumnStore } from '../../packages/o11ytsdb/dist/reference-column-store.js';
 import { ingestOtlpJson } from '../../packages/o11ytsdb/dist/ingest.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -123,7 +123,7 @@ class BenchWorkerClient {
 async function run() {
   const payload = makePayload(BATCH_POINTS);
 
-  const syncStore = new ColumnStore(createValuesCodec(), 1024);
+  const syncStore = new ReferenceColumnStore(createValuesCodec(), 1024);
   const syncDurations = [];
   const syncBlocks = [];
 

@@ -122,9 +122,9 @@ interface SeriesGroup {
   members: SeriesId[];
 }
 
-// ── ColumnStore ──────────────────────────────────────────────────────
+// ── ReferenceColumnStore ──────────────────────────────────────────────────────
 
-export class ColumnStore implements StorageBackend {
+export class ReferenceColumnStore implements StorageBackend {
   readonly name: string;
 
   private valuesCodec: ValuesCodec;
@@ -646,7 +646,7 @@ export class ColumnStore implements StorageBackend {
         timestamps: group.hotTimestamps.subarray(0, hotCount),
         values: s.hot.values.subarray(0, hotCount),
       },
-      _isColumnStore: true,
+      _isReferenceColumnStore: true,
       _groupMembers: group.members.length,
       _sharedTsChunks: group.frozenTimestamps.length,
       _sharedTsTotalBytes: group.frozenTimestamps.reduce(

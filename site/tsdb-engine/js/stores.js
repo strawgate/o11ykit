@@ -1,7 +1,7 @@
 // ── Storage Backends ────────────────────────────────────────────────
 
 import {
-  ColumnStore as _ColumnStore,
+  ReferenceColumnStore as _ReferenceColumnStore,
   FlatStore as _FlatStore,
   RowGroupStore as _RowGroupStore,
   initWasmCodecs,
@@ -63,7 +63,7 @@ export class FlatStore extends _FlatStore {
 const DEFAULT_CHUNK_SIZE = 640;
 const DEFAULT_LRU_CAPACITY = 32;
 const ROWGROUP_BACKEND_NAME = "RowGroupStore";
-const COLUMN_BACKEND_NAME = "ColumnStore (ALP)";
+const COLUMN_BACKEND_NAME = "ReferenceColumnStore (ALP)";
 
 export function createRowGroupStore(chunkSize = DEFAULT_CHUNK_SIZE) {
   const valuesCodec = _wasmCodecs?.xorValuesCodec ?? createF64PlainCodec();
@@ -76,13 +76,13 @@ export function createRowGroupStore(chunkSize = DEFAULT_CHUNK_SIZE) {
   );
 }
 
-export function createColumnStore(chunkSize = DEFAULT_CHUNK_SIZE) {
+export function createReferenceColumnStore(chunkSize = DEFAULT_CHUNK_SIZE) {
   const valuesCodec = _wasmCodecs?.valuesCodec ?? createF64PlainCodec();
   const tsCodec = _wasmCodecs?.tsCodec;
   const rangeCodec = _wasmCodecs?.rangeCodec;
   const nameToGroup = new Map();
   let nextGroupId = 0;
-  return new _ColumnStore(
+  return new _ReferenceColumnStore(
     valuesCodec,
     chunkSize,
     (labels) => {
