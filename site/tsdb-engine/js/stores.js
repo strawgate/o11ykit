@@ -1,6 +1,11 @@
 // ── Storage Backends ────────────────────────────────────────────────
 
-import { FlatStore as _FlatStore, RowGroupStore as _RowGroupStore, initWasmCodecs } from "o11ytsdb";
+import {
+  ColumnStore as _ColumnStore,
+  FlatStore as _FlatStore,
+  RowGroupStore as _RowGroupStore,
+  initWasmCodecs,
+} from "o11ytsdb";
 
 let _wasmCodecs = null;
 let _wasmLoadPromise = null;
@@ -77,7 +82,7 @@ export function createColumnStore(chunkSize = DEFAULT_CHUNK_SIZE) {
   const rangeCodec = _wasmCodecs?.rangeCodec;
   const nameToGroup = new Map();
   let nextGroupId = 0;
-  return new _RowGroupStore(
+  return new _ColumnStore(
     valuesCodec,
     chunkSize,
     (labels) => {
@@ -89,9 +94,22 @@ export function createColumnStore(chunkSize = DEFAULT_CHUNK_SIZE) {
       }
       return id;
     },
-    DEFAULT_LRU_CAPACITY,
     COLUMN_BACKEND_NAME,
     tsCodec,
     rangeCodec
   );
+}
+
+// ── Decode helpers (share the same _wasmCodecs loaded by stores.loadWasm) ──
+
+const _plainCodec = createF64PlainCodec();
+
+export function wasmDecodeValuesALP(buf) {
+  const codec = _wasmCodecs?.valuesCodec ?? _plainCodec;
+  return codec.decodeValues(buf);
+}
+
+export function wasmDecodeTimestamps(buf) {
+  if (!_wasmCodecs?.tsCodec) throw new Error("WASM tsCodec not available");
+  return _wasmCodecs.tsCodec.decodeTimestamps(buf);
 }

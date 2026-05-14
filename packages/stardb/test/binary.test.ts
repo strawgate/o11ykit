@@ -49,12 +49,12 @@ describe("ByteBuf", () => {
   it("writeFloat64 / readFloat64 round-trips", () => {
     const buf = new ByteBuf(32);
     buf.writeFloat64(0.0);
-    buf.writeFloat64(3.141592653589793);
+    buf.writeFloat64(Math.PI);
     buf.writeFloat64(-1.5e100);
     buf.writeFloat64(Number.NaN);
     const r = new ByteReader(buf.finish());
     expect(r.readFloat64()).toBe(0.0);
-    expect(r.readFloat64()).toBe(3.141592653589793);
+    expect(r.readFloat64()).toBe(Math.PI);
     expect(r.readFloat64()).toBe(-1.5e100);
     expect(r.readFloat64()).toBeNaN();
   });
@@ -268,7 +268,7 @@ describe("ByteBuf + ByteReader integration", () => {
     buf.writeU16(1000);
     buf.writeU32(123456);
     buf.writeU64(999999999999n);
-    buf.writeFloat64(2.718281828);
+    buf.writeFloat64(Math.E);
     buf.writeUvarint(300);
     buf.writeZigzagVarint(-42n);
     buf.writeString("test data");
@@ -279,7 +279,7 @@ describe("ByteBuf + ByteReader integration", () => {
     expect(r.readU16()).toBe(1000);
     expect(r.readU32()).toBe(123456);
     expect(r.readU64()).toBe(999999999999n);
-    expect(r.readFloat64()).toBeCloseTo(2.718281828);
+    expect(r.readFloat64()).toBeCloseTo(Math.E);
     expect(r.readUvarint()).toBe(300);
     expect(r.readZigzagVarint()).toBe(-42n);
     expect(r.readString()).toBe("test data");

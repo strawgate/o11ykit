@@ -1,9 +1,12 @@
 // @ts-nocheck
 // ── Traces Model — RED metrics, anomaly detection, insights ─────────
-import { hexFromBytes, normalizeTraceId, spanServiceName } from "./utils.js";
+import { aggregateSpans, deriveREDMetrics } from "o11ytracesdb";
+import { normalizeTraceId, spanServiceName } from "./utils.js";
 
 /**
  * Compute RED (Rate, Error, Duration) metrics per service.
+ * Uses the engine's aggregateSpans() for percentiles and deriveREDMetrics()
+ * for time-bucketed sparkline data and error counts.
  * @param {Array} spans All spans
  * @param {string[]} serviceNames
  * @returns {Map<string, ServiceMetrics>}
@@ -17,7 +20,6 @@ export function computeServiceMetrics(spans, serviceNames) {
       spanCount: 0,
       errorCount: 0,
       totalDurationNs: 0n,
-      durations: [],
       errorTimeBuckets: new Array(20).fill(0),
       rateBuckets: new Array(20).fill(0),
     });
@@ -32,77 +34,58 @@ export function computeServiceMetrics(spans, serviceNames) {
     if (span.startTimeUnixNano > maxTime) maxTime = span.startTimeUnixNano;
   }
 
-  const timeRange = Number(maxTime - minTime) || 1;
-  const bucketWidth = timeRange / 20;
+  const timeRange = maxTime - minTime;
+  // Divide time range into ~20 buckets for sparklines; require at least 1ns per bucket
+  const bucketSizeNanos = timeRange >= 20n ? timeRange / 20n : 1_000_000_000n;
 
+  // Group spans by service for per-service engine calls
+  const byService = new Map();
   for (const span of spans) {
     const svc = spanServiceName(span);
-    const m = metrics.get(svc);
-    if (!m) continue;
-
-    m.spanCount++;
-    const dur = span.durationNanos || span.endTimeUnixNano - span.startTimeUnixNano;
-    m.totalDurationNs += dur;
-    m.durations.push(Number(dur));
-
-    const bucket = Math.min(19, Math.floor(Number(span.startTimeUnixNano - minTime) / bucketWidth));
-    m.rateBuckets[bucket]++;
-
-    if (span.statusCode === 2) {
-      m.errorCount++;
-      m.errorTimeBuckets[bucket]++;
-    }
+    if (!byService.has(svc)) byService.set(svc, []);
+    byService.get(svc).push(span);
   }
 
-  for (const m of metrics.values()) {
-    // For large datasets, use reservoir sampling for percentile estimation
-    if (m.durations.length > 10000) {
-      // Partial sort: only sort a sample for percentiles
-      const sample = reservoirSample(m.durations, 10000);
-      sample.sort((a, b) => a - b);
-      m.p50DurationNs = percentile(sample, 0.5);
-      m.p95DurationNs = percentile(sample, 0.95);
-      m.p99DurationNs = percentile(sample, 0.99);
-      m.maxDurationNs = m.durations.reduce((max, d) => Math.max(max, d), 0);
-    } else {
-      m.durations.sort((a, b) => a - b);
-      m.p50DurationNs = percentile(m.durations, 0.5);
-      m.p95DurationNs = percentile(m.durations, 0.95);
-      m.p99DurationNs = percentile(m.durations, 0.99);
-      m.maxDurationNs = m.durations.length > 0 ? m.durations[m.durations.length - 1] : 0;
-    }
-    m.errorRate = m.spanCount > 0 ? m.errorCount / m.spanCount : 0;
+  for (const [name, svcSpans] of byService) {
+    const m = metrics.get(name);
+    if (!m) continue;
+
+    // Delegate percentile/sum/count computation to the engine
+    const agg = aggregateSpans(svcSpans, [
+      { fn: "count", field: "duration" },
+      { fn: "sum", field: "duration" },
+      { fn: "p50", field: "duration" },
+      { fn: "p95", field: "duration" },
+      { fn: "p99", field: "duration" },
+      { fn: "max", field: "duration" },
+    ]);
+    const getVal = (fn) => agg.results.find((r) => r.fn === fn)?.value ?? 0;
+
+    m.spanCount = Number(getVal("count"));
+    m.totalDurationNs = BigInt(getVal("sum"));
+    m.p50DurationNs = Number(getVal("p50"));
+    m.p95DurationNs = Number(getVal("p95"));
+    m.p99DurationNs = Number(getVal("p99"));
+    m.maxDurationNs = Number(getVal("max"));
     m.avgDurationNs = m.spanCount > 0 ? Number(m.totalDurationNs) / m.spanCount : 0;
+
+    // Delegate bucketed error/rate data to the engine
+    const red = deriveREDMetrics(svcSpans, bucketSizeNanos, name);
+    for (const r of red) {
+      const rawOffset = r.bucketStartNano > minTime ? Number(r.bucketStartNano - minTime) : 0;
+      const bucket =
+        timeRange > 0n
+          ? Math.min(19, Math.max(0, Math.floor((rawOffset / Number(timeRange)) * 20)))
+          : 0;
+      m.rateBuckets[bucket] += r.rate;
+      m.errorTimeBuckets[bucket] += r.errors;
+      m.errorCount += r.errors;
+    }
+
+    m.errorRate = m.spanCount > 0 ? m.errorCount / m.spanCount : 0;
   }
 
   return metrics;
-}
-
-function percentile(sorted, p) {
-  if (sorted.length === 0) return 0;
-  const idx = Math.ceil(sorted.length * p) - 1;
-  return sorted[Math.max(0, idx)];
-}
-
-// Seeded PRNG (mulberry32) for deterministic reservoir sampling
-function mulberry32(seed) {
-  let s = seed | 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function reservoirSample(arr, k) {
-  const rand = mulberry32(arr.length);
-  const reservoir = arr.slice(0, k);
-  for (let i = k; i < arr.length; i++) {
-    const j = Math.floor(rand() * (i + 1));
-    if (j < k) reservoir[j] = arr[i];
-  }
-  return reservoir;
 }
 
 /**

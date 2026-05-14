@@ -3,7 +3,7 @@
 // Curated log exploration view. Surfaces problematic patterns,
 // error clusters, template analysis, and time-based insights.
 
-import { query } from "o11ylogsdb";
+import { DRAIN_DEFAULT_CONFIG, Drain, query } from "o11ylogsdb";
 
 /**
  * Analyze the store and produce curated insights.
@@ -86,25 +86,27 @@ function analyzeWarnings(records) {
 }
 
 function analyzeTemplates(records) {
-  const templates = {};
-  for (const r of records) {
-    if (typeof r.body !== "string") continue;
-    // Extract template pattern by replacing numbers, UUIDs, IPs
-    const pattern = r.body
-      .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g, "{uuid}")
-      .replace(/\b\d+\.\d+\.\d+\.\d+\b/g, "{ip}")
-      .replace(/\b\d{4,}\b/g, "{num}")
-      .replace(/\b[0-9a-f]{8}\b/g, "{id}");
+  // Use the engine's Drain algorithm for proper log template extraction
+  // (published DRAIN paper, He et al. ICWS 2017; validated against 5 log corpora)
+  const drain = new Drain(DRAIN_DEFAULT_CONFIG);
+  const counts = new Map(); // templateId → hit count
+  const samples = new Map(); // templateId → first matching body
 
-    if (!templates[pattern]) {
-      templates[pattern] = { pattern, count: 0, sample: r.body };
-    }
-    templates[pattern].count++;
+  for (const r of records) {
+    const body = typeof r.body === "string" ? r.body : null;
+    if (!body) continue;
+    const { templateId } = drain.matchOrAdd(body);
+    counts.set(templateId, (counts.get(templateId) ?? 0) + 1);
+    if (!samples.has(templateId)) samples.set(templateId, body);
   }
 
-  return Object.values(templates)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 15);
+  const results = [];
+  for (const { id, template } of drain.templates()) {
+    const count = counts.get(id) ?? 0;
+    if (count === 0) continue;
+    results.push({ pattern: template, count, sample: samples.get(id) ?? "" });
+  }
+  return results.sort((a, b) => b.count - a.count).slice(0, 15);
 }
 
 function buildTimeline(records) {

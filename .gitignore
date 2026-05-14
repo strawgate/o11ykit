@@ -27,6 +27,8 @@ actions/*/lib/
 !octo11y/actions/*/dist/
 !octo11y/actions/*/dist/**
 .playwright-cli/
+.playwright-mcp/
+.claude/
 
 # Research experiment artifacts
 research/**/target/
