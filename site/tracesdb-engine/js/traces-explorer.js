@@ -14,7 +14,6 @@ import {
   formatDurationNs,
   formatNum,
   formatPercent,
-  hexFromBytes,
   normalizeTraceId,
   serviceColor,
   serviceColorVar,

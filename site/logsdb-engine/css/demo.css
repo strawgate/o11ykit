@@ -606,7 +606,9 @@ h4 {
 
 .chunk-card {
   cursor: pointer;
-  transition: border-color 0.15s, transform 0.1s;
+  transition:
+    border-color 0.15s,
+    transform 0.1s;
   text-align: left;
   width: 100%;
   background: var(--panel-bg);
