@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@otlpkit/adapters": "file:../../packages/adapters",
-    "@otlpkit/views": "file:../../packages/views",
+    "o11ytsdb": "file:../../packages/o11ytsdb",
     "echarts": "^6.0.0"
   }
 }

@@ -1,12 +1,11 @@
 import {
-  toChartJsViewHistogramConfig,
-  toChartJsViewLatestValuesConfig,
-  toChartJsViewLineConfig,
+  toChartJsHistogramConfig,
+  toChartJsLatestValuesConfig,
+  toChartJsTimeSeriesConfig,
 } from "@otlpkit/adapters/chartjs";
-import { buildHistogramFrame, buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
 import Chart from "chart.js/auto";
 
-import { sampleMetricsDocument } from "../../shared/sample.js";
+import { query } from "../../shared/store.js";
 
 function requireCanvas(selector: string): HTMLCanvasElement {
   const canvas = document.querySelector<HTMLCanvasElement>(selector);
@@ -16,27 +15,13 @@ function requireCanvas(selector: string): HTMLCanvasElement {
   return canvas;
 }
 
-const timeSeriesFrame = buildTimeSeriesFrame(sampleMetricsDocument, {
-  metricName: "logfwd.inflight_batches",
-  intervalMs: 1000,
-  splitBy: "output",
-  title: "Inflight batches by output",
-});
-const latestValuesFrame = buildLatestValuesFrame(sampleMetricsDocument, {
-  metricName: "logfwd.inflight_batches",
-  splitBy: "output",
-  title: "Latest inflight batches by output",
-});
-const histogramFrame = buildHistogramFrame(sampleMetricsDocument, {
-  metricName: "logfwd.output.duration",
-  title: "Output duration histogram",
-  binCount: 6,
-});
+// Query the RowGroupStore via ScanEngine
+const result = query();
 
 for (const [selector, config] of [
-  ["#time-series", toChartJsViewLineConfig(timeSeriesFrame)],
-  ["#latest-values", toChartJsViewLatestValuesConfig(latestValuesFrame)],
-  ["#histogram", toChartJsViewHistogramConfig(histogramFrame)],
+  ["#time-series", toChartJsTimeSeriesConfig(result, { timestampUnit: "nanoseconds" })],
+  ["#latest-values", toChartJsLatestValuesConfig(result, { timestampUnit: "nanoseconds" })],
+  ["#histogram", toChartJsHistogramConfig(result, { timestampUnit: "nanoseconds" })],
 ] as const) {
   const context = requireCanvas(selector).getContext("2d");
   if (!context) {
