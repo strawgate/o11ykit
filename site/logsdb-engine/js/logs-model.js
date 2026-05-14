@@ -102,7 +102,9 @@ function analyzeTemplates(records) {
 
   const results = [];
   for (const { id, template } of drain.templates()) {
-    results.push({ pattern: template, count: counts.get(id) ?? 1, sample: samples.get(id) ?? "" });
+    const count = counts.get(id) ?? 0;
+    if (count === 0) continue;
+    results.push({ pattern: template, count, sample: samples.get(id) ?? "" });
   }
   return results.sort((a, b) => b.count - a.count).slice(0, 15);
 }

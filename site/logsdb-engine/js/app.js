@@ -203,13 +203,10 @@ function renderCurrentTab() {
 
 // ── Storage Explorer ─────────────────────────────────────────────────
 
-let _cachedChunks = null;
-
 function renderStorageExplorer() {
   if (!store) return;
 
   const chunks = getChunkDetails(store);
-  _cachedChunks = chunks;
   const services = getServiceBreakdown(store);
 
   // Service breakdown table with visual compression bars
@@ -284,18 +281,19 @@ function renderStorageExplorer() {
     ${chunks.length > maxChunksShown ? `<p class="muted">Showing ${maxChunksShown} of ${chunks.length} chunks</p>` : ""}`
   );
 
-  // Wire up chunk click handlers
+}
+
+function initChunkList() {
   const container = $("chunk-list");
-  if (container) {
-    container.addEventListener("click", (e) => {
-      const card = e.target.closest(".chunk-card");
-      if (!card) return;
-      const idx = Number(card.dataset.index);
-      if (idx >= 0 && idx < shownChunks.length) {
-        showChunkDetail(shownChunks[idx]);
-      }
-    });
-  }
+  if (!container) return;
+  container.addEventListener("click", (e) => {
+    const card = e.target.closest(".chunk-card");
+    if (!card) return;
+    const idx = Number(card.dataset.index);
+    if (idx >= 0 && idx < shownChunks.length) {
+      showChunkDetail(shownChunks[idx]);
+    }
+  });
 }
 
 function showChunkDetail(chunk) {
@@ -449,7 +447,7 @@ function renderLogsExplorer() {
             .slice(0, 10)
             .map(
               (e) => `
-            <button type="button" class="error-item error-item-btn" data-body="${escapeHtml(e.body.slice(0, 40))}" aria-label="Search for this error pattern">
+            <button type="button" class="error-item error-item-btn" data-body="${escapeHtml(e.body.slice(0, 40)).replace(/"/g, '&quot;')}" aria-label="Search for this error pattern">
               <div class="error-body"><code>${escapeHtml(e.body.slice(0, 120))}</code></div>
               <div class="error-meta">
                 <span class="error-count">${e.count}× occurrences</span>
@@ -461,28 +459,7 @@ function renderLogsExplorer() {
         </div>`
       );
 
-      // Wire click-to-query on error items
-      const errContainer = $("error-clusters");
-      if (errContainer) {
-        errContainer.addEventListener("click", (e) => {
-          const btn = e.target.closest(".error-item-btn");
-          if (!btn) return;
-          const body = btn.dataset.body;
-          if (body) {
-            queryState.bodyContains.enabled = true;
-            queryState.bodyContains.value = body;
-            queryState.severity.enabled = true;
-            queryState.severity.min = "ERROR";
-            currentTab = "query";
-            document.querySelectorAll(".tab-btn").forEach((b) => {
-              b.classList.toggle("active", b.dataset.tab === "query");
-              b.setAttribute("aria-selected", b.dataset.tab === "query" ? "true" : "false");
-            });
-            renderCurrentTab();
-            handleRunQuery();
-          }
-        });
-      }
+      // click-to-query wired once by initErrorClusters()
     } else {
       setHtml("error-clusters", "<p class='muted'>✅ No errors found.</p>");
     }
@@ -714,7 +691,32 @@ function renderQueryResults(result) {
 
 // ── Init ──────────────────────────────────────────────────────────────
 
+function initErrorClusters() {
+  const errContainer = $("error-clusters");
+  if (!errContainer) return;
+  errContainer.addEventListener("click", (e) => {
+    const btn = e.target.closest(".error-item-btn");
+    if (!btn) return;
+    const body = btn.dataset.body;
+    if (body) {
+      queryState.bodyContains.enabled = true;
+      queryState.bodyContains.value = body;
+      queryState.severity.enabled = true;
+      queryState.severity.min = "ERROR";
+      currentTab = "query";
+      document.querySelectorAll(".tab-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.tab === "query");
+        b.setAttribute("aria-selected", b.dataset.tab === "query" ? "true" : "false");
+      });
+      renderCurrentTab();
+      handleRunQuery();
+    }
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initDatasetButtons();
   initTabs();
+  initChunkList();
+  initErrorClusters();
 });

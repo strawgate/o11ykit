@@ -245,7 +245,7 @@ function renderProblematicTraces() {
 
     row.addEventListener("click", () => {
       if (onTraceSelect) {
-        const traceSpans = traceIdMap.get(problem.traceId) || [];
+        const traceSpans = traceIdMap.get(normalizeTraceId(problem.traceId)) || [];
         onTraceSelect({ traceId: problem.traceId, spans: traceSpans });
       }
     });
