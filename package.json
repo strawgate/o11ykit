@@ -58,7 +58,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
-    "@biomejs/biome": "^2.4.13",
+    "@biomejs/biome": "^2.4.14",
     "@changesets/cli": "^2.31.0",
     "@nivo/bar": "^0.99.0",
     "@nivo/line": "^0.99.0",
