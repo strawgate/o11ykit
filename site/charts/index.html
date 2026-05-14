@@ -149,7 +149,8 @@ const recharts =
             The adapters handle the repetitive conversion work: aligned timestamps, latest values,
             histogram buckets, labels, sparse values, and package-specific field names. You keep
             control over presentation, colors, tooltips, axes, and the update strategy each chart
-            library recommends.
+            library recommends. A chart shape only appears in this gallery when that library has a
+            published adapter and a real native renderer path for it.
           </p>
           <div class="ergonomics-grid">
             <article class="ergonomics-card">
@@ -199,8 +200,9 @@ const recharts =
           <h2 class="t-h2" style="margin:8px 0 8px">Chart shape by chart shape.</h2>
           <p class="t-body" style="max-width:72ch;margin:0 0 28px">
             A checked cell means this gallery has a published adapter call and a native package
-            render path for that chart shape. Recipe cells are intentional examples that can be built
-            from the exported primitives without adding gallery-only drawing.
+            render path for that chart shape. The latest-bar and histogram cards use the chart
+            package's own bar, histogram, or category-series inputs; there are no gallery-only
+            drawing layers behind them.
           </p>
           <div class="coverage-table-wrap">
             <table id="coverageTable" class="coverage-table"></table>

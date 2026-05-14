@@ -36,8 +36,8 @@ describe("compact: codec diversity", () => {
     // Verify records round-trip
     const records = readRecords(result.chunk, registry, policy);
     expect(records).toHaveLength(16);
-    expect(records[0]!.body).toBe("line 0");
-    expect(records[15]!.body).toBe("line 15");
+    expect(records[0]?.body).toBe("line 0");
+    expect(records[15]?.body).toBe("line 15");
   });
 
   it("compact from zstd-19 to zstd-3 (lower compression)", () => {
@@ -53,7 +53,7 @@ describe("compact: codec diversity", () => {
 
     const records = readRecords(result.chunk, registry, policy);
     expect(records).toHaveLength(32);
-    expect(records[0]!.body).toBe("log entry number 0 with some padding text");
+    expect(records[0]?.body).toBe("log entry number 0 with some padding text");
   });
 
   it("compact preserves non-string bodies (kvlist)", () => {
@@ -68,9 +68,9 @@ describe("compact: codec diversity", () => {
     const result = compactChunk(chunk, registry, "zstd-3");
     const records = readRecords(result.chunk, registry, policy);
     expect(records).toHaveLength(3);
-    expect(records[0]!.body).toEqual({ method: "GET", status: 200 });
-    expect(records[1]!.body).toEqual({ method: "POST", status: 201 });
-    expect(records[2]!.body).toBe("plain string body");
+    expect(records[0]?.body).toEqual({ method: "GET", status: 200 });
+    expect(records[1]?.body).toEqual({ method: "POST", status: 201 });
+    expect(records[2]?.body).toBe("plain string body");
   });
 
   it("compact preserves rich metadata (traceId, spanId, eventName)", () => {
@@ -138,8 +138,8 @@ describe("compact: TypedColumnar chunks", () => {
     // Read back with policy (needed because typed columnar needs codec meta)
     const records = readRecords(result.chunk, registry, policy);
     expect(records).toHaveLength(16);
-    expect(records[0]!.body).toContain("192.168.1.0");
-    expect(records[15]!.body).toContain("192.168.1.15");
+    expect(records[0]?.body).toContain("192.168.1.0");
+    expect(records[15]?.body).toContain("192.168.1.15");
   });
 });
 

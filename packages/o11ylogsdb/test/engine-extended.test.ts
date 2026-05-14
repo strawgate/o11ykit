@@ -63,7 +63,7 @@ describe("LogStore flush edge cases", () => {
     // First 4 records auto-freeze a chunk
     let lastStats: IngestStats | undefined;
     for (let i = 0; i < 4; i++) lastStats = store.append(resource, scope, rec(i));
-    expect(lastStats!.chunksClosed).toBe(1);
+    expect(lastStats?.chunksClosed).toBe(1);
 
     // Next 2 records are in-flight
     store.append(resource, scope, rec(10));
@@ -93,7 +93,7 @@ describe("LogStore iterRecords edge cases", () => {
     const results = [...store.iterRecords()];
     expect(results).toHaveLength(2);
     // Different resources → different stream IDs
-    expect(results[0]!.streamId).not.toBe(results[1]!.streamId);
+    expect(results[0]?.streamId).not.toBe(results[1]?.streamId);
   });
 
   it("iterRecords with multiple chunks from same stream", () => {
@@ -104,12 +104,12 @@ describe("LogStore iterRecords edge cases", () => {
     const results = [...store.iterRecords()];
     // 10 records → 2 full chunks (4 each) + 1 partial (2)
     expect(results).toHaveLength(3);
-    expect(results[0]!.records).toHaveLength(4);
-    expect(results[1]!.records).toHaveLength(4);
-    expect(results[2]!.records).toHaveLength(2);
+    expect(results[0]?.records).toHaveLength(4);
+    expect(results[1]?.records).toHaveLength(4);
+    expect(results[2]?.records).toHaveLength(2);
     // All same streamId
-    expect(results[0]!.streamId).toBe(results[1]!.streamId);
-    expect(results[1]!.streamId).toBe(results[2]!.streamId);
+    expect(results[0]?.streamId).toBe(results[1]?.streamId);
+    expect(results[1]?.streamId).toBe(results[2]?.streamId);
   });
 });
 
@@ -148,8 +148,8 @@ describe("LogStore with TypedColumnarDrainPolicy", () => {
     const allRecords = results.flatMap((r) => r.records);
     expect(allRecords).toHaveLength(10);
     // Verify round-trip correctness
-    expect(allRecords[0]!.body).toBe("log line 0");
-    expect(allRecords[9]!.body).toBe("log line 9");
-    expect(Number(allRecords[5]!.timeUnixNano)).toBe(1000000005);
+    expect(allRecords[0]?.body).toBe("log line 0");
+    expect(allRecords[9]?.body).toBe("log line 9");
+    expect(Number(allRecords[5]?.timeUnixNano)).toBe(1000000005);
   });
 });

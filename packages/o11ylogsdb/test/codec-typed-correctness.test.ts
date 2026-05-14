@@ -248,7 +248,7 @@ describe("TypedColumnarDrainPolicy: toks in codecMeta", () => {
     expect(meta.toks).toBeDefined();
     expect(Array.isArray(meta.toks)).toBe(true);
     // Should contain literal tokens from the template (not wildcards)
-    expect(meta.toks!.length).toBeGreaterThan(0);
+    expect(meta.toks?.length).toBeGreaterThan(0);
     // "user", "logged", "in", "from" should appear as literal tokens
     const toks = meta.toks!;
     expect(toks.some((t) => t === "user" || t === "logged" || t === "in" || t === "from")).toBe(
