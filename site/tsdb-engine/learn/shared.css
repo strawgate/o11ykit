@@ -144,7 +144,8 @@ body {
   outline-offset: 2px;
 }
 
-.topnav a[aria-current="true"], .topnav a[aria-current="page"] {
+.topnav a[aria-current="true"],
+.topnav a[aria-current="page"] {
   color: var(--xp-accent-light);
   border-color: var(--xp-accent);
   background: var(--xp-accent-glow);
