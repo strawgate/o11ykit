@@ -19,7 +19,8 @@
       "!examples/demo/src/browser-scraper.ts",
       "!octo11y",
       "!packages/o11ytsdb/bench",
-      "!research"
+      "!research",
+      "!**/*.html"
     ]
   },
   "formatter": {
@@ -58,7 +59,7 @@
         "packages/o11ylogsdb/src/chunk.ts",
         "packages/o11ylogsdb/src/drain.ts",
         "packages/o11ylogsdb/bench/**",
-        "packages/o11ytsdb/test/**"
+        "packages/o11ylogsdb/test/**"
       ],
       "linter": {
         "rules": {

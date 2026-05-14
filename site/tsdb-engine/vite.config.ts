@@ -1,8 +1,34 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
+const BASE_PATH = process.env.BASE_PATH ?? "/o11ykit/tsdb-engine/";
+// Derive site root by stripping the last path segment ("tsdb-engine/")
+const SITE_ROOT = BASE_PATH.replace(/[^/]+\/$/, "") || "/";
+let cachedTopbarTemplate = readFileSync(resolve(__dirname, "learn/_topbar.html"), "utf8");
+
 export default defineConfig({
-  base: process.env.BASE_PATH ?? "/o11ykit/tsdb-engine/",
+  base: BASE_PATH,
+  plugins: [
+    {
+      name: "o11ykit-learn-topbar",
+      configureServer(server) {
+        const topbarPath = resolve(__dirname, "learn/_topbar.html");
+        server.watcher.add(topbarPath);
+        server.watcher.on("change", (file) => {
+          if (file === topbarPath) {
+            cachedTopbarTemplate = readFileSync(topbarPath, "utf8");
+            server.moduleGraph.invalidateAll();
+            server.hot.send({ type: "full-reload" });
+          }
+        });
+      },
+      transformIndexHtml(html) {
+        const learnTopbar = cachedTopbarTemplate.replaceAll("/o11ykit/", SITE_ROOT);
+        return html.replaceAll("<!-- @include learn-topbar -->", learnTopbar);
+      },
+    },
+  ],
   root: resolve(__dirname),
   resolve: {
     alias: {
