@@ -6,7 +6,7 @@
     <title>o11ylogsdb — Browser-Native Log Database Engine</title>
     <meta
       name="description"
-      content="Interactive documentation for o11ylogsdb: a browser-native log database with Drain template extraction, FSST compression, typed columnar codecs, and real-time query engine. Generate millions of logs and query them live."
+      content="Interactive documentation for o11ylogsdb: a browser-native log database with Drain templating, typed columnar codecs, and local query exploration."
     />
     <meta name="theme-color" content="#11110F" />
     <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
@@ -26,6 +26,7 @@
         <nav class="topnav" aria-label="Primary">
           <a href="/o11ykit/otlpkit-docs/">OtlpKit</a>
           <a href="/o11ykit/tsdb-engine/">TSDB Engine</a>
+          <a href="/o11ykit/charts/">Charts</a>
           <a href="/o11ykit/tracesdb-engine/">TracesDB</a>
           <a href="/o11ykit/logsdb-engine/" aria-current="page">LogsDB</a>
           <a href="/o11ykit/octo11y/">Octo11y</a>
@@ -41,7 +42,7 @@
          <p class="hero-lede">
           Generate realistic observability log datasets, inspect byte-level storage
           efficiency, and query them in real-time. Drain template extraction + typed
-          columnar codecs achieve 20–60× compression over raw OTLP/JSON.
+          columnar codecs target major storage reduction over raw OTLP/JSON.
         </p>
         <div class="hero-actions">
            <a class="stamp-fill" href="#section-dataset">Launch Live Demo ↓</a>
@@ -112,7 +113,7 @@
             <strong>How log storage works:</strong> Each service gets its own <em>stream</em>.
             Within a stream, logs are batched into <em>chunks</em> of ~1024 records.
             Drain template extraction finds repeating patterns and stores variable slots
-            in typed columnar encodings — achieving 3–17 bytes/log vs ~350 bytes raw.
+            in typed columnar encodings — for compact log storage with chunk-level summaries and typed columns.
           </div>
 
           <h3>Per-Service Storage Breakdown</h3>
@@ -129,7 +130,7 @@
           <div class="learn-callout">
             <strong>How log analysis works:</strong> The engine queries chunks using zone-map
             pruning — each chunk header stores severity and time ranges. Chunks that can't
-            match are skipped without decoding, making queries over millions of logs sub-second.
+            match are skipped without decoding, reducing query work on larger log datasets.
           </div>
 
           <div id="logs-loading" class="muted" hidden>Analyzing...</div>

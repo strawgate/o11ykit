@@ -6,7 +6,7 @@
     <title>o11ykit &middot; OTLP in. Pixels out.</title>
     <meta
       name="description"
-      content="Browser-native databases for metrics, traces, and logs. Columnar compression at sub-4 bytes per point, zero-latency cross-signal correlation, and no backend required. The observability database category the browser never had."
+      content="Browser-native databases for metrics, traces, and logs. Columnar storage, local cross-signal correlation, and no backend required. The observability database category the browser never had."
     />
     <meta name="theme-color" content="#F2EFE7" />
     <link rel="icon" href="./logo.svg" type="image/svg+xml" />
@@ -46,7 +46,7 @@
           <p class="hero-sub">
             Every observability SPA today is a dumb terminal&mdash;every pan, zoom, and filter
             round-trips to a backend. o11ykit puts a real columnar database in the browser:
-            sub-4 bytes per point, instant cross-signal correlation, zero GC pressure.
+            compact columnar storage, local cross-signal correlation, and browser-side querying.
             No Prometheus. No Elasticsearch. No backend.
           </p>
           <div class="hero-actions">
@@ -60,7 +60,7 @@
             <div class="pipeline-step pipeline-arrow-r">
               <div class="pipeline-step-num">01</div>
               <div class="pipeline-step-name">OTLP</div>
-              <div class="pipeline-step-desc">Protobuf or JSON ingest via OtlpKit</div>
+              <div class="pipeline-step-desc">JSON ingest via OtlpKit</div>
             </div>
             <div class="pipeline-step pipeline-arrow-r">
               <div class="pipeline-step-num">02</div>
@@ -113,7 +113,7 @@
             <div class="primitive-card">
               <span class="primitive-name">tsdb</span>
               <span class="primitive-signal">metrics</span>
-              <p class="primitive-desc">ALP + XOR-delta + dictionary encoding. Sub-4 bytes per sample. Columnar compression purpose-built for time-series.</p>
+              <p class="primitive-desc">ALP + XOR-delta + dictionary encoding for compact time-series storage. Columnar compression purpose-built for metrics.</p>
               <a class="primitive-link" href="/o11ykit/tsdb-engine/">demo</a>
             </div>
             <div class="primitive-card">
@@ -131,7 +131,7 @@
             <div class="primitive-card">
               <span class="primitive-name">otlpkit</span>
               <span class="primitive-signal">ingest</span>
-              <p class="primitive-desc">OTLP protobuf and JSON decoder. Zero-copy where possible. Streams directly into o11y*db columnar format.</p>
+              <p class="primitive-desc">OTLP JSON decoder. Streams directly into o11y*db columnar format.</p>
               <a class="primitive-link" href="/o11ykit/otlpkit-docs/">docs</a>
             </div>
             <div class="primitive-card">
@@ -189,7 +189,7 @@ logTable.update(logs);</pre>
                 <hr class="hair" />
                 <div>
                   <span class="tag" style="margin-bottom:6px;display:inline-block">step 3</span>
-                  <p class="t-body" style="margin:4px 0 0">Render all three panels in the same animation frame. Total latency: 0 ms network, sub-ms compute.</p>
+                  <p class="t-body" style="margin:4px 0 0">Render all three panels without network round-trips. Compute stays local to the page.</p>
                 </div>
               </div>
             </div>
