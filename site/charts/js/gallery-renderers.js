@@ -963,8 +963,8 @@ async function renderAgCharts(target, chart, generation) {
             y: {
               type: "number",
               position: "left",
-              min: isHistogram ? 0 : VALUE_DOMAIN.min,
-              max: isHistogram ? undefined : VALUE_DOMAIN.max,
+              min: isCategoryChart || isHistogram ? 0 : VALUE_DOMAIN.min,
+              max: isCategoryChart || isHistogram ? undefined : VALUE_DOMAIN.max,
             },
           },
     theme: {

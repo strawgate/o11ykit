@@ -896,6 +896,8 @@ function componentFor(libraryId, chartType) {
       line: "ResponsiveLine",
       area: "ResponsiveLine",
       bar: "ResponsiveBar",
+      latestBar: "ResponsiveBar",
+      histogram: "ResponsiveBar",
       donut: "ResponsivePie",
     },
   };

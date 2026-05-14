@@ -2,9 +2,11 @@ import {
   asEngineLatestValueModel,
   asEngineWideTableModel,
   type EngineAdapterOptions,
+  type EngineHistogramInput,
   type EngineHistogramOptions,
   type EngineLatestValueInput,
   type EngineWideTableInput,
+  isEngineHistogramModel,
 } from "./engine.js";
 import { gaugeValue, rowToRecord } from "./engine-chart-shared.js";
 
@@ -114,14 +116,23 @@ export function toAgChartsLatestValuesOptions(
 }
 
 export function toAgChartsHistogramOptions(
-  model: EngineWideTableInput,
+  model: EngineHistogramInput,
   options: EngineAdapterOptions & EngineHistogramOptions = {}
 ): AgChartsOptions {
-  const wide = asEngineWideTableModel(model, options);
+  // AG Charts performs its own binning so it needs raw values.
+  // If given a pre-binned EngineHistogramModel, synthesise individual data
+  // points from bucket midpoints so the library can re-bin them.
+  const rawData: Array<{ value: number }> = isEngineHistogramModel(model)
+    ? model.buckets.flatMap((bucket) =>
+        Array.from({ length: bucket.count }, () => ({ value: (bucket.start + bucket.end) / 2 }))
+      )
+    : asEngineWideTableModel(model, options).rows.flatMap((row) =>
+        row.values.flatMap((value) =>
+          value === null || !Number.isFinite(value) ? [] : [{ value }]
+        )
+      );
   return {
-    data: wide.rows.flatMap((row) =>
-      row.values.flatMap((value) => (value === null || !Number.isFinite(value) ? [] : [{ value }]))
-    ),
+    data: rawData,
     series: [
       {
         type: "histogram",
