@@ -12,6 +12,16 @@ export default defineConfig({
   plugins: [
     {
       name: "o11ykit-learn-topbar",
+      configureServer(server) {
+        const topbarPath = resolve(__dirname, "learn/_topbar.html");
+        server.watcher.add(topbarPath);
+        server.watcher.on("change", (file) => {
+          if (file === topbarPath) {
+            server.moduleGraph.invalidateAll();
+            server.hot.send({ type: "full-reload" });
+          }
+        });
+      },
       transformIndexHtml(html) {
         const learnTopbar = learnTopbarTemplate.replaceAll("/o11ykit/", SITE_ROOT);
         return html.replaceAll("<!-- @include learn-topbar -->", learnTopbar);
