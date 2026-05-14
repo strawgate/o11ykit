@@ -10,7 +10,6 @@ import type {
   Codec,
   InstrumentationScope,
   IntCodec,
-  InternId,
   KeyValue,
   Resource,
   SeverityText,
