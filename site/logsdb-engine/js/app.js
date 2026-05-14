@@ -32,6 +32,7 @@ let _genStats = null;
 const queryState = createQueryState();
 let lastQueryResult = null;
 let currentTab = "storage";
+let shownChunks = [];
 
 // ── DOM Helpers ───────────────────────────────────────────────────────
 
@@ -218,11 +219,10 @@ function renderStorageExplorer() {
       </tr></thead>
       <tbody>
         ${services
-          .map(
-            (s) => {
-              const ratio = Number(s.compressionRatio);
-              const barWidth = Math.min(100, ratio * 2);
-              return `<tr>
+          .map((s) => {
+            const ratio = Number(s.compressionRatio);
+            const barWidth = Math.min(100, ratio * 2);
+            return `<tr>
           <td><code>${escapeHtml(s.name)}</code></td>
           <td>${formatNum(s.logs)}</td>
           <td>${s.chunks}</td>
@@ -235,8 +235,7 @@ function renderStorageExplorer() {
             </div>
           </td>
         </tr>`;
-            }
-          )
+          })
           .join("")}
       </tbody>
     </table>`
@@ -244,17 +243,16 @@ function renderStorageExplorer() {
 
   // Chunk list with clickable cards
   const maxChunksShown = 60;
-  const shownChunks = chunks.slice(0, maxChunksShown);
+  shownChunks = chunks.slice(0, maxChunksShown);
   setHtml(
     "chunk-list",
     `<div class="chunk-grid">
       ${shownChunks
-        .map(
-          (c, i) => {
-            const sevRange = c.severityRange;
-            const sevMin = sevRange ? sevRange.min : 0;
-            const sevMax = sevRange ? sevRange.max : 0;
-            return `
+        .map((c, i) => {
+          const sevRange = c.severityRange;
+          const sevMin = sevRange ? sevRange.min : 0;
+          const sevMax = sevRange ? sevRange.max : 0;
+          return `
         <button type="button" class="chunk-card" data-index="${i}" aria-label="Inspect chunk ${c.chunkIndex} from ${c.service}">
           <div class="chunk-header">
             <span class="chunk-service">${escapeHtml(c.service)}</span>
@@ -266,21 +264,23 @@ function renderStorageExplorer() {
             <span>${c.bytesPerLog} B/log</span>
             <span>${c.compressionRatio}× ratio</span>
           </div>
-          ${sevMin > 0 ? `<div class="chunk-severity-range">
+          ${
+            sevMin > 0
+              ? `<div class="chunk-severity-range">
             <span class="sev-pill mini" style="background: ${_sevColor(sevMin)}">${_sevLabel(sevMin)}</span>
-            ${sevMin !== sevMax ? `<span class="sev-range-arrow">→</span><span class="sev-pill mini" style="background: ${_sevColor(sevMax)}">${_sevLabel(sevMax)}</span>` : ''}
-          </div>` : ''}
+            ${sevMin !== sevMax ? `<span class="sev-range-arrow">→</span><span class="sev-pill mini" style="background: ${_sevColor(sevMax)}">${_sevLabel(sevMax)}</span>` : ""}
+          </div>`
+              : ""
+          }
           <div class="chunk-bar" style="--ratio: ${Math.min(1, Number(c.bytesPerLog) / 30)}">
             <div class="chunk-bar-fill"></div>
           </div>
         </button>`;
-          }
-        )
+        })
         .join("")}
     </div>
     ${chunks.length > maxChunksShown ? `<p class="muted">Showing ${maxChunksShown} of ${chunks.length} chunks</p>` : ""}`
   );
-
 }
 
 function initChunkList() {
@@ -306,12 +306,13 @@ function showChunkDetail(chunk) {
   const sevRange = chunk.severityRange;
   const timeMin = chunk.timeRange?.min;
   const timeMax = chunk.timeRange?.max;
-  const timeStr = timeMin && timeMax
-    ? `${new Date(Number(BigInt(timeMin) / 1_000_000n)).toISOString().slice(11, 23)} → ${new Date(Number(BigInt(timeMax) / 1_000_000n)).toISOString().slice(11, 23)}`
-    : "unknown";
+  const timeStr =
+    timeMin != null && timeMax != null
+      ? `${new Date(Number(BigInt(timeMin) / 1_000_000n)).toISOString().slice(11, 23)} → ${new Date(Number(BigInt(timeMax) / 1_000_000n)).toISOString().slice(11, 23)}`
+      : "unknown";
 
   // Build a visual byte breakdown
-  const payloadPct = chunk.totalBytes > 0 ? ((chunk.payloadBytes / chunk.totalBytes) * 100) : 0;
+  const payloadPct = chunk.totalBytes > 0 ? (chunk.payloadBytes / chunk.totalBytes) * 100 : 0;
   const headerPct = 100 - payloadPct;
 
   panel.innerHTML = `
@@ -344,21 +345,25 @@ function showChunkDetail(chunk) {
       <code>${timeStr}</code>
     </div>
 
-    ${sevRange ? `<div class="chunk-detail-section">
+    ${
+      sevRange
+        ? `<div class="chunk-detail-section">
       <strong>Severity Range</strong>
       <span class="sev-pill mini" style="background: ${_sevColor(sevRange.min)}">${_sevLabel(sevRange.min)}</span>
-      ${sevRange.min !== sevRange.max ? `→ <span class="sev-pill mini" style="background: ${_sevColor(sevRange.max)}">${_sevLabel(sevRange.max)}</span>` : ''}
+      ${sevRange.min !== sevRange.max ? `→ <span class="sev-pill mini" style="background: ${_sevColor(sevRange.max)}">${_sevLabel(sevRange.max)}</span>` : ""}
       <span class="muted-inline">(zone map enables severity-based chunk pruning)</span>
-    </div>` : ''}
+    </div>`
+        : ""
+    }
 
     <div class="chunk-detail-section">
       <strong>Byte Layout</strong>
       <div class="byte-layout-bar">
         <div class="byte-segment header-seg" style="width:${Math.max(2, headerPct)}%" title="Header: ~${formatBytes(chunk.headerBytes)}">
-          ${headerPct > 15 ? `Header` : ''}
+          ${headerPct > 15 ? `Header` : ""}
         </div>
         <div class="byte-segment payload-seg" style="width:${Math.max(2, payloadPct)}%" title="Payload: ${formatBytes(chunk.payloadBytes)}">
-          ${payloadPct > 15 ? `Payload` : ''}
+          ${payloadPct > 15 ? `Payload` : ""}
         </div>
       </div>
       <div class="byte-layout-legend">
@@ -417,11 +422,11 @@ function renderLogsExplorer() {
     setHtml(
       "service-health",
       analysis.services
-        .map(
-          (s) => {
-            const errPct = Number(s.errorRate);
-            const healthClass = errPct > 10 ? "service-critical" : errPct > 5 ? "service-unhealthy" : "";
-            return `
+        .map((s) => {
+          const errPct = Number(s.errorRate);
+          const healthClass =
+            errPct > 10 ? "service-critical" : errPct > 5 ? "service-unhealthy" : "";
+          return `
         <div class="service-card ${healthClass}">
           <div class="service-name">${escapeHtml(s.name)}</div>
           <div class="service-stats">
@@ -433,8 +438,7 @@ function renderLogsExplorer() {
             <div class="service-error-bar-fill"></div>
           </div>
         </div>`;
-          }
-        )
+        })
         .join("")
     );
 
@@ -447,7 +451,7 @@ function renderLogsExplorer() {
             .slice(0, 10)
             .map(
               (e) => `
-            <button type="button" class="error-item error-item-btn" data-body="${escapeHtml(e.body.slice(0, 40)).replace(/"/g, '&quot;')}" aria-label="Search for this error pattern">
+            <button type="button" class="error-item error-item-btn" data-body="${escapeHtml(e.body.slice(0, 40)).replace(/"/g, "&quot;")}" aria-label="Search for this error pattern">
               <div class="error-body"><code>${escapeHtml(e.body.slice(0, 120))}</code></div>
               <div class="error-meta">
                 <span class="error-count">${e.count}× occurrences</span>
