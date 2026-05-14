@@ -25,11 +25,6 @@ import type { KeyValue, SpanEvent, SpanLink, SpanRecord, StatusCode } from "./ty
 
 // ─── Dictionary builder ──────────────────────────────────────────────
 
-interface DictWithIndex {
-  dict: string[];
-  index: Map<string, number>;
-}
-
 // Collect attribute keys/values without intermediate array allocations
 function collectAttrKeys(spans: readonly SpanRecord[]): Iterable<string> {
   return {
