@@ -35,8 +35,8 @@ describe("query: raw byte scan edge cases", () => {
     const store = makeStore(records);
     const { records: hits } = query(store, { bodyContains: "🚀" });
     expect(hits).toHaveLength(2);
-    expect(hits[0]!.body).toContain("🚀");
-    expect(hits[1]!.body).toContain("🚀");
+    expect(hits[0]?.body).toContain("🚀");
+    expect(hits[1]?.body).toContain("🚀");
   });
 
   it("CJK multi-byte needle works", () => {
@@ -55,7 +55,7 @@ describe("query: raw byte scan edge cases", () => {
     const store = makeStore(records);
     const { records: hits } = query(store, { bodyContains: "ERROR" });
     expect(hits).toHaveLength(1);
-    expect(hits[0]!.body).toBe("ERROR: something broke");
+    expect(hits[0]?.body).toBe("ERROR: something broke");
   });
 
   it("needle at exact end of body matches", () => {
@@ -91,7 +91,7 @@ describe("query: raw byte scan edge cases", () => {
     const { records: hits } = query(store, { bodyContains: "match" });
     // Only the string-body record matches
     expect(hits).toHaveLength(1);
-    expect(hits[0]!.body).toBe("match me too");
+    expect(hits[0]?.body).toBe("match me too");
   });
 });
 
@@ -194,7 +194,7 @@ describe("query: time range boundary precision", () => {
     const store = makeStore(records);
     const { records: hits } = query(store, { range: { from: 200n, to: 250n } });
     expect(hits).toHaveLength(1);
-    expect(hits[0]!.body).toBe("exact");
+    expect(hits[0]?.body).toBe("exact");
   });
 
   it("range.to is exclusive", () => {
@@ -206,7 +206,7 @@ describe("query: time range boundary precision", () => {
     const store = makeStore(records);
     const { records: hits } = query(store, { range: { from: 100n, to: 200n } });
     expect(hits).toHaveLength(1);
-    expect(hits[0]!.body).toBe("before");
+    expect(hits[0]?.body).toBe("before");
   });
 
   it("chunk boundary: maxNano === range.from passes pruning", () => {
@@ -218,7 +218,7 @@ describe("query: time range boundary precision", () => {
     // range.from = 31000 (the maxNano of chunk 1)
     const { records: hits, stats } = query(store, { range: { from: 31000n, to: 32000n } });
     expect(hits).toHaveLength(1);
-    expect(hits[0]!.body).toBe("line 31");
+    expect(hits[0]?.body).toBe("line 31");
     // Both chunks should be visited (chunk1 has maxNano=31000 === range.from)
     expect(stats.chunksPruned).toBe(1); // chunk2 pruned (minNano=32000 >= to=32000)
   });

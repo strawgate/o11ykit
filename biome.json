@@ -58,6 +58,7 @@
         "packages/o11ylogsdb/src/chunk.ts",
         "packages/o11ylogsdb/src/drain.ts",
         "packages/o11ylogsdb/bench/**",
+        "packages/o11ylogsdb/test/**",
         "packages/o11ytsdb/test/**"
       ],
       "linter": {

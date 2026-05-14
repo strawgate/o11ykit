@@ -54,8 +54,8 @@ describe("decodeFilteredByBodyNeedle: correctness", () => {
     const filtered = readRecordsFilteredFromRaw(raw, chunk.header, "connection", policy);
     const matches = filtered.filter((r) => r !== undefined);
     expect(matches).toHaveLength(2);
-    expect(matches[0]!.body).toContain("connection");
-    expect(matches[1]!.body).toContain("connection");
+    expect(matches[0]?.body).toContain("connection");
+    expect(matches[1]?.body).toContain("connection");
   });
 
   it("returns empty sparse array when no bodies match", () => {
@@ -103,7 +103,7 @@ describe("decodeFilteredByBodyNeedle: correctness", () => {
     expect(match.body).toBe("error in handler");
     expect(match.severityText).toBe("WARN");
     expect(match.attributes).toHaveLength(1);
-    expect(match.attributes[0]!.key).toBe("method");
+    expect(match.attributes[0]?.key).toBe("method");
     expect(match.traceId).toBeDefined();
     expect(match.spanId).toBeDefined();
   });
@@ -153,9 +153,9 @@ describe("decodeFilteredByBodyNeedle: correctness", () => {
 
     expect(filteredRecords).toHaveLength(allRecords.length);
     for (let i = 0; i < allRecords.length; i++) {
-      expect(filteredRecords[i]!.body).toBe(allRecords[i]!.body);
-      expect(filteredRecords[i]!.timeUnixNano).toBe(allRecords[i]!.timeUnixNano);
-      expect(filteredRecords[i]!.severityNumber).toBe(allRecords[i]!.severityNumber);
+      expect(filteredRecords[i]?.body).toBe(allRecords[i]?.body);
+      expect(filteredRecords[i]?.timeUnixNano).toBe(allRecords[i]?.timeUnixNano);
+      expect(filteredRecords[i]?.severityNumber).toBe(allRecords[i]?.severityNumber);
     }
   });
 });
@@ -202,7 +202,7 @@ describe("decodeFilteredByBodyNeedle: template-literal shortcut", () => {
     const filtered = readRecordsFilteredFromRaw(raw, chunk.header, "admin", policy);
     const matches = filtered.filter((r) => r !== undefined);
     expect(matches).toHaveLength(1);
-    expect(matches[0]!.body).toContain("admin");
+    expect(matches[0]?.body).toContain("admin");
   });
 });
 
@@ -226,7 +226,7 @@ describe("decodeFilteredByBodyNeedle: non-string bodies", () => {
     const matches = filtered.filter((r) => r !== undefined);
     // Only the string body "text with map in it" should match
     expect(matches).toHaveLength(1);
-    expect(matches[0]!.body).toBe("text with map in it");
+    expect(matches[0]?.body).toBe("text with map in it");
   });
 });
 
