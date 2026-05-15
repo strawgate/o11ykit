@@ -24,7 +24,7 @@ executor that never materializes proportional-to-N.
 | **M2 — Drain template extractor** | **graduated** to `packages/o11y-codec-rt/drain/`. ARI = 1.0 vs the published Python reference on five public log corpora. TS port at `src/drain.ts` is bit-identical and integrated via `DrainChunkPolicy`, `ColumnarDrainPolicy`, `TypedColumnarDrainPolicy`. Configurable masker + persistable state pending — see [`dev-docs/drain-prototype.md`](./dev-docs/drain-prototype.md). |
 | **M3 — Per-stream chunk format** | **scaffolded** (`src/chunk.ts` v1 wire format, `src/stream.ts` registry, `ChunkPolicy` plug-in surface with preEncode/postDecode + codecMeta round-trip). Per-column refinement pending. |
 | **M4 — Per-column codec dispatch** | **first cut shipped** (`ColumnarDrainPolicy`, `ColumnarRawPolicy`, `TypedColumnarDrainPolicy`). Per-column codec specialization (ALP for ints, FSST for strings, BF16 for identifiers) pending. |
-| M5 — OTLP logs ingest pipeline | not started |
+| **M5 — OTLP logs ingest pipeline** | **shipped** (`src/ingest.ts`). `ingestOtlpLogs(store, doc)` walks the OTLP JSON envelope, converts types, appends to LogStore. `iterOtlpLogRecords(doc)` streaming variant. `attributeEquals` query predicate also added. |
 | M6 — Indexes | severity zone-map shipped; BF8 / BF16 / Roaring-lite pending |
 | **M7 — Streaming query executor** | **first cut shipped** (`src/query.ts` streaming executor with chunk-level pruning by zone-map and severity range; `src/compact.ts` re-encodes chunks to a different policy). Builder API + cache pending. |
 | M8 — Worker isolation + public API | not started |

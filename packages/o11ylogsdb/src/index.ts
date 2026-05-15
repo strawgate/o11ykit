@@ -51,6 +51,8 @@ export {
 } from "./drain.js";
 export type { IngestStats, LogStoreConfig, StoreStats } from "./engine.js";
 export { LogStore } from "./engine.js";
+export type { IngestResult, OtlpLogsDocument } from "./ingest.js";
+export { ingestOtlpLogs, iterOtlpLogRecords } from "./ingest.js";
 export type { QueryResult, QuerySpec, QueryStats } from "./query.js";
 export { query, queryStream } from "./query.js";
 export { StreamRegistry } from "./stream.js";
