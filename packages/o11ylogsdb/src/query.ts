@@ -67,6 +67,12 @@ export interface QuerySpec {
    * needed for failures.
    */
   resourceEquals?: Record<string, string>;
+  /**
+   * Log-record attribute equality filters. Each (key, value) pair must
+   * match in the record's `attributes` array for the record to pass.
+   * Per-record post-decode check (no index acceleration yet).
+   */
+  attributeEquals?: Record<string, string | number | boolean>;
   /** Maximum records to emit. */
   limit?: number;
 }
@@ -171,12 +177,14 @@ export function* queryStream(
         for (let i = 0; i < filtered.length; i++) {
           const record = filtered[i];
           if (record === undefined) continue;
-          // Body already verified; still check time range + severity
+          // Body already verified; still check time range + severity + attributes
           if (spec.range) {
             if (record.timeUnixNano < spec.range.from) continue;
             if (record.timeUnixNano >= spec.range.to) continue;
           }
           if (spec.severityGte !== undefined && record.severityNumber < spec.severityGte) continue;
+          if (spec.attributeEquals !== undefined && !attributeMatches(record, spec.attributeEquals))
+            continue;
           stats.recordsEmitted++;
           yield record;
           emitted++;
@@ -316,6 +324,27 @@ function recordMatches(record: LogRecord, spec: QuerySpec): boolean {
       const actual = leafGet(body as Record<string, unknown>, path);
       if (actual !== expected) return false;
     }
+  }
+  if (spec.attributeEquals !== undefined) {
+    if (!attributeMatches(record, spec.attributeEquals)) return false;
+  }
+  return true;
+}
+
+/** Check if record.attributes contains all specified key-value pairs. */
+function attributeMatches(
+  record: LogRecord,
+  attrSpec: Record<string, string | number | boolean>
+): boolean {
+  for (const [key, expected] of Object.entries(attrSpec)) {
+    let found = false;
+    for (const kv of record.attributes) {
+      if (kv.key === key && kv.value === expected) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
   }
   return true;
 }

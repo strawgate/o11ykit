@@ -120,9 +120,10 @@ export class LogStore {
       builder = new ChunkBuilder(resource, scope, this.policyFor(id), this.registry);
       this.inflight.set(id, builder);
     }
-    // Body classifier output is currently only consumed by future codec
-    // policies; we still call it so plugged-in classifiers can record state.
-    void this.classifier.classify(record);
+    // Note: body classification is handled internally by each policy
+    // (e.g. DrainChunkPolicy calls drain.matchOrAdd() during encode).
+    // The engine-level classifier is available for external consumers
+    // who need pre-classification stats but is not part of the codec path.
     builder.append(record);
     if (builder.size() >= this.rowsPerChunk) {
       this.streams.appendChunk(id, builder.freeze());
