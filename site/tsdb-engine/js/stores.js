@@ -1,8 +1,8 @@
 // ── Storage Backends ────────────────────────────────────────────────
 
 import {
-  ReferenceColumnStore as _ReferenceColumnStore,
   FlatStore as _FlatStore,
+  ReferenceColumnStore as _ReferenceColumnStore,
   RowGroupStore as _RowGroupStore,
   initWasmCodecs,
 } from "o11ytsdb";
