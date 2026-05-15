@@ -1,10 +1,9 @@
 import {
-  toRechartsViewHistogramData,
-  toRechartsViewLatestValuesData,
-  toRechartsViewTimeSeriesData,
+  toRechartsHistogramData,
+  toRechartsLatestValuesData,
+  toRechartsTimeSeriesData,
 } from "@otlpkit/adapters/recharts";
-import { toUPlotViewTimeSeriesArgs } from "@otlpkit/adapters/uplot";
-import { buildHistogramFrame, buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
+import { toUPlotTimeSeriesArgs } from "@otlpkit/adapters/uplot";
 import type { JSX } from "react";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -22,43 +21,23 @@ import {
 import uPlot, { type AlignedData, type Options, type Series } from "uplot";
 import "uplot/dist/uPlot.min.css";
 
-import { demoMetricsDocument } from "./demo-data.js";
+import { queryMetric } from "./demo-store.js";
 import "./styles.css";
 
-const inflightFrame = buildTimeSeriesFrame(demoMetricsDocument, {
-  metricName: "checkout.inflight_requests",
-  intervalMs: 1000,
-  splitBy: "route",
-  title: "Checkout inflight requests",
-});
-const retryFrame = buildTimeSeriesFrame(demoMetricsDocument, {
-  metricName: "checkout.retry_rate",
-  intervalMs: 1000,
-  splitBy: "route",
-  title: "Retry-rate turbulence",
-});
-const errorFrame = buildLatestValuesFrame(demoMetricsDocument, {
-  metricName: "checkout.error_rate",
-  splitBy: "route",
-  title: "Final route error rates",
-});
-const durationFrame = buildHistogramFrame(demoMetricsDocument, {
-  metricName: "checkout.request.duration_ms",
-  title: "Request latency shape",
-  binCount: 7,
-});
-const collectorPulseFrame = buildTimeSeriesFrame(demoMetricsDocument, {
-  metricName: "collector.cpu_percent",
-  intervalMs: 1000,
-  splitBy: "pod",
-  title: "Collector heartbeat",
-});
+// Query the RowGroupStore via ScanEngine for each metric
+const inflightResult = queryMetric("checkout.inflight_requests");
+const retryResult = queryMetric("checkout.retry_rate");
+const errorResult = queryMetric("checkout.error_rate");
+const durationResult = queryMetric("checkout.request.duration_ms");
+const cpuResult = queryMetric("collector.cpu_percent");
 
-const inflightModel = toRechartsViewTimeSeriesData(inflightFrame);
-const retryModel = toRechartsViewTimeSeriesData(retryFrame);
-const errorModel = toRechartsViewLatestValuesData(errorFrame);
-const durationModel = toRechartsViewHistogramData(durationFrame);
-const collectorPulseModel = toUPlotViewTimeSeriesArgs(collectorPulseFrame);
+const adapterOpts = { timestampUnit: "nanoseconds" as const };
+
+const inflightModel = toRechartsTimeSeriesData(inflightResult, adapterOpts);
+const retryModel = toRechartsTimeSeriesData(retryResult, adapterOpts);
+const errorModel = toRechartsLatestValuesData(errorResult, adapterOpts);
+const durationModel = toRechartsHistogramData(durationResult, { ...adapterOpts, bucketCount: 7 });
+const collectorPulseModel = toUPlotTimeSeriesArgs(cpuResult, adapterOpts);
 
 const routeKeys = inflightModel.series.map((series) => series.dataKey);
 const peakInflight = inflightModel.data.reduce((peak, row) => {
@@ -68,23 +47,41 @@ const peakInflight = inflightModel.data.reduce((peak, row) => {
   }, 0);
   return Math.max(peak, total);
 }, 0);
-const highestErrorRoute = errorFrame.rows.reduce<(typeof errorFrame.rows)[number] | null>(
-  (worst, row) => (!worst || row.value > worst.value ? row : worst),
+const highestErrorRoute = errorModel.data.reduce<(typeof errorModel.data)[number] | null>(
+  (worst, row) => {
+    const currentVal = typeof row.value === "number" ? row.value : 0;
+    const worstVal = worst ? (typeof worst.value === "number" ? worst.value : 0) : 0;
+    return !worst || currentVal > worstVal ? row : worst;
+  },
   null
 );
-const retrySamples = retryFrame.series.flatMap((series) => series.points);
+const retryValues = retryModel.data.flatMap((row) =>
+  retryModel.series.map((s) => {
+    const v = row[s.dataKey];
+    return typeof v === "number" ? v : 0;
+  })
+);
 const averageRetryRate =
-  retrySamples.length > 0
-    ? retrySamples.reduce((sum, point) => sum + point.value, 0) / retrySamples.length
-    : 0;
-const modalLatencyBin = durationFrame.bins.reduce<(typeof durationFrame.bins)[number] | null>(
-  (mostFrequent, bin) => (!mostFrequent || bin.count > mostFrequent.count ? bin : mostFrequent),
+  retryValues.length > 0 ? retryValues.reduce((s, v) => s + v, 0) / retryValues.length : 0;
+const modalLatencyBin = durationModel.data.reduce<(typeof durationModel.data)[number] | null>(
+  (mostFrequent, bin) => {
+    const currentCount = typeof bin.count === "number" ? bin.count : 0;
+    const bestCount = mostFrequent
+      ? typeof mostFrequent.count === "number"
+        ? mostFrequent.count
+        : 0
+      : 0;
+    return !mostFrequent || currentCount > bestCount ? bin : mostFrequent;
+  },
   null
 );
 const healthScore = Math.max(
   0,
   Math.round(
-    100 - peakInflight * 0.23 - (highestErrorRoute?.value ?? 0) * 8 - averageRetryRate * 14
+    100 -
+      peakInflight * 0.23 -
+      (typeof highestErrorRoute?.value === "number" ? highestErrorRoute.value : 0) * 8 -
+      averageRetryRate * 14
   )
 );
 
@@ -227,7 +224,7 @@ function App(): JSX.Element {
         <StoryStat label="Peak inflight load" value={`${peakInflight} requests`} />
         <StoryStat
           label="Highest error route"
-          value={`${highestErrorRoute?.label ?? "unknown"} (${(highestErrorRoute?.value ?? 0).toFixed(1)}%)`}
+          value={`${highestErrorRoute?.label ?? "unknown"} (${(typeof highestErrorRoute?.value === "number" ? highestErrorRoute.value : 0).toFixed(1)}%)`}
         />
         <StoryStat label="Mean retry rate" value={`${averageRetryRate.toFixed(2)}%`} />
         <StoryStat label="Incident health score" value={`${healthScore}/100`} />
@@ -362,8 +359,8 @@ function App(): JSX.Element {
       </section>
 
       <footer className="footer-note">
-        Data source: synthetic OTLP metrics in <code>examples/demo/src/demo-data.ts</code>. Advanced
-        pattern: processor + ring buffer diagnostics API.
+        Data source: deterministic metrics in <code>examples/demo/src/demo-store.ts</code>, stored
+        in a RowGroupStore and queried via ScanEngine.
       </footer>
     </main>
   );

@@ -1,9 +1,8 @@
 import {
-  toRechartsViewHistogramData,
-  toRechartsViewLatestValuesData,
-  toRechartsViewTimeSeriesData,
+  toRechartsHistogramData,
+  toRechartsLatestValuesData,
+  toRechartsTimeSeriesData,
 } from "@otlpkit/adapters/recharts";
-import { buildHistogramFrame, buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
 import type { JSX } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -19,27 +18,14 @@ import {
   YAxis,
 } from "recharts";
 
-import { sampleMetricsDocument } from "../../shared/sample.js";
+import { query } from "../../shared/store.js";
 
-const frame = buildTimeSeriesFrame(sampleMetricsDocument, {
-  metricName: "logfwd.inflight_batches",
-  intervalMs: 1000,
-  splitBy: "output",
-  title: "Inflight batches by output",
-});
-const latestValuesFrame = buildLatestValuesFrame(sampleMetricsDocument, {
-  metricName: "logfwd.inflight_batches",
-  splitBy: "output",
-  title: "Latest inflight batches by output",
-});
-const histogramFrame = buildHistogramFrame(sampleMetricsDocument, {
-  metricName: "logfwd.output.duration",
-  title: "Output duration histogram",
-  binCount: 6,
-});
-const timeSeriesModel = toRechartsViewTimeSeriesData(frame);
-const latestValuesModel = toRechartsViewLatestValuesData(latestValuesFrame);
-const histogramModel = toRechartsViewHistogramData(histogramFrame);
+// Query the RowGroupStore via ScanEngine
+const result = query();
+
+const timeSeriesModel = toRechartsTimeSeriesData(result, { timestampUnit: "nanoseconds" });
+const latestValuesModel = toRechartsLatestValuesData(result, { timestampUnit: "nanoseconds" });
+const histogramModel = toRechartsHistogramData(result, { timestampUnit: "nanoseconds" });
 
 function App(): JSX.Element {
   return (
@@ -78,11 +64,7 @@ function App(): JSX.Element {
               <YAxis unit={latestValuesModel.unit ?? ""} />
               <Tooltip />
               <Legend />
-              <Bar
-                dataKey={latestValuesModel.valueKey}
-                fill="#4c8bf5"
-                name={latestValuesFrame.title}
-              />
+              <Bar dataKey={latestValuesModel.valueKey} fill="#4c8bf5" name="Latest duration" />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -97,7 +79,7 @@ function App(): JSX.Element {
               <YAxis unit={histogramModel.unit ?? ""} />
               <Tooltip />
               <Legend />
-              <Bar dataKey={histogramModel.valueKey} fill="#0f9d58" name={histogramFrame.title} />
+              <Bar dataKey={histogramModel.valueKey} fill="#0f9d58" name="Duration histogram" />
             </BarChart>
           </ResponsiveContainer>
         </div>

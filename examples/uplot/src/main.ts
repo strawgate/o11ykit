@@ -1,9 +1,8 @@
-import { toUPlotViewLatestValuesArgs, toUPlotViewTimeSeriesArgs } from "@otlpkit/adapters/uplot";
-import { buildLatestValuesFrame, buildTimeSeriesFrame } from "@otlpkit/views";
+import { toUPlotLatestValuesArgs, toUPlotTimeSeriesArgs } from "@otlpkit/adapters/uplot";
 import uPlot, { type AlignedData, type Options, type Series } from "uplot";
 import "uplot/dist/uPlot.min.css";
 
-import { sampleMetricsDocument } from "../../shared/sample.js";
+import { query } from "../../shared/store.js";
 
 function requireContainer(selector: string): HTMLDivElement {
   const container = document.querySelector<HTMLDivElement>(selector);
@@ -13,20 +12,17 @@ function requireContainer(selector: string): HTMLDivElement {
   return container;
 }
 
-const timeSeriesFrame = buildTimeSeriesFrame(sampleMetricsDocument, {
-  metricName: "logfwd.inflight_batches",
-  intervalMs: 1000,
-  splitBy: "output",
-  title: "Inflight batches by output",
-});
-const latestValuesFrame = buildLatestValuesFrame(sampleMetricsDocument, {
-  metricName: "logfwd.inflight_batches",
-  splitBy: "output",
-  title: "Latest inflight batches by output",
-});
+// Query the RowGroupStore via ScanEngine
+const result = query();
 
-const timeSeriesModel = toUPlotViewTimeSeriesArgs(timeSeriesFrame);
-const latestValuesModel = toUPlotViewLatestValuesArgs(latestValuesFrame);
+const timeSeriesModel = toUPlotTimeSeriesArgs(result, {
+  timestampUnit: "nanoseconds",
+  title: "HTTP request duration by route",
+});
+const latestValuesModel = toUPlotLatestValuesArgs(result, {
+  timestampUnit: "nanoseconds",
+  title: "Latest values by route",
+});
 
 const timeSeriesOptions: Options = {
   width: 960,
