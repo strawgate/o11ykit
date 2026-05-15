@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bloom Filters — Interactive Experience | o11ytracesdb</title>
-    <meta name="description" content="Add trace IDs to a bloom filter, watch bits light up, and see how O(1) lookups let a traces database skip chunks without scanning." />
+    <meta name="description" content="Add trace IDs to a bloom filter, watch bits light up, and see how fast lookups let a traces database skip chunks without scanning." />
     <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/o11ykit/styles.css" />
     <style>
@@ -237,7 +237,7 @@
         <h1>Bloom Filters</h1>
         <p class="lede">
           A <strong>bloom filter</strong> is a compact bit array that answers "Is this item in the set?"
-          in O(1) time. It can say <strong>"definitely not"</strong> or <strong>"probably yes"</strong>
+          in constant time. It can say <strong>"definitely not"</strong> or <strong>"probably yes"</strong>
           — but never gives a false negative. In a traces database, each chunk carries a bloom filter
           for its trace IDs. Looking up a trace? Check each chunk's filter in microseconds and skip
           the ones that definitely don't contain it.

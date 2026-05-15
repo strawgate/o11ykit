@@ -89,8 +89,8 @@
             <span class="stat-label">per data point</span>
           </div>
           <div class="stat">
-            <span class="stat-value">10-15x</span>
-            <span class="stat-label">less memory than JS objects</span>
+            <span class="stat-value">Columnar</span>
+            <span class="stat-label">typed-array storage, no GC pressure</span>
           </div>
           <div class="stat">
             <span class="stat-value">Local</span>
@@ -119,14 +119,14 @@
             <div class="primitive-card">
               <span class="primitive-name">tracesdb</span>
               <span class="primitive-signal">traces</span>
-              <p class="primitive-desc">Dictionary encoding collapses 90%+ of span strings. Typed-array parent-child indices for SIMD-friendly critical-path computation.</p>
+              <p class="primitive-desc">Dictionary encoding collapses 90%+ of span strings. Typed-array nested-set indices for fast structural queries without tree traversal.</p>
               <a class="primitive-link" href="/o11ykit/tracesdb-engine/">demo</a>
             </div>
             <div class="primitive-card">
               <span class="primitive-name">logsdb</span>
               <span class="primitive-signal">logs</span>
               <p class="primitive-desc">Drain3-style template extraction collapses string columns 5-10x. Turns unique messages into template_id + params.</p>
-              <a class="primitive-link" href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">source</a>
+              <a class="primitive-link" href="/o11ykit/logsdb-engine/">demo</a>
             </div>
             <div class="primitive-card">
               <span class="primitive-name">otlpkit</span>
@@ -167,7 +167,8 @@ const spans  = tracesdb.query({
   end:   window.end
 });
 const logs   = logsdb.query({
-  traceIds: spans.traceIds
+  start: window.start,
+  end:   window.end
 });
 
 <span class="code-comment">// 3. Render: zero network calls</span>
@@ -274,7 +275,7 @@ logTable.update(logs);</pre>
           <ul>
             <li><a href="/o11ykit/tsdb-engine/">tsdb</a></li>
             <li><a href="/o11ykit/tracesdb-engine/">tracesdb</a></li>
-            <li><a href="https://github.com/strawgate/o11ykit" target="_blank" rel="noreferrer">logsdb</a></li>
+            <li><a href="/o11ykit/logsdb-engine/">logsdb</a></li>
             <li><a href="/o11ykit/otlpkit-docs/">otlpkit</a></li>
             <li><a href="/o11ykit/benchkit/">benchkit</a></li>
           </ul>
