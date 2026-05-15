@@ -318,13 +318,13 @@ async function main() {
 
   console.log("  Loading WASM codecs...");
   const { alpValuesCodec, tsCodec, alpRangeCodec } = await makeWasmCodecs();
-  const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+  const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
   const { ScanEngine } = await import(join(pkgDir, "dist/query.js"));
 
   const engine = new ScanEngine();
 
   console.log("  Ingesting into column-alp-fused store...");
-  const store = new ColumnStore(
+  const store = new ReferenceColumnStore(
     alpValuesCodec,
     CHUNK_SIZE,
     () => 0,

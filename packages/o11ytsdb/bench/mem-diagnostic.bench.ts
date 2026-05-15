@@ -66,12 +66,12 @@ async function main(): Promise<void> {
 
   // ── Create store ──
 
-  const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
+  const { ReferenceColumnStore } = await import(pkgPath("dist/reference-column-store.js"));
   const alpVals = makeALPValuesCodec(wasm);
   const wasmTs = makeTimestampCodec(wasm);
   const rangeCodec = makeALPRangeCodec(wasm);
 
-  const store: StorageBackend = new ColumnStore(
+  const store: StorageBackend = new ReferenceColumnStore(
     {
       name: "alp-range",
       encodeValues: alpVals.encodeValues,

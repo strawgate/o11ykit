@@ -579,7 +579,7 @@ function fmtBytes(n) {
 // ── Main benchmark ───────────────────────────────────────────────────
 
 async function main() {
-  const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+  const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
   const { ScanEngine } = await import(join(pkgDir, "dist/query.js"));
 
   const wasm = await loadWasm();
@@ -645,7 +645,7 @@ async function main() {
   const populated = [];
 
   for (const cfg of configs) {
-    const store = new ColumnStore(
+    const store = new ReferenceColumnStore(
       cfg.valuesCodec,
       CHUNK_SIZE,
       () => 0,
@@ -670,7 +670,7 @@ async function main() {
     // Manual timing: ingest INGEST_ITERATIONS times with fresh stores.
     const ingestTimings = new Float64Array(INGEST_ITERATIONS);
     for (let iter = 0; iter < INGEST_ITERATIONS; iter++) {
-      const freshStore = new ColumnStore(
+      const freshStore = new ReferenceColumnStore(
         cfg.valuesCodec,
         CHUNK_SIZE,
         () => 0,

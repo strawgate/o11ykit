@@ -241,12 +241,12 @@ function fmtMs(n) {
 // ── Run one configuration ────────────────────────────────────────────
 
 async function runConfig(chunkSize, data, codecs, useFused, makeGrouper, totalPts, queryRange) {
-  const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+  const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
   const { alpValuesCodec, tsCodec, alpRangeCodec } = codecs;
 
   const store = useFused
-    ? new ColumnStore(alpValuesCodec, chunkSize, makeGrouper(), undefined, tsCodec, alpRangeCodec)
-    : new ColumnStore(alpValuesCodec, chunkSize, makeGrouper(), undefined, tsCodec);
+    ? new ReferenceColumnStore(alpValuesCodec, chunkSize, makeGrouper(), undefined, tsCodec, alpRangeCodec)
+    : new ReferenceColumnStore(alpValuesCodec, chunkSize, makeGrouper(), undefined, tsCodec);
 
   // Register series.
   const ids = [];

@@ -211,7 +211,7 @@ async function main() {
 
   const wasmBytes = loadWasmSync();
   const { alpValuesCodec, tsCodec } = await makeWasmCodecs(wasmBytes);
-  const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+  const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
   const { ScanEngine } = await import(join(pkgDir, "dist/query.js"));
   const engine = new ScanEngine();
 
@@ -226,7 +226,7 @@ async function main() {
   const TOTAL = NUM_SERIES * PPS;
 
   const data = generateData(NUM_SERIES, PPS);
-  const store = new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec);
+  const store = new ReferenceColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec);
   const ids = ingestData(store, data);
 
   const qStart = T0;
@@ -400,7 +400,7 @@ async function main() {
     for (const { series, pps } of matrix) {
       const total = series * pps;
       const data = generateData(series, pps);
-      const s = new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec);
+      const s = new ReferenceColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec);
 
       if (hasGC) global.gc();
       const t0 = performance.now();
