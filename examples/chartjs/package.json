@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@otlpkit/adapters": "file:../../packages/adapters",
-    "@otlpkit/views": "file:../../packages/views",
+    "o11ytsdb": "file:../../packages/o11ytsdb",
     "chart.js": "^4.5.1"
   }
 }

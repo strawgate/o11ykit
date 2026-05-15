@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@otlpkit/adapters": "file:../../packages/adapters",
-    "@otlpkit/views": "file:../../packages/views",
+    "o11ytsdb": "file:../../packages/o11ytsdb",
     "react": "^19.2.6",
     "react-dom": "^19.2.5",
     "recharts": "^3.8.1"
