@@ -62,7 +62,7 @@
             <span class="hero-stat-label">String compression via dictionaries</span>
           </div>
           <div class="hero-stat">
-            <span class="hero-stat-value">O(1)</span>
+            <span class="hero-stat-value">Fast</span>
             <span class="hero-stat-label">Structural queries via nested sets</span>
           </div>
         </div>
@@ -83,7 +83,7 @@
           Dictionary encoding collapses repetitive strings (service names, operations, HTTP methods)
           to 8–16 bit integers — a 90%+ reduction. Nested set encoding turns parent-child relationships
           into integer indices in typed arrays, making structural queries a simple array comparison
-          instead of tree traversal. Bloom filters accelerate trace ID lookups to O(1).
+          instead of tree traversal. Bloom filters accelerate trace ID lookups with sub-microsecond probes.
         </p>
         <div class="pipeline" aria-label="Data flow">
           <div class="pipeline-stage accent-otlp">

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nested Set Encoding — Interactive Experience | o11ytracesdb</title>
-    <meta name="description" content="See how parent-child trace relationships become left/right integers that enable O(1) structural queries — interactively explore nested set encoding." />
+    <meta name="description" content="See how parent-child trace relationships become left/right integers that enable fast structural queries — interactively explore nested set encoding." />
     <link rel="icon" href="/o11ykit/logo.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/o11ykit/styles.css" />
     <style>
@@ -254,7 +254,7 @@
         </div>
         <div class="xp-insight">
           <strong>Key insight:</strong> Parent-child stored as integer indices in typed arrays makes
-          structural queries SIMD-friendly array scans. Instead of walking a tree, you compare two
+          structural queries fast array scans. Instead of walking a tree, you compare two
           numbers — and that works for "find all descendants" too:
           <code style="color:var(--xp-accent-light);background:var(--xp-surface-raised);padding:2px 6px;border-radius:4px;font-family:var(--xp-mono);font-size:0.85em;">parent.left &lt; child.left AND parent.right &gt; child.right</code>.
         </div>
