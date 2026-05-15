@@ -98,13 +98,13 @@ async function main() {
 
   // ── Load WASM + codecs ──
   const { alpValuesCodec, tsCodec, alpRangeCodec, stepAggCodec } = await loadBenchCodecs();
-  const { ColumnStore } = await import(join(PKG_DIR, "dist/column-store.js"));
+  const { ReferenceColumnStore } = await import(join(PKG_DIR, "dist/reference-column-store.js"));
   const { ScanEngine } = await import(join(PKG_DIR, "dist/query.js"));
 
   const PRECISION = 2; // realistic observability precision
 
   // ── Ingest ──
-  const store = new ColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec, undefined, PRECISION, stepAggCodec);
+  const store = new ReferenceColumnStore(alpValuesCodec, CHUNK_SIZE, () => 0, undefined, tsCodec, alpRangeCodec, undefined, PRECISION, stepAggCodec);
   const ids = data.map(d => store.getOrCreateSeries(d.labels));
 
   gc();

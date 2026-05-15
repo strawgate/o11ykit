@@ -396,8 +396,8 @@ async function runChild(mode: string): Promise<void> {
   }
 
   // Create store.
-  const { ColumnStore } = await import(pkgPath("dist/column-store.js"));
-  const store: StorageBackend = new ColumnStore(
+  const { ReferenceColumnStore } = await import(pkgPath("dist/reference-column-store.js"));
+  const store: StorageBackend = new ReferenceColumnStore(
     {
       name: "alp-range",
       encodeValues: valuesCodec.encodeValues,
@@ -436,7 +436,7 @@ async function runChild(mode: string): Promise<void> {
   if (useRoundRobin) {
     // Round-robin: advance all series by CHUNK_SIZE, then repeat.
     // This mimics real-world scrape-based ingest where all series advance together,
-    // allowing the ColumnStore to freeze early and keep hot buffers small.
+    // allowing the ReferenceColumnStore to freeze early and keep hot buffers small.
     // Use per-series RNG state to avoid pre-allocating all data at once.
     const seriesRngs: Rng[] = [];
     const seriesVals: number[] = [];

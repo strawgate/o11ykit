@@ -33,7 +33,7 @@ interface ChunkedSeries {
   frozen: FrozenChunk[];
 }
 
-export class ChunkedStore implements StorageBackend {
+export class ReferenceChunkedStore implements StorageBackend {
   readonly name: string;
 
   private codec: Codec;

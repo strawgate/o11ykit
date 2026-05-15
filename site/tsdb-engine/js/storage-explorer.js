@@ -285,7 +285,7 @@ function _buildSeriesRow(si, _maxSamples, store) {
     <div class="chunk-bar-row"></div>`;
 
   const barRow = row.querySelector(".chunk-bar-row");
-  const isCol = si.info._isColumnStore;
+  const isCol = si.info._isReferenceColumnStore;
 
   // Cap visible frozen chunks to last MAX_VISIBLE_CHUNKS
   const hiddenCount = Math.max(0, frozenCount - MAX_VISIBLE_CHUNKS);

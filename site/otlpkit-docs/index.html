@@ -6,7 +6,7 @@
     <title>OtlpKit — Parse, query, and render OTLP in the browser</title>
     <meta
       name="description"
-      content="OtlpKit: four npm packages that turn OTLP JSON into chart-ready frames for Chart.js, ECharts, Recharts, and uPlot."
+      content="OtlpKit: four npm packages that turn OTLP JSON into chart-ready frames for 13+ chart libraries including Chart.js, ECharts, Recharts, uPlot, Tremor, Nivo, Plotly, and more."
     />
     <meta name="theme-color" content="#f8fafb" />
     <link rel="icon" href="../logo.svg" type="image/svg+xml" />
@@ -107,12 +107,12 @@
           </div>
           <div class="pkg-card">
             <div class="pkg-name">@otlpkit/adapters</div>
-            <div class="pkg-desc">Minimal translation layer to each chart library's native idioms. Row-based for Recharts, dataset/encode for ECharts, columnar for uPlot.</div>
+            <div class="pkg-desc">Minimal translation layer to 13+ chart libraries' native idioms. Row-based for Recharts, dataset/encode for ECharts, columnar for uPlot, traces for Tremor, and more.</div>
             <ul class="pkg-exports">
-              <li>toChartJsLineConfig()</li>
+              <li>toChartJsTimeSeriesConfig()</li>
               <li>toEChartsTimeSeriesOption()</li>
               <li>toRechartsLineData()</li>
-              <li>toUPlotTimeSeriesModel()</li>
+              <li>toUPlotTimeSeriesArgs()</li>
             </ul>
           </div>
         </div>
@@ -148,7 +148,15 @@ const option = toEChartsTimeSeriesOption(latency);</code></pre>
           <span class="format-tag">ECharts</span>
           <span class="format-tag">Recharts</span>
           <span class="format-tag">uPlot</span>
-          <span class="format-tag">Visx</span>
+          <span class="format-tag">Tremor</span>
+          <span class="format-tag">Nivo</span>
+          <span class="format-tag">Observable Plot</span>
+          <span class="format-tag">Plotly</span>
+          <span class="format-tag">ApexCharts</span>
+          <span class="format-tag">Victory</span>
+          <span class="format-tag">AG Charts</span>
+          <span class="format-tag">Highcharts</span>
+          <span class="format-tag">Vega-Lite</span>
         </div>
       </section>
 

@@ -12,7 +12,7 @@ const pkgDir = join(__dirname, "..");
 const { loadOtelData } = await import(join(__dirname, "load-otel.mjs"));
 const data = await loadOtelData(join(__dirname, "data/process.jsonl"), { repeat: 1 });
 
-const { ColumnStore } = await import(join(pkgDir, "dist/column-store.js"));
+const { ReferenceColumnStore } = await import(join(pkgDir, "dist/reference-column-store.js"));
 
 const wasmBytes = readFileSync(join(pkgDir, "wasm/o11ytsdb-rust.wasm"));
 const { instance } = await WebAssembly.instantiate(wasmBytes, { env: {} });
@@ -81,7 +81,7 @@ const seriesGroupIds = [];
 }
 let gIdx = 0;
 const grouper = (_labels) => seriesGroupIds[gIdx++];
-const store = new ColumnStore(alpValuesCodec, CHUNK, grouper, undefined, tsCodec);
+const store = new ReferenceColumnStore(alpValuesCodec, CHUNK, grouper, undefined, tsCodec);
 
 // Ingest ALL series (like the sweep does).
 const ids = [];

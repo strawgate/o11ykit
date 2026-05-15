@@ -34,8 +34,8 @@ export default defineConfig({
       exclude: [
         "packages/o11ytsdb/src/ingest.ts", // TODO(#178): Broken: API mismatch with @otlpkit/otlpjson
         "packages/o11ytsdb/src/wasm-codecs.ts", // TODO(#179): Requires WASM binaries not in repo
-        "packages/o11ytsdb/src/chunked-store.ts", // Dead code: 0% coverage, not in public API
-        "packages/o11ytsdb/src/column-store.ts", // Dead code: 0% coverage, not in public API
+        "packages/o11ytsdb/src/reference-chunked-store.ts", // Reference-only baseline; no functional tests needed
+        "packages/o11ytsdb/src/reference-column-store.ts", // Reference-only baseline; no functional tests needed
       ],
       thresholds: {
         branches: 65,

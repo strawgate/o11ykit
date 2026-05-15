@@ -33,7 +33,7 @@ const AGG_FN_ID = { min: 0, max: 1, sum: 2, count: 3, last: 4, avg: 5 };
  * - alpValuesCodec: ALP encode/decode for values (primary codec)
  * - tsCodec: delta-of-delta timestamp codec
  * - alpRangeCodec: fused range-decode (timestamps + ALP values with time filter)
- * - stepAggCodec: fused decode+aggregate in WASM (for ColumnStore stepAggCodec param)
+ * - stepAggCodec: fused decode+aggregate in WASM (for ReferenceColumnStore stepAggCodec param)
  * - valuesCodec: XOR-delta encode/decode for values (legacy, used by smoke/profile)
  * - fullCodec: chunk-level XOR encode/decode (timestamps+values, used by profile)
  */

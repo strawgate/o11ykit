@@ -25,7 +25,7 @@ const REGIONS = ["us-east", "us-west", "eu-west", "ap-south"] as const;
 
 async function loadStore(): Promise<StorageBackend> {
   try {
-    const { ChunkedStore } = await import(pkgPath("dist/chunked-store.js"));
+    const { ReferenceChunkedStore } = await import(pkgPath("dist/reference-chunked-store.js"));
     const wasmPath = pkgPath("wasm/o11ytsdb-rust.wasm");
     const wasm = await loadWasm(wasmPath);
     const rustImpl = makeCodecImpl(wasm, "rust", "Rust→WASM");
@@ -34,7 +34,7 @@ async function loadStore(): Promise<StorageBackend> {
       encode: rustImpl.encode,
       decode: rustImpl.decode,
     };
-    return new ChunkedStore(codec, CHUNK_SIZE);
+    return new ReferenceChunkedStore(codec, CHUNK_SIZE);
   } catch (error) {
     console.warn(
       "  failed to load rust-wasm via loadWasm/pkgPath, falling back to FlatStore:",
