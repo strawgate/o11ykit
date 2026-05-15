@@ -154,43 +154,52 @@
             logs in the same frame. No server round-trips. No credentials. No loading spinners.
           </p>
           <div class="correlation-grid">
-            <pre class="code-block"><span class="code-comment">// 1. Brush a time range in tsdb</span>
-const window = tsdb.query({
+            <pre class="code-block"><span class="code-comment">// 1. Query metrics for a brushed time range</span>
+import { ScanEngine } from <span class="code-signal">"o11ytsdb"</span>;
+import { queryTraces, extractTraceIds } from <span class="code-signal">"o11ytracesdb"</span>;
+import { query as queryLogs } from <span class="code-signal">"o11ylogsdb"</span>;
+
+const engine = new ScanEngine();
+const result = engine.query(tsdbStore, {
+  metric: <span class="code-signal">"http.duration"</span>,
   start: brushStart,
-  end:   brushEnd,
-  metric: <span class="code-signal">"http.duration"</span>
+  end:   brushEnd
 });
 
-<span class="code-comment">// 2. Correlate: pass to traces + logs</span>
-const spans  = tracesdb.query({
-  start: window.start,
-  end:   window.end
+<span class="code-comment">// 2. Correlate: find traces in the same window</span>
+const traceResult = queryTraces(traceStore, {
+  startTimeNano: brushStart,
+  endTimeNano:   brushEnd
 });
-const logs   = logsdb.query({
-  start: window.start,
-  end:   window.end
+const traceIds = extractTraceIds(
+  traceResult.traces.flatMap(t =&gt; t.spans)
+);
+
+<span class="code-comment">// 3. Find matching logs (time-range filter today)</span>
+const logs = queryLogs(logStore, {
+  range: { start: brushStart, end: brushEnd }
 });
 
-<span class="code-comment">// 3. Render: zero network calls</span>
-chart.update(window.points);
-waterfall.update(spans);
+<span class="code-comment">// 4. Render — all local, zero network calls</span>
+chart.update(result.series);
+waterfall.update(traceResult.traces);
 logTable.update(logs);</pre>
             <div>
               <h3 class="t-h3" style="margin-bottom:16px">How it works</h3>
               <div style="display:flex;flex-direction:column;gap:16px">
                 <div>
                   <span class="tag" style="margin-bottom:6px;display:inline-block">step 1</span>
-                  <p class="t-body" style="margin:4px 0 0">Brush a spike in your metric chart. tsdb returns the matching time window as typed arrays.</p>
+                  <p class="t-body" style="margin:4px 0 0">Brush a spike in your metric chart. The TSDB ScanEngine returns matching series as typed arrays.</p>
                 </div>
                 <hr class="hair" />
                 <div>
                   <span class="tag" style="margin-bottom:6px;display:inline-block">step 2</span>
-                  <p class="t-body" style="margin:4px 0 0">Pass the window to tracesdb and logsdb in local memory. Dictionary-encoded lookups, zero serialization.</p>
+                  <p class="t-body" style="margin:4px 0 0">Pass the time window to tracesdb and logsdb in local memory. Dictionary-encoded lookups, zero serialization.</p>
                 </div>
                 <hr class="hair" />
                 <div>
                   <span class="tag" style="margin-bottom:6px;display:inline-block">step 3</span>
-                  <p class="t-body" style="margin:4px 0 0">Render all three panels without network round-trips. Compute stays local to the page.</p>
+                  <p class="t-body" style="margin:4px 0 0">Render all three panels without network round-trips. All data lives in-browser.</p>
                 </div>
               </div>
             </div>

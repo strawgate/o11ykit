@@ -1,6 +1,9 @@
 // @ts-nocheck
-// ── Storage Model — Compute storage statistics for trace data ───────
+// ── Storage Model — Estimated storage statistics for trace data ──────
 // Models chunks, compression ratios, bloom filter stats, and byte layout.
+// NOTE: These are illustrative estimates, not readouts from the real
+// o11ytracesdb engine internals. Byte counts use heuristic formulas
+// to approximate columnar encoding behavior for the demo UI.
 
 const CHUNK_SIZE = 1024;
 
