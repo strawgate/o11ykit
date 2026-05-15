@@ -19,8 +19,15 @@ const valuesCodec: ValuesCodec = {
   },
   decodeValues(buf: Uint8Array): Float64Array {
     if (buf.byteLength < 4) return new Float64Array(0);
-    const count = new DataView(buf.buffer, buf.byteOffset, buf.byteLength).getUint32(0, true);
-    return new Float64Array(buf.buffer, buf.byteOffset + 4, count);
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    const count = dv.getUint32(0, true);
+    const requiredBytes = 4 + count * 8;
+    if (buf.byteLength < requiredBytes) return new Float64Array(0);
+    const result = new Float64Array(count);
+    for (let i = 0; i < count; i++) {
+      result[i] = dv.getFloat64(4 + i * 8, true);
+    }
+    return result;
   },
 };
 
@@ -116,11 +123,8 @@ const durationSeries = store.getOrCreateSeries(
   new Map([["__name__", "checkout.request.duration_ms"]])
 );
 
-// Generate duration samples that create a realistic histogram shape
-const durationSamples = [
-  65, 72, 78, 85, 88, 92, 95, 98, 102, 108, 112, 118, 125, 132, 140, 148, 155, 165, 178, 192, 205,
-  220, 245, 260, 285, 310,
-];
+// Generate duration samples that create a realistic histogram shape (one per second, aligned to END_S)
+const durationSamples = [65, 72, 78, 85, 88, 92, 95, 98, 102, 108, 112, 118, 125];
 
 for (const [i, value] of durationSamples.entries()) {
   const timestamp = BigInt(START_S + i) * NS_PER_S;
