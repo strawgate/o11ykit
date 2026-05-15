@@ -587,7 +587,16 @@ export function toUnixNanos(value: unknown): bigint | null {
     return value;
   }
   if (typeof value === "number") {
-    return Number.isFinite(value) ? BigInt(Math.trunc(value)) : null;
+    if (!Number.isFinite(value)) return null;
+    const truncated = Math.trunc(value);
+    // Heuristic: values in the millisecond-epoch range (1e10 to 1e15) are
+    // assumed to be milliseconds (e.g. from Date.now()) and scaled to nanos.
+    // Values >= 1e15 are valid nanosecond timestamps. Values < 1e10 are passed
+    // through as-is (relative offsets or synthetic values).
+    if (truncated >= 1e10 && truncated < 1e15) {
+      return BigInt(truncated) * 1_000_000n;
+    }
+    return BigInt(truncated);
   }
   if (value instanceof Date) {
     return BigInt(value.getTime()) * 1_000_000n;

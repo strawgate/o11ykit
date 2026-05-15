@@ -34,10 +34,18 @@ export {
   floatToBits,
 } from "./codec.js";
 export { FlatStore } from "./flat-store.js";
-// TODO(#178): Ingest exports removed — API mismatch with @otlpkit/otlpjson.
-// Re-export once the ingest module is fixed.
-// export type { IngestResult, OtlpMetricsDocument, ParsedOtlpResult, PendingSeriesSamples } from "./ingest.js";
-// export { flushSamplesToStorage, ingestOtlpJson, ingestOtlpObject, parseOtlpToSamples } from "./ingest.js";
+export type {
+  IngestResult,
+  OtlpMetricsDocument,
+  ParsedOtlpResult,
+  PendingSeriesSamples,
+} from "./ingest.js";
+export {
+  flushSamplesToStorage,
+  ingestOtlpJson,
+  ingestOtlpObject,
+  parseOtlpToSamples,
+} from "./ingest.js";
 // Label index — shared label management for storage backends
 export { LabelIndex } from "./label-index.js";
 export { MemPostings } from "./postings.js";
@@ -73,10 +81,8 @@ export type {
   TransformOp,
   ValuesCodec,
 } from "./types.js";
-// TODO(#179): WASM codec exports removed — binaries not in repo.
-// Re-export once WASM binaries are available.
-// export type { WasmCodecs } from "./wasm-codecs.js";
-// export { initWasmCodecs } from "./wasm-codecs.js";
+export type { WasmCodecs } from "./wasm-codecs.js";
+export { initWasmCodecs } from "./wasm-codecs.js";
 export { WorkerClient } from "./worker-client.js";
 export type {
   BatchIngestRequest,

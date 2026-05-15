@@ -152,21 +152,23 @@ export class TraceStore {
    */
   private evict(): void {
     const now = Date.now();
-    while (this.chunkOrder.length > 0) {
-      const oldest = this.chunkOrder[0];
+    let evicted = 0;
+    while (evicted < this.chunkOrder.length) {
+      const oldest = this.chunkOrder[evicted];
       if (!oldest) break;
       const overBytes = this.totalPayloadBytes > this.maxPayloadBytes;
-      const overCount = this.chunkOrder.length > this.maxChunks;
+      const overCount = this.chunkOrder.length - evicted > this.maxChunks;
       const overTTL = now - oldest.sealedAt > this.ttlMs;
 
       if (!overBytes && !overCount && !overTTL) break;
 
-      this.chunkOrder.shift();
       this.registry.removeChunk(oldest.streamId, oldest.chunk);
       this.totalPayloadBytes -= oldest.chunk.header.payloadBytes;
       this._evictedChunks++;
       this._evictedSpans += oldest.chunk.header.nSpans;
+      evicted++;
     }
+    if (evicted > 0) this.chunkOrder.splice(0, evicted);
   }
 
   /** Get the stream registry for query access. */

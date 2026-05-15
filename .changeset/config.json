@@ -18,5 +18,11 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": []
+  "ignore": [
+    "@otlpkit/example-chartjs",
+    "@otlpkit/example-demo",
+    "@otlpkit/example-echarts",
+    "@otlpkit/example-recharts",
+    "@otlpkit/example-uplot"
+  ]
 }
