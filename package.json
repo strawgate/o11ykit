@@ -69,7 +69,7 @@
     "@tremor/react": "^4.0.0-beta-tremor-v4.4",
     "@types/node": "^25.6.2",
     "@vercel/ncc": "^0.38.4",
-    "@vitejs/plugin-react": "^6.0.1",
+    "@vitejs/plugin-react": "^6.0.2",
     "@vitest/coverage-v8": "^4.1.5",
     "ag-charts-community": "^13.2.1",
     "apexcharts": "^5.11.0",
