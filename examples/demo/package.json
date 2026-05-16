@@ -11,7 +11,7 @@
     "@otlpkit/adapters": "file:../../packages/adapters",
     "o11ytsdb": "file:../../packages/o11ytsdb",
     "react": "^19.2.6",
-    "react-dom": "^19.2.5",
+    "react-dom": "^19.2.6",
     "recharts": "^3.8.1",
     "uplot": "^1.6.31"
   },
